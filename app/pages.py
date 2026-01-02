@@ -18,6 +18,14 @@ def render_dashboard(session, comp):
     umsatz = sum(i.total_brutto for i in invs if i.status != 'Entwurf')
     kosten = sum(e.amount for e in exps)
     offen = sum(i.total_brutto for i in invs if i.status == 'Offen')
+    latest_invoice = max(invs, key=lambda i: i.date or "") if invs else None
+    latest_customer = session.get(Customer, latest_invoice.customer_id) if latest_invoice else None
+    status_badge = C_BADGE_GRAY
+    if latest_invoice:
+        if latest_invoice.status == 'Bezahlt':
+            status_badge = C_BADGE_GREEN
+        elif latest_invoice.status == 'Offen':
+            status_badge = C_BADGE_BLUE
 
     with ui.grid(columns=3).classes('w-full gap-6 mb-8'):
         def stat_card(title, val, icon, col):
@@ -31,6 +39,30 @@ def render_dashboard(session, comp):
         stat_card("Gesamtumsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-600")
         stat_card("Ausgaben", f"{kosten:,.2f} €", "trending_down", "text-red-600")
         stat_card("Offen", f"{offen:,.2f} €", "hourglass_empty", "text-blue-600")
+
+    with ui.grid(columns=3).classes('w-full gap-6 mb-8'):
+        with ui.card().classes(C_CARD + " p-6 col-span-2"):
+            ui.label('Letzte Aktivität').classes(C_SECTION_TITLE + " mb-4")
+            if latest_invoice:
+                with ui.row().classes('justify-between items-start w-full'):
+                    with ui.column().classes('gap-2'):
+                        ui.label(f"Rechnung Nr. {latest_invoice.nr}").classes('text-sm font-semibold text-slate-900')
+                        ui.label(f"Kunde: {latest_customer.display_name if latest_customer else 'Unbekannt'}").classes('text-xs text-slate-500')
+                        ui.label(f"Datum: {latest_invoice.date}").classes('text-xs text-slate-500')
+                    with ui.column().classes('items-end gap-2'):
+                        ui.label(f"{latest_invoice.total_brutto:,.2f} €").classes('text-lg font-semibold text-slate-900')
+                        ui.label(latest_invoice.status).classes(status_badge)
+            else:
+                ui.label('Noch keine Rechnungen vorhanden.').classes('text-sm text-slate-500')
+        with ui.card().classes(C_CARD + " p-6 col-span-1"):
+            ui.label('Neue E-Mails / NADN-Status').classes(C_SECTION_TITLE + " mb-4")
+            with ui.column().classes('gap-3'):
+                with ui.row().classes('justify-between items-center'):
+                    ui.label('Neue E-Mails').classes('text-sm text-slate-600')
+                    ui.label('0').classes('text-sm font-semibold text-slate-900')
+                with ui.row().classes('justify-between items-center'):
+                    ui.label('NADN-Status').classes('text-sm text-slate-600')
+                    ui.label('Inaktiv').classes(C_BADGE_GRAY)
 
 def render_customers(session, comp):
     with ui.row().classes('w-full justify-between items-center mb-6'):
