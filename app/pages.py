@@ -149,29 +149,96 @@ def render_customers(session, comp):
                 confirm_btn.disable()
             
             ui.button('Import', icon='upload', on_click=d.open).classes(C_BTN_SEC)
-            ui.button('Kunde anlegen', icon='add').classes(C_BTN_PRIM)
+            ui.button('Kunde anlegen', icon='add', on_click=lambda: (app.storage.user.__setitem__('page', 'customer_new'), ui.navigate.to('/'))).classes(C_BTN_PRIM)
 
-    customers = session.exec(select(Customer)).all()
-    with ui.grid(columns=3).classes('w-full gap-4'):
-        for c in customers:
-            with ui.card().classes(C_CARD + " p-5 cursor-pointer group " + C_CARD_HOVER):
-                with ui.row().classes('justify-between w-full mb-3'):
-                    with ui.row().classes('gap-3 items-center'):
-                        with ui.element('div').classes('w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold'):
-                            ui.label(c.name[:1] if c.name else "?")
-                        with ui.column().classes('gap-0'):
-                            ui.label(c.display_name).classes('font-semibold text-slate-900 text-sm')
-                            ui.label(f"KdNr: {c.kdnr}").classes('text-xs text-slate-400')
-                    ui.icon('more_horiz').classes('text-slate-300 group-hover:text-slate-500')
-                
-                if c.email:
-                    with ui.row().classes('items-center gap-2 text-slate-500 text-xs mt-2'):
-                        ui.icon('mail', size='xs')
-                        ui.label(c.email).classes('truncate max-w-[150px]')
-                if c.ort:
-                    with ui.row().classes('items-center gap-2 text-slate-500 text-xs'):
-                        ui.icon('place', size='xs')
-                        ui.label(f"{c.plz} {c.ort}")
+    search_input = ui.input('Suche', value='').classes(C_INPUT + " w-64 mb-4")
+
+    @ui.refreshable
+    def customer_grid():
+        term = (search_input.value or '').strip().lower()
+        customers = session.exec(select(Customer)).all()
+        if term:
+            customers = [
+                c for c in customers
+                if term in (c.display_name or '').lower()
+                or term in str(c.kdnr or '')
+                or term in (c.email or '').lower()
+                or term in (c.ort or '').lower()
+            ]
+        with ui.grid(columns=3).classes('w-full gap-4'):
+            for c in customers:
+                with ui.card().classes(C_CARD + " p-5 cursor-pointer group " + C_CARD_HOVER):
+                    with ui.row().classes('justify-between w-full mb-3'):
+                        with ui.row().classes('gap-3 items-center'):
+                            with ui.element('div').classes('w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold'):
+                                ui.label(c.name[:1] if c.name else "?")
+                            with ui.column().classes('gap-0'):
+                                ui.label(c.display_name).classes('font-semibold text-slate-900 text-sm')
+                                ui.label(f"KdNr: {c.kdnr}").classes('text-xs text-slate-400')
+                        ui.icon('more_horiz').classes('text-slate-300 group-hover:text-slate-500')
+                    
+                    if c.email:
+                        with ui.row().classes('items-center gap-2 text-slate-500 text-xs mt-2'):
+                            ui.icon('mail', size='xs')
+                            ui.label(c.email).classes('truncate max-w-[150px]')
+                    if c.ort:
+                        with ui.row().classes('items-center gap-2 text-slate-500 text-xs'):
+                            ui.icon('place', size='xs')
+                            ui.label(f"{c.plz} {c.ort}")
+
+    search_input.on('input', lambda _: customer_grid.refresh())
+    customer_grid()
+
+def render_customer_new(session, comp):
+    ui.label('Kunde anlegen').classes(C_PAGE_TITLE + " mb-6")
+    last_kdnr = session.exec(select(Customer.kdnr).order_by(Customer.kdnr.desc())).first()
+    next_kdnr = int(last_kdnr or 0) + 1
+
+    with ui.card().classes(C_CARD + " p-6 w-full"):
+        with ui.column().classes('w-full gap-4'):
+            ui.label('Kundendaten').classes(C_SECTION_TITLE)
+            kdnr_input = ui.input('Kundennummer', value=str(next_kdnr)).props('readonly').classes(C_INPUT + " w-40")
+            name_input = ui.input('Firmenname', value='').classes(C_INPUT)
+            with ui.row().classes('w-full gap-4'):
+                vorname_input = ui.input('Vorname', value='').classes(C_INPUT + " w-1/2")
+                nachname_input = ui.input('Nachname', value='').classes(C_INPUT + " w-1/2")
+            email_input = ui.input('E-Mail', value='').classes(C_INPUT + " w-1/2")
+            with ui.row().classes('w-full gap-4'):
+                strasse_input = ui.input('Straße', value='').classes(C_INPUT + " w-2/3")
+                plz_input = ui.input('PLZ', value='').classes(C_INPUT + " w-1/6")
+                ort_input = ui.input('Ort', value='').classes(C_INPUT + " w-1/6")
+
+            def save_customer():
+                try:
+                    kdnr_value = int(kdnr_input.value or next_kdnr)
+                except ValueError:
+                    ui.notify('Kundennummer ist ungültig', color='red')
+                    return
+                with Session(engine) as inner:
+                    customer = Customer(
+                        company_id=comp.id,
+                        kdnr=kdnr_value,
+                        name=name_input.value or '',
+                        vorname=vorname_input.value or '',
+                        nachname=nachname_input.value or '',
+                        email=email_input.value or '',
+                        strasse=strasse_input.value or '',
+                        plz=plz_input.value or '',
+                        ort=ort_input.value or ''
+                    )
+                    inner.add(customer)
+                    inner.commit()
+                ui.notify('Kunde gespeichert', color='green')
+                app.storage.user['page'] = 'customers'
+                ui.navigate.to('/')
+
+            def cancel():
+                app.storage.user['page'] = 'customers'
+                ui.navigate.to('/')
+
+            with ui.row().classes('gap-3'):
+                ui.button('Speichern', icon='save', on_click=save_customer).classes(C_BTN_PRIM)
+                ui.button('Abbrechen', icon='close', on_click=cancel).classes(C_BTN_SEC)
 
 def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False, template_name='', intro_text=''):
     pdf = FPDF()
