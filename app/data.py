@@ -52,6 +52,7 @@ class Invoice(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_id: int = Field(foreign_key="customer.id")
     nr: Optional[int] = None 
+    title: str = "Rechnung"
     date: str
     total_brutto: float
     status: InvoiceStatus = InvoiceStatus.DRAFT
