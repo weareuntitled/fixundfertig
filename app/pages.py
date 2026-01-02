@@ -224,7 +224,8 @@ def render_customer_new(session, comp):
                         email=email_input.value or '',
                         strasse=strasse_input.value or '',
                         plz=plz_input.value or '',
-                        ort=ort_input.value or ''
+                        ort=ort_input.value or '',
+                        offen_eur=0.0
                     )
                     inner.add(customer)
                     inner.commit()
