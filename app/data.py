@@ -80,11 +80,48 @@ def ensure_company_schema():
 ensure_company_schema()
 
 # --- IMPORT LOGIC ---
-def process_customer_import(content, session, comp_id):
-    try: df = pd.read_csv(io.BytesIO(content))
-    except: 
-        try: df = pd.read_excel(io.BytesIO(content))
-        except: return 0, "Format Error"
+def load_customer_import_dataframe(content, filename=""):
+    file_name = str(filename or '').lower()
+    if file_name.endswith('.csv'):
+        file_type = 'csv'
+    elif file_name.endswith('.xls') or file_name.endswith('.xlsx'):
+        file_type = 'excel'
+    elif content[:4] == b'PK\x03\x04' or content[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+        file_type = 'excel'
+    else:
+        file_type = 'csv'
+
+    if file_type == 'csv':
+        try: return pd.read_csv(io.BytesIO(content)), ""
+        except: return None, "Format Error"
+
+    missing_engine = False
+    for engine in (None, 'openpyxl', 'xlrd'):
+        try:
+            if engine:
+                return pd.read_excel(io.BytesIO(content), engine=engine), ""
+            return pd.read_excel(io.BytesIO(content)), ""
+        except ImportError:
+            missing_engine = True
+            continue
+        except:
+            continue
+    if missing_engine: return None, "Excel-Import benötigt openpyxl oder xlrd."
+    return None, "Format Error"
+
+def load_expense_import_dataframe(content, filename=""):
+    return load_customer_import_dataframe(content, filename)
+
+def load_invoice_import_dataframe(content, filename=""):
+    return load_customer_import_dataframe(content, filename)
+
+def parse_import_amount(value):
+    try: return float(str(value or 0).replace('.','').replace(',','.'))
+    except: return 0.0
+
+def process_customer_import(content, session, comp_id, filename=""):
+    df, err = load_customer_import_dataframe(content, filename)
+    if err: return 0, err
     count = 0
     for _, row in df.iterrows():
         try:
@@ -111,9 +148,9 @@ def process_customer_import(content, session, comp_id):
     session.commit()
     return count, ""
 
-def process_expense_import(content, session, comp_id):
-    try: df = pd.read_csv(io.BytesIO(content))
-    except: return 0, "Format Error"
+def process_expense_import(content, session, comp_id, filename=""):
+    df, err = load_expense_import_dataframe(content, filename)
+    if err: return 0, err
     count = 0
     for _, row in df.iterrows():
         try:
@@ -122,9 +159,38 @@ def process_expense_import(content, session, comp_id):
                 company_id=comp_id, date=str(row.get('Datum', '')),
                 category=str(row.get('Kategorie', 'Import')),
                 description=desc, 
-                amount=float(str(row.get('Betrag brutto', 0)).replace(',','.'))
+                amount=parse_import_amount(row.get('Betrag brutto', 0))
             )
             session.add(exp)
+            count += 1
+        except: continue
+    session.commit()
+    return count, ""
+
+def process_invoice_import(content, session, comp_id, filename=""):
+    df, err = load_invoice_import_dataframe(content, filename)
+    if err: return 0, err
+    count = 0
+    for _, row in df.iterrows():
+        try:
+            nr = row.get('Rechnungsnummer') or row.get('Nr') or row.get('Rechnungs-Nr') or 0
+            if not nr: continue
+            kdnr = row.get('Kundennummer') or 0
+            cust = None
+            if kdnr:
+                cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
+            if not cust: continue
+            status = "Offen"
+            if str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']: status = "Entwurf"
+            if str(row.get('Zahldatum', '')).strip(): status = "Bezahlt"
+            inv = Invoice(
+                customer_id=cust.id,
+                nr=int(nr),
+                date=str(row.get('Datum', '')),
+                total_brutto=parse_import_amount(row.get('Betrag brutto', 0)),
+                status=status
+            )
+            session.add(inv)
             count += 1
         except: continue
     session.commit()
