@@ -18,6 +18,14 @@ def render_dashboard(session, comp):
     umsatz = sum(i.total_brutto for i in invs if i.status != 'Entwurf')
     kosten = sum(e.amount for e in exps)
     offen = sum(i.total_brutto for i in invs if i.status == 'Offen')
+    latest_invoice = max(invs, key=lambda i: i.date or "") if invs else None
+    latest_customer = session.get(Customer, latest_invoice.customer_id) if latest_invoice else None
+    status_badge = C_BADGE_GRAY
+    if latest_invoice:
+        if latest_invoice.status == 'Bezahlt':
+            status_badge = C_BADGE_GREEN
+        elif latest_invoice.status == 'Offen':
+            status_badge = C_BADGE_BLUE
 
     with ui.grid(columns=3).classes('w-full gap-6 mb-8'):
         def stat_card(title, val, icon, col):
@@ -31,6 +39,30 @@ def render_dashboard(session, comp):
         stat_card("Gesamtumsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-600")
         stat_card("Ausgaben", f"{kosten:,.2f} €", "trending_down", "text-red-600")
         stat_card("Offen", f"{offen:,.2f} €", "hourglass_empty", "text-blue-600")
+
+    with ui.grid(columns=3).classes('w-full gap-6 mb-8'):
+        with ui.card().classes(C_CARD + " p-6 col-span-2"):
+            ui.label('Letzte Aktivität').classes(C_SECTION_TITLE + " mb-4")
+            if latest_invoice:
+                with ui.row().classes('justify-between items-start w-full'):
+                    with ui.column().classes('gap-2'):
+                        ui.label(f"Rechnung Nr. {latest_invoice.nr}").classes('text-sm font-semibold text-slate-900')
+                        ui.label(f"Kunde: {latest_customer.display_name if latest_customer else 'Unbekannt'}").classes('text-xs text-slate-500')
+                        ui.label(f"Datum: {latest_invoice.date}").classes('text-xs text-slate-500')
+                    with ui.column().classes('items-end gap-2'):
+                        ui.label(f"{latest_invoice.total_brutto:,.2f} €").classes('text-lg font-semibold text-slate-900')
+                        ui.label(latest_invoice.status).classes(status_badge)
+            else:
+                ui.label('Noch keine Rechnungen vorhanden.').classes('text-sm text-slate-500')
+        with ui.card().classes(C_CARD + " p-6 col-span-1"):
+            ui.label('Neue E-Mails / NADN-Status').classes(C_SECTION_TITLE + " mb-4")
+            with ui.column().classes('gap-3'):
+                with ui.row().classes('justify-between items-center'):
+                    ui.label('Neue E-Mails').classes('text-sm text-slate-600')
+                    ui.label('0').classes('text-sm font-semibold text-slate-900')
+                with ui.row().classes('justify-between items-center'):
+                    ui.label('NADN-Status').classes('text-sm text-slate-600')
+                    ui.label('Inaktiv').classes(C_BADGE_GRAY)
 
 def render_customers(session, comp):
     with ui.row().classes('w-full justify-between items-center mb-6'):
@@ -91,6 +123,16 @@ def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False):
     pdf.set_font("Helvetica", size=12)
 
     pdf.cell(0, 10, f"{company.name}", ln=True)
+    if company.first_name or company.last_name:
+        pdf.cell(0, 8, f"{company.first_name} {company.last_name}".strip(), ln=True)
+    if company.street:
+        pdf.cell(0, 8, f"{company.street}", ln=True)
+    if company.postal_code or company.city:
+        pdf.cell(0, 8, f"{company.postal_code} {company.city}".strip(), ln=True)
+    if company.email:
+        pdf.cell(0, 8, f"E-Mail: {company.email}", ln=True)
+    if company.phone:
+        pdf.cell(0, 8, f"Tel.: {company.phone}", ln=True)
     if company.iban:
         pdf.cell(0, 8, f"IBAN: {company.iban}", ln=True)
     if company.tax_id:
@@ -152,6 +194,13 @@ def render_settings(session, comp):
         with ui.column().classes('w-full gap-4'):
             ui.label('Unternehmensdaten').classes(C_SECTION_TITLE)
             name_input = ui.input('Firmenname', value=comp.name).classes(C_INPUT)
+            first_name_input = ui.input('Vorname', value=comp.first_name).classes(C_INPUT)
+            last_name_input = ui.input('Nachname', value=comp.last_name).classes(C_INPUT)
+            street_input = ui.input('Straße', value=comp.street).classes(C_INPUT)
+            postal_code_input = ui.input('PLZ', value=comp.postal_code).classes(C_INPUT)
+            city_input = ui.input('Ort', value=comp.city).classes(C_INPUT)
+            email_input = ui.input('E-Mail', value=comp.email).classes(C_INPUT)
+            phone_input = ui.input('Telefon', value=comp.phone).classes(C_INPUT)
             iban_input = ui.input('IBAN', value=comp.iban).classes(C_INPUT)
             tax_input = ui.input('Steuernummer', value=comp.tax_id).classes(C_INPUT)
 
@@ -165,6 +214,13 @@ def render_settings(session, comp):
                 with Session(engine) as inner:
                     company = inner.get(Company, comp.id)
                     company.name = name_input.value or ''
+                    company.first_name = first_name_input.value or ''
+                    company.last_name = last_name_input.value or ''
+                    company.street = street_input.value or ''
+                    company.postal_code = postal_code_input.value or ''
+                    company.city = city_input.value or ''
+                    company.email = email_input.value or ''
+                    company.phone = phone_input.value or ''
                     company.iban = iban_input.value or ''
                     company.tax_id = tax_input.value or ''
                     company.smtp_server = smtp_server.value or ''
@@ -458,6 +514,7 @@ def render_expenses(session, comp):
             ui.label('Beschreibung').classes('flex-1 font-medium text-slate-500 text-sm')
             ui.label('Kategorie').classes('w-32 font-medium text-slate-500 text-sm')
             ui.label('Betrag').classes('w-24 text-right font-medium text-slate-500 text-sm')
+            ui.label('Aktionen').classes('w-32 text-right font-medium text-slate-500 text-sm')
 
         # ROWS
         with ui.column().classes('w-full gap-0'):
@@ -467,3 +524,56 @@ def render_expenses(session, comp):
                     ui.label(e.description).classes('flex-1 font-semibold text-slate-900 text-sm truncate')
                     ui.label(e.category).classes('w-32 text-slate-500 text-sm')
                     ui.label(f"- {e.amount:,.2f} €").classes('w-24 text-right text-red-600 font-mono font-medium text-sm')
+                    with ui.row().classes('w-32 justify-end gap-2'):
+                        with ui.dialog() as d_edit, ui.card().classes(C_CARD + " p-5"):
+                            ui.label('Ausgabe bearbeiten').classes(C_SECTION_TITLE + " mb-4")
+                            edit_date = ui.input('Datum', value=e.date).classes(C_INPUT)
+                            edit_description = ui.input('Beschreibung', value=e.description).classes(C_INPUT)
+                            edit_category = ui.input('Kategorie', value=e.category).classes(C_INPUT)
+                            edit_amount = ui.number('Betrag', value=e.amount, format='%.2f').classes(C_INPUT)
+
+                            ui.label('Integrationen').classes(C_SECTION_TITLE + " mt-4")
+                            edit_integrations = ui.column().classes('w-full gap-3')
+                            edit_integrations.set_visibility(bool(e.source or e.external_id or e.webhook_url))
+                            with ui.row().classes('w-full justify-start'):
+                                ui.button('Webhook verbinden', icon='link', on_click=lambda: edit_integrations.set_visibility(True)).classes(C_BTN_SEC)
+
+                            with edit_integrations:
+                                edit_source = ui.input('Quelle', value=e.source or '').classes(C_INPUT)
+                                edit_external_id = ui.input('External ID', value=e.external_id or '').classes(C_INPUT)
+                                edit_webhook_url = ui.input('Webhook URL', value=e.webhook_url or '').classes(C_INPUT)
+
+                            def save_edit_expense(expense_id=e.id):
+                                if not edit_date.value: return ui.notify('Bitte Datum angeben', color='red')
+                                if not edit_description.value: return ui.notify('Bitte Beschreibung angeben', color='red')
+                                try: amount_val = float(edit_amount.value or 0)
+                                except: return ui.notify('Bitte gültigen Betrag angeben', color='red')
+                                with Session(engine) as inner:
+                                    exp = inner.get(Expense, expense_id)
+                                    if not exp: return ui.notify('Ausgabe nicht gefunden', color='red')
+                                    exp.date = str(edit_date.value or '')
+                                    exp.description = str(edit_description.value or '')
+                                    exp.category = str(edit_category.value or '')
+                                    exp.amount = amount_val
+                                    exp.source = str(edit_source.value or '')
+                                    exp.external_id = str(edit_external_id.value or '')
+                                    exp.webhook_url = str(edit_webhook_url.value or '')
+                                    inner.add(exp)
+                                    inner.commit()
+                                ui.notify('Ausgabe aktualisiert', color='green')
+                                d_edit.close()
+                                ui.navigate.to('/')
+
+                            ui.button('Speichern', icon='save', on_click=save_edit_expense).classes(C_BTN_PRIM + " w-fit mt-2")
+
+                        def delete_expense(expense_id=e.id):
+                            with Session(engine) as inner:
+                                exp = inner.get(Expense, expense_id)
+                                if not exp: return ui.notify('Ausgabe nicht gefunden', color='red')
+                                inner.delete(exp)
+                                inner.commit()
+                            ui.notify('Ausgabe gelöscht', color='green')
+                            ui.navigate.to('/')
+
+                        ui.button(icon='edit', on_click=d_edit.open).classes(C_BTN_SEC)
+                        ui.button(icon='delete', on_click=delete_expense).classes(C_BTN_SEC)
