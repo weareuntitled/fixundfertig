@@ -1,0 +1,48 @@
+@page { size: A4; margin: 0; }
+
+.letterhead {
+  height: 45mm;
+}
+
+.address-field {
+  position: absolute;
+  top: 45mm;
+  left: 20mm;
+  width: 85mm;
+  height: 45mm;
+}
+
+.return-address {
+  height: 5mm;
+  font-size: 8pt;
+}
+
+.folding-marks {
+  position: fixed;
+}
+
+.folding-marks::before,
+.folding-marks::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  width: 5mm;
+  height: 0.2mm;
+  background: currentColor;
+}
+
+.folding-marks::before {
+  top: 105mm;
+}
+
+.folding-marks::after {
+  top: 210mm;
+}
+
+.items-table {
+  break-inside: avoid;
+}
+
+.items-table thead {
+  display: table-header-group;
+}
