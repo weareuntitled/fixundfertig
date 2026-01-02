@@ -80,6 +80,14 @@ class InvoiceItem(SQLModel, table=True):
     quantity: float
     unit_price: float
 
+class InvoiceItemTemplate(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id")
+    title: str = ""
+    description: str
+    quantity: float = 1.0
+    unit_price: float = 0.0
+
 class AuditLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())

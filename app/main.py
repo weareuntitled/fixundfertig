@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 
 from data import Company, engine
 from styles import C_BG, C_CONTAINER, C_HEADER, C_BRAND_BADGE, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
-from pages import render_dashboard, render_customers, render_customer_new, render_invoices, render_expenses, render_settings
+from pages import render_dashboard, render_customers, render_customer_new, render_invoices, render_invoice_create, render_expenses, render_settings
 
 # --- UI LOGIC ---
 
