@@ -55,6 +55,9 @@ class Expense(SQLModel, table=True):
     category: str
     description: str
     amount: float
+    source: str = ""
+    external_id: str = ""
+    webhook_url: str = ""
 
 os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
@@ -78,6 +81,18 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
 
 ensure_company_schema()
+
+def ensure_expense_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(expense)").fetchall()}
+        if "source" not in columns:
+            conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN source TEXT DEFAULT ''")
+        if "external_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN external_id TEXT DEFAULT ''")
+        if "webhook_url" not in columns:
+            conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN webhook_url TEXT DEFAULT ''")
+
+ensure_expense_schema()
 
 # --- IMPORT LOGIC ---
 def process_customer_import(content, session, comp_id):
@@ -122,7 +137,8 @@ def process_expense_import(content, session, comp_id):
                 company_id=comp_id, date=str(row.get('Datum', '')),
                 category=str(row.get('Kategorie', 'Import')),
                 description=desc, 
-                amount=float(str(row.get('Betrag brutto', 0)).replace(',','.'))
+                amount=float(str(row.get('Betrag brutto', 0)).replace(',','.')),
+                source="import"
             )
             session.add(exp)
             count += 1
