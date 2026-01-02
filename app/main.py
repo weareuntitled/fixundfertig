@@ -194,7 +194,7 @@ def index():
             comp = session.exec(select(Company)).first()
             if page == 'dashboard': render_dashboard(session, comp)
             elif page == 'customers': render_customers(session, comp)
-            elif page == 'invoices': render_invoice_editor(session, comp)
+            elif page == 'invoices': render_invoices(session, comp)
             elif page == 'expenses': render_expenses(session, comp)
             elif page == 'settings': render_settings(session, comp)
 
