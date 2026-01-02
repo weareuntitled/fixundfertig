@@ -397,19 +397,63 @@ def render_invoices(session, comp):
 def render_expenses(session, comp):
     with ui.row().classes('w-full justify-between items-center mb-6'):
         ui.label('Ausgaben').classes(C_PAGE_TITLE)
-        with ui.dialog() as d, ui.card().classes(C_CARD + " p-5"):
-            ui.label('CSV Import').classes(C_SECTION_TITLE + " mb-4")
-            def handle(e: events.UploadEventArguments):
-                try: content = e.content.read()
-                except: return ui.notify('Upload Fehler', color='red')
-                c, err = process_expense_import(content, session, comp.id)
-                if err: ui.notify(err, color='red')
-                else: 
-                    ui.notify(f"{c} Importiert", color='green')
-                    d.close()
+        with ui.row().classes('gap-3'):
+            with ui.dialog() as d_new, ui.card().classes(C_CARD + " p-5"):
+                ui.label('Neue Ausgabe').classes(C_SECTION_TITLE + " mb-4")
+                date_input = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT)
+                description_input = ui.input('Beschreibung').classes(C_INPUT)
+                category_input = ui.input('Kategorie', value='Allgemein').classes(C_INPUT)
+                amount_input = ui.number('Betrag', value=0, format='%.2f').classes(C_INPUT)
+
+                ui.label('Integrationen').classes(C_SECTION_TITLE + " mt-4")
+                integrations_container = ui.column().classes('w-full gap-3')
+                integrations_container.set_visibility(False)
+                with ui.row().classes('w-full justify-start'):
+                    ui.button('Webhook verbinden', icon='link', on_click=lambda: integrations_container.set_visibility(True)).classes(C_BTN_SEC)
+
+                with integrations_container:
+                    source_input = ui.input('Quelle', value='manual').classes(C_INPUT)
+                    external_id_input = ui.input('External ID').classes(C_INPUT)
+                    webhook_url_input = ui.input('Webhook URL').classes(C_INPUT)
+
+                def save_new_expense():
+                    if not date_input.value: return ui.notify('Bitte Datum angeben', color='red')
+                    if not description_input.value: return ui.notify('Bitte Beschreibung angeben', color='red')
+                    try: amount_val = float(amount_input.value or 0)
+                    except: return ui.notify('Bitte gültigen Betrag angeben', color='red')
+                    with Session(engine) as inner:
+                        exp = Expense(
+                            company_id=comp.id,
+                            date=str(date_input.value or ''),
+                            category=str(category_input.value or ''),
+                            description=str(description_input.value or ''),
+                            amount=amount_val,
+                            source=str(source_input.value or ''),
+                            external_id=str(external_id_input.value or ''),
+                            webhook_url=str(webhook_url_input.value or '')
+                        )
+                        inner.add(exp)
+                        inner.commit()
+                    ui.notify('Ausgabe gespeichert', color='green')
+                    d_new.close()
                     ui.navigate.to('/')
-            ui.upload(on_upload=handle, auto_upload=True).classes('w-full')
-        ui.button('Import', icon='upload', on_click=d.open).classes(C_BTN_PRIM)
+
+                ui.button('Speichern', icon='save', on_click=save_new_expense).classes(C_BTN_PRIM + " w-fit mt-2")
+
+            with ui.dialog() as d, ui.card().classes(C_CARD + " p-5"):
+                ui.label('CSV Import').classes(C_SECTION_TITLE + " mb-4")
+                def handle(e: events.UploadEventArguments):
+                    try: content = e.content.read()
+                    except: return ui.notify('Upload Fehler', color='red')
+                    c, err = process_expense_import(content, session, comp.id)
+                    if err: ui.notify(err, color='red')
+                    else: 
+                        ui.notify(f"{c} Importiert", color='green')
+                        d.close()
+                        ui.navigate.to('/')
+                ui.upload(on_upload=handle, auto_upload=True).classes('w-full')
+            ui.button('Import', icon='upload', on_click=d.open).classes(C_BTN_SEC)
+            ui.button('Neue Ausgabe', icon='add', on_click=d_new.open).classes(C_BTN_PRIM)
 
     exps = session.exec(select(Expense)).all()
     with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
@@ -419,6 +463,7 @@ def render_expenses(session, comp):
             ui.label('Beschreibung').classes('flex-1 font-medium text-slate-500 text-sm')
             ui.label('Kategorie').classes('w-32 font-medium text-slate-500 text-sm')
             ui.label('Betrag').classes('w-24 text-right font-medium text-slate-500 text-sm')
+            ui.label('Aktionen').classes('w-32 text-right font-medium text-slate-500 text-sm')
 
         # ROWS
         with ui.column().classes('w-full gap-0'):
@@ -428,3 +473,56 @@ def render_expenses(session, comp):
                     ui.label(e.description).classes('flex-1 font-semibold text-slate-900 text-sm truncate')
                     ui.label(e.category).classes('w-32 text-slate-500 text-sm')
                     ui.label(f"- {e.amount:,.2f} €").classes('w-24 text-right text-red-600 font-mono font-medium text-sm')
+                    with ui.row().classes('w-32 justify-end gap-2'):
+                        with ui.dialog() as d_edit, ui.card().classes(C_CARD + " p-5"):
+                            ui.label('Ausgabe bearbeiten').classes(C_SECTION_TITLE + " mb-4")
+                            edit_date = ui.input('Datum', value=e.date).classes(C_INPUT)
+                            edit_description = ui.input('Beschreibung', value=e.description).classes(C_INPUT)
+                            edit_category = ui.input('Kategorie', value=e.category).classes(C_INPUT)
+                            edit_amount = ui.number('Betrag', value=e.amount, format='%.2f').classes(C_INPUT)
+
+                            ui.label('Integrationen').classes(C_SECTION_TITLE + " mt-4")
+                            edit_integrations = ui.column().classes('w-full gap-3')
+                            edit_integrations.set_visibility(bool(e.source or e.external_id or e.webhook_url))
+                            with ui.row().classes('w-full justify-start'):
+                                ui.button('Webhook verbinden', icon='link', on_click=lambda: edit_integrations.set_visibility(True)).classes(C_BTN_SEC)
+
+                            with edit_integrations:
+                                edit_source = ui.input('Quelle', value=e.source or '').classes(C_INPUT)
+                                edit_external_id = ui.input('External ID', value=e.external_id or '').classes(C_INPUT)
+                                edit_webhook_url = ui.input('Webhook URL', value=e.webhook_url or '').classes(C_INPUT)
+
+                            def save_edit_expense(expense_id=e.id):
+                                if not edit_date.value: return ui.notify('Bitte Datum angeben', color='red')
+                                if not edit_description.value: return ui.notify('Bitte Beschreibung angeben', color='red')
+                                try: amount_val = float(edit_amount.value or 0)
+                                except: return ui.notify('Bitte gültigen Betrag angeben', color='red')
+                                with Session(engine) as inner:
+                                    exp = inner.get(Expense, expense_id)
+                                    if not exp: return ui.notify('Ausgabe nicht gefunden', color='red')
+                                    exp.date = str(edit_date.value or '')
+                                    exp.description = str(edit_description.value or '')
+                                    exp.category = str(edit_category.value or '')
+                                    exp.amount = amount_val
+                                    exp.source = str(edit_source.value or '')
+                                    exp.external_id = str(edit_external_id.value or '')
+                                    exp.webhook_url = str(edit_webhook_url.value or '')
+                                    inner.add(exp)
+                                    inner.commit()
+                                ui.notify('Ausgabe aktualisiert', color='green')
+                                d_edit.close()
+                                ui.navigate.to('/')
+
+                            ui.button('Speichern', icon='save', on_click=save_edit_expense).classes(C_BTN_PRIM + " w-fit mt-2")
+
+                        def delete_expense(expense_id=e.id):
+                            with Session(engine) as inner:
+                                exp = inner.get(Expense, expense_id)
+                                if not exp: return ui.notify('Ausgabe nicht gefunden', color='red')
+                                inner.delete(exp)
+                                inner.commit()
+                            ui.notify('Ausgabe gelöscht', color='green')
+                            ui.navigate.to('/')
+
+                        ui.button(icon='edit', on_click=d_edit.open).classes(C_BTN_SEC)
+                        ui.button(icon='delete', on_click=delete_expense).classes(C_BTN_SEC)
