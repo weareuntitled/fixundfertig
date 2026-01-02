@@ -1,1 +1,78 @@
 npm warn exec The following package was not found and will be installed: n8n@2.1.5
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @langchain/langgraph@1.0.2
+npm warn Found: zod@undefined
+npm warn node_modules/zod
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer zod@"^3.25.32 || ^4.1.0" from @langchain/langgraph@1.0.2
+npm warn node_modules/@langchain/langgraph
+npm warn   @langchain/langgraph@"1.0.2" from @n8n/ai-workflow-builder@1.1.3
+npm warn   node_modules/@n8n/ai-workflow-builder
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @getzep/zep-cloud@1.0.6
+npm warn Found: @langchain/core@1.1.0
+npm warn node_modules/@langchain/core
+npm warn   @langchain/core@"1.1.0" from @n8n/ai-workflow-builder@1.1.3
+npm warn   node_modules/@n8n/ai-workflow-builder
+npm warn     @n8n/ai-workflow-builder@"1.1.3" from n8n@2.1.5
+npm warn     node_modules/n8n
+npm warn   20 more (@n8n/n8n-nodes-langchain, n8n-core, ...)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peerOptional @langchain/core@"~0.1.29" from @getzep/zep-cloud@1.0.6
+npm warn node_modules/@getzep/zep-cloud
+npm warn   @getzep/zep-cloud@"1.0.6" from @n8n/n8n-nodes-langchain@2.1.4
+npm warn   node_modules/@n8n/n8n-nodes-langchain
+npm warn   1 more (@langchain/community)
+npm warn
+npm warn Conflicting peer dependency: @langchain/core@0.1.63
+npm warn node_modules/@langchain/core
+npm warn   peerOptional @langchain/core@"~0.1.29" from @getzep/zep-cloud@1.0.6
+npm warn   node_modules/@getzep/zep-cloud
+npm warn     @getzep/zep-cloud@"1.0.6" from @n8n/n8n-nodes-langchain@2.1.4
+npm warn     node_modules/@n8n/n8n-nodes-langchain
+npm warn     1 more (@langchain/community)
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @n8n/json-schema-to-zod@1.6.0
+npm warn Found: zod@undefined
+npm warn node_modules/zod
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer zod@"^3.0.0" from @n8n/json-schema-to-zod@1.6.0
+npm warn node_modules/@n8n/json-schema-to-zod
+npm warn   @n8n/json-schema-to-zod@"1.6.0" from @n8n/n8n-nodes-langchain@2.1.4
+npm warn   node_modules/@n8n/n8n-nodes-langchain
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @browserbasehq/stagehand@1.14.0
+npm warn Found: openai@6.15.0
+npm warn node_modules/openai
+npm warn   openai@"^6.9.0" from @n8n/n8n-nodes-langchain@2.1.4
+npm warn   node_modules/@n8n/n8n-nodes-langchain
+npm warn     @n8n/n8n-nodes-langchain@"2.1.4" from n8n@2.1.5
+npm warn     node_modules/n8n
+npm warn   4 more (@langchain/openai, langsmith, @langchain/community, langsmith)
+npm warn
+npm warn Could not resolve dependency:
+npm warn peer openai@"^4.62.1" from @browserbasehq/stagehand@1.14.0
+npm warn node_modules/@n8n/n8n-nodes-langchain/node_modules/@browserbasehq/stagehand
+npm warn   peer @browserbasehq/stagehand@"^1.0.0" from @langchain/community@1.0.5
+npm warn   node_modules/@n8n/n8n-nodes-langchain/node_modules/@langchain/community
+npm warn
+npm warn Conflicting peer dependency: openai@4.104.0
+npm warn node_modules/openai
+npm warn   peer openai@"^4.62.1" from @browserbasehq/stagehand@1.14.0
+npm warn   node_modules/@n8n/n8n-nodes-langchain/node_modules/@browserbasehq/stagehand
+npm warn     peer @browserbasehq/stagehand@"^1.0.0" from @langchain/community@1.0.5
+npm warn     node_modules/@n8n/n8n-nodes-langchain/node_modules/@langchain/community
+npm error code EACCES
+npm error syscall mkdir
+npm error path /Users/apple/.npm/_cacache/index-v5/38/e9
+npm error errno EACCES
+npm error
+npm error Your cache folder contains root-owned files, due to a bug in
+npm error previous versions of npm which has since been addressed.
+npm error
+npm error To permanently fix this problem, please run:
+npm error   sudo chown -R 502:20 "/Users/apple/.npm"
+npm error A complete log of this run can be found in: /Users/apple/.npm/_logs/2026-01-02T22_19_47_421Z-debug-0.log

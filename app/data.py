@@ -1,6 +1,8 @@
-from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
+
 from sqlalchemy import event, inspect
 from typing import Optional, List
+from enum import Enum  # <--- WICHTIG: Das hat gefehlt!
+from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
 from datetime import datetime
 import pandas as pd
 import io

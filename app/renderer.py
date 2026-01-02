@@ -1,15 +1,13 @@
 import base64
 import os
-import sys
-
+# sys.path hack entfernen
 from jinja2 import Environment, BaseLoader
 from lxml import etree
 from sqlmodel import Session, select
 from weasyprint import HTML, Attachment
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from app.data import Company, Customer, Invoice, InvoiceItem, engine
+# Import relativ zum Execution Context
+from data import Company, Customer, Invoice, InvoiceItem, engine # <--- "app." entfernt
 
 
 _TEMPLATE = """
