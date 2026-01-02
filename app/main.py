@@ -12,8 +12,8 @@ C_BG = "bg-slate-50 min-h-screen"
 C_CONTAINER = "w-full max-w-7xl mx-auto p-6 gap-6"
 C_CARD = "bg-white border border-slate-200 rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.02)]"
 C_BTN_PRIM = "bg-slate-900 text-white hover:bg-slate-800 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all"
-C_BTN_SEC = "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all"
-C_INPUT = "border-slate-200 bg-white rounded-lg text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 w-full transition-all"
+C_BTN_SEC = "bg-transparent text-slate-900 border border-slate-900 hover:bg-slate-900/5 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all"
+C_INPUT = "border-slate-200 bg-white rounded-lg text-sm px-3 py-2 outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-900 w-full transition-all"
 C_BADGE_GREEN = "bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 C_BADGE_BLUE = "bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 C_BADGE_GRAY = "bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
@@ -398,10 +398,10 @@ def render_invoice_editor(session, comp, d):
         def add_item():
             item = {}
             with items_container:
-                with ui.row().classes('w-full gap-3 items-end') as row:
-                    desc = ui.input('Beschreibung').classes(C_INPUT + " flex-1")
-                    qty = ui.number('Menge', value=1, format='%.2f').classes(C_INPUT + " w-28")
-                    price = ui.number('Einzelpreis', value=0, format='%.2f').classes(C_INPUT + " w-32")
+                with ui.row().classes('w-full gap-3 items-end flex-wrap') as row:
+                    desc = ui.input('Beschreibung').classes(C_INPUT + " flex-1 min-w-[220px]")
+                    qty = ui.number('Menge', value=1, format='%.2f').classes(C_INPUT + " w-28 min-w-[110px]")
+                    price = ui.number('Einzelpreis', value=0, format='%.2f').classes(C_INPUT + " w-32 min-w-[140px]")
                     ui.button('Entfernen', on_click=lambda: remove_item(item)).classes(C_BTN_SEC)
             item.update({'row': row, 'desc': desc, 'qty': qty, 'price': price})
             items.append(item)
@@ -591,7 +591,7 @@ def render_expenses(session, comp):
                     d.close()
                     ui.navigate.to('/')
             ui.upload(on_upload=handle, auto_upload=True).classes('w-full')
-        ui.button('Import', icon='upload', on_click=d.open).classes(C_BTN_SEC)
+        ui.button('Import', icon='upload', on_click=d.open).classes(C_BTN_PRIM)
 
     exps = session.exec(select(Expense)).all()
     with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
