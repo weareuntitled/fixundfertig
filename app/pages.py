@@ -6,7 +6,7 @@ import smtplib
 from fpdf import FPDF
 import os
 
-from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, process_customer_import, process_expense_import, read_expense_import
+from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
     C_BADGE_GREEN, C_BADGE_BLUE, C_BADGE_GRAY, C_PAGE_TITLE, C_SECTION_TITLE,
@@ -72,6 +72,10 @@ def render_customers(session, comp):
         with ui.row().classes('gap-3'):
             with ui.dialog() as d, ui.card().classes(C_CARD + " p-5"):
                 ui.label('CSV Import').classes(C_SECTION_TITLE + " mb-4")
+                import_payload = {'content': None, 'filename': '', 'rows_total': 0}
+                preview_container = ui.column().classes('w-full gap-3')
+                stats_label = ui.label('').classes('text-xs text-slate-500')
+                progress = ui.linear_progress(value=0).classes('w-full')
                 
                 # SAFE UPLOAD HANDLER
                 def handle(e: events.UploadEventArguments):
@@ -84,14 +88,65 @@ def render_customers(session, comp):
                         print(f"DEBUG: Upload Event hat folgende Attribute: {dir(e)}")
                         return
 
-                    c, err = process_customer_import(content, session, comp.id)
+                    filename = getattr(e, 'name', '') or getattr(getattr(e, 'file', None), 'name', '')
+                    progress.value = 0.3
+                    df, err = load_customer_import_dataframe(content, filename)
+                    preview_container.clear()
+                    stats_label.set_text('')
+                    confirm_btn.disable()
+                    if err: 
+                        ui.notify(err, color='red')
+                        return
+                    progress.value = 0.6
+
+                    import_payload['content'] = content
+                    import_payload['filename'] = filename
+                    import_payload['rows_total'] = len(df.index)
+
+                    with preview_container:
+                        ui.label('Vorschau').classes(C_SECTION_TITLE + " mt-4")
+                        preview_df = df.head(20).fillna('')
+                        rows = []
+                        for i, row in preview_df.iterrows():
+                            row_data = {'_row': str(i + 1)}
+                            for col in preview_df.columns:
+                                row_data[col] = str(row[col])
+                            rows.append(row_data)
+                        columns = [{'name': '_row', 'label': '#', 'field': '_row'}]
+                        columns += [{'name': col, 'label': col, 'field': col} for col in preview_df.columns]
+                        ui.table(columns=columns, rows=rows, row_key='_row').classes('w-full')
+                    stats_label.set_text(f"Zeilen gesamt: {import_payload['rows_total']}")
+                    progress.value = 0.8
+                    confirm_btn.enable()
+
+                def confirm_import():
+                    if not import_payload['content']:
+                        ui.notify('Bitte zuerst eine Datei hochladen.', color='red')
+                        return
+                    progress.value = 0.9
+                    c, err = process_customer_import(import_payload['content'], session, comp.id, import_payload['filename'])
                     if err: ui.notify(err, color='red')
                     else: 
-                        ui.notify(f"{c} Importiert", color='green')
+                        ui.notify(f"{c} Importiert ({c}/{import_payload['rows_total']})", color='green')
+                        progress.value = 1.0
                         d.close()
                         ui.navigate.to('/')
                 
-                ui.upload(on_upload=handle, auto_upload=True).classes('w-full')
+                def cancel_import():
+                    import_payload['content'] = None
+                    import_payload['filename'] = ''
+                    import_payload['rows_total'] = 0
+                    preview_container.clear()
+                    stats_label.set_text('')
+                    progress.value = 0
+                    confirm_btn.disable()
+                    d.close()
+
+                ui.upload(on_upload=handle, auto_upload=True).classes('w-full').props('accept=.csv,.xls,.xlsx')
+                with ui.row().classes('w-full justify-between items-center mt-3'):
+                    confirm_btn = ui.button('Import bestätigen', icon='check', on_click=confirm_import).classes(C_BTN_PRIM + " w-fit")
+                    ui.button('Abbrechen', on_click=cancel_import).classes(C_BTN_SEC + " w-fit")
+                confirm_btn.disable()
             
             ui.button('Import', icon='upload', on_click=d.open).classes(C_BTN_SEC)
             ui.button('Kunde anlegen', icon='add').classes(C_BTN_PRIM)
@@ -700,10 +755,87 @@ def render_invoice_create(session, comp):
 def render_invoices(session, comp):
     with ui.row().classes('w-full justify-between items-center mb-6'):
         ui.label('Rechnungen').classes(C_PAGE_TITLE)
-        def go_create():
-            app.storage.user['page'] = 'invoice_create'
-            ui.navigate.to('/')
-        ui.button('Rechnung erstellen', icon='add', on_click=go_create).classes(C_BTN_PRIM)
+        with ui.row().classes('gap-3'):
+            with ui.dialog() as d_import, ui.card().classes(C_CARD + " p-5"):
+                ui.label('CSV Import').classes(C_SECTION_TITLE + " mb-4")
+                import_payload = {'content': None, 'filename': '', 'rows_total': 0}
+                preview_container = ui.column().classes('w-full gap-3')
+                stats_label = ui.label('').classes('text-xs text-slate-500')
+                progress = ui.linear_progress(value=0).classes('w-full')
+                
+                def handle(e: events.UploadEventArguments):
+                    try:
+                        content = e.content.read()
+                    except:
+                        ui.notify('Upload Fehler', color='red')
+                        return
+
+                    filename = getattr(e, 'name', '') or getattr(getattr(e, 'file', None), 'name', '')
+                    progress.value = 0.3
+                    df, err = load_invoice_import_dataframe(content, filename)
+                    preview_container.clear()
+                    stats_label.set_text('')
+                    confirm_btn.disable()
+                    if err: 
+                        ui.notify(err, color='red')
+                        return
+                    progress.value = 0.6
+
+                    import_payload['content'] = content
+                    import_payload['filename'] = filename
+                    import_payload['rows_total'] = len(df.index)
+
+                    with preview_container:
+                        ui.label('Vorschau').classes(C_SECTION_TITLE + " mt-4")
+                        preview_df = df.head(20).fillna('')
+                        rows = []
+                        for i, row in preview_df.iterrows():
+                            row_data = {'_row': str(i + 1)}
+                            for col in preview_df.columns:
+                                row_data[col] = str(row[col])
+                            rows.append(row_data)
+                        columns = [{'name': '_row', 'label': '#', 'field': '_row'}]
+                        columns += [{'name': col, 'label': col, 'field': col} for col in preview_df.columns]
+                        ui.table(columns=columns, rows=rows, row_key='_row').classes('w-full')
+                    stats_label.set_text(f"Zeilen gesamt: {import_payload['rows_total']}")
+                    progress.value = 0.8
+                    confirm_btn.enable()
+
+                def confirm_import():
+                    if not import_payload['content']:
+                        ui.notify('Bitte zuerst eine Datei hochladen.', color='red')
+                        return
+                    progress.value = 0.9
+                    c, err = process_invoice_import(import_payload['content'], session, comp.id, import_payload['filename'])
+                    if err: ui.notify(err, color='red')
+                    else: 
+                        ui.notify(f"{c} Importiert ({c}/{import_payload['rows_total']})", color='green')
+                        progress.value = 1.0
+                        d_import.close()
+                        ui.navigate.to('/')
+
+                def cancel_import():
+                    import_payload['content'] = None
+                    import_payload['filename'] = ''
+                    import_payload['rows_total'] = 0
+                    preview_container.clear()
+                    stats_label.set_text('')
+                    progress.value = 0
+                    confirm_btn.disable()
+                    d_import.close()
+
+                ui.upload(on_upload=handle, auto_upload=True).classes('w-full').props('accept=.csv,.xls,.xlsx')
+                with ui.row().classes('w-full justify-between items-center mt-3'):
+                    confirm_btn = ui.button('Import bestätigen', icon='check', on_click=confirm_import).classes(C_BTN_PRIM + " w-fit")
+                    ui.button('Abbrechen', on_click=cancel_import).classes(C_BTN_SEC + " w-fit")
+                confirm_btn.disable()
+
+            with ui.dialog() as d, ui.card().classes(C_CARD + " w-[900px] p-6"):
+                apply_ustg19, calc_totals = render_invoice_editor(session, comp, d)
+                apply_ustg19.on('change', calc_totals)
+
+            ui.button('Import', icon='upload', on_click=d_import.open).classes(C_BTN_SEC)
+            ui.button('Rechnung erstellen', icon='add', on_click=d.open).classes(C_BTN_PRIM)
     invs = session.exec(select(Invoice)).all()
     with ui.card().classes(C_CARD + " p-0 overflow-hidden mt-8"):
         with ui.row().classes(C_TABLE_HEADER):
@@ -743,55 +875,73 @@ def render_expenses(session, comp):
     with ui.row().classes('w-full justify-between items-center mb-6'):
         ui.label('Ausgaben').classes(C_PAGE_TITLE)
         with ui.dialog() as d, ui.card().classes(C_CARD + " p-5"):
-            ui.label('Import').classes(C_SECTION_TITLE + " mb-4")
-            upload_state = {'content': None, 'df': None}
-            preview_container = ui.column().classes('w-full gap-2')
-
-            def render_preview():
-                preview_container.clear()
-                with preview_container:
-                    ui.label('Vorschau').classes('text-sm font-medium text-slate-500')
-                    if upload_state['df'] is None or upload_state['df'].empty:
-                        ui.label('Keine Daten gefunden').classes('text-sm text-slate-400')
-                        return
-                    preview_rows = upload_state['df'].head(5).fillna('').astype(str).to_dict('records')
-                    columns = [{'name': k, 'label': k, 'field': k} for k in preview_rows[0].keys()]
-                    ui.table(columns=columns, rows=preview_rows, row_key=columns[0]['name']).classes('w-full')
+            ui.label('CSV Import').classes(C_SECTION_TITLE + " mb-4")
+            import_payload = {'content': None, 'filename': '', 'rows_total': 0}
+            preview_container = ui.column().classes('w-full gap-3')
+            stats_label = ui.label('').classes('text-xs text-slate-500')
+            progress = ui.linear_progress(value=0).classes('w-full')
 
             def handle(e: events.UploadEventArguments):
-                try:
-                    content = e.content.read()
-                except AttributeError:
-                    ui.notify('Upload-Fehler: Content Attribut fehlt. Prüfe Python-Version.', color='red')
-                    print(f"DEBUG: Upload Event hat folgende Attribute: {dir(e)}")
-                    return
-
-                df, err = read_expense_import(content)
-                if err:
+                try: content = e.content.read()
+                except: return ui.notify('Upload Fehler', color='red')
+                filename = getattr(e, 'name', '') or getattr(getattr(e, 'file', None), 'name', '')
+                progress.value = 0.3
+                df, err = load_expense_import_dataframe(content, filename)
+                preview_container.clear()
+                stats_label.set_text('')
+                confirm_btn.disable()
+                if err: 
                     ui.notify(err, color='red')
-                    upload_state['content'] = None
-                    upload_state['df'] = None
-                    confirm_btn.disable()
-                    render_preview()
                     return
-                upload_state['content'] = content
-                upload_state['df'] = df
+                progress.value = 0.6
+
+                import_payload['content'] = content
+                import_payload['filename'] = filename
+                import_payload['rows_total'] = len(df.index)
+
+                with preview_container:
+                    ui.label('Vorschau').classes(C_SECTION_TITLE + " mt-4")
+                    preview_df = df.head(20).fillna('')
+                    rows = []
+                    for i, row in preview_df.iterrows():
+                        row_data = {'_row': str(i + 1)}
+                        for col in preview_df.columns:
+                            row_data[col] = str(row[col])
+                        rows.append(row_data)
+                    columns = [{'name': '_row', 'label': '#', 'field': '_row'}]
+                    columns += [{'name': col, 'label': col, 'field': col} for col in preview_df.columns]
+                    ui.table(columns=columns, rows=rows, row_key='_row').classes('w-full')
+                stats_label.set_text(f"Zeilen gesamt: {import_payload['rows_total']}")
+                progress.value = 0.8
                 confirm_btn.enable()
-                render_preview()
 
             def confirm_import():
-                if upload_state['content'] is None:
-                    return ui.notify('Bitte zuerst eine Datei hochladen.', color='red')
-                c, err = process_expense_import(upload_state['content'], session, comp.id)
+                if not import_payload['content']:
+                    ui.notify('Bitte zuerst eine Datei hochladen.', color='red')
+                    return
+                progress.value = 0.9
+                c, err = process_expense_import(import_payload['content'], session, comp.id, import_payload['filename'])
                 if err: ui.notify(err, color='red')
                 else: 
-                    ui.notify(f"{c} Importiert", color='green')
+                    ui.notify(f"{c} Importiert ({c}/{import_payload['rows_total']})", color='green')
+                    progress.value = 1.0
                     d.close()
                     ui.navigate.to('/')
 
-            ui.upload(on_upload=handle, auto_upload=True).props('accept=.csv,.xls,.xlsx').classes('w-full')
-            render_preview()
-            confirm_btn = ui.button('Import bestätigen', icon='check', on_click=confirm_import).classes(C_BTN_PRIM + " mt-3")
+            def cancel_import():
+                import_payload['content'] = None
+                import_payload['filename'] = ''
+                import_payload['rows_total'] = 0
+                preview_container.clear()
+                stats_label.set_text('')
+                progress.value = 0
+                confirm_btn.disable()
+                d.close()
+
+            ui.upload(on_upload=handle, auto_upload=True).classes('w-full').props('accept=.csv,.xls,.xlsx')
+            with ui.row().classes('w-full justify-between items-center mt-3'):
+                confirm_btn = ui.button('Import bestätigen', icon='check', on_click=confirm_import).classes(C_BTN_PRIM + " w-fit")
+                ui.button('Abbrechen', on_click=cancel_import).classes(C_BTN_SEC + " w-fit")
             confirm_btn.disable()
         ui.button('Import', icon='upload', on_click=d.open).classes(C_BTN_PRIM)
 
