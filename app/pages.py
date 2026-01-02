@@ -7,29 +7,52 @@ import smtplib
 from fpdf import FPDF
 import os
 
-from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import
-from services.invoices import finalize_invoice_transaction
+from data import Company, Customer, Invoice, InvoiceItem, Expense, InvoiceStatus, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
     C_BADGE_GREEN, C_BADGE_BLUE, C_BADGE_GRAY, C_PAGE_TITLE, C_SECTION_TITLE,
     C_TABLE_HEADER, C_TABLE_ROW
 )
 
+INVOICE_STATUS_LABELS = {
+    InvoiceStatus.DRAFT: "Entwurf",
+    InvoiceStatus.FINALIZED: "Finalisiert",
+    InvoiceStatus.CANCELLED: "Storniert",
+}
+
+def format_invoice_status(status):
+    if isinstance(status, InvoiceStatus):
+        return INVOICE_STATUS_LABELS.get(status, status.value)
+    legacy_map = {
+        "Entwurf": "Entwurf",
+        "Offen": "Finalisiert",
+        "Bezahlt": "Finalisiert",
+        "Storniert": "Storniert",
+        "DRAFT": "Entwurf",
+        "FINALIZED": "Finalisiert",
+        "CANCELLED": "Storniert",
+    }
+    return legacy_map.get(str(status), str(status))
+
+def invoice_status_badge(status):
+    if status == InvoiceStatus.FINALIZED:
+        return C_BADGE_GREEN
+    if status == InvoiceStatus.CANCELLED:
+        return C_BADGE_GRAY
+    return C_BADGE_GRAY
+
 def render_dashboard(session, comp):
     ui.label('Dashboard').classes(C_PAGE_TITLE + " mb-2")
     invs = session.exec(select(Invoice)).all()
     exps = session.exec(select(Expense)).all()
-    umsatz = sum(i.total_brutto for i in invs if i.status != 'Entwurf')
+    umsatz = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
     kosten = sum(e.amount for e in exps)
-    offen = sum(i.total_brutto for i in invs if i.status == 'Offen')
+    offen = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
     latest_invoice = max(invs, key=lambda i: i.date or "") if invs else None
     latest_customer = session.get(Customer, latest_invoice.customer_id) if latest_invoice else None
     status_badge = C_BADGE_GRAY
     if latest_invoice:
-        if latest_invoice.status == 'Bezahlt':
-            status_badge = C_BADGE_GREEN
-        elif latest_invoice.status == 'Offen':
-            status_badge = C_BADGE_BLUE
+        status_badge = invoice_status_badge(latest_invoice.status)
 
     with ui.grid(columns=3).classes('w-full gap-6 mb-8'):
         def stat_card(title, val, icon, col):
@@ -55,7 +78,7 @@ def render_dashboard(session, comp):
                         ui.label(f"Datum: {latest_invoice.date}").classes('text-xs text-slate-500')
                     with ui.column().classes('items-end gap-2'):
                         ui.label(f"{latest_invoice.total_brutto:,.2f} €").classes('text-lg font-semibold text-slate-900')
-                        ui.label(latest_invoice.status).classes(status_badge)
+                        ui.label(format_invoice_status(latest_invoice.status)).classes(status_badge)
             else:
                 ui.label('Noch keine Rechnungen vorhanden.').classes('text-sm text-slate-500')
         with ui.card().classes(C_CARD + " p-6 col-span-1"):
@@ -496,7 +519,7 @@ def render_invoice_editor(session, comp, d):
                 title=title_value,
                 date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
                 total_brutto=brutto,
-                status='Entwurf'
+                status=InvoiceStatus.DRAFT
             )
             inner.add(invoice)
             inner.commit()
@@ -538,7 +561,7 @@ def render_invoice_editor(session, comp, d):
                 title=title_value,
                 date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
                 total_brutto=brutto,
-                status='Offen'
+                status=InvoiceStatus.FINALIZED
             )
         except Exception:
             return ui.notify('Finalisierung fehlgeschlagen', color='red')
@@ -729,7 +752,7 @@ def render_invoice_create(session, comp):
                             title=title_value,
                             date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
                             total_brutto=brutto,
-                            status='Entwurf'
+                            status=InvoiceStatus.DRAFT
                         )
                         inner.add(invoice)
                         inner.commit()
@@ -772,7 +795,7 @@ def render_invoice_create(session, comp):
                             title=title_value,
                             date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
                             total_brutto=brutto,
-                            status='Offen'
+                            status=InvoiceStatus.FINALIZED
                         )
                         inner.add(invoice)
                         inner.commit()
@@ -945,9 +968,8 @@ def render_invoices(session, comp):
             for i in invs:
                 with ui.row().classes(C_TABLE_ROW):
                     style = C_BADGE_GRAY
-                    if i.status == 'Offen': style = C_BADGE_BLUE
-                    if i.status == 'Bezahlt': style = C_BADGE_GREEN
-                    ui.label(i.status).classes(style + " w-24")
+                    style = invoice_status_badge(i.status)
+                    ui.label(format_invoice_status(i.status)).classes(style + " w-24")
 
                     ui.label(f"#{i.nr}" if i.nr else "-").classes('w-16 text-slate-600 font-mono text-sm')
                     ui.label(i.date).classes('w-24 text-slate-600 text-sm')
