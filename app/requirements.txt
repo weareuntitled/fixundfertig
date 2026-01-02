@@ -1,0 +1,5 @@
+nicegui
+pandas
+requests
+python-dotenv
+# psycopg2-binary # Wird später für DB-Verbindung aktiviert

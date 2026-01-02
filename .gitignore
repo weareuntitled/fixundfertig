@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# VS Code
+.vscode/
+
+# System
+.DS_Store
+
+# n8n Daten (Nicht ins Repo!)
+n8n_data/
