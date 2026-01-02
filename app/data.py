@@ -1,10 +1,17 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
+from sqlalchemy import event, inspect
 from typing import Optional, List
+from enum import Enum
 import pandas as pd
 import io
 import os
 
 # --- DB MODELLE ---
+class InvoiceStatus(str, Enum):
+    DRAFT = "DRAFT"
+    FINALIZED = "FINALIZED"
+    CANCELLED = "CANCELLED"
+
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = "DanEP"
@@ -47,7 +54,7 @@ class Invoice(SQLModel, table=True):
     nr: Optional[int] = None 
     date: str
     total_brutto: float
-    status: str = "Entwurf"
+    status: InvoiceStatus = InvoiceStatus.DRAFT
 
 class InvoiceItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -71,6 +78,19 @@ os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
 SQLModel.metadata.create_all(engine)
+
+@event.listens_for(Session, "before_flush")
+def prevent_finalized_invoice_updates(session, flush_context, instances):
+    for obj in session.dirty:
+        if isinstance(obj, Invoice):
+            state = inspect(obj)
+            if not state.persistent:
+                continue
+            history = state.attrs.status.history
+            old_status = history.deleted[0] if history.deleted else obj.status
+            new_status = history.added[0] if history.added else obj.status
+            if old_status == InvoiceStatus.FINALIZED and new_status != InvoiceStatus.CANCELLED:
+                raise ValueError("FINALIZED invoices are immutable.")
 
 def ensure_company_schema():
     with engine.connect() as conn:
@@ -123,6 +143,26 @@ def ensure_expense_schema():
             conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN webhook_url TEXT DEFAULT ''")
 
 ensure_expense_schema()
+
+def ensure_invoice_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "status" in columns:
+            conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Entwurf'")
+            conn.exec_driver_sql("UPDATE invoice SET status = 'FINALIZED' WHERE status IN ('Offen', 'Bezahlt')")
+            conn.exec_driver_sql("UPDATE invoice SET status = 'CANCELLED' WHERE status = 'Storniert'")
+        conn.exec_driver_sql(
+            """
+            CREATE TRIGGER IF NOT EXISTS invoice_finalized_immutable
+            BEFORE UPDATE ON invoice
+            WHEN OLD.status = 'FINALIZED' AND NEW.status != 'CANCELLED'
+            BEGIN
+                SELECT RAISE(ABORT, 'Finalized invoices are immutable');
+            END;
+            """
+        )
+
+ensure_invoice_schema()
 
 # --- IMPORT LOGIC ---
 def load_customer_import_dataframe(content, filename=""):
@@ -226,9 +266,8 @@ def process_invoice_import(content, session, comp_id, filename=""):
             if kdnr:
                 cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
             if not cust: continue
-            status = "Offen"
-            if str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']: status = "Entwurf"
-            if str(row.get('Zahldatum', '')).strip(): status = "Bezahlt"
+            status = InvoiceStatus.FINALIZED
+            if str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']: status = InvoiceStatus.CANCELLED
             inv = Invoice(
                 customer_id=cust.id,
                 nr=int(nr),
