@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 
 from data import Company, engine
 from styles import C_BG, C_CONTAINER, C_HEADER, C_BRAND_BADGE, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
-from pages import render_dashboard, render_customers, render_invoices, render_expenses, render_settings
+from pages import render_dashboard, render_customers, render_invoices, render_expenses, render_settings, render_invoice_create
 
 # --- UI LOGIC ---
 
@@ -56,6 +56,7 @@ def index():
             if page == 'dashboard': render_dashboard(session, comp)
             elif page == 'customers': render_customers(session, comp)
             elif page == 'invoices': render_invoices(session, comp)
+            elif page == 'invoice_create': render_invoice_create(session, comp)
             elif page == 'expenses': render_expenses(session, comp)
             elif page == 'settings': render_settings(session, comp)
 
