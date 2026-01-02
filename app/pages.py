@@ -7,6 +7,7 @@ from fpdf import FPDF
 import os
 
 from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import
+from services import create_correction
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
     C_BADGE_GREEN, C_BADGE_BLUE, C_BADGE_GRAY, C_PAGE_TITLE, C_SECTION_TITLE,
@@ -904,6 +905,31 @@ def render_invoices(session, comp):
 
             ui.button('Import', icon='upload', on_click=d_import.open).classes(C_BTN_SEC)
             ui.button('Rechnung erstellen', icon='add', on_click=d.open).classes(C_BTN_PRIM)
+
+    correction_payload = {'invoice_id': None}
+    with ui.dialog() as correction_dialog, ui.card().classes(C_CARD + " p-5 w-[420px]"):
+        ui.label('Korrektur erstellen').classes(C_SECTION_TITLE + " mb-2")
+        ui.label('Wähle die Art der Korrektur.').classes('text-xs text-slate-500 mb-3')
+        correction_mode = ui.select(
+            {'negative': 'Negative Posten', 'balance': 'Ausgleichsposten'},
+            value='negative',
+            label='Methode'
+        ).classes(C_INPUT)
+
+        def confirm_correction():
+            if not correction_payload['invoice_id']:
+                return ui.notify('Keine Rechnung ausgewählt', color='red')
+            use_negative = correction_mode.value == 'negative'
+            correction, err = create_correction(correction_payload['invoice_id'], use_negative_items=use_negative)
+            if err:
+                return ui.notify(err, color='red')
+            ui.notify('Korrektur-Entwurf erstellt', color='green')
+            correction_dialog.close()
+            ui.navigate.to('/')
+
+        with ui.row().classes('w-full justify-end gap-2 mt-4'):
+            ui.button('Abbrechen', on_click=correction_dialog.close).classes(C_BTN_SEC)
+            ui.button('Erstellen', icon='check', on_click=confirm_correction).classes(C_BTN_PRIM)
     invs = session.exec(select(Invoice)).all()
     with ui.card().classes(C_CARD + " p-0 overflow-hidden mt-8"):
         with ui.row().classes(C_TABLE_HEADER):
@@ -912,6 +938,7 @@ def render_invoices(session, comp):
             ui.label('Datum').classes('w-24 font-medium text-slate-500 text-sm')
             ui.label('Kunde').classes('flex-1 font-medium text-slate-500 text-sm')
             ui.label('Betrag').classes('w-24 text-right font-medium text-slate-500 text-sm')
+            ui.label('Korr.').classes('w-28 text-right font-medium text-slate-500 text-sm')
             ui.label('PDF').classes('w-24 text-right font-medium text-slate-500 text-sm')
 
         with ui.column().classes('w-full gap-0'):
@@ -932,6 +959,11 @@ def render_invoices(session, comp):
                     ui.label(cname).classes('flex-1 font-semibold text-slate-900 text-sm truncate')
 
                     ui.label(f"{i.total_brutto:,.2f} €").classes('w-24 text-right font-mono font-medium text-sm')
+                    with ui.row().classes('w-28 justify-end'):
+                        if i.status != 'Entwurf':
+                            ui.button('Korrektur', icon='edit', on_click=lambda inv_id=i.id: (correction_payload.__setitem__('invoice_id', inv_id), correction_dialog.open())).classes(C_BTN_SEC + " w-full")
+                        else:
+                            ui.label('-').classes('text-slate-300 text-sm w-full text-right')
                     pdf_path = f"./storage/invoices/invoice_{i.nr}.pdf"
                     with ui.row().classes('w-24 justify-end'):
                         if i.nr and os.path.exists(pdf_path):

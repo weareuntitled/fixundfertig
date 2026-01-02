@@ -48,6 +48,7 @@ class Invoice(SQLModel, table=True):
     date: str
     total_brutto: float
     status: str = "Entwurf"
+    related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
 
 class InvoiceItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -123,6 +124,14 @@ def ensure_expense_schema():
             conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN webhook_url TEXT DEFAULT ''")
 
 ensure_expense_schema()
+
+def ensure_invoice_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "related_invoice_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN related_invoice_id INTEGER")
+
+ensure_invoice_schema()
 
 # --- IMPORT LOGIC ---
 def load_customer_import_dataframe(content, filename=""):
