@@ -2,4 +2,7 @@ nicegui
 pandas
 requests
 python-dotenv
-# psycopg2-binary # Wird später für DB-Verbindung aktiviert
+sqlmodel
+fpdf2
+openpyxl
+python-multipart

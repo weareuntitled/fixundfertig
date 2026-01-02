@@ -1,14 +1,18 @@
-# Python
+# System & Logs
+.DS_Store
+*.log
 __pycache__/
 *.pyc
+
+# Python Umgebung
 venv/
 .env
 
-# VS Code
+# FixundFertig Daten (WICHTIG: Keine Finanzdaten hochladen!)
+storage/
+*.db
+app/storage/
+
+# Editor Settings
 .vscode/
-
-# System
-.DS_Store
-
-# n8n Daten (Nicht ins Repo!)
-n8n_data/
+.idea/

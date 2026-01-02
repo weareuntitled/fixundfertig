@@ -1,18 +1,16 @@
 services:
-  # Deine NiceGUI App
   app:
     build: ./app
     container_name: fixundfertig_app
     ports:
       - "8080:8080"
     volumes:
-      - ./app:/app # Hot-Reloading aktiv
+      - ./app:/app
     environment:
       - ALLOWED_HOSTS=*
       - TZ=Europe/Berlin
     restart: unless-stopped
 
-  # n8n Automatisierung
   n8n:
     image: docker.n8n.io/n8nio/n8n
     container_name: fixundfertig_n8n
@@ -21,6 +19,10 @@ services:
     environment:
       - N8N_SECURE_COOKIE=false
       - TZ=Europe/Berlin
+      # Speicher-Optimierung
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=72
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
     volumes:
       - n8n_data:/home/node/.n8n
     restart: unless-stopped

@@ -1,3 +1,25 @@
+#!/bin/bash
+
+echo "🚑 Reparatur: Installiere fehlende Upload-Module & mache Code robust..."
+
+# 1. Ports aufräumen
+lsof -ti:8080 | xargs kill -9 2>/dev/null
+pkill -f python
+
+# 2. Requirements Updaten (WICHTIG: python-multipart hinzufügen)
+cat <<EOF > app/requirements.txt
+nicegui
+pandas
+requests
+python-dotenv
+sqlmodel
+fpdf2
+openpyxl
+python-multipart
+EOF
+
+# 3. Main.py Updaten (Mit Debug-Ausgabe & Safe-Upload)
+cat <<'EOF' > app/main.py
 from nicegui import ui, app, events
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
 from typing import Optional, List
@@ -312,3 +334,6 @@ def render_expenses(session, comp):
                     ui.label(f"- {e.amount:,.2f} €").classes('w-24 text-right text-red-600 font-mono font-medium text-sm')
 
 ui.run(title='FixundFertig Ultimate', port=8080, language='de', storage_secret='secret2026')
+EOF
+
+echo "✅ Fertig."
