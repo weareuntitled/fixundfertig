@@ -1,7 +1,7 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
 from sqlalchemy import event, inspect
 from typing import Optional, List
-from enum import Enum
+from datetime import datetime
 import pandas as pd
 import io
 import os
@@ -75,6 +75,14 @@ class InvoiceItem(SQLModel, table=True):
     description: str
     quantity: float
     unit_price: float
+
+class AuditLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    user_id: Optional[int] = Field(default=None)
+    action: str
+    invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
+    ip_address: str = ""
 
 class Expense(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -185,13 +193,29 @@ def ensure_expense_schema():
 
 ensure_expense_schema()
 
-def ensure_invoice_schema():
+def ensure_audit_log_schema():
     with engine.connect() as conn:
-        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
-        if "related_invoice_id" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN related_invoice_id INTEGER")
+        conn.exec_driver_sql(
+            "CREATE TRIGGER IF NOT EXISTS auditlog_no_update "
+            "BEFORE UPDATE ON auditlog "
+            "BEGIN SELECT RAISE(ABORT, 'Audit log is append-only'); END;"
+        )
+        conn.exec_driver_sql(
+            "CREATE TRIGGER IF NOT EXISTS auditlog_no_delete "
+            "BEFORE DELETE ON auditlog "
+            "BEGIN SELECT RAISE(ABORT, 'Audit log is append-only'); END;"
+        )
 
-ensure_invoice_schema()
+ensure_audit_log_schema()
+
+def log_audit_action(session, action, invoice_id=None, user_id=None, ip_address=""):
+    entry = AuditLog(
+        user_id=user_id,
+        action=action,
+        invoice_id=invoice_id,
+        ip_address=ip_address or ""
+    )
+    session.add(entry)
 
 # --- IMPORT LOGIC ---
 def load_customer_import_dataframe(content, filename=""):
@@ -295,8 +319,10 @@ def process_invoice_import(content, session, comp_id, filename=""):
             if kdnr:
                 cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
             if not cust: continue
-            status = InvoiceStatus.FINALIZED
-            if str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']: status = InvoiceStatus.CANCELLED
+            status = "Offen"
+            is_storniert = str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']
+            if is_storniert: status = "Entwurf"
+            if str(row.get('Zahldatum', '')).strip(): status = "Bezahlt"
             inv = Invoice(
                 customer_id=cust.id,
                 nr=int(nr),
@@ -305,6 +331,9 @@ def process_invoice_import(content, session, comp_id, filename=""):
                 status=status
             )
             session.add(inv)
+            session.flush()
+            if is_storniert:
+                log_audit_action(session, "STORNIRT", invoice_id=inv.id)
             count += 1
         except: continue
     session.commit()

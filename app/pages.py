@@ -7,40 +7,22 @@ import smtplib
 from fpdf import FPDF
 import os
 
-from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import
-from services import create_correction
+from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import, log_audit_action
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
     C_BADGE_GREEN, C_BADGE_BLUE, C_BADGE_GRAY, C_PAGE_TITLE, C_SECTION_TITLE,
     C_TABLE_HEADER, C_TABLE_ROW
 )
 
-INVOICE_STATUS_LABELS = {
-    InvoiceStatus.DRAFT: "Entwurf",
-    InvoiceStatus.FINALIZED: "Finalisiert",
-    InvoiceStatus.CANCELLED: "Storniert",
-}
+def log_invoice_action(action, invoice_id, user_id=None, ip_address=""):
+    with Session(engine) as inner:
+        log_audit_action(inner, action, invoice_id=invoice_id, user_id=user_id, ip_address=ip_address)
+        inner.commit()
 
-def format_invoice_status(status):
-    if isinstance(status, InvoiceStatus):
-        return INVOICE_STATUS_LABELS.get(status, status.value)
-    legacy_map = {
-        "Entwurf": "Entwurf",
-        "Offen": "Finalisiert",
-        "Bezahlt": "Finalisiert",
-        "Storniert": "Storniert",
-        "DRAFT": "Entwurf",
-        "FINALIZED": "Finalisiert",
-        "CANCELLED": "Storniert",
-    }
-    return legacy_map.get(str(status), str(status))
-
-def invoice_status_badge(status):
-    if status == InvoiceStatus.FINALIZED:
-        return C_BADGE_GREEN
-    if status == InvoiceStatus.CANCELLED:
-        return C_BADGE_GRAY
-    return C_BADGE_GRAY
+def download_invoice(pdf_path, invoice_id=None):
+    if invoice_id:
+        log_invoice_action("PRINT", invoice_id)
+    ui.download(pdf_path)
 
 def render_dashboard(session, comp):
     ui.label('Dashboard').classes(C_PAGE_TITLE + " mb-2")
@@ -589,6 +571,7 @@ def render_invoice_editor(session, comp, d):
                     unit_price=float(item['price'].value or 0)
                 ))
 
+            log_audit_action(inner, "CREATE", invoice_id=invoice.id)
             inner.commit()
 
         ui.notify('Entwurf gespeichert', color='green')
@@ -624,8 +607,25 @@ def render_invoice_editor(session, comp, d):
                 total_brutto=brutto,
                 status=InvoiceStatus.FINALIZED
             )
-        except Exception:
-            return ui.notify('Finalisierung fehlgeschlagen', color='red')
+            inner.add(invoice)
+            inner.commit()
+            inner.refresh(invoice)
+
+            for item in items:
+                inner.add(InvoiceItem(
+                    invoice_id=invoice.id,
+                    description=item['desc'].value or '',
+                    quantity=float(item['qty'].value or 0),
+                    unit_price=float(item['price'].value or 0)
+                ))
+
+            company.next_invoice_nr += 1
+            inner.add(company)
+            log_audit_action(inner, "CREATE", invoice_id=invoice.id)
+            log_audit_action(inner, "FINALIZED", invoice_id=invoice.id)
+            inner.commit()
+
+            generate_invoice_pdf(company, customer, invoice, items, apply_ustg19.value)
 
         ui.notify('Rechnung erstellt', color='green')
         app.storage.user['page'] = 'dashboard'
@@ -802,6 +802,7 @@ def render_invoice_create(session, comp):
                                 server.starttls()
                                 server.login(company.smtp_user, company.smtp_password)
                                 server.send_message(msg)
+                            log_invoice_action("SENT", invoice.id)
                             ui.notify('E-Mail versendet', color='green')
                             mail_dialog.close()
                             app.storage.user['page'] = 'invoices'
@@ -856,6 +857,7 @@ def render_invoice_create(session, comp):
                                 unit_price=float(item['price'].value or 0)
                             ))
 
+                        log_audit_action(inner, "CREATE", invoice_id=invoice.id)
                         inner.commit()
 
                     ui.notify('Entwurf gespeichert', color='green')
@@ -906,6 +908,8 @@ def render_invoice_create(session, comp):
 
                         company.next_invoice_nr += 1
                         inner.add(company)
+                        log_audit_action(inner, "CREATE", invoice_id=invoice.id)
+                        log_audit_action(inner, "FINALIZED", invoice_id=invoice.id)
                         inner.commit()
 
                         pdf_items = []
@@ -931,6 +935,7 @@ def render_invoice_create(session, comp):
 
                     ui.notify('Rechnung erstellt', color='green')
                     app.storage.user['last_invoice_pdf'] = pdf_path
+                    app.storage.user['last_invoice_id'] = invoice.id
                     render_preview(pdf_path)
                     if send_after_finalize.value:
                         mail_info.set_text(f"Empfänger: {customer.email or 'Keine E-Mail hinterlegt'}")
@@ -959,7 +964,7 @@ def render_invoice_create(session, comp):
                     if pdf_path and os.path.exists(pdf_path):
                         with preview_container:
                             ui.pdf(pdf_path).classes('w-full h-[650px]')
-                            ui.button('Download', icon='download', on_click=lambda p=pdf_path: ui.download(p)).classes(C_BTN_SEC + " w-fit")
+                            ui.button('Download', icon='download', on_click=lambda p=pdf_path, i=app.storage.user.get('last_invoice_id'): download_invoice(p, i)).classes(C_BTN_SEC + " w-fit")
                     else:
                         ui.label('Keine Vorschau verfügbar').classes('text-slate-400 text-sm')
 
@@ -1110,7 +1115,7 @@ def render_invoices(session, comp):
                     pdf_path = f"./storage/invoices/invoice_{i.nr}.pdf"
                     with ui.row().classes('w-24 justify-end'):
                         if i.nr and os.path.exists(pdf_path):
-                            ui.button('Download', icon='download', on_click=lambda p=pdf_path: ui.download(p)).classes(C_BTN_SEC + " w-full")
+                            ui.button('Download', icon='download', on_click=lambda p=pdf_path, i_id=i.id: download_invoice(p, i_id)).classes(C_BTN_SEC + " w-full")
                         else:
                             ui.label('-').classes('text-slate-300 text-sm w-full text-right')
 
