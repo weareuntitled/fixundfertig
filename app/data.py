@@ -17,6 +17,7 @@ class Company(SQLModel, table=True):
     phone: str = ""
     iban: str = ""
     tax_id: str = ""
+    vat_id: str = ""
     smtp_server: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
@@ -34,6 +35,11 @@ class Customer(SQLModel, table=True):
     strasse: str = ""
     plz: str = ""
     ort: str = ""
+    vat_id: str = ""
+    recipient_name: str = ""
+    recipient_street: str = ""
+    recipient_postal_code: str = ""
+    recipient_city: str = ""
     offen_eur: float = 0.0
     
     @property
@@ -46,6 +52,11 @@ class Invoice(SQLModel, table=True):
     customer_id: int = Field(foreign_key="customer.id")
     nr: Optional[int] = None 
     date: str
+    delivery_date: str = ""
+    recipient_name: str = ""
+    recipient_street: str = ""
+    recipient_postal_code: str = ""
+    recipient_city: str = ""
     total_brutto: float
     status: str = "Entwurf"
 
@@ -91,6 +102,8 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN phone TEXT DEFAULT ''")
         if "tax_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN tax_id TEXT DEFAULT ''")
+        if "vat_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN vat_id TEXT DEFAULT ''")
         if "smtp_server" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_server TEXT DEFAULT ''")
         if "smtp_port" not in columns:
@@ -107,10 +120,36 @@ ensure_company_schema()
 def ensure_customer_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(customer)").fetchall()}
+        if "vat_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN vat_id TEXT DEFAULT ''")
+        if "recipient_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_name TEXT DEFAULT ''")
+        if "recipient_street" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_street TEXT DEFAULT ''")
+        if "recipient_postal_code" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
+        if "recipient_city" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_city TEXT DEFAULT ''")
         if "offen_eur" not in columns:
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
 
 ensure_customer_schema()
+
+def ensure_invoice_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "delivery_date" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN delivery_date TEXT DEFAULT ''")
+        if "recipient_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_name TEXT DEFAULT ''")
+        if "recipient_street" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_street TEXT DEFAULT ''")
+        if "recipient_postal_code" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
+        if "recipient_city" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_city TEXT DEFAULT ''")
+
+ensure_invoice_schema()
 
 def ensure_expense_schema():
     with engine.connect() as conn:
