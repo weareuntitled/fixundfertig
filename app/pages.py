@@ -5,8 +5,9 @@ from email.message import EmailMessage
 import smtplib
 import os
 
-from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import, log_audit_action
+from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import, log_audit_action, InvoiceStatus
 from renderer import render_invoice_to_pdf_bytes, render_invoice_to_png_base64
+from services import create_correction
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
     C_BADGE_GREEN, C_BADGE_BLUE, C_BADGE_GRAY, C_PAGE_TITLE, C_SECTION_TITLE,
@@ -22,6 +23,22 @@ def download_invoice(pdf_path, invoice_id=None):
     if invoice_id:
         log_invoice_action("PRINT", invoice_id)
     ui.download(pdf_path)
+
+def format_invoice_status(status: str) -> str:
+    mapping = {
+        InvoiceStatus.DRAFT: "Entwurf",
+        InvoiceStatus.FINALIZED: "Offen",
+        InvoiceStatus.CANCELLED: "Storniert",
+        "Bezahlt": "Bezahlt"
+    }
+    return mapping.get(status, status)
+
+def invoice_status_badge(status: str) -> str:
+    if status == InvoiceStatus.DRAFT: return C_BADGE_GRAY
+    if status == InvoiceStatus.FINALIZED: return C_BADGE_BLUE
+    if status == InvoiceStatus.CANCELLED: return C_BADGE_GRAY
+    if status == "Bezahlt": return C_BADGE_GREEN
+    return C_BADGE_GRAY
 
 def render_dashboard(session, comp):
     ui.label('Dashboard').classes(C_PAGE_TITLE + " mb-2")
