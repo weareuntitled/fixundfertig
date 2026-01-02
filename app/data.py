@@ -46,6 +46,7 @@ class Invoice(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_id: int = Field(foreign_key="customer.id")
     nr: Optional[int] = None 
+    title: str = "Rechnung"
     date: str
     total_brutto: float
     status: str = "Entwurf"
@@ -130,10 +131,8 @@ ensure_expense_schema()
 def ensure_invoice_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
-        if "pdf_content" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_content BLOB")
-        if "immutable" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN immutable INTEGER DEFAULT 0")
+        if "title" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN title TEXT DEFAULT 'Rechnung'")
 
 ensure_invoice_schema()
 
