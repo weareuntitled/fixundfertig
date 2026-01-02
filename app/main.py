@@ -305,9 +305,9 @@ def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False):
     netto = 0.0
     tax_rate = 0.0 if apply_ustg19 else 0.19
     for item in items:
-        desc = item['desc'].value or ''
-        qty = float(item['qty'].value or 0)
-        price = float(item['price'].value or 0)
+        desc = item['desc'] or ''
+        qty = float(item['qty'] or 0)
+        price = float(item['price'] or 0)
         total = qty * price
         netto += total
         pdf.cell(100, 8, desc[:45])
@@ -613,139 +613,76 @@ def render_invoice_editor(session, comp):
             invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT + " w-full")
 
             items = []
-            totals_netto = ui.label('0,00 €').classes('font-mono text-sm text-slate-700')
-            totals_brutto = ui.label('0,00 €').classes('font-mono text-sm text-slate-900 font-bold')
-            totals_brutto_label = ui.label('Brutto (inkl. 19% USt)').classes('text-xs text-slate-500')
-            apply_ustg19 = ui.switch('§19 UStG anwenden', value=False).classes('text-sm text-slate-700')
-            preview_html = None
 
             def calc_totals():
                 netto = 0.0
                 tax_rate = 0.0 if apply_ustg19.value else 0.19
                 for item in items:
-                    qty = float(item['qty'].value or 0)
-                    price = float(item['price'].value or 0)
+                    qty = float(item['qty'] or 0)
+                    price = float(item['price'] or 0)
                     netto += qty * price
-                brutto = netto * (1 + tax_rate)
-                totals_netto.set_text(f"{netto:,.2f} €")
-                totals_brutto.set_text(f"{brutto:,.2f} €")
-                totals_brutto_label.set_text("Brutto" if tax_rate == 0 else "Brutto (inkl. 19% USt)")
-                if preview_html:
-                    tax_amount = netto * tax_rate
-                    show_tax = tax_rate > 0
-                    col_count = 5 if show_tax else 4
-                    rows_html = ""
-                    for item in items:
-                        desc = item['desc'].value or ''
-                        qty = float(item['qty'].value or 0)
-                        price = float(item['price'].value or 0)
-                        total = qty * price
-                        tax = total * tax_rate
-                        rows_html += f"""
-                        <tr class="border-b border-slate-100">
-                          <td class="py-2 pr-2 text-slate-700">{desc}</td>
-                          <td class="py-2 text-right text-slate-600">{qty:.2f}</td>
-                          <td class="py-2 text-right text-slate-600">{price:,.2f} €</td>
-                          {f'<td class="py-2 text-right text-slate-600">{tax:,.2f} €</td>' if show_tax else ''}
-                          <td class="py-2 text-right font-medium text-slate-900">{total:,.2f} €</td>
-                        </tr>
-                        """
-
-                    totals_rows = f"""
-                        <tr>
-                          <td class="py-1 text-right text-slate-500">Netto</td>
-                          <td class="py-1 text-right font-medium text-slate-700">{netto:,.2f} €</td>
-                        </tr>
-                    """
-                    if show_tax:
-                        totals_rows += f"""
-                        <tr>
-                          <td class="py-1 text-right text-slate-500">MwSt (19%)</td>
-                          <td class="py-1 text-right font-medium text-slate-700">{tax_amount:,.2f} €</td>
-                        </tr>
-                        """
-                    totals_rows += f"""
-                        <tr>
-                          <td class="py-1 text-right text-slate-700">Brutto</td>
-                          <td class="py-1 text-right font-bold text-slate-900">{brutto:,.2f} €</td>
-                        </tr>
-                    """
-
-                    footer_html = ""
-                    if apply_ustg19.value:
-                        footer_html = """
-                        <div class="text-xs text-slate-500 mt-4">
-                          Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.
-                        </div>
-                        """
-
-                    preview_html.set_content(f"""
-                    <div class="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                      <div class="text-sm font-semibold text-slate-700 mb-3">Live-Vorschau</div>
-                      <table class="w-full text-sm mb-4">
-                        <thead>
-                          <tr class="text-slate-500 border-b border-slate-200">
-                            <th class="text-left py-2">Beschreibung</th>
-                            <th class="text-right py-2">Menge</th>
-                            <th class="text-right py-2">Einzelpreis</th>
-                            {f'<th class="text-right py-2">MwSt</th>' if show_tax else ''}
-                            <th class="text-right py-2">Gesamt</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows_html if rows_html else f'<tr><td colspan="{col_count}" class="py-3 text-center text-slate-400">Noch keine Posten</td></tr>'}
-                        </tbody>
-                      </table>
-                      <table class="w-full text-sm">
-                        <tbody>
-                          {totals_rows}
-                        </tbody>
-                      </table>
-                      {footer_html}
-                    </div>
-                    """)
+                brutto = netto * 1.19
                 return netto, brutto
 
-            def remove_item(item):
-                items.remove(item)
-                item['row'].delete()
+            def update_item(index, key, value):
+                items[index][key] = value
                 calc_totals()
+                render_preview.refresh()
 
-            with ui.row().classes('w-full gap-6'):
-                with ui.column().classes('w-1/2 gap-4'):
-                    apply_ustg19
-                    with ui.column().classes('w-full gap-3'):
-                        ui.label('Rechnungsposten').classes('text-sm font-semibold text-slate-700')
-                        items_container = ui.column().classes('w-full gap-3')
+            def remove_item(index):
+                items.pop(index)
+                calc_totals()
+                render_items.refresh()
+                render_preview.refresh()
 
-                        def add_item():
-                            item = {}
-                            with items_container:
-                                with ui.row().classes('w-full gap-3 items-end') as row:
-                                    desc = ui.input('Beschreibung').classes(C_INPUT + " flex-1")
-                                    qty = ui.number('Menge', value=1, format='%.2f').classes(C_INPUT + " w-28")
-                                    price = ui.number('Einzelpreis', value=0, format='%.2f').classes(C_INPUT + " w-32")
-                                    ui.button('Entfernen', on_click=lambda: remove_item(item)).classes(C_BTN_SEC)
-                            item.update({'row': row, 'desc': desc, 'qty': qty, 'price': price})
-                            items.append(item)
-                            desc.on('change', calc_totals)
-                            qty.on('change', calc_totals)
-                            price.on('change', calc_totals)
-                            calc_totals()
+            @ui.refreshable
+            def render_items():
+                with ui.column().classes('w-full gap-3'):
+                    ui.label('Rechnungsposten').classes('text-sm font-semibold text-slate-700')
+                    if not items:
+                        ui.label('Keine Posten hinzugefügt').classes('text-sm text-slate-400')
+                    for index, item in enumerate(items):
+                        with ui.row().classes('w-full gap-3 items-end'):
+                            desc = ui.input('Beschreibung', value=item['desc']).classes(C_INPUT + " flex-1")
+                            qty = ui.number('Menge', value=item['qty'], format='%.2f').classes(C_INPUT + " w-28")
+                            price = ui.number('Einzelpreis', value=item['price'], format='%.2f').classes(C_INPUT + " w-32")
+                            ui.button('Entfernen', on_click=lambda i=index: remove_item(i)).classes(C_BTN_SEC)
+                        desc.on_value_change(lambda e, i=index: update_item(i, 'desc', e.value))
+                        qty.on_value_change(lambda e, i=index: update_item(i, 'qty', e.value))
+                        price.on_value_change(lambda e, i=index: update_item(i, 'price', e.value))
 
-                        ui.button('Posten hinzufügen', icon='add', on_click=add_item).classes(C_BTN_SEC + " w-fit")
+            def add_item():
+                items.append({'desc': '', 'qty': 1, 'price': 0})
+                calc_totals()
+                render_items.refresh()
+                render_preview.refresh()
 
-                    with ui.row().classes('w-full justify-end gap-6 mt-4'):
-                        with ui.column().classes('items-end'):
-                            ui.label('Netto').classes('text-xs text-slate-500')
-                            totals_netto
-                        with ui.column().classes('items-end'):
-                            totals_brutto_label
-                            totals_brutto
+            render_items()
 
-                with ui.column().classes('w-1/2'):
-                    preview_html = ui.html('', sanitize=False).classes('w-full')
-                    calc_totals()
+            ui.button('Posten hinzufügen', icon='add', on_click=add_item).classes(C_BTN_SEC + " w-fit")
+
+            @ui.refreshable
+            def render_preview():
+                netto, brutto = calc_totals()
+                with ui.card().classes(C_CARD + " p-4 w-full mt-4"):
+                    ui.label('Vorschau').classes('text-sm font-semibold text-slate-700')
+                    with ui.column().classes('w-full gap-2 mt-2'):
+                        if not items:
+                            ui.label('Keine Posten vorhanden').classes('text-sm text-slate-400')
+                        else:
+                            for item in items:
+                                with ui.row().classes('w-full justify-between text-sm'):
+                                    ui.label(item['desc'] or 'Posten').classes('text-slate-700')
+                                    ui.label(f"{float(item['qty'] or 0):,.2f} x {float(item['price'] or 0):,.2f} €").classes('text-slate-500')
+                        with ui.row().classes('w-full justify-end gap-6 mt-3'):
+                            with ui.column().classes('items-end'):
+                                ui.label('Netto').classes('text-xs text-slate-500')
+                                ui.label(f"{netto:,.2f} €").classes('font-mono text-sm text-slate-700')
+                            with ui.column().classes('items-end'):
+                                ui.label('Brutto (inkl. 19% USt)').classes('text-xs text-slate-500')
+                                ui.label(f"{brutto:,.2f} €").classes('font-mono text-sm text-slate-900 font-bold')
+
+            render_preview()
 
             def finalize_invoice():
                 if not selected_customer.value:
@@ -777,9 +714,9 @@ def render_invoice_editor(session, comp):
                     for item in items:
                         inner.add(InvoiceItem(
                             invoice_id=invoice.id,
-                            description=item['desc'].value or '',
-                            quantity=float(item['qty'].value or 0),
-                            unit_price=float(item['price'].value or 0)
+                            description=item['desc'] or '',
+                            quantity=float(item['qty'] or 0),
+                            unit_price=float(item['price'] or 0)
                         ))
 
                     company.next_invoice_nr += 1
