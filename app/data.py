@@ -34,6 +34,7 @@ class Customer(SQLModel, table=True):
     strasse: str = ""
     plz: str = ""
     ort: str = ""
+    offen_eur: float = 0.0
     
     @property
     def display_name(self):
@@ -102,6 +103,14 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
 
 ensure_company_schema()
+
+def ensure_customer_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(customer)").fetchall()}
+        if "offen_eur" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
+
+ensure_customer_schema()
 
 def ensure_expense_schema():
     with engine.connect() as conn:
@@ -176,7 +185,8 @@ def process_customer_import(content, session, comp_id, filename=""):
                     email=str(row.get('E-Mail', '')).replace('nan',''),
                     strasse=str(row.get('1. Adresszeile', '')).replace('nan',''),
                     plz=str(row.get('Postleitzahl', '')).replace('nan',''),
-                    ort=str(row.get('Ort', '')).replace('nan','')
+                    ort=str(row.get('Ort', '')).replace('nan',''),
+                    offen_eur=0.0
                 )
                 session.add(c)
                 count += 1
