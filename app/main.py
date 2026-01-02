@@ -19,7 +19,7 @@ def layout_wrapper(content_func):
             def nav_item(label, target, icon):
                 active = app.storage.user.get('page', 'dashboard') == target
                 color = C_NAV_ITEM_ACTIVE if active else C_NAV_ITEM
-                with ui.link(label, '#').on('click', lambda e: set_page(target)).classes(color):
+                with ui.link('', '#').on('click', lambda e: set_page(target)).classes(color):
                     with ui.row().classes('items-center gap-2'):
                         ui.label(label).classes('text-sm font-semibold normal-case')
 
