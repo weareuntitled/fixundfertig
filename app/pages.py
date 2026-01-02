@@ -177,10 +177,10 @@ def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False):
     pdf.set_font("Helvetica", style="B", size=11)
     pdf.cell(160, 8, "Netto", align="R")
     pdf.cell(30, 8, f"{netto:,.2f} €", align="R", ln=True)
-    pdf.cell(160, 8, "Brutto" if apply_ustg19 else "Brutto (inkl. 19% USt)", align="R")
+    pdf.cell(160, 8, "Brutto" if tax_rate == 0 else "Brutto (inkl. 19% USt)", align="R")
     pdf.cell(30, 8, f"{brutto:,.2f} €", align="R", ln=True)
 
-    if apply_ustg19:
+    if tax_rate == 0:
         pdf.ln(6)
         pdf.set_font("Helvetica", size=9)
         pdf.multi_cell(0, 6, "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.")
@@ -252,7 +252,8 @@ def render_invoice_editor(session, comp, d):
             qty = float(item['qty'].value or 0)
             price = float(item['price'].value or 0)
             netto += qty * price
-        brutto = netto * 1.19
+        tax_rate = 0.0 if apply_ustg19.value else 0.19
+        brutto = netto * (1 + tax_rate)
         totals_netto.set_text(f"{netto:,.2f} €")
         totals_brutto.set_text(f"{brutto:,.2f} €")
         return netto, brutto
@@ -389,7 +390,7 @@ def render_invoice_editor(session, comp, d):
             inner.add(company)
             inner.commit()
 
-            generate_invoice_pdf(company, customer, invoice, items)
+            generate_invoice_pdf(company, customer, invoice, items, apply_ustg19.value)
 
         ui.notify('Rechnung erstellt', color='green')
         app.storage.user['page'] = 'dashboard'
