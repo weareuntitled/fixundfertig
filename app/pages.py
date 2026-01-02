@@ -1,14 +1,12 @@
 from nicegui import ui, app, events
 from sqlmodel import Session, select
 from datetime import datetime
-import base64
 from email.message import EmailMessage
 import smtplib
 import os
-from lxml import etree
-from weasyprint import HTML, Attachment
 
 from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import, log_audit_action
+from renderer import render_invoice_to_pdf_bytes, render_invoice_to_png_base64
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
     C_BADGE_GREEN, C_BADGE_BLUE, C_BADGE_GRAY, C_PAGE_TITLE, C_SECTION_TITLE,
@@ -262,200 +260,6 @@ def render_customer_new(session, comp):
                 ui.button('Speichern', icon='save', on_click=save_customer).classes(C_BTN_PRIM)
                 ui.button('Abbrechen', icon='close', on_click=cancel).classes(C_BTN_SEC)
 
-def build_zugferd_xml(company, customer, invoice, items, apply_ustg19=False):
-    tax_rate = 0.0 if apply_ustg19 else 0.19
-    ust_enabled = not apply_ustg19
-    netto = 0.0
-    line_items = []
-    def item_value(val):
-        if hasattr(val, 'value'):
-            return val.value
-        return val
-    for index, item in enumerate(items, start=1):
-        desc = item_value(item.get('desc') or '') or ''
-        qty = float(item_value(item.get('qty') or 0))
-        price = float(item_value(item.get('price') or 0))
-        is_brutto = bool(item_value(item.get('is_brutto') or False))
-        unit_netto = price
-        if ust_enabled and is_brutto:
-            unit_netto = price / 1.19
-        total = qty * unit_netto
-        netto += total
-        line_items.append({
-            'index': str(index),
-            'desc': desc,
-            'qty': qty,
-            'unit_netto': unit_netto,
-            'total': total,
-        })
-
-    brutto = netto * (1 + tax_rate)
-    nsmap = {
-        'rsm': 'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100',
-        'ram': 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
-        'qdt': 'urn:un:unece:uncefact:data:standard:QualifiedDataType:100',
-        'udt': 'urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100',
-    }
-    root = etree.Element('{%s}CrossIndustryInvoice' % nsmap['rsm'], nsmap=nsmap)
-    context = etree.SubElement(root, '{%s}ExchangedDocumentContext' % nsmap['rsm'])
-    guideline = etree.SubElement(context, '{%s}GuidelineSpecifiedDocumentContextParameter' % nsmap['ram'])
-    etree.SubElement(guideline, '{%s}ID' % nsmap['ram']).text = 'urn:cen.eu:en16931:2017'
-
-    document = etree.SubElement(root, '{%s}ExchangedDocument' % nsmap['rsm'])
-    etree.SubElement(document, '{%s}ID' % nsmap['ram']).text = str(invoice.nr or '')
-    etree.SubElement(document, '{%s}TypeCode' % nsmap['ram']).text = '380'
-    issue_date = etree.SubElement(document, '{%s}IssueDateTime' % nsmap['ram'])
-    date_str = (invoice.date or '').replace('-', '')
-    date_time = etree.SubElement(issue_date, '{%s}DateTimeString' % nsmap['udt'])
-    date_time.set('format', '102')
-    date_time.text = date_str
-
-    transaction = etree.SubElement(root, '{%s}SupplyChainTradeTransaction' % nsmap['rsm'])
-    agreement = etree.SubElement(transaction, '{%s}ApplicableHeaderTradeAgreement' % nsmap['ram'])
-    seller = etree.SubElement(agreement, '{%s}SellerTradeParty' % nsmap['ram'])
-    etree.SubElement(seller, '{%s}Name' % nsmap['ram']).text = company.name or ''
-    if company.tax_id:
-        tax_reg = etree.SubElement(seller, '{%s}SpecifiedTaxRegistration' % nsmap['ram'])
-        etree.SubElement(tax_reg, '{%s}ID' % nsmap['ram']).text = company.tax_id
-    buyer = etree.SubElement(agreement, '{%s}BuyerTradeParty' % nsmap['ram'])
-    etree.SubElement(buyer, '{%s}Name' % nsmap['ram']).text = customer.display_name or ''
-
-    delivery = etree.SubElement(transaction, '{%s}ApplicableHeaderTradeDelivery' % nsmap['ram'])
-    etree.SubElement(delivery, '{%s}ActualDeliverySupplyChainEvent' % nsmap['ram'])
-
-    settlement = etree.SubElement(transaction, '{%s}ApplicableHeaderTradeSettlement' % nsmap['ram'])
-    etree.SubElement(settlement, '{%s}InvoiceCurrencyCode' % nsmap['ram']).text = 'EUR'
-    tax = etree.SubElement(settlement, '{%s}ApplicableTradeTax' % nsmap['ram'])
-    etree.SubElement(tax, '{%s}TypeCode' % nsmap['ram']).text = 'VAT'
-    etree.SubElement(tax, '{%s}CategoryCode' % nsmap['ram']).text = 'S'
-    etree.SubElement(tax, '{%s}RateApplicablePercent' % nsmap['ram']).text = f"{tax_rate * 100:.2f}"
-    monetary = etree.SubElement(settlement, '{%s}SpecifiedTradeSettlementHeaderMonetarySummation' % nsmap['ram'])
-    etree.SubElement(monetary, '{%s}LineTotalAmount' % nsmap['ram']).text = f"{netto:.2f}"
-    etree.SubElement(monetary, '{%s}TaxBasisTotalAmount' % nsmap['ram']).text = f"{netto:.2f}"
-    etree.SubElement(monetary, '{%s}TaxTotalAmount' % nsmap['ram']).text = f"{netto * tax_rate:.2f}"
-    etree.SubElement(monetary, '{%s}GrandTotalAmount' % nsmap['ram']).text = f"{brutto:.2f}"
-    etree.SubElement(monetary, '{%s}DuePayableAmount' % nsmap['ram']).text = f"{brutto:.2f}"
-
-    for line in line_items:
-        line_item = etree.SubElement(transaction, '{%s}IncludedSupplyChainTradeLineItem' % nsmap['ram'])
-        document_line = etree.SubElement(line_item, '{%s}AssociatedDocumentLineDocument' % nsmap['ram'])
-        etree.SubElement(document_line, '{%s}LineID' % nsmap['ram']).text = line['index']
-        product = etree.SubElement(line_item, '{%s}SpecifiedTradeProduct' % nsmap['ram'])
-        etree.SubElement(product, '{%s}Name' % nsmap['ram']).text = line['desc']
-        agreement_line = etree.SubElement(line_item, '{%s}SpecifiedLineTradeAgreement' % nsmap['ram'])
-        gross_price = etree.SubElement(agreement_line, '{%s}GrossPriceProductTradePrice' % nsmap['ram'])
-        etree.SubElement(gross_price, '{%s}ChargeAmount' % nsmap['ram']).text = f"{line['unit_netto']:.2f}"
-        delivery_line = etree.SubElement(line_item, '{%s}SpecifiedLineTradeDelivery' % nsmap['ram'])
-        qty = etree.SubElement(delivery_line, '{%s}BilledQuantity' % nsmap['ram'])
-        qty.set('unitCode', 'C62')
-        qty.text = f"{line['qty']:.2f}"
-        settlement_line = etree.SubElement(line_item, '{%s}SpecifiedLineTradeSettlement' % nsmap['ram'])
-        line_tax = etree.SubElement(settlement_line, '{%s}ApplicableTradeTax' % nsmap['ram'])
-        etree.SubElement(line_tax, '{%s}TypeCode' % nsmap['ram']).text = 'VAT'
-        etree.SubElement(line_tax, '{%s}CategoryCode' % nsmap['ram']).text = 'S'
-        etree.SubElement(line_tax, '{%s}RateApplicablePercent' % nsmap['ram']).text = f"{tax_rate * 100:.2f}"
-        line_sum = etree.SubElement(settlement_line, '{%s}SpecifiedTradeSettlementLineMonetarySummation' % nsmap['ram'])
-        etree.SubElement(line_sum, '{%s}LineTotalAmount' % nsmap['ram']).text = f"{line['total']:.2f}"
-
-    return etree.tostring(root, xml_declaration=True, encoding='utf-8', pretty_print=True)
-
-def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False, template_name='', intro_text=''):
-    tax_rate = 0.0 if apply_ustg19 else 0.19
-    ust_enabled = not apply_ustg19
-    netto = 0.0
-    def item_value(val):
-        if hasattr(val, 'value'):
-            return val.value
-        return val
-    prepared_items = []
-    for item in items:
-        desc = item_value(item.get('desc') or '') or ''
-        qty = float(item_value(item.get('qty') or 0))
-        price = float(item_value(item.get('price') or 0))
-        is_brutto = bool(item_value(item.get('is_brutto') or False))
-        unit_netto = price
-        if ust_enabled and is_brutto:
-            unit_netto = price / 1.19
-        total = qty * unit_netto
-        netto += total
-        prepared_items.append({
-            'desc': desc,
-            'qty': qty,
-            'price': price,
-            'total': total,
-            'is_brutto': is_brutto,
-        })
-
-    brutto = netto * (1 + tax_rate)
-    html = f"""
-    <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body {{ font-family: Helvetica, Arial, sans-serif; font-size: 12px; }}
-                h1 {{ font-size: 18px; margin-bottom: 6px; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 12px; }}
-                th, td {{ border-bottom: 1px solid #ddd; padding: 6px; text-align: left; }}
-                th.right, td.right {{ text-align: right; }}
-                .muted {{ color: #555; }}
-            </style>
-        </head>
-        <body>
-            <h1>{company.name}</h1>
-            <div class="muted">
-                {(company.first_name + ' ' + company.last_name).strip()}<br>
-                {company.street}<br>
-                {(company.postal_code + ' ' + company.city).strip()}<br>
-                E-Mail: {company.email}<br>
-                Tel.: {company.phone}<br>
-                IBAN: {company.iban}<br>
-                Steuernummer: {company.tax_id}
-            </div>
-            <h2>Rechnung Nr. {invoice.nr}</h2>
-            <div>Datum: {invoice.date}</div>
-            <div>Kunde: {customer.display_name}</div>
-            <div>{customer.strasse}<br>{customer.plz} {customer.ort}</div>
-            <div>{intro_text}</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Beschreibung</th>
-                        <th class="right">Menge</th>
-                        <th class="right">Einzelpreis</th>
-                        <th class="right">Gesamt</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {''.join([f"<tr><td>{i['desc']}{' (Brutto)' if ust_enabled and i['is_brutto'] else ''}</td><td class='right'>{i['qty']:.2f}</td><td class='right'>{i['price']:,.2f} €</td><td class='right'>{i['total']:,.2f} €</td></tr>" for i in prepared_items])}
-                </tbody>
-            </table>
-            <table>
-                <tr><td class="right"><strong>Netto</strong></td><td class="right"><strong>{netto:,.2f} €</strong></td></tr>
-                <tr><td class="right"><strong>{'Brutto' if tax_rate == 0 else 'Brutto (inkl. 19% USt)'}</strong></td><td class="right"><strong>{brutto:,.2f} €</strong></td></tr>
-            </table>
-            {"<p>Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</p>" if tax_rate == 0 else ""}
-        </body>
-    </html>
-    """
-    zugferd_xml = build_zugferd_xml(company, customer, invoice, prepared_items, apply_ustg19=apply_ustg19)
-    attachment = Attachment(string=zugferd_xml, filename='factur-x.xml', description='ZUGFeRD 2.x XML', relationship='Alternative')
-    pdf_bytes = HTML(string=html).write_pdf(attachments=[attachment], pdf_variant='pdf/a-3b')
-
-    pdf_path = f"./storage/invoices/invoice_{invoice.nr}.pdf"
-    with open(pdf_path, 'wb') as f:
-        f.write(pdf_bytes)
-
-    with Session(engine) as inner:
-        invoice_record = inner.get(Invoice, invoice.id)
-        if invoice_record:
-            invoice_record.pdf_bytes = pdf_bytes
-            invoice_record.pdf_storage = 'db'
-            invoice_record.pdf_filename = os.path.basename(pdf_path)
-            inner.add(invoice_record)
-            inner.commit()
-
-    return pdf_path
-
 def render_settings(session, comp):
     ui.label('Einstellungen').classes(C_PAGE_TITLE + " mb-6")
     with ui.card().classes(C_CARD + " p-6 w-full"):
@@ -678,44 +482,65 @@ def render_invoice_editor(session, comp, d):
             gutschrift_dialog.open()
             return
 
-        with Session(engine) as inner:
-            company = inner.get(Company, comp.id)
-            customer = inner.get(Customer, int(selected_customer.value))
-            if not company or not customer:
-                return ui.notify('Fehlende Daten', color='red')
+        try:
+            with Session(engine) as inner:
+                with inner.begin():
+                    company = inner.exec(select(Company).where(Company.id == comp.id).with_for_update()).first()
+                    customer = inner.get(Customer, int(selected_customer.value))
+                    if not company or not customer:
+                        return ui.notify('Fehlende Daten', color='red')
 
-            invoice = Invoice(
-                customer_id=customer.id,
-                nr=company.next_invoice_nr,
-                title=title_value,
-                date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
-                delivery_date=delivery_date.value or '',
-                recipient_name=recipient_name.value or '',
-                recipient_street=recipient_street.value or '',
-                recipient_postal_code=recipient_postal.value or '',
-                recipient_city=recipient_city.value or '',
-                total_brutto=brutto,
-                status=InvoiceStatus.FINALIZED
-            )
-            inner.add(invoice)
-            inner.commit()
-            inner.refresh(invoice)
+                    invoice = Invoice(
+                        customer_id=customer.id,
+                        nr=company.next_invoice_nr,
+                        title=title_value,
+                        date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                        delivery_date=delivery_date.value or '',
+                        recipient_name=recipient_name.value or '',
+                        recipient_street=recipient_street.value or '',
+                        recipient_postal_code=recipient_postal.value or '',
+                        recipient_city=recipient_city.value or '',
+                        total_brutto=brutto,
+                        status=InvoiceStatus.FINALIZED
+                    )
+                    inner.add(invoice)
+                    inner.flush()
 
-            for item in items:
-                inner.add(InvoiceItem(
-                    invoice_id=invoice.id,
-                    description=item['desc'].value or '',
-                    quantity=float(item['qty'].value or 0),
-                    unit_price=float(item['price'].value or 0)
-                ))
+                    prepared_items = []
+                    for item in items:
+                        description = item['desc'].value or ''
+                        quantity = float(item['qty'].value or 0)
+                        unit_price = float(item['price'].value or 0)
+                        inner.add(InvoiceItem(
+                            invoice_id=invoice.id,
+                            description=description,
+                            quantity=quantity,
+                            unit_price=unit_price
+                        ))
+                        prepared_items.append({
+                            'desc': description,
+                            'qty': quantity,
+                            'price': unit_price,
+                            'is_brutto': False,
+                        })
 
-            company.next_invoice_nr += 1
-            inner.add(company)
-            log_audit_action(inner, "CREATE", invoice_id=invoice.id)
-            log_audit_action(inner, "FINALIZED", invoice_id=invoice.id)
-            inner.commit()
+                    company.next_invoice_nr += 1
+                    inner.add(company)
+                    log_audit_action(inner, "CREATE", invoice_id=invoice.id)
+                    log_audit_action(inner, "FINALIZED", invoice_id=invoice.id)
 
-            generate_invoice_pdf(company, customer, invoice, items, apply_ustg19.value)
+                    invoice.__dict__['line_items'] = prepared_items
+                    invoice.__dict__['tax_rate'] = 0.0 if apply_ustg19.value else 0.19
+                    pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+                    pdf_path = f"./storage/invoices/invoice_{invoice.nr}.pdf"
+                    os.makedirs('./storage/invoices', exist_ok=True)
+                    with open(pdf_path, 'wb') as f:
+                        f.write(pdf_bytes)
+                    invoice.pdf_bytes = pdf_bytes
+                    invoice.pdf_storage = 'db'
+                    invoice.pdf_filename = os.path.basename(pdf_path)
+        except Exception:
+            return ui.notify('Finalisierung fehlgeschlagen', color='red')
 
         ui.notify('Rechnung erstellt', color='green')
         app.storage.user['page'] = 'dashboard'
@@ -738,8 +563,6 @@ def render_invoice_create(session, comp):
     customers = session.exec(select(Customer)).all()
     customer_options = {str(c.id): c.display_name for c in customers}
     templates = ['Standard', 'Dienstleistung', 'Beratung']
-
-    last_pdf_path = app.storage.user.get('last_invoice_pdf')
 
     with ui.row().classes('w-full gap-6 items-start flex-wrap md:flex-nowrap'):
         with ui.column().classes('w-full md:w-[680px] gap-4'):
@@ -783,10 +606,47 @@ def render_invoice_create(session, comp):
                     brutto_label.set_text('Brutto (inkl. 19% USt)' if ust_enabled else 'Brutto')
                     return netto, brutto
 
+                preview_image = None
+
+                def build_preview_invoice():
+                    _, brutto = calc_totals()
+                    customer_id = int(selected_customer.value) if selected_customer.value else 0
+                    temp_invoice = Invoice(
+                        customer_id=customer_id,
+                        nr=comp.next_invoice_nr,
+                        title=(title_input.value or '').strip() or 'Rechnung',
+                        date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                        delivery_date=delivery_date.value or '',
+                        recipient_name=recipient_name.value or '',
+                        recipient_street=recipient_street.value or '',
+                        recipient_postal_code=recipient_postal.value or '',
+                        recipient_city=recipient_city.value or '',
+                        total_brutto=brutto,
+                        status=InvoiceStatus.DRAFT
+                    )
+                    preview_items = []
+                    for item in items:
+                        preview_items.append({
+                            'desc': item['desc'].value or '',
+                            'qty': float(item['qty'].value or 0),
+                            'price': float(item['price'].value or 0),
+                            'is_brutto': bool(item['is_brutto'].value),
+                        })
+                    temp_invoice.__dict__['line_items'] = preview_items
+                    temp_invoice.__dict__['tax_rate'] = 0.19 if ust_toggle.value else 0.0
+                    return temp_invoice
+
+                def update_preview():
+                    if not preview_image:
+                        return
+                    temp_invoice = build_preview_invoice()
+                    png_base64 = render_invoice_to_png_base64(temp_invoice)
+                    preview_image.set_source(f"data:image/png;base64,{png_base64}")
+
                 def remove_item(item):
                     items.remove(item)
                     item['row'].delete()
-                    calc_totals()
+                    update_preview()
 
                 def add_item():
                     item = {}
@@ -799,13 +659,13 @@ def render_invoice_create(session, comp):
                             ui.button('Entfernen', on_click=lambda: remove_item(item)).classes(C_BTN_SEC)
                     item.update({'row': row, 'desc': desc, 'qty': qty, 'price': price, 'is_brutto': is_brutto})
                     items.append(item)
-                    qty.on('change', calc_totals)
-                    price.on('change', calc_totals)
-                    is_brutto.on('change', calc_totals)
-                    calc_totals()
+                    qty.on('change', update_preview)
+                    price.on('change', update_preview)
+                    is_brutto.on('change', update_preview)
+                    update_preview()
 
                 ui.button('Posten hinzufügen', icon='add', on_click=add_item).classes(C_BTN_SEC + " w-fit")
-                ust_toggle.on('change', calc_totals)
+                ust_toggle.on('change', update_preview)
 
                 with ui.row().classes('w-full justify-end gap-6 mt-4'):
                     with ui.column().classes('items-end'):
@@ -875,7 +735,7 @@ def render_invoice_create(session, comp):
                         app.storage.user['page'] = 'invoices'
                         ui.navigate.to('/')
 
-                    def send_invoice_email(company, customer, invoice, pdf_path):
+                    def send_invoice_email(company, customer, invoice, pdf_bytes, pdf_filename):
                         if not customer.email:
                             return ui.notify('Kunde hat keine E-Mail-Adresse', color='red')
                         if not company.smtp_server or not company.smtp_user or not company.smtp_password:
@@ -885,8 +745,7 @@ def render_invoice_create(session, comp):
                         msg['From'] = company.smtp_user
                         msg['To'] = customer.email
                         msg.set_content(f"Guten Tag {customer.display_name},\n\nim Anhang finden Sie Ihre Rechnung {invoice.nr}.\n\nViele Grüße\n{company.name}")
-                        with open(pdf_path, 'rb') as f:
-                            msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=os.path.basename(pdf_path))
+                        msg.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename=pdf_filename)
                         try:
                             with smtplib.SMTP(company.smtp_server, company.smtp_port) as server:
                                 server.starttls()
@@ -965,71 +824,80 @@ def render_invoice_create(session, comp):
                         gutschrift_dialog.open()
                         return
 
-                    with Session(engine) as inner:
-                        company = inner.get(Company, comp.id)
-                        customer = inner.get(Customer, int(selected_customer.value))
-                        if not company or not customer:
-                            return ui.notify('Fehlende Daten', color='red')
+                    try:
+                        with Session(engine) as inner:
+                            with inner.begin():
+                                company = inner.exec(select(Company).where(Company.id == comp.id).with_for_update()).first()
+                                customer = inner.get(Customer, int(selected_customer.value))
+                                if not company or not customer:
+                                    return ui.notify('Fehlende Daten', color='red')
 
-                        invoice = Invoice(
-                            customer_id=customer.id,
-                            nr=company.next_invoice_nr,
-                            title=title_value,
-                            date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
-                            delivery_date=delivery_date.value or '',
-                            recipient_name=recipient_name.value or '',
-                            recipient_street=recipient_street.value or '',
-                            recipient_postal_code=recipient_postal.value or '',
-                            recipient_city=recipient_city.value or '',
-                            total_brutto=brutto,
-                            status=InvoiceStatus.FINALIZED
-                        )
-                        inner.add(invoice)
-                        inner.commit()
-                        inner.refresh(invoice)
+                                invoice = Invoice(
+                                    customer_id=customer.id,
+                                    nr=company.next_invoice_nr,
+                                    title=title_value,
+                                    date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                                    delivery_date=delivery_date.value or '',
+                                    recipient_name=recipient_name.value or '',
+                                    recipient_street=recipient_street.value or '',
+                                    recipient_postal_code=recipient_postal.value or '',
+                                    recipient_city=recipient_city.value or '',
+                                    total_brutto=brutto,
+                                    status=InvoiceStatus.FINALIZED
+                                )
+                                inner.add(invoice)
+                                inner.flush()
 
-                        for item in items:
-                            inner.add(InvoiceItem(
-                                invoice_id=invoice.id,
-                                description=item['desc'].value or '',
-                                quantity=float(item['qty'].value or 0),
-                                unit_price=float(item['price'].value or 0)
-                            ))
+                                pdf_items = []
+                                for item in items:
+                                    description = item['desc'].value or ''
+                                    quantity = float(item['qty'].value or 0)
+                                    unit_price = float(item['price'].value or 0)
+                                    is_brutto = bool(item['is_brutto'].value)
+                                    inner.add(InvoiceItem(
+                                        invoice_id=invoice.id,
+                                        description=description,
+                                        quantity=quantity,
+                                        unit_price=unit_price
+                                    ))
+                                    pdf_items.append({
+                                        'desc': description,
+                                        'qty': quantity,
+                                        'price': unit_price,
+                                        'is_brutto': is_brutto,
+                                    })
 
-                        company.next_invoice_nr += 1
-                        inner.add(company)
-                        log_audit_action(inner, "CREATE", invoice_id=invoice.id)
-                        log_audit_action(inner, "FINALIZED", invoice_id=invoice.id)
-                        inner.commit()
+                                company.next_invoice_nr += 1
+                                inner.add(company)
+                                log_audit_action(inner, "CREATE", invoice_id=invoice.id)
+                                log_audit_action(inner, "FINALIZED", invoice_id=invoice.id)
 
-                        pdf_items = []
-                        for item in items:
-                            pdf_items.append({
-                                'desc': item['desc'].value or '',
-                                'qty': float(item['qty'].value or 0),
-                                'price': float(item['price'].value or 0),
-                                'is_brutto': bool(item['is_brutto'].value),
-                            })
-                        pdf_path = generate_invoice_pdf(
-                            company,
-                            customer,
-                            invoice,
-                            pdf_items,
-                            not ust_enabled,
-                            generate_invoice_pdf,
-                            template_name=template_select.value or '',
-                            intro_text=intro_text.value or ''
-                        )
+                                invoice.__dict__['line_items'] = pdf_items
+                                invoice.__dict__['tax_rate'] = 0.19 if ust_enabled else 0.0
+                                pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+                                pdf_path = f"./storage/invoices/invoice_{invoice.nr}.pdf"
+                                os.makedirs('./storage/invoices', exist_ok=True)
+                                with open(pdf_path, 'wb') as f:
+                                    f.write(pdf_bytes)
+                                invoice.pdf_bytes = pdf_bytes
+                                invoice.pdf_storage = 'db'
+                                invoice.pdf_filename = os.path.basename(pdf_path)
                     except Exception:
                         return ui.notify('Finalisierung fehlgeschlagen', color='red')
 
                     ui.notify('Rechnung erstellt', color='green')
                     app.storage.user['last_invoice_pdf'] = pdf_path
                     app.storage.user['last_invoice_id'] = invoice.id
-                    render_preview(pdf_path)
+                    update_preview()
                     if send_after_finalize.value:
                         mail_info.set_text(f"Empfänger: {customer.email or 'Keine E-Mail hinterlegt'}")
-                        send_action['fn'] = lambda c=company, cu=customer, i=invoice, p=pdf_path: send_invoice_email(c, cu, i, p)
+                        send_action['fn'] = lambda c=company, cu=customer, i=invoice, b=pdf_bytes: send_invoice_email(
+                            c,
+                            cu,
+                            i,
+                            b,
+                            f"invoice_{invoice.nr}.pdf"
+                        )
                         mail_dialog.open()
                     else:
                         app.storage.user['page'] = 'invoices'
@@ -1049,16 +917,27 @@ def render_invoice_create(session, comp):
                 ui.label('PDF Vorschau').classes(C_SECTION_TITLE + " mb-4")
                 preview_container = ui.column().classes('w-full gap-3')
 
-                def render_preview(pdf_path):
-                    preview_container.clear()
-                    if pdf_path and os.path.exists(pdf_path):
-                        with preview_container:
-                            ui.pdf(pdf_path).classes('w-full h-[650px]')
-                            ui.button('Download', icon='download', on_click=lambda p=pdf_path, i=app.storage.user.get('last_invoice_id'): download_invoice(p, i)).classes(C_BTN_SEC + " w-fit")
-                    else:
-                        ui.label('Keine Vorschau verfügbar').classes('text-slate-400 text-sm')
+                with preview_container:
+                    preview_image = ui.image().classes('w-full border border-slate-200')
+                    ui.button(
+                        'Download',
+                        icon='download',
+                        on_click=lambda: download_invoice(
+                            app.storage.user.get('last_invoice_pdf'),
+                            app.storage.user.get('last_invoice_id')
+                        )
+                    ).classes(C_BTN_SEC + " w-fit")
 
-                render_preview(last_pdf_path)
+                update_preview()
+
+                selected_customer.on('change', update_preview)
+                title_input.on('change', update_preview)
+                invoice_date.on('change', update_preview)
+                delivery_date.on('change', update_preview)
+                recipient_name.on('change', update_preview)
+                recipient_street.on('change', update_preview)
+                recipient_postal.on('change', update_preview)
+                recipient_city.on('change', update_preview)
 
 def render_invoices(session, comp):
     with ui.row().classes('w-full justify-between items-center mb-6'):
