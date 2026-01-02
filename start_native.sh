@@ -8,6 +8,16 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}🚀 Starte FixundFertig (Native Mode - Ohne Docker)${NC}"
 
+# -----------------------------------------------
+# 🛠 MAC OS FIX FÜR WEASYPRINT / PANGO
+# -----------------------------------------------
+# Zwingt Python, in den Homebrew-Ordnern nach Bibliotheken zu suchen
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "🍎 macOS erkannt: Setze Pfade für Homebrew Bibliotheken..."
+    export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:/usr/local/lib:$DYLD_FALLBACK_LIBRARY_PATH"
+fi
+# -----------------------------------------------
+
 # 1. PRÜFUNGEN
 # -----------------------------------------------
 # Check Python
@@ -42,7 +52,7 @@ fi
 source venv/bin/activate
 
 # Pakete installieren (Silent mode, außer bei Fehler)
-echo "Installiere/Update Abhängigkeiten (sqlmodel, nicegui)..."
+echo "Installiere/Update Abhängigkeiten (sqlmodel, nicegui, weasyprint)..."
 pip install -r requirements.txt > /dev/null
 
 # 3. START PROZESSE
@@ -55,7 +65,7 @@ echo -e "${GREEN}✅ Setup fertig.${NC}"
 # Start n8n (im Hintergrund)
 if [ "$HAS_NODE" = true ]; then
     echo -e "${BLUE}🤖 Starte n8n Automatisierung...${NC}"
-    # npx startet n8n ohne globale Installation, --tunnel erlaubt Webhooks von außen (optional)
+    # npx startet n8n ohne globale Installation
     npx n8n start > ../n8n_log.txt 2>&1 &
     N8N_PID=$!
     echo "n8n läuft unter PID $N8N_PID (Logs in n8n_log.txt)"

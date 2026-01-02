@@ -75,4 +75,4 @@ npm error previous versions of npm which has since been addressed.
 npm error
 npm error To permanently fix this problem, please run:
 npm error   sudo chown -R 502:20 "/Users/apple/.npm"
-npm error A complete log of this run can be found in: /Users/apple/.npm/_logs/2026-01-02T22_19_47_421Z-debug-0.log
+npm error A complete log of this run can be found in: /Users/apple/.npm/_logs/2026-01-02T22_56_47_853Z-debug-0.log
