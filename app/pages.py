@@ -1,6 +1,7 @@
 from nicegui import ui, app, events
 from sqlmodel import Session, select
 from datetime import datetime
+import base64
 from email.message import EmailMessage
 import smtplib
 from fpdf import FPDF
@@ -27,17 +28,14 @@ def render_dashboard(session, comp):
     ui.label('Dashboard').classes(C_PAGE_TITLE + " mb-2")
     invs = session.exec(select(Invoice)).all()
     exps = session.exec(select(Expense)).all()
-    umsatz = sum(i.total_brutto for i in invs if i.status != 'Entwurf')
+    umsatz = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
     kosten = sum(e.amount for e in exps)
-    offen = sum(i.total_brutto for i in invs if i.status == 'Offen')
+    offen = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
     latest_invoice = max(invs, key=lambda i: i.date or "") if invs else None
     latest_customer = session.get(Customer, latest_invoice.customer_id) if latest_invoice else None
     status_badge = C_BADGE_GRAY
     if latest_invoice:
-        if latest_invoice.status == 'Bezahlt':
-            status_badge = C_BADGE_GREEN
-        elif latest_invoice.status == 'Offen':
-            status_badge = C_BADGE_BLUE
+        status_badge = invoice_status_badge(latest_invoice.status)
 
     with ui.grid(columns=3).classes('w-full gap-6 mb-8'):
         def stat_card(title, val, icon, col):
@@ -63,7 +61,7 @@ def render_dashboard(session, comp):
                         ui.label(f"Datum: {latest_invoice.date}").classes('text-xs text-slate-500')
                     with ui.column().classes('items-end gap-2'):
                         ui.label(f"{latest_invoice.total_brutto:,.2f} €").classes('text-lg font-semibold text-slate-900')
-                        ui.label(latest_invoice.status).classes(status_badge)
+                        ui.label(format_invoice_status(latest_invoice.status)).classes(status_badge)
             else:
                 ui.label('Noch keine Rechnungen vorhanden.').classes('text-sm text-slate-500')
         with ui.card().classes(C_CARD + " p-6 col-span-1"):
@@ -217,6 +215,13 @@ def render_customer_new(session, comp):
                 strasse_input = ui.input('Straße', value='').classes(C_INPUT + " w-2/3")
                 plz_input = ui.input('PLZ', value='').classes(C_INPUT + " w-1/6")
                 ort_input = ui.input('Ort', value='').classes(C_INPUT + " w-1/6")
+            vat_input = ui.input('USt-IdNr.', value='').classes(C_INPUT + " w-1/2")
+            with ui.row().classes('w-full gap-4'):
+                recipient_name_input = ui.input('Empfängername', value='').classes(C_INPUT + " w-1/2")
+                recipient_street_input = ui.input('Empfänger Straße', value='').classes(C_INPUT + " w-1/2")
+            with ui.row().classes('w-full gap-4'):
+                recipient_postal_input = ui.input('Empfänger PLZ', value='').classes(C_INPUT + " w-1/6")
+                recipient_city_input = ui.input('Empfänger Ort', value='').classes(C_INPUT + " w-1/6")
 
             def save_customer():
                 try:
@@ -235,6 +240,11 @@ def render_customer_new(session, comp):
                         strasse=strasse_input.value or '',
                         plz=plz_input.value or '',
                         ort=ort_input.value or '',
+                        vat_id=vat_input.value or '',
+                        recipient_name=recipient_name_input.value or '',
+                        recipient_street=recipient_street_input.value or '',
+                        recipient_postal_code=recipient_postal_input.value or '',
+                        recipient_city=recipient_city_input.value or '',
                         offen_eur=0.0
                     )
                     inner.add(customer)
@@ -272,11 +282,16 @@ def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False, 
         pdf.cell(0, 8, f"IBAN: {company.iban}", ln=True)
     if company.tax_id:
         pdf.cell(0, 8, f"Steuernummer: {company.tax_id}", ln=True)
+    if company.vat_id:
+        pdf.cell(0, 8, f"USt-IdNr.: {company.vat_id}", ln=True)
 
     pdf.ln(4)
     pdf.set_font("Helvetica", size=11)
-    pdf.cell(0, 8, f"Rechnung Nr. {invoice.nr}", ln=True)
+    title = invoice.title or "Rechnung"
+    pdf.cell(0, 8, f"{title} Nr. {invoice.nr}", ln=True)
     pdf.cell(0, 8, f"Datum: {invoice.date}", ln=True)
+    if invoice.delivery_date:
+        pdf.cell(0, 8, f"Lieferdatum: {invoice.delivery_date}", ln=True)
     if template_name:
         pdf.cell(0, 8, f"Vorlage: {template_name}", ln=True)
     pdf.ln(6)
@@ -287,6 +302,14 @@ def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False, 
         pdf.cell(0, 8, f"{customer.strasse}", ln=True)
     if customer.plz or customer.ort:
         pdf.cell(0, 8, f"{customer.plz} {customer.ort}", ln=True)
+    if customer.vat_id:
+        pdf.cell(0, 8, f"USt-IdNr.: {customer.vat_id}", ln=True)
+    if invoice.recipient_name:
+        pdf.cell(0, 8, f"Empfänger: {invoice.recipient_name}", ln=True)
+    if invoice.recipient_street:
+        pdf.cell(0, 8, f"{invoice.recipient_street}", ln=True)
+    if invoice.recipient_postal_code or invoice.recipient_city:
+        pdf.cell(0, 8, f"{invoice.recipient_postal_code} {invoice.recipient_city}".strip(), ln=True)
     pdf.ln(8)
 
     if intro_text:
@@ -358,6 +381,7 @@ def render_settings(session, comp):
             phone_input = ui.input('Telefon', value=comp.phone).classes(C_INPUT)
             iban_input = ui.input('IBAN', value=comp.iban).classes(C_INPUT)
             tax_input = ui.input('Steuernummer', value=comp.tax_id).classes(C_INPUT)
+            vat_input = ui.input('USt-IdNr.', value=comp.vat_id).classes(C_INPUT)
 
             ui.label('SMTP Einstellungen').classes(C_SECTION_TITLE + " mt-4")
             smtp_server = ui.input('SMTP Server', value=comp.smtp_server).classes(C_INPUT)
@@ -378,6 +402,7 @@ def render_settings(session, comp):
                     company.phone = phone_input.value or ''
                     company.iban = iban_input.value or ''
                     company.tax_id = tax_input.value or ''
+                    company.vat_id = vat_input.value or ''
                     company.smtp_server = smtp_server.value or ''
                     company.smtp_port = int(smtp_port.value or 0)
                     company.smtp_user = smtp_user.value or ''
@@ -395,7 +420,14 @@ def render_invoice_editor(session, comp, d):
     customer_options = {str(c.id): c.display_name for c in customers}
 
     selected_customer = ui.select(customer_options, label='Kunde').classes(C_INPUT + " w-full")
+    title_input = ui.input('Titel', value='Rechnung').classes(C_INPUT + " w-full")
     invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT + " w-full")
+    delivery_date = ui.input('Lieferdatum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT + " w-full")
+    recipient_name = ui.input('Empfängername', value='').classes(C_INPUT + " w-full")
+    with ui.row().classes('w-full gap-4'):
+        recipient_street = ui.input('Empfänger Straße', value='').classes(C_INPUT + " w-2/3")
+        recipient_postal = ui.input('Empfänger PLZ', value='').classes(C_INPUT + " w-1/6")
+        recipient_city = ui.input('Empfänger Ort', value='').classes(C_INPUT + " w-1/6")
 
     items = []
     totals_netto = ui.label('0,00 €').classes('font-mono text-sm text-slate-700')
@@ -455,6 +487,12 @@ def render_invoice_editor(session, comp, d):
         if not invoice_date.value:
             ui.notify('Bitte Datum angeben', color='red')
             return False
+        if not delivery_date.value:
+            ui.notify('Bitte Lieferdatum angeben', color='red')
+            return False
+        if not recipient_name.value or not recipient_street.value or not recipient_postal.value or not recipient_city.value:
+            ui.notify('Bitte Empfängeradresse ausfüllen', color='red')
+            return False
         if not items:
             ui.notify('Bitte mindestens einen Posten hinzufügen', color='red')
             return False
@@ -472,13 +510,36 @@ def render_invoice_editor(session, comp, d):
         if netto <= 0:
             ui.notify('Bitte gültige Beträge eingeben', color='red')
             return False
+        with Session(engine) as inner:
+            company = inner.get(Company, comp.id)
+            customer = inner.get(Customer, int(selected_customer.value))
+            if not company or not customer:
+                ui.notify('Fehlende Daten', color='red')
+                return False
+            if not company.vat_id:
+                ui.notify('Bitte USt-IdNr. im Unternehmen hinterlegen', color='red')
+                return False
+            if not customer.vat_id:
+                ui.notify('Bitte USt-IdNr. beim Kunden hinterlegen', color='red')
+                return False
         return True
+
+    def requires_gutschrift_confirmation():
+        return 'gutschrift' in (title_input.value or '').strip().lower()
+
+    with ui.dialog() as gutschrift_dialog, ui.card().classes(C_CARD + " p-5"):
+        ui.label('Gutschrift bestätigen').classes(C_SECTION_TITLE + " mb-2")
+        ui.label('Der Titel „Gutschrift“ kennzeichnet rechtlich eine Rechnungskorrektur. Bitte bestätigen, dass dieser Titel gewollt ist.').classes('text-xs text-slate-500 mb-3')
+        with ui.row().classes('gap-3'):
+            ui.button('Abbrechen', on_click=gutschrift_dialog.close).classes(C_BTN_SEC)
+            ui.button('Bestätigen', icon='check', on_click=lambda: finalize_invoice(force_confirmed=True)).classes(C_BTN_PRIM)
 
     def save_draft():
         if not selected_customer.value:
             return ui.notify('Bitte Kunde auswählen', color='red')
 
         _, brutto = calc_totals()
+        title_value = (title_input.value or '').strip() or 'Rechnung'
 
         with Session(engine) as inner:
             customer = inner.get(Customer, int(selected_customer.value))
@@ -488,9 +549,15 @@ def render_invoice_editor(session, comp, d):
             invoice = Invoice(
                 customer_id=customer.id,
                 nr=None,
+                title=title_value,
                 date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                delivery_date=delivery_date.value or '',
+                recipient_name=recipient_name.value or '',
+                recipient_street=recipient_street.value or '',
+                recipient_postal_code=recipient_postal.value or '',
+                recipient_city=recipient_city.value or '',
                 total_brutto=brutto,
-                status='Entwurf'
+                status=InvoiceStatus.DRAFT
             )
             inner.add(invoice)
             inner.commit()
@@ -511,11 +578,15 @@ def render_invoice_editor(session, comp, d):
         d.close()
         ui.navigate.to('/')
 
-    def finalize_invoice():
+    def finalize_invoice(force_confirmed=False):
         if not validate_finalization():
             return
 
         _, brutto = calc_totals()
+        title_value = (title_input.value or '').strip() or 'Rechnung'
+        if requires_gutschrift_confirmation() and not force_confirmed:
+            gutschrift_dialog.open()
+            return
 
         with Session(engine) as inner:
             company = inner.get(Company, comp.id)
@@ -526,9 +597,15 @@ def render_invoice_editor(session, comp, d):
             invoice = Invoice(
                 customer_id=customer.id,
                 nr=company.next_invoice_nr,
+                title=title_value,
                 date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                delivery_date=delivery_date.value or '',
+                recipient_name=recipient_name.value or '',
+                recipient_street=recipient_street.value or '',
+                recipient_postal_code=recipient_postal.value or '',
+                recipient_city=recipient_city.value or '',
                 total_brutto=brutto,
-                status='Offen'
+                status=InvoiceStatus.FINALIZED
             )
             inner.add(invoice)
             inner.commit()
@@ -580,7 +657,14 @@ def render_invoice_create(session, comp):
                 ui.label('Rechnungsdaten').classes(C_SECTION_TITLE + " mb-4")
                 template_select = ui.select(templates, value=templates[0], label='Vorlage').classes(C_INPUT)
                 selected_customer = ui.select(customer_options, label='Kunde').classes(C_INPUT)
+                title_input = ui.input('Titel', value='Rechnung').classes(C_INPUT)
                 invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT)
+                delivery_date = ui.input('Lieferdatum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT)
+                recipient_name = ui.input('Empfängername', value='').classes(C_INPUT)
+                with ui.row().classes('w-full gap-4'):
+                    recipient_street = ui.input('Empfänger Straße', value='').classes(C_INPUT + " w-2/3")
+                    recipient_postal = ui.input('Empfänger PLZ', value='').classes(C_INPUT + " w-1/6")
+                    recipient_city = ui.input('Empfänger Ort', value='').classes(C_INPUT + " w-1/6")
                 intro_text = ui.textarea('Einleitungstext').classes(C_INPUT)
 
             with ui.card().classes(C_CARD + " p-6 w-full"):
@@ -652,6 +736,12 @@ def render_invoice_create(session, comp):
                     if not invoice_date.value:
                         ui.notify('Bitte Datum angeben', color='red')
                         return False
+                    if not delivery_date.value:
+                        ui.notify('Bitte Lieferdatum angeben', color='red')
+                        return False
+                    if not recipient_name.value or not recipient_street.value or not recipient_postal.value or not recipient_city.value:
+                        ui.notify('Bitte Empfängeradresse ausfüllen', color='red')
+                        return False
                     if not items:
                         ui.notify('Bitte mindestens einen Posten hinzufügen', color='red')
                         return False
@@ -669,7 +759,22 @@ def render_invoice_create(session, comp):
                     if netto <= 0:
                         ui.notify('Bitte gültige Beträge eingeben', color='red')
                         return False
+                    with Session(engine) as inner:
+                        company = inner.get(Company, comp.id)
+                        customer = inner.get(Customer, int(selected_customer.value))
+                        if not company or not customer:
+                            ui.notify('Fehlende Daten', color='red')
+                            return False
+                        if not company.vat_id:
+                            ui.notify('Bitte USt-IdNr. im Unternehmen hinterlegen', color='red')
+                            return False
+                        if not customer.vat_id:
+                            ui.notify('Bitte USt-IdNr. beim Kunden hinterlegen', color='red')
+                            return False
                     return True
+
+                def requires_gutschrift_confirmation():
+                    return 'gutschrift' in (title_input.value or '').strip().lower()
 
                 with ui.dialog() as mail_dialog, ui.card().classes(C_CARD + " p-5"):
                     ui.label('Rechnung per E-Mail senden?').classes(C_SECTION_TITLE + " mb-2")
@@ -708,11 +813,19 @@ def render_invoice_create(session, comp):
                     ui.button('E-Mail senden', icon='mail', on_click=lambda: send_action['fn']()).classes(C_BTN_PRIM)
                     ui.button('Überspringen', on_click=skip_send).classes(C_BTN_SEC)
 
+                with ui.dialog() as gutschrift_dialog, ui.card().classes(C_CARD + " p-5"):
+                    ui.label('Gutschrift bestätigen').classes(C_SECTION_TITLE + " mb-2")
+                    ui.label('Der Titel „Gutschrift“ kennzeichnet rechtlich eine Rechnungskorrektur. Bitte bestätigen, dass dieser Titel gewollt ist.').classes('text-xs text-slate-500 mb-3')
+                    with ui.row().classes('gap-3'):
+                        ui.button('Abbrechen', on_click=gutschrift_dialog.close).classes(C_BTN_SEC)
+                        ui.button('Bestätigen', icon='check', on_click=lambda: finalize_invoice(force_confirmed=True)).classes(C_BTN_PRIM)
+
                 def save_draft():
                     if not selected_customer.value:
                         return ui.notify('Bitte Kunde auswählen', color='red')
 
                     _, brutto = calc_totals()
+                    title_value = (title_input.value or '').strip() or 'Rechnung'
 
                     with Session(engine) as inner:
                         customer = inner.get(Customer, int(selected_customer.value))
@@ -722,9 +835,15 @@ def render_invoice_create(session, comp):
                         invoice = Invoice(
                             customer_id=customer.id,
                             nr=None,
+                            title=title_value,
                             date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                            delivery_date=delivery_date.value or '',
+                            recipient_name=recipient_name.value or '',
+                            recipient_street=recipient_street.value or '',
+                            recipient_postal_code=recipient_postal.value or '',
+                            recipient_city=recipient_city.value or '',
                             total_brutto=brutto,
-                            status='Entwurf'
+                            status=InvoiceStatus.DRAFT
                         )
                         inner.add(invoice)
                         inner.commit()
@@ -745,12 +864,16 @@ def render_invoice_create(session, comp):
                     app.storage.user['page'] = 'invoices'
                     ui.navigate.to('/')
 
-                def finalize_invoice():
+                def finalize_invoice(force_confirmed=False):
                     if not validate_finalization():
                         return
 
                     _, brutto = calc_totals()
                     ust_enabled = bool(ust_toggle.value)
+                    title_value = (title_input.value or '').strip() or 'Rechnung'
+                    if requires_gutschrift_confirmation() and not force_confirmed:
+                        gutschrift_dialog.open()
+                        return
 
                     with Session(engine) as inner:
                         company = inner.get(Company, comp.id)
@@ -761,9 +884,15 @@ def render_invoice_create(session, comp):
                         invoice = Invoice(
                             customer_id=customer.id,
                             nr=company.next_invoice_nr,
+                            title=title_value,
                             date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                            delivery_date=delivery_date.value or '',
+                            recipient_name=recipient_name.value or '',
+                            recipient_street=recipient_street.value or '',
+                            recipient_postal_code=recipient_postal.value or '',
+                            recipient_city=recipient_city.value or '',
                             total_brutto=brutto,
-                            status='Offen'
+                            status=InvoiceStatus.FINALIZED
                         )
                         inner.add(invoice)
                         inner.commit()
@@ -796,10 +925,13 @@ def render_invoice_create(session, comp):
                             customer,
                             invoice,
                             pdf_items,
-                            apply_ustg19=not ust_enabled,
+                            not ust_enabled,
+                            generate_invoice_pdf,
                             template_name=template_select.value or '',
                             intro_text=intro_text.value or ''
                         )
+                    except Exception:
+                        return ui.notify('Finalisierung fehlgeschlagen', color='red')
 
                     ui.notify('Rechnung erstellt', color='green')
                     app.storage.user['last_invoice_pdf'] = pdf_path
@@ -922,6 +1054,31 @@ def render_invoices(session, comp):
 
             ui.button('Import', icon='upload', on_click=d_import.open).classes(C_BTN_SEC)
             ui.button('Rechnung erstellen', icon='add', on_click=d.open).classes(C_BTN_PRIM)
+
+    correction_payload = {'invoice_id': None}
+    with ui.dialog() as correction_dialog, ui.card().classes(C_CARD + " p-5 w-[420px]"):
+        ui.label('Korrektur erstellen').classes(C_SECTION_TITLE + " mb-2")
+        ui.label('Wähle die Art der Korrektur.').classes('text-xs text-slate-500 mb-3')
+        correction_mode = ui.select(
+            {'negative': 'Negative Posten', 'balance': 'Ausgleichsposten'},
+            value='negative',
+            label='Methode'
+        ).classes(C_INPUT)
+
+        def confirm_correction():
+            if not correction_payload['invoice_id']:
+                return ui.notify('Keine Rechnung ausgewählt', color='red')
+            use_negative = correction_mode.value == 'negative'
+            correction, err = create_correction(correction_payload['invoice_id'], use_negative_items=use_negative)
+            if err:
+                return ui.notify(err, color='red')
+            ui.notify('Korrektur-Entwurf erstellt', color='green')
+            correction_dialog.close()
+            ui.navigate.to('/')
+
+        with ui.row().classes('w-full justify-end gap-2 mt-4'):
+            ui.button('Abbrechen', on_click=correction_dialog.close).classes(C_BTN_SEC)
+            ui.button('Erstellen', icon='check', on_click=confirm_correction).classes(C_BTN_PRIM)
     invs = session.exec(select(Invoice)).all()
     with ui.card().classes(C_CARD + " p-0 overflow-hidden mt-8"):
         with ui.row().classes(C_TABLE_HEADER):
@@ -930,15 +1087,15 @@ def render_invoices(session, comp):
             ui.label('Datum').classes('w-24 font-medium text-slate-500 text-sm')
             ui.label('Kunde').classes('flex-1 font-medium text-slate-500 text-sm')
             ui.label('Betrag').classes('w-24 text-right font-medium text-slate-500 text-sm')
+            ui.label('Korr.').classes('w-28 text-right font-medium text-slate-500 text-sm')
             ui.label('PDF').classes('w-24 text-right font-medium text-slate-500 text-sm')
 
         with ui.column().classes('w-full gap-0'):
             for i in invs:
                 with ui.row().classes(C_TABLE_ROW):
                     style = C_BADGE_GRAY
-                    if i.status == 'Offen': style = C_BADGE_BLUE
-                    if i.status == 'Bezahlt': style = C_BADGE_GREEN
-                    ui.label(i.status).classes(style + " w-24")
+                    style = invoice_status_badge(i.status)
+                    ui.label(format_invoice_status(i.status)).classes(style + " w-24")
 
                     ui.label(f"#{i.nr}" if i.nr else "-").classes('w-16 text-slate-600 font-mono text-sm')
                     ui.label(i.date).classes('w-24 text-slate-600 text-sm')
@@ -950,6 +1107,11 @@ def render_invoices(session, comp):
                     ui.label(cname).classes('flex-1 font-semibold text-slate-900 text-sm truncate')
 
                     ui.label(f"{i.total_brutto:,.2f} €").classes('w-24 text-right font-mono font-medium text-sm')
+                    with ui.row().classes('w-28 justify-end'):
+                        if i.status != 'Entwurf':
+                            ui.button('Korrektur', icon='edit', on_click=lambda inv_id=i.id: (correction_payload.__setitem__('invoice_id', inv_id), correction_dialog.open())).classes(C_BTN_SEC + " w-full")
+                        else:
+                            ui.label('-').classes('text-slate-300 text-sm w-full text-right')
                     pdf_path = f"./storage/invoices/invoice_{i.nr}.pdf"
                     with ui.row().classes('w-24 justify-end'):
                         if i.nr and os.path.exists(pdf_path):

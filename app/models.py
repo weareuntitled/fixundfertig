@@ -30,6 +30,7 @@ class Invoice:
     due_date: str
     issuer: Address
     recipient: Address
+    title: str = "Rechnung"
     line_items: List[LineItem] = field(default_factory=list)
     notes: str = ""
     currency: str = "€"
