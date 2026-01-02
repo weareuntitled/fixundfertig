@@ -9,7 +9,7 @@ _TEMPLATE = """
 <html lang="de">
 <head>
     <meta charset="utf-8" />
-    <title>Rechnung {{ invoice.number }}</title>
+    <title>{{ invoice.title }} {{ invoice.number }}</title>
     <style>
         body { font-family: Arial, sans-serif; color: #222; }
         .header { display: flex; justify-content: space-between; }
@@ -32,7 +32,7 @@ _TEMPLATE = """
             {% if invoice.issuer.email %}<div>{{ invoice.issuer.email }}</div>{% endif %}
         </div>
         <div>
-            <div><strong>Rechnung Nr.</strong> {{ invoice.number }}</div>
+            <div><strong>{{ invoice.title }}</strong> {{ invoice.number }}</div>
             <div><strong>Datum:</strong> {{ invoice.date }}</div>
             <div><strong>Fällig:</strong> {{ invoice.due_date }}</div>
         </div>

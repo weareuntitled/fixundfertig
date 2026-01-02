@@ -1,10 +1,17 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
+from sqlalchemy import event, inspect
 from typing import Optional, List
+from enum import Enum
 import pandas as pd
 import io
 import os
 
 # --- DB MODELLE ---
+class InvoiceStatus(str, Enum):
+    DRAFT = "DRAFT"
+    FINALIZED = "FINALIZED"
+    CANCELLED = "CANCELLED"
+
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = "DanEP"
@@ -17,6 +24,7 @@ class Company(SQLModel, table=True):
     phone: str = ""
     iban: str = ""
     tax_id: str = ""
+    vat_id: str = ""
     smtp_server: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
@@ -34,6 +42,11 @@ class Customer(SQLModel, table=True):
     strasse: str = ""
     plz: str = ""
     ort: str = ""
+    vat_id: str = ""
+    recipient_name: str = ""
+    recipient_street: str = ""
+    recipient_postal_code: str = ""
+    recipient_city: str = ""
     offen_eur: float = 0.0
     
     @property
@@ -45,7 +58,13 @@ class Invoice(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_id: int = Field(foreign_key="customer.id")
     nr: Optional[int] = None 
+    title: str = "Rechnung"
     date: str
+    delivery_date: str = ""
+    recipient_name: str = ""
+    recipient_street: str = ""
+    recipient_postal_code: str = ""
+    recipient_city: str = ""
     total_brutto: float
     status: str = "Entwurf"
     related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
@@ -73,6 +92,19 @@ os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
 SQLModel.metadata.create_all(engine)
 
+@event.listens_for(Session, "before_flush")
+def prevent_finalized_invoice_updates(session, flush_context, instances):
+    for obj in session.dirty:
+        if isinstance(obj, Invoice):
+            state = inspect(obj)
+            if not state.persistent:
+                continue
+            history = state.attrs.status.history
+            old_status = history.deleted[0] if history.deleted else obj.status
+            new_status = history.added[0] if history.added else obj.status
+            if old_status == InvoiceStatus.FINALIZED and new_status != InvoiceStatus.CANCELLED:
+                raise ValueError("FINALIZED invoices are immutable.")
+
 def ensure_company_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
@@ -92,6 +124,8 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN phone TEXT DEFAULT ''")
         if "tax_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN tax_id TEXT DEFAULT ''")
+        if "vat_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN vat_id TEXT DEFAULT ''")
         if "smtp_server" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_server TEXT DEFAULT ''")
         if "smtp_port" not in columns:
@@ -108,10 +142,36 @@ ensure_company_schema()
 def ensure_customer_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(customer)").fetchall()}
+        if "vat_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN vat_id TEXT DEFAULT ''")
+        if "recipient_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_name TEXT DEFAULT ''")
+        if "recipient_street" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_street TEXT DEFAULT ''")
+        if "recipient_postal_code" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
+        if "recipient_city" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_city TEXT DEFAULT ''")
         if "offen_eur" not in columns:
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
 
 ensure_customer_schema()
+
+def ensure_invoice_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "delivery_date" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN delivery_date TEXT DEFAULT ''")
+        if "recipient_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_name TEXT DEFAULT ''")
+        if "recipient_street" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_street TEXT DEFAULT ''")
+        if "recipient_postal_code" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
+        if "recipient_city" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_city TEXT DEFAULT ''")
+
+ensure_invoice_schema()
 
 def ensure_expense_schema():
     with engine.connect() as conn:
@@ -235,9 +295,8 @@ def process_invoice_import(content, session, comp_id, filename=""):
             if kdnr:
                 cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
             if not cust: continue
-            status = "Offen"
-            if str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']: status = "Entwurf"
-            if str(row.get('Zahldatum', '')).strip(): status = "Bezahlt"
+            status = InvoiceStatus.FINALIZED
+            if str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']: status = InvoiceStatus.CANCELLED
             inv = Invoice(
                 customer_id=cust.id,
                 nr=int(nr),
