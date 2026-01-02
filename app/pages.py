@@ -4,9 +4,10 @@ from datetime import datetime
 from email.message import EmailMessage
 import smtplib
 import os
+import base64
 
 from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import, log_audit_action, InvoiceStatus
-from renderer import render_invoice_to_pdf_bytes, render_invoice_to_png_base64
+from renderer import render_invoice_to_pdf_bytes
 from actions import create_correction
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
@@ -657,8 +658,12 @@ def render_invoice_create(session, comp):
                     if not preview_image:
                         return
                     temp_invoice = build_preview_invoice()
-                    png_base64 = render_invoice_to_png_base64(temp_invoice)
-                    preview_image.set_source(f"data:image/png;base64,{png_base64}")
+                    pdf_bytes = render_invoice_to_pdf_bytes(temp_invoice)
+                    pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+                    preview_image.set_content(
+                        f'<iframe src="data:application/pdf;base64,{pdf_base64}" '
+                        'style="width:100%;height:700px;border:0;"></iframe>'
+                    )
 
                 def remove_item(item):
                     items.remove(item)
@@ -935,7 +940,7 @@ def render_invoice_create(session, comp):
                 preview_container = ui.column().classes('w-full gap-3')
 
                 with preview_container:
-                    preview_image = ui.image().classes('w-full border border-slate-200')
+                    preview_image = ui.html().classes('w-full border border-slate-200')
                     ui.button(
                         'Download',
                         icon='download',
