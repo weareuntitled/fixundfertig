@@ -265,7 +265,8 @@ def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False, 
 
     pdf.ln(4)
     pdf.set_font("Helvetica", size=11)
-    pdf.cell(0, 8, f"Rechnung Nr. {invoice.nr}", ln=True)
+    title = invoice.title or "Rechnung"
+    pdf.cell(0, 8, f"{title} Nr. {invoice.nr}", ln=True)
     pdf.cell(0, 8, f"Datum: {invoice.date}", ln=True)
     if template_name:
         pdf.cell(0, 8, f"Vorlage: {template_name}", ln=True)
@@ -385,6 +386,7 @@ def render_invoice_editor(session, comp, d):
     customer_options = {str(c.id): c.display_name for c in customers}
 
     selected_customer = ui.select(customer_options, label='Kunde').classes(C_INPUT + " w-full")
+    title_input = ui.input('Titel', value='Rechnung').classes(C_INPUT + " w-full")
     invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT + " w-full")
 
     items = []
@@ -464,11 +466,22 @@ def render_invoice_editor(session, comp, d):
             return False
         return True
 
+    def requires_gutschrift_confirmation():
+        return 'gutschrift' in (title_input.value or '').strip().lower()
+
+    with ui.dialog() as gutschrift_dialog, ui.card().classes(C_CARD + " p-5"):
+        ui.label('Gutschrift bestätigen').classes(C_SECTION_TITLE + " mb-2")
+        ui.label('Der Titel „Gutschrift“ kennzeichnet rechtlich eine Rechnungskorrektur. Bitte bestätigen, dass dieser Titel gewollt ist.').classes('text-xs text-slate-500 mb-3')
+        with ui.row().classes('gap-3'):
+            ui.button('Abbrechen', on_click=gutschrift_dialog.close).classes(C_BTN_SEC)
+            ui.button('Bestätigen', icon='check', on_click=lambda: finalize_invoice(force_confirmed=True)).classes(C_BTN_PRIM)
+
     def save_draft():
         if not selected_customer.value:
             return ui.notify('Bitte Kunde auswählen', color='red')
 
         _, brutto = calc_totals()
+        title_value = (title_input.value or '').strip() or 'Rechnung'
 
         with Session(engine) as inner:
             customer = inner.get(Customer, int(selected_customer.value))
@@ -478,6 +491,7 @@ def render_invoice_editor(session, comp, d):
             invoice = Invoice(
                 customer_id=customer.id,
                 nr=None,
+                title=title_value,
                 date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
                 total_brutto=brutto,
                 status='Entwurf'
@@ -500,11 +514,15 @@ def render_invoice_editor(session, comp, d):
         d.close()
         ui.navigate.to('/')
 
-    def finalize_invoice():
+    def finalize_invoice(force_confirmed=False):
         if not validate_finalization():
             return
 
         _, brutto = calc_totals()
+        title_value = (title_input.value or '').strip() or 'Rechnung'
+        if requires_gutschrift_confirmation() and not force_confirmed:
+            gutschrift_dialog.open()
+            return
 
         with Session(engine) as inner:
             company = inner.get(Company, comp.id)
@@ -515,6 +533,7 @@ def render_invoice_editor(session, comp, d):
             invoice = Invoice(
                 customer_id=customer.id,
                 nr=company.next_invoice_nr,
+                title=title_value,
                 date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
                 total_brutto=brutto,
                 status='Offen'
@@ -567,6 +586,7 @@ def render_invoice_create(session, comp):
                 ui.label('Rechnungsdaten').classes(C_SECTION_TITLE + " mb-4")
                 template_select = ui.select(templates, value=templates[0], label='Vorlage').classes(C_INPUT)
                 selected_customer = ui.select(customer_options, label='Kunde').classes(C_INPUT)
+                title_input = ui.input('Titel', value='Rechnung').classes(C_INPUT)
                 invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT)
                 intro_text = ui.textarea('Einleitungstext').classes(C_INPUT)
 
@@ -658,6 +678,9 @@ def render_invoice_create(session, comp):
                         return False
                     return True
 
+                def requires_gutschrift_confirmation():
+                    return 'gutschrift' in (title_input.value or '').strip().lower()
+
                 with ui.dialog() as mail_dialog, ui.card().classes(C_CARD + " p-5"):
                     ui.label('Rechnung per E-Mail senden?').classes(C_SECTION_TITLE + " mb-2")
                     mail_info = ui.label('').classes('text-xs text-slate-500 mb-3')
@@ -694,11 +717,19 @@ def render_invoice_create(session, comp):
                     ui.button('E-Mail senden', icon='mail', on_click=lambda: send_action['fn']()).classes(C_BTN_PRIM)
                     ui.button('Überspringen', on_click=skip_send).classes(C_BTN_SEC)
 
+                with ui.dialog() as gutschrift_dialog, ui.card().classes(C_CARD + " p-5"):
+                    ui.label('Gutschrift bestätigen').classes(C_SECTION_TITLE + " mb-2")
+                    ui.label('Der Titel „Gutschrift“ kennzeichnet rechtlich eine Rechnungskorrektur. Bitte bestätigen, dass dieser Titel gewollt ist.').classes('text-xs text-slate-500 mb-3')
+                    with ui.row().classes('gap-3'):
+                        ui.button('Abbrechen', on_click=gutschrift_dialog.close).classes(C_BTN_SEC)
+                        ui.button('Bestätigen', icon='check', on_click=lambda: finalize_invoice(force_confirmed=True)).classes(C_BTN_PRIM)
+
                 def save_draft():
                     if not selected_customer.value:
                         return ui.notify('Bitte Kunde auswählen', color='red')
 
                     _, brutto = calc_totals()
+                    title_value = (title_input.value or '').strip() or 'Rechnung'
 
                     with Session(engine) as inner:
                         customer = inner.get(Customer, int(selected_customer.value))
@@ -708,6 +739,7 @@ def render_invoice_create(session, comp):
                         invoice = Invoice(
                             customer_id=customer.id,
                             nr=None,
+                            title=title_value,
                             date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
                             total_brutto=brutto,
                             status='Entwurf'
@@ -730,12 +762,16 @@ def render_invoice_create(session, comp):
                     app.storage.user['page'] = 'invoices'
                     ui.navigate.to('/')
 
-                def finalize_invoice():
+                def finalize_invoice(force_confirmed=False):
                     if not validate_finalization():
                         return
 
                     _, brutto = calc_totals()
                     ust_enabled = bool(ust_toggle.value)
+                    title_value = (title_input.value or '').strip() or 'Rechnung'
+                    if requires_gutschrift_confirmation() and not force_confirmed:
+                        gutschrift_dialog.open()
+                        return
 
                     with Session(engine) as inner:
                         company = inner.get(Company, comp.id)
@@ -746,6 +782,7 @@ def render_invoice_create(session, comp):
                         invoice = Invoice(
                             customer_id=customer.id,
                             nr=company.next_invoice_nr,
+                            title=title_value,
                             date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
                             total_brutto=brutto,
                             status='Offen'
