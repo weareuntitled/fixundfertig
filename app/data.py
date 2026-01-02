@@ -1,10 +1,17 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
+from sqlalchemy import event, inspect
 from typing import Optional, List
+from datetime import datetime
 import pandas as pd
 import io
 import os
 
 # --- DB MODELLE ---
+class InvoiceStatus(str, Enum):
+    DRAFT = "DRAFT"
+    FINALIZED = "FINALIZED"
+    CANCELLED = "CANCELLED"
+
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = "DanEP"
@@ -17,6 +24,7 @@ class Company(SQLModel, table=True):
     phone: str = ""
     iban: str = ""
     tax_id: str = ""
+    vat_id: str = ""
     smtp_server: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
@@ -34,6 +42,11 @@ class Customer(SQLModel, table=True):
     strasse: str = ""
     plz: str = ""
     ort: str = ""
+    vat_id: str = ""
+    recipient_name: str = ""
+    recipient_street: str = ""
+    recipient_postal_code: str = ""
+    recipient_city: str = ""
     offen_eur: float = 0.0
     
     @property
@@ -45,7 +58,13 @@ class Invoice(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_id: int = Field(foreign_key="customer.id")
     nr: Optional[int] = None 
+    title: str = "Rechnung"
     date: str
+    delivery_date: str = ""
+    recipient_name: str = ""
+    recipient_street: str = ""
+    recipient_postal_code: str = ""
+    recipient_city: str = ""
     total_brutto: float
     status: str = "Entwurf"
     pdf_bytes: Optional[bytes] = Field(default=None)
@@ -58,6 +77,14 @@ class InvoiceItem(SQLModel, table=True):
     description: str
     quantity: float
     unit_price: float
+
+class AuditLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    user_id: Optional[int] = Field(default=None)
+    action: str
+    invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
+    ip_address: str = ""
 
 class Expense(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -74,6 +101,19 @@ os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
 SQLModel.metadata.create_all(engine)
+
+@event.listens_for(Session, "before_flush")
+def prevent_finalized_invoice_updates(session, flush_context, instances):
+    for obj in session.dirty:
+        if isinstance(obj, Invoice):
+            state = inspect(obj)
+            if not state.persistent:
+                continue
+            history = state.attrs.status.history
+            old_status = history.deleted[0] if history.deleted else obj.status
+            new_status = history.added[0] if history.added else obj.status
+            if old_status == InvoiceStatus.FINALIZED and new_status != InvoiceStatus.CANCELLED:
+                raise ValueError("FINALIZED invoices are immutable.")
 
 def ensure_company_schema():
     with engine.connect() as conn:
@@ -94,6 +134,8 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN phone TEXT DEFAULT ''")
         if "tax_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN tax_id TEXT DEFAULT ''")
+        if "vat_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN vat_id TEXT DEFAULT ''")
         if "smtp_server" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_server TEXT DEFAULT ''")
         if "smtp_port" not in columns:
@@ -110,6 +152,16 @@ ensure_company_schema()
 def ensure_customer_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(customer)").fetchall()}
+        if "vat_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN vat_id TEXT DEFAULT ''")
+        if "recipient_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_name TEXT DEFAULT ''")
+        if "recipient_street" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_street TEXT DEFAULT ''")
+        if "recipient_postal_code" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
+        if "recipient_city" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_city TEXT DEFAULT ''")
         if "offen_eur" not in columns:
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
 
@@ -138,6 +190,30 @@ def ensure_expense_schema():
             conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN webhook_url TEXT DEFAULT ''")
 
 ensure_expense_schema()
+
+def ensure_audit_log_schema():
+    with engine.connect() as conn:
+        conn.exec_driver_sql(
+            "CREATE TRIGGER IF NOT EXISTS auditlog_no_update "
+            "BEFORE UPDATE ON auditlog "
+            "BEGIN SELECT RAISE(ABORT, 'Audit log is append-only'); END;"
+        )
+        conn.exec_driver_sql(
+            "CREATE TRIGGER IF NOT EXISTS auditlog_no_delete "
+            "BEFORE DELETE ON auditlog "
+            "BEGIN SELECT RAISE(ABORT, 'Audit log is append-only'); END;"
+        )
+
+ensure_audit_log_schema()
+
+def log_audit_action(session, action, invoice_id=None, user_id=None, ip_address=""):
+    entry = AuditLog(
+        user_id=user_id,
+        action=action,
+        invoice_id=invoice_id,
+        ip_address=ip_address or ""
+    )
+    session.add(entry)
 
 # --- IMPORT LOGIC ---
 def load_customer_import_dataframe(content, filename=""):
@@ -242,7 +318,8 @@ def process_invoice_import(content, session, comp_id, filename=""):
                 cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
             if not cust: continue
             status = "Offen"
-            if str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']: status = "Entwurf"
+            is_storniert = str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']
+            if is_storniert: status = "Entwurf"
             if str(row.get('Zahldatum', '')).strip(): status = "Bezahlt"
             inv = Invoice(
                 customer_id=cust.id,
@@ -252,6 +329,9 @@ def process_invoice_import(content, session, comp_id, filename=""):
                 status=status
             )
             session.add(inv)
+            session.flush()
+            if is_storniert:
+                log_audit_action(session, "STORNIRT", invoice_id=inv.id)
             count += 1
         except: continue
     session.commit()
