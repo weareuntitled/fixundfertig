@@ -1,12 +1,15 @@
 from nicegui import ui, app, events
 from sqlmodel import Session, select
 from datetime import datetime
+import base64
 from email.message import EmailMessage
 import smtplib
 from fpdf import FPDF
 import os
 
 from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import
+from renderer import generate_html, to_png
+from pydantic import BaseModel
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
     C_BADGE_GREEN, C_BADGE_BLUE, C_BADGE_GRAY, C_PAGE_TITLE, C_SECTION_TITLE,
@@ -555,270 +558,204 @@ def render_invoice_editor(session, comp, d):
 
 def render_invoice_create(session, comp):
     ui.label('Rechnung erstellen').classes(C_PAGE_TITLE + " mb-4")
-    customers = session.exec(select(Customer)).all()
-    customer_options = {str(c.id): c.display_name for c in customers}
-    templates = ['Standard', 'Dienstleistung', 'Beratung']
 
-    last_pdf_path = app.storage.user.get('last_invoice_pdf')
+    class PreviewAddress(BaseModel):
+        name: str = ""
+        street: str = ""
+        postal_code: str = ""
+        city: str = ""
+        country: str = ""
+        email: str = ""
 
-    with ui.row().classes('w-full gap-6 items-start flex-wrap md:flex-nowrap'):
-        with ui.column().classes('w-full md:w-[680px] gap-4'):
-            with ui.card().classes(C_CARD + " p-6 w-full"):
-                ui.label('Rechnungsdaten').classes(C_SECTION_TITLE + " mb-4")
-                template_select = ui.select(templates, value=templates[0], label='Vorlage').classes(C_INPUT)
-                selected_customer = ui.select(customer_options, label='Kunde').classes(C_INPUT)
-                invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT)
-                intro_text = ui.textarea('Einleitungstext').classes(C_INPUT)
+    class PreviewLineItem(BaseModel):
+        description: str = ""
+        quantity: float = 1.0
+        unit_price: float = 0.0
 
-            with ui.card().classes(C_CARD + " p-6 w-full"):
-                ui.label('Rechnungsposten').classes(C_SECTION_TITLE + " mb-4")
-                items = []
-                totals_netto = ui.label('0,00 €').classes('font-mono text-sm text-slate-700')
-                totals_brutto = ui.label('0,00 €').classes('font-mono text-sm text-slate-900 font-semibold')
-                brutto_label = ui.label('Brutto (inkl. 19% USt)').classes('text-xs text-slate-500')
-                ust_toggle = ui.checkbox('USt berechnen (19%)', value=True).classes('text-sm text-slate-600')
-                items_container = ui.column().classes('w-full gap-3 mt-3')
+    class PreviewInvoice(BaseModel):
+        number: str = ""
+        date: str = ""
+        due_date: str = ""
+        issuer: PreviewAddress
+        recipient: PreviewAddress
+        line_items: list[PreviewLineItem]
+        notes: str = ""
+        currency: str = "€"
+        tax_rate: float = 0.0
 
-                def calc_totals():
-                    netto = 0.0
-                    ust_enabled = bool(ust_toggle.value)
-                    for item in items:
-                        qty = float(item['qty'].value or 0)
-                        price = float(item['price'].value or 0)
-                        is_brutto = bool(item['is_brutto'].value)
-                        unit_netto = price
-                        if ust_enabled and is_brutto:
-                            unit_netto = price / 1.19
-                        netto += qty * unit_netto
-                    brutto = netto * (1.19 if ust_enabled else 1.0)
-                    totals_netto.set_text(f"{netto:,.2f} €")
-                    totals_brutto.set_text(f"{brutto:,.2f} €")
-                    brutto_label.set_text('Brutto (inkl. 19% USt)' if ust_enabled else 'Brutto')
-                    return netto, brutto
+    invoice_state = {
+        'number': 'RE-0001',
+        'date': datetime.now().strftime('%Y-%m-%d'),
+        'due_date': '',
+        'issuer': {
+            'name': '',
+            'street': '',
+            'postal_code': '',
+            'city': '',
+            'country': '',
+            'email': '',
+        },
+        'recipient': {
+            'name': '',
+            'street': '',
+            'postal_code': '',
+            'city': '',
+            'country': '',
+            'email': '',
+        },
+        'line_items': [],
+        'notes': '',
+        'currency': '€',
+        'tax_rate': 0.19,
+    }
 
-                def remove_item(item):
-                    items.remove(item)
-                    item['row'].delete()
-                    calc_totals()
+    preview_timer = {'handle': None}
 
-                def add_item():
-                    item = {}
-                    with items_container:
-                        with ui.row().classes('w-full gap-3 items-end flex-wrap') as row:
-                            desc = ui.input('Beschreibung').classes(C_INPUT + " flex-1 min-w-[220px]")
-                            qty = ui.number('Menge', value=1, format='%.2f').classes(C_INPUT + " w-28 min-w-[110px]")
-                            price = ui.number('Einzelpreis', value=0, format='%.2f').classes(C_INPUT + " w-32 min-w-[140px]")
-                            is_brutto = ui.checkbox('Brutto', value=False).classes('text-xs text-slate-500')
-                            ui.button('Entfernen', on_click=lambda: remove_item(item)).classes(C_BTN_SEC)
-                    item.update({'row': row, 'desc': desc, 'qty': qty, 'price': price, 'is_brutto': is_brutto})
-                    items.append(item)
-                    qty.on('change', calc_totals)
-                    price.on('change', calc_totals)
-                    is_brutto.on('change', calc_totals)
-                    calc_totals()
+    def update_preview():
+        invoice = PreviewInvoice(
+            number=invoice_state['number'],
+            date=invoice_state['date'],
+            due_date=invoice_state['due_date'],
+            issuer=PreviewAddress(**invoice_state['issuer']),
+            recipient=PreviewAddress(**invoice_state['recipient']),
+            line_items=[
+                PreviewLineItem(
+                    description=item.get('description', ''),
+                    quantity=float(item.get('quantity') or 0),
+                    unit_price=float(item.get('unit_price') or 0),
+                )
+                for item in invoice_state['line_items']
+            ],
+            notes=invoice_state['notes'],
+            currency=invoice_state['currency'],
+            tax_rate=float(invoice_state['tax_rate'] or 0),
+        )
+        html_content = generate_html(invoice)
+        png_bytes = to_png(html_content)
+        b64_string = base64.b64encode(png_bytes).decode('utf-8')
+        preview_image.source = f"data:image/png;base64,{b64_string}"
 
-                ui.button('Posten hinzufügen', icon='add', on_click=add_item).classes(C_BTN_SEC + " w-fit")
-                ust_toggle.on('change', calc_totals)
+    def schedule_preview():
+        if preview_timer['handle']:
+            preview_timer['handle'].cancel()
+        preview_timer['handle'] = ui.timer(0.5, update_preview, once=True)
 
-                with ui.row().classes('w-full justify-end gap-6 mt-4'):
-                    with ui.column().classes('items-end'):
-                        ui.label('Netto').classes('text-xs text-slate-500')
-                        totals_netto
-                    with ui.column().classes('items-end'):
-                        brutto_label
-                        totals_brutto
+    with ui.splitter().classes('w-full h-[760px]') as splitter:
+        with splitter.before:
+            with ui.scroll_area().classes('w-full h-full pr-4'):
+                with ui.column().classes('w-full gap-4'):
+                    ui.label('Rechnungsdaten').classes(C_SECTION_TITLE)
+                    number_input = ui.input('Rechnungsnummer').classes(C_INPUT)
+                    number_input.bind_value(invoice_state, 'number')
+                    number_input.on('change', lambda _: schedule_preview())
 
-            with ui.card().classes(C_CARD + " p-6 w-full"):
-                ui.label('Aktionen').classes(C_SECTION_TITLE + " mb-4")
-                send_after_finalize = ui.checkbox('E-Mail nach Finalisieren anbieten', value=True).classes('text-sm text-slate-600 mb-2')
+                    date_input = ui.input('Datum').classes(C_INPUT)
+                    date_input.bind_value(invoice_state, 'date')
+                    date_input.on('change', lambda _: schedule_preview())
 
-                def validate_finalization():
-                    if not selected_customer.value:
-                        ui.notify('Bitte Kunde auswählen', color='red')
-                        return False
-                    if not invoice_date.value:
-                        ui.notify('Bitte Datum angeben', color='red')
-                        return False
-                    if not items:
-                        ui.notify('Bitte mindestens einen Posten hinzufügen', color='red')
-                        return False
-                    for item in items:
-                        desc = (item['desc'].value or '').strip()
-                        qty = float(item['qty'].value or 0)
-                        price = float(item['price'].value or 0)
-                        if not desc:
-                            ui.notify('Bitte Beschreibung ausfüllen', color='red')
-                            return False
-                        if qty <= 0 or price <= 0:
-                            ui.notify('Bitte gültige Beträge eingeben', color='red')
-                            return False
-                    netto, _ = calc_totals()
-                    if netto <= 0:
-                        ui.notify('Bitte gültige Beträge eingeben', color='red')
-                        return False
-                    return True
+                    due_date_input = ui.input('Fälligkeitsdatum').classes(C_INPUT)
+                    due_date_input.bind_value(invoice_state, 'due_date')
+                    due_date_input.on('change', lambda _: schedule_preview())
 
-                with ui.dialog() as mail_dialog, ui.card().classes(C_CARD + " p-5"):
-                    ui.label('Rechnung per E-Mail senden?').classes(C_SECTION_TITLE + " mb-2")
-                    mail_info = ui.label('').classes('text-xs text-slate-500 mb-3')
-                    send_action = {'fn': lambda: None}
-                    def skip_send():
-                        mail_dialog.close()
-                        app.storage.user['page'] = 'invoices'
-                        ui.navigate.to('/')
+                    currency_input = ui.input('Währung').classes(C_INPUT)
+                    currency_input.bind_value(invoice_state, 'currency')
+                    currency_input.on('change', lambda _: schedule_preview())
 
-                    def send_invoice_email(company, customer, invoice, pdf_path):
-                        if not customer.email:
-                            return ui.notify('Kunde hat keine E-Mail-Adresse', color='red')
-                        if not company.smtp_server or not company.smtp_user or not company.smtp_password:
-                            return ui.notify('SMTP Einstellungen fehlen', color='red')
-                        msg = EmailMessage()
-                        msg['Subject'] = f"Rechnung {invoice.nr}"
-                        msg['From'] = company.smtp_user
-                        msg['To'] = customer.email
-                        msg.set_content(f"Guten Tag {customer.display_name},\n\nim Anhang finden Sie Ihre Rechnung {invoice.nr}.\n\nViele Grüße\n{company.name}")
-                        with open(pdf_path, 'rb') as f:
-                            msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=os.path.basename(pdf_path))
-                        try:
-                            with smtplib.SMTP(company.smtp_server, company.smtp_port) as server:
-                                server.starttls()
-                                server.login(company.smtp_user, company.smtp_password)
-                                server.send_message(msg)
-                            ui.notify('E-Mail versendet', color='green')
-                            mail_dialog.close()
-                            app.storage.user['page'] = 'invoices'
-                            ui.navigate.to('/')
-                        except Exception:
-                            ui.notify('E-Mail Versand fehlgeschlagen', color='red')
+                    tax_rate_input = ui.number('Steuersatz', format='%.2f').classes(C_INPUT)
+                    tax_rate_input.bind_value(invoice_state, 'tax_rate')
+                    tax_rate_input.on('change', lambda _: schedule_preview())
 
-                    ui.button('E-Mail senden', icon='mail', on_click=lambda: send_action['fn']()).classes(C_BTN_PRIM)
-                    ui.button('Überspringen', on_click=skip_send).classes(C_BTN_SEC)
+                    ui.separator()
+                    ui.label('Aussteller').classes(C_SECTION_TITLE)
+                    issuer_name = ui.input('Name').classes(C_INPUT)
+                    issuer_name.bind_value(invoice_state['issuer'], 'name')
+                    issuer_name.on('change', lambda _: schedule_preview())
 
-                def save_draft():
-                    if not selected_customer.value:
-                        return ui.notify('Bitte Kunde auswählen', color='red')
+                    issuer_street = ui.input('Straße').classes(C_INPUT)
+                    issuer_street.bind_value(invoice_state['issuer'], 'street')
+                    issuer_street.on('change', lambda _: schedule_preview())
 
-                    _, brutto = calc_totals()
+                    issuer_postal = ui.input('PLZ').classes(C_INPUT)
+                    issuer_postal.bind_value(invoice_state['issuer'], 'postal_code')
+                    issuer_postal.on('change', lambda _: schedule_preview())
 
-                    with Session(engine) as inner:
-                        customer = inner.get(Customer, int(selected_customer.value))
-                        if not customer:
-                            return ui.notify('Fehlende Daten', color='red')
+                    issuer_city = ui.input('Ort').classes(C_INPUT)
+                    issuer_city.bind_value(invoice_state['issuer'], 'city')
+                    issuer_city.on('change', lambda _: schedule_preview())
 
-                        invoice = Invoice(
-                            customer_id=customer.id,
-                            nr=None,
-                            date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
-                            total_brutto=brutto,
-                            status='Entwurf'
-                        )
-                        inner.add(invoice)
-                        inner.commit()
-                        inner.refresh(invoice)
+                    issuer_country = ui.input('Land').classes(C_INPUT)
+                    issuer_country.bind_value(invoice_state['issuer'], 'country')
+                    issuer_country.on('change', lambda _: schedule_preview())
 
-                        for item in items:
-                            inner.add(InvoiceItem(
-                                invoice_id=invoice.id,
-                                description=item['desc'].value or '',
-                                quantity=float(item['qty'].value or 0),
-                                unit_price=float(item['price'].value or 0)
-                            ))
+                    issuer_email = ui.input('E-Mail').classes(C_INPUT)
+                    issuer_email.bind_value(invoice_state['issuer'], 'email')
+                    issuer_email.on('change', lambda _: schedule_preview())
 
-                        inner.commit()
+                    ui.separator()
+                    ui.label('Empfänger').classes(C_SECTION_TITLE)
+                    recipient_name = ui.input('Name').classes(C_INPUT)
+                    recipient_name.bind_value(invoice_state['recipient'], 'name')
+                    recipient_name.on('change', lambda _: schedule_preview())
 
-                    ui.notify('Entwurf gespeichert', color='green')
-                    app.storage.user['page'] = 'invoices'
-                    ui.navigate.to('/')
+                    recipient_street = ui.input('Straße').classes(C_INPUT)
+                    recipient_street.bind_value(invoice_state['recipient'], 'street')
+                    recipient_street.on('change', lambda _: schedule_preview())
 
-                def finalize_invoice():
-                    if not validate_finalization():
-                        return
+                    recipient_postal = ui.input('PLZ').classes(C_INPUT)
+                    recipient_postal.bind_value(invoice_state['recipient'], 'postal_code')
+                    recipient_postal.on('change', lambda _: schedule_preview())
 
-                    _, brutto = calc_totals()
-                    ust_enabled = bool(ust_toggle.value)
+                    recipient_city = ui.input('Ort').classes(C_INPUT)
+                    recipient_city.bind_value(invoice_state['recipient'], 'city')
+                    recipient_city.on('change', lambda _: schedule_preview())
 
-                    with Session(engine) as inner:
-                        company = inner.get(Company, comp.id)
-                        customer = inner.get(Customer, int(selected_customer.value))
-                        if not company or not customer:
-                            return ui.notify('Fehlende Daten', color='red')
+                    recipient_country = ui.input('Land').classes(C_INPUT)
+                    recipient_country.bind_value(invoice_state['recipient'], 'country')
+                    recipient_country.on('change', lambda _: schedule_preview())
 
-                        invoice = Invoice(
-                            customer_id=customer.id,
-                            nr=company.next_invoice_nr,
-                            date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
-                            total_brutto=brutto,
-                            status='Offen'
-                        )
-                        inner.add(invoice)
-                        inner.commit()
-                        inner.refresh(invoice)
+                    recipient_email = ui.input('E-Mail').classes(C_INPUT)
+                    recipient_email.bind_value(invoice_state['recipient'], 'email')
+                    recipient_email.on('change', lambda _: schedule_preview())
 
-                        for item in items:
-                            inner.add(InvoiceItem(
-                                invoice_id=invoice.id,
-                                description=item['desc'].value or '',
-                                quantity=float(item['qty'].value or 0),
-                                unit_price=float(item['price'].value or 0)
-                            ))
+                    ui.separator()
+                    ui.label('Positionen').classes(C_SECTION_TITLE)
+                    items_container = ui.column().classes('w-full gap-3')
 
-                        company.next_invoice_nr += 1
-                        inner.add(company)
-                        inner.commit()
+                    def render_line_item(item_state):
+                        with items_container:
+                            with ui.row().classes('w-full gap-3 items-end flex-wrap'):
+                                desc_input = ui.input('Beschreibung').classes(C_INPUT + " flex-1 min-w-[200px]")
+                                desc_input.bind_value(item_state, 'description')
+                                desc_input.on('change', lambda _: schedule_preview())
 
-                        pdf_items = []
-                        for item in items:
-                            pdf_items.append({
-                                'desc': item['desc'].value or '',
-                                'qty': float(item['qty'].value or 0),
-                                'price': float(item['price'].value or 0),
-                                'is_brutto': bool(item['is_brutto'].value),
-                            })
-                        pdf_path = generate_invoice_pdf(
-                            company,
-                            customer,
-                            invoice,
-                            pdf_items,
-                            apply_ustg19=not ust_enabled,
-                            template_name=template_select.value or '',
-                            intro_text=intro_text.value or ''
-                        )
+                                qty_input = ui.number('Menge', format='%.2f').classes(C_INPUT + " w-28")
+                                qty_input.bind_value(item_state, 'quantity')
+                                qty_input.on('change', lambda _: schedule_preview())
 
-                    ui.notify('Rechnung erstellt', color='green')
-                    app.storage.user['last_invoice_pdf'] = pdf_path
-                    render_preview(pdf_path)
-                    if send_after_finalize.value:
-                        mail_info.set_text(f"Empfänger: {customer.email or 'Keine E-Mail hinterlegt'}")
-                        send_action['fn'] = lambda c=company, cu=customer, i=invoice, p=pdf_path: send_invoice_email(c, cu, i, p)
-                        mail_dialog.open()
-                    else:
-                        app.storage.user['page'] = 'invoices'
-                        ui.navigate.to('/')
+                                price_input = ui.number('Einzelpreis', format='%.2f').classes(C_INPUT + " w-32")
+                                price_input.bind_value(item_state, 'unit_price')
+                                price_input.on('change', lambda _: schedule_preview())
 
-                def cancel_editor():
-                    app.storage.user['page'] = 'invoices'
-                    ui.navigate.to('/')
+                    def add_line_item():
+                        item_state = {'description': '', 'quantity': 1.0, 'unit_price': 0.0}
+                        invoice_state['line_items'].append(item_state)
+                        render_line_item(item_state)
+                        schedule_preview()
 
-                with ui.row().classes('w-full justify-end gap-2 mt-4'):
-                    ui.button('Abbrechen', on_click=cancel_editor).classes(C_BTN_SEC)
-                    ui.button('Entwurf speichern', icon='save', on_click=save_draft).classes(C_BTN_SEC)
-                    ui.button('Finalisieren & Buchen', icon='check', on_click=finalize_invoice).classes(C_BTN_PRIM)
+                    ui.button('+', on_click=add_line_item).classes(C_BTN_SEC + " w-fit")
 
-        with ui.column().classes('w-full md:flex-1 gap-4'):
-            with ui.card().classes(C_CARD + " p-6 w-full"):
-                ui.label('PDF Vorschau').classes(C_SECTION_TITLE + " mb-4")
-                preview_container = ui.column().classes('w-full gap-3')
+                    ui.separator()
+                    notes_input = ui.textarea('Hinweise').classes(C_INPUT)
+                    notes_input.bind_value(invoice_state, 'notes')
+                    notes_input.on('change', lambda _: schedule_preview())
 
-                def render_preview(pdf_path):
-                    preview_container.clear()
-                    if pdf_path and os.path.exists(pdf_path):
-                        with preview_container:
-                            ui.pdf(pdf_path).classes('w-full h-[650px]')
-                            ui.button('Download', icon='download', on_click=lambda p=pdf_path: ui.download(p)).classes(C_BTN_SEC + " w-fit")
-                    else:
-                        ui.label('Keine Vorschau verfügbar').classes('text-slate-400 text-sm')
+        with splitter.after:
+            with ui.card().classes(C_CARD + " p-6 w-full h-full"):
+                ui.label('Vorschau').classes(C_SECTION_TITLE + " mb-4")
+                preview_image = ui.image().classes('w-full')
 
-                render_preview(last_pdf_path)
+    add_line_item()
+    schedule_preview()
 
 def render_invoices(session, comp):
     with ui.row().classes('w-full justify-between items-center mb-6'):
