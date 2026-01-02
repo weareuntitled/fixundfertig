@@ -75,6 +75,24 @@ os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
 SQLModel.metadata.create_all(engine)
 
+def ensure_company_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
+        if "tax_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN tax_id TEXT DEFAULT ''")
+        if "smtp_server" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_server TEXT DEFAULT ''")
+        if "smtp_port" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_port INTEGER DEFAULT 587")
+        if "smtp_user" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_user TEXT DEFAULT ''")
+        if "smtp_password" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_password TEXT DEFAULT ''")
+        if "next_invoice_nr" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
+
+ensure_company_schema()
+
 # --- IMPORT LOGIC ---
 def process_customer_import(content, session, comp_id):
     try: df = pd.read_csv(io.BytesIO(content))
