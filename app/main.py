@@ -194,7 +194,7 @@ def index():
             comp = session.exec(select(Company)).first()
             if page == 'dashboard': render_dashboard(session, comp)
             elif page == 'customers': render_customers(session, comp)
-            elif page == 'invoices': render_invoices(session, comp)
+            elif page == 'invoices': render_invoice_editor(session, comp)
             elif page == 'expenses': render_expenses(session, comp)
             elif page == 'settings': render_settings(session, comp)
 
@@ -273,7 +273,7 @@ def render_customers(session, comp):
                         ui.icon('place', size='xs')
                         ui.label(f"{c.plz} {c.ort}")
 
-def generate_invoice_pdf(company, customer, invoice, items):
+def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -303,10 +303,11 @@ def generate_invoice_pdf(company, customer, invoice, items):
 
     pdf.set_font("Helvetica", size=10)
     netto = 0.0
+    tax_rate = 0.0 if apply_ustg19 else 0.19
     for item in items:
-        desc = item['desc'].value or ''
-        qty = float(item['qty'].value or 0)
-        price = float(item['price'].value or 0)
+        desc = item['desc'] or ''
+        qty = float(item['qty'] or 0)
+        price = float(item['price'] or 0)
         total = qty * price
         netto += total
         pdf.cell(100, 8, desc[:45])
@@ -314,13 +315,18 @@ def generate_invoice_pdf(company, customer, invoice, items):
         pdf.cell(30, 8, f"{price:,.2f} €", align="R")
         pdf.cell(30, 8, f"{total:,.2f} €", align="R", ln=True)
 
-    brutto = netto * 1.19
+    brutto = netto * (1 + tax_rate)
     pdf.ln(4)
     pdf.set_font("Helvetica", style="B", size=11)
     pdf.cell(160, 8, "Netto", align="R")
     pdf.cell(30, 8, f"{netto:,.2f} €", align="R", ln=True)
-    pdf.cell(160, 8, "Brutto (inkl. 19% USt)", align="R")
+    pdf.cell(160, 8, "Brutto" if apply_ustg19 else "Brutto (inkl. 19% USt)", align="R")
     pdf.cell(30, 8, f"{brutto:,.2f} €", align="R", ln=True)
+
+    if apply_ustg19:
+        pdf.ln(6)
+        pdf.set_font("Helvetica", size=9)
+        pdf.multi_cell(0, 6, "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.")
 
     pdf_path = f"./storage/invoices/invoice_{invoice.nr}.pdf"
     pdf.output(pdf_path)
@@ -532,11 +538,11 @@ def render_invoices(session, comp):
         with ui.dialog() as d, ui.card().classes(C_CARD + " w-[900px]"):
             render_invoice_editor(session, comp, d)
 
+            apply_ustg19.on('change', calc_totals)
+
         ui.button('Rechnung erstellen', icon='add', on_click=d.open).classes(C_BTN_PRIM)
     invs = session.exec(select(Invoice)).all()
-    
-    with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
-        # MANUELLE TABELLEN KOPFZEILE (Kein ui.table mehr!)
+    with ui.card().classes(C_CARD + " p-0 overflow-hidden mt-8"):
         with ui.row().classes('w-full bg-slate-50 border-b border-slate-200 p-4 gap-4'):
             ui.label('Status').classes('w-24 font-medium text-slate-500 text-sm')
             ui.label('Nr').classes('w-16 font-medium text-slate-500 text-sm')
@@ -545,25 +551,23 @@ def render_invoices(session, comp):
             ui.label('Betrag').classes('w-24 text-right font-medium text-slate-500 text-sm')
             ui.label('PDF').classes('w-24 text-right font-medium text-slate-500 text-sm')
 
-        # MANUELLE REIHEN
         with ui.column().classes('w-full gap-0'):
             for i in invs:
                 with ui.row().classes('w-full p-4 border-b border-slate-50 items-center gap-4 hover:bg-slate-50'):
-                    # Badge
                     style = C_BADGE_GRAY
                     if i.status == 'Offen': style = C_BADGE_BLUE
                     if i.status == 'Bezahlt': style = C_BADGE_GREEN
                     ui.label(i.status).classes(style + " w-24")
-                    
+
                     ui.label(f"#{i.nr}" if i.nr else "-").classes('w-16 text-slate-600 font-mono text-sm')
                     ui.label(i.date).classes('w-24 text-slate-600 text-sm')
-                    
+
                     cname = "Unbekannt"
                     if i.customer_id:
                         cust = session.get(Customer, i.customer_id)
                         if cust: cname = cust.display_name
                     ui.label(cname).classes('flex-1 font-medium text-slate-900 text-sm truncate')
-                    
+
                     ui.label(f"{i.total_brutto:,.2f} €").classes('w-24 text-right font-mono font-medium text-sm')
                     pdf_path = f"./storage/invoices/invoice_{i.nr}.pdf"
                     with ui.row().classes('w-24 justify-end'):
