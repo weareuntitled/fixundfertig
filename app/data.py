@@ -8,6 +8,13 @@ import os
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = "DanEP"
+    first_name: str = ""
+    last_name: str = ""
+    street: str = ""
+    postal_code: str = ""
+    city: str = ""
+    email: str = ""
+    phone: str = ""
     iban: str = ""
     tax_id: str = ""
     smtp_server: str = ""
@@ -67,6 +74,20 @@ SQLModel.metadata.create_all(engine)
 def ensure_company_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
+        if "first_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN first_name TEXT DEFAULT ''")
+        if "last_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN last_name TEXT DEFAULT ''")
+        if "street" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN street TEXT DEFAULT ''")
+        if "postal_code" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN postal_code TEXT DEFAULT ''")
+        if "city" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN city TEXT DEFAULT ''")
+        if "email" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN email TEXT DEFAULT ''")
+        if "phone" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN phone TEXT DEFAULT ''")
         if "tax_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN tax_id TEXT DEFAULT ''")
         if "smtp_server" not in columns:

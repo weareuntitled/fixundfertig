@@ -123,6 +123,16 @@ def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False):
     pdf.set_font("Helvetica", size=12)
 
     pdf.cell(0, 10, f"{company.name}", ln=True)
+    if company.first_name or company.last_name:
+        pdf.cell(0, 8, f"{company.first_name} {company.last_name}".strip(), ln=True)
+    if company.street:
+        pdf.cell(0, 8, f"{company.street}", ln=True)
+    if company.postal_code or company.city:
+        pdf.cell(0, 8, f"{company.postal_code} {company.city}".strip(), ln=True)
+    if company.email:
+        pdf.cell(0, 8, f"E-Mail: {company.email}", ln=True)
+    if company.phone:
+        pdf.cell(0, 8, f"Tel.: {company.phone}", ln=True)
     if company.iban:
         pdf.cell(0, 8, f"IBAN: {company.iban}", ln=True)
     if company.tax_id:
@@ -184,6 +194,13 @@ def render_settings(session, comp):
         with ui.column().classes('w-full gap-4'):
             ui.label('Unternehmensdaten').classes(C_SECTION_TITLE)
             name_input = ui.input('Firmenname', value=comp.name).classes(C_INPUT)
+            first_name_input = ui.input('Vorname', value=comp.first_name).classes(C_INPUT)
+            last_name_input = ui.input('Nachname', value=comp.last_name).classes(C_INPUT)
+            street_input = ui.input('Straße', value=comp.street).classes(C_INPUT)
+            postal_code_input = ui.input('PLZ', value=comp.postal_code).classes(C_INPUT)
+            city_input = ui.input('Ort', value=comp.city).classes(C_INPUT)
+            email_input = ui.input('E-Mail', value=comp.email).classes(C_INPUT)
+            phone_input = ui.input('Telefon', value=comp.phone).classes(C_INPUT)
             iban_input = ui.input('IBAN', value=comp.iban).classes(C_INPUT)
             tax_input = ui.input('Steuernummer', value=comp.tax_id).classes(C_INPUT)
 
@@ -197,6 +214,13 @@ def render_settings(session, comp):
                 with Session(engine) as inner:
                     company = inner.get(Company, comp.id)
                     company.name = name_input.value or ''
+                    company.first_name = first_name_input.value or ''
+                    company.last_name = last_name_input.value or ''
+                    company.street = street_input.value or ''
+                    company.postal_code = postal_code_input.value or ''
+                    company.city = city_input.value or ''
+                    company.email = email_input.value or ''
+                    company.phone = phone_input.value or ''
                     company.iban = iban_input.value or ''
                     company.tax_id = tax_input.value or ''
                     company.smtp_server = smtp_server.value or ''
