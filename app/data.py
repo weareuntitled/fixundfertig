@@ -67,7 +67,9 @@ class Invoice(SQLModel, table=True):
     recipient_city: str = ""
     total_brutto: float
     status: str = "Entwurf"
-    related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
+    pdf_bytes: Optional[bytes] = Field(default=None)
+    pdf_storage: str = ""
+    pdf_filename: str = ""
 
 class InvoiceItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -168,16 +170,12 @@ ensure_customer_schema()
 def ensure_invoice_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
-        if "delivery_date" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN delivery_date TEXT DEFAULT ''")
-        if "recipient_name" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_name TEXT DEFAULT ''")
-        if "recipient_street" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_street TEXT DEFAULT ''")
-        if "recipient_postal_code" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
-        if "recipient_city" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_city TEXT DEFAULT ''")
+        if "pdf_bytes" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_bytes BLOB")
+        if "pdf_storage" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_storage TEXT DEFAULT ''")
+        if "pdf_filename" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_filename TEXT DEFAULT ''")
 
 ensure_invoice_schema()
 

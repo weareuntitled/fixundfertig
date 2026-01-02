@@ -4,8 +4,9 @@ from datetime import datetime
 import base64
 from email.message import EmailMessage
 import smtplib
-from fpdf import FPDF
 import os
+from lxml import etree
+from weasyprint import HTML, Attachment
 
 from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import, log_audit_action
 from styles import (
@@ -261,76 +262,112 @@ def render_customer_new(session, comp):
                 ui.button('Speichern', icon='save', on_click=save_customer).classes(C_BTN_PRIM)
                 ui.button('Abbrechen', icon='close', on_click=cancel).classes(C_BTN_SEC)
 
-def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False, template_name='', intro_text=''):
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=12)
-
-    pdf.cell(0, 10, f"{company.name}", ln=True)
-    if company.first_name or company.last_name:
-        pdf.cell(0, 8, f"{company.first_name} {company.last_name}".strip(), ln=True)
-    if company.street:
-        pdf.cell(0, 8, f"{company.street}", ln=True)
-    if company.postal_code or company.city:
-        pdf.cell(0, 8, f"{company.postal_code} {company.city}".strip(), ln=True)
-    if company.email:
-        pdf.cell(0, 8, f"E-Mail: {company.email}", ln=True)
-    if company.phone:
-        pdf.cell(0, 8, f"Tel.: {company.phone}", ln=True)
-    if company.iban:
-        pdf.cell(0, 8, f"IBAN: {company.iban}", ln=True)
-    if company.tax_id:
-        pdf.cell(0, 8, f"Steuernummer: {company.tax_id}", ln=True)
-    if company.vat_id:
-        pdf.cell(0, 8, f"USt-IdNr.: {company.vat_id}", ln=True)
-
-    pdf.ln(4)
-    pdf.set_font("Helvetica", size=11)
-    title = invoice.title or "Rechnung"
-    pdf.cell(0, 8, f"{title} Nr. {invoice.nr}", ln=True)
-    pdf.cell(0, 8, f"Datum: {invoice.date}", ln=True)
-    if invoice.delivery_date:
-        pdf.cell(0, 8, f"Lieferdatum: {invoice.delivery_date}", ln=True)
-    if template_name:
-        pdf.cell(0, 8, f"Vorlage: {template_name}", ln=True)
-    pdf.ln(6)
-
-    pdf.set_font("Helvetica", size=11)
-    pdf.cell(0, 8, f"Kunde: {customer.display_name}", ln=True)
-    if customer.strasse:
-        pdf.cell(0, 8, f"{customer.strasse}", ln=True)
-    if customer.plz or customer.ort:
-        pdf.cell(0, 8, f"{customer.plz} {customer.ort}", ln=True)
-    if customer.vat_id:
-        pdf.cell(0, 8, f"USt-IdNr.: {customer.vat_id}", ln=True)
-    if invoice.recipient_name:
-        pdf.cell(0, 8, f"Empfänger: {invoice.recipient_name}", ln=True)
-    if invoice.recipient_street:
-        pdf.cell(0, 8, f"{invoice.recipient_street}", ln=True)
-    if invoice.recipient_postal_code or invoice.recipient_city:
-        pdf.cell(0, 8, f"{invoice.recipient_postal_code} {invoice.recipient_city}".strip(), ln=True)
-    pdf.ln(8)
-
-    if intro_text:
-        pdf.set_font("Helvetica", size=10)
-        pdf.multi_cell(0, 6, intro_text)
-        pdf.ln(4)
-
-    pdf.set_font("Helvetica", style="B", size=10)
-    pdf.cell(100, 8, "Beschreibung")
-    pdf.cell(30, 8, "Menge", align="R")
-    pdf.cell(30, 8, "Einzelpreis", align="R")
-    pdf.cell(30, 8, "Gesamt", align="R", ln=True)
-
-    pdf.set_font("Helvetica", size=10)
-    netto = 0.0
+def build_zugferd_xml(company, customer, invoice, items, apply_ustg19=False):
     tax_rate = 0.0 if apply_ustg19 else 0.19
     ust_enabled = not apply_ustg19
+    netto = 0.0
+    line_items = []
     def item_value(val):
         if hasattr(val, 'value'):
             return val.value
         return val
+    for index, item in enumerate(items, start=1):
+        desc = item_value(item.get('desc') or '') or ''
+        qty = float(item_value(item.get('qty') or 0))
+        price = float(item_value(item.get('price') or 0))
+        is_brutto = bool(item_value(item.get('is_brutto') or False))
+        unit_netto = price
+        if ust_enabled and is_brutto:
+            unit_netto = price / 1.19
+        total = qty * unit_netto
+        netto += total
+        line_items.append({
+            'index': str(index),
+            'desc': desc,
+            'qty': qty,
+            'unit_netto': unit_netto,
+            'total': total,
+        })
+
+    brutto = netto * (1 + tax_rate)
+    nsmap = {
+        'rsm': 'urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100',
+        'ram': 'urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100',
+        'qdt': 'urn:un:unece:uncefact:data:standard:QualifiedDataType:100',
+        'udt': 'urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100',
+    }
+    root = etree.Element('{%s}CrossIndustryInvoice' % nsmap['rsm'], nsmap=nsmap)
+    context = etree.SubElement(root, '{%s}ExchangedDocumentContext' % nsmap['rsm'])
+    guideline = etree.SubElement(context, '{%s}GuidelineSpecifiedDocumentContextParameter' % nsmap['ram'])
+    etree.SubElement(guideline, '{%s}ID' % nsmap['ram']).text = 'urn:cen.eu:en16931:2017'
+
+    document = etree.SubElement(root, '{%s}ExchangedDocument' % nsmap['rsm'])
+    etree.SubElement(document, '{%s}ID' % nsmap['ram']).text = str(invoice.nr or '')
+    etree.SubElement(document, '{%s}TypeCode' % nsmap['ram']).text = '380'
+    issue_date = etree.SubElement(document, '{%s}IssueDateTime' % nsmap['ram'])
+    date_str = (invoice.date or '').replace('-', '')
+    date_time = etree.SubElement(issue_date, '{%s}DateTimeString' % nsmap['udt'])
+    date_time.set('format', '102')
+    date_time.text = date_str
+
+    transaction = etree.SubElement(root, '{%s}SupplyChainTradeTransaction' % nsmap['rsm'])
+    agreement = etree.SubElement(transaction, '{%s}ApplicableHeaderTradeAgreement' % nsmap['ram'])
+    seller = etree.SubElement(agreement, '{%s}SellerTradeParty' % nsmap['ram'])
+    etree.SubElement(seller, '{%s}Name' % nsmap['ram']).text = company.name or ''
+    if company.tax_id:
+        tax_reg = etree.SubElement(seller, '{%s}SpecifiedTaxRegistration' % nsmap['ram'])
+        etree.SubElement(tax_reg, '{%s}ID' % nsmap['ram']).text = company.tax_id
+    buyer = etree.SubElement(agreement, '{%s}BuyerTradeParty' % nsmap['ram'])
+    etree.SubElement(buyer, '{%s}Name' % nsmap['ram']).text = customer.display_name or ''
+
+    delivery = etree.SubElement(transaction, '{%s}ApplicableHeaderTradeDelivery' % nsmap['ram'])
+    etree.SubElement(delivery, '{%s}ActualDeliverySupplyChainEvent' % nsmap['ram'])
+
+    settlement = etree.SubElement(transaction, '{%s}ApplicableHeaderTradeSettlement' % nsmap['ram'])
+    etree.SubElement(settlement, '{%s}InvoiceCurrencyCode' % nsmap['ram']).text = 'EUR'
+    tax = etree.SubElement(settlement, '{%s}ApplicableTradeTax' % nsmap['ram'])
+    etree.SubElement(tax, '{%s}TypeCode' % nsmap['ram']).text = 'VAT'
+    etree.SubElement(tax, '{%s}CategoryCode' % nsmap['ram']).text = 'S'
+    etree.SubElement(tax, '{%s}RateApplicablePercent' % nsmap['ram']).text = f"{tax_rate * 100:.2f}"
+    monetary = etree.SubElement(settlement, '{%s}SpecifiedTradeSettlementHeaderMonetarySummation' % nsmap['ram'])
+    etree.SubElement(monetary, '{%s}LineTotalAmount' % nsmap['ram']).text = f"{netto:.2f}"
+    etree.SubElement(monetary, '{%s}TaxBasisTotalAmount' % nsmap['ram']).text = f"{netto:.2f}"
+    etree.SubElement(monetary, '{%s}TaxTotalAmount' % nsmap['ram']).text = f"{netto * tax_rate:.2f}"
+    etree.SubElement(monetary, '{%s}GrandTotalAmount' % nsmap['ram']).text = f"{brutto:.2f}"
+    etree.SubElement(monetary, '{%s}DuePayableAmount' % nsmap['ram']).text = f"{brutto:.2f}"
+
+    for line in line_items:
+        line_item = etree.SubElement(transaction, '{%s}IncludedSupplyChainTradeLineItem' % nsmap['ram'])
+        document_line = etree.SubElement(line_item, '{%s}AssociatedDocumentLineDocument' % nsmap['ram'])
+        etree.SubElement(document_line, '{%s}LineID' % nsmap['ram']).text = line['index']
+        product = etree.SubElement(line_item, '{%s}SpecifiedTradeProduct' % nsmap['ram'])
+        etree.SubElement(product, '{%s}Name' % nsmap['ram']).text = line['desc']
+        agreement_line = etree.SubElement(line_item, '{%s}SpecifiedLineTradeAgreement' % nsmap['ram'])
+        gross_price = etree.SubElement(agreement_line, '{%s}GrossPriceProductTradePrice' % nsmap['ram'])
+        etree.SubElement(gross_price, '{%s}ChargeAmount' % nsmap['ram']).text = f"{line['unit_netto']:.2f}"
+        delivery_line = etree.SubElement(line_item, '{%s}SpecifiedLineTradeDelivery' % nsmap['ram'])
+        qty = etree.SubElement(delivery_line, '{%s}BilledQuantity' % nsmap['ram'])
+        qty.set('unitCode', 'C62')
+        qty.text = f"{line['qty']:.2f}"
+        settlement_line = etree.SubElement(line_item, '{%s}SpecifiedLineTradeSettlement' % nsmap['ram'])
+        line_tax = etree.SubElement(settlement_line, '{%s}ApplicableTradeTax' % nsmap['ram'])
+        etree.SubElement(line_tax, '{%s}TypeCode' % nsmap['ram']).text = 'VAT'
+        etree.SubElement(line_tax, '{%s}CategoryCode' % nsmap['ram']).text = 'S'
+        etree.SubElement(line_tax, '{%s}RateApplicablePercent' % nsmap['ram']).text = f"{tax_rate * 100:.2f}"
+        line_sum = etree.SubElement(settlement_line, '{%s}SpecifiedTradeSettlementLineMonetarySummation' % nsmap['ram'])
+        etree.SubElement(line_sum, '{%s}LineTotalAmount' % nsmap['ram']).text = f"{line['total']:.2f}"
+
+    return etree.tostring(root, xml_declaration=True, encoding='utf-8', pretty_print=True)
+
+def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False, template_name='', intro_text=''):
+    tax_rate = 0.0 if apply_ustg19 else 0.19
+    ust_enabled = not apply_ustg19
+    netto = 0.0
+    def item_value(val):
+        if hasattr(val, 'value'):
+            return val.value
+        return val
+    prepared_items = []
     for item in items:
         desc = item_value(item.get('desc') or '') or ''
         qty = float(item_value(item.get('qty') or 0))
@@ -341,29 +378,82 @@ def generate_invoice_pdf(company, customer, invoice, items, apply_ustg19=False, 
             unit_netto = price / 1.19
         total = qty * unit_netto
         netto += total
-        desc_label = f"{desc[:45]}"
-        if ust_enabled and is_brutto:
-            desc_label = f"{desc_label} (Brutto)"
-        pdf.cell(100, 8, desc_label[:45])
-        pdf.cell(30, 8, f"{qty:.2f}", align="R")
-        pdf.cell(30, 8, f"{price:,.2f} €", align="R")
-        pdf.cell(30, 8, f"{total:,.2f} €", align="R", ln=True)
+        prepared_items.append({
+            'desc': desc,
+            'qty': qty,
+            'price': price,
+            'total': total,
+            'is_brutto': is_brutto,
+        })
 
     brutto = netto * (1 + tax_rate)
-    pdf.ln(4)
-    pdf.set_font("Helvetica", style="B", size=11)
-    pdf.cell(160, 8, "Netto", align="R")
-    pdf.cell(30, 8, f"{netto:,.2f} €", align="R", ln=True)
-    pdf.cell(160, 8, "Brutto" if tax_rate == 0 else "Brutto (inkl. 19% USt)", align="R")
-    pdf.cell(30, 8, f"{brutto:,.2f} €", align="R", ln=True)
-
-    if tax_rate == 0:
-        pdf.ln(6)
-        pdf.set_font("Helvetica", size=9)
-        pdf.multi_cell(0, 6, "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.")
+    html = f"""
+    <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: Helvetica, Arial, sans-serif; font-size: 12px; }}
+                h1 {{ font-size: 18px; margin-bottom: 6px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 12px; }}
+                th, td {{ border-bottom: 1px solid #ddd; padding: 6px; text-align: left; }}
+                th.right, td.right {{ text-align: right; }}
+                .muted {{ color: #555; }}
+            </style>
+        </head>
+        <body>
+            <h1>{company.name}</h1>
+            <div class="muted">
+                {(company.first_name + ' ' + company.last_name).strip()}<br>
+                {company.street}<br>
+                {(company.postal_code + ' ' + company.city).strip()}<br>
+                E-Mail: {company.email}<br>
+                Tel.: {company.phone}<br>
+                IBAN: {company.iban}<br>
+                Steuernummer: {company.tax_id}
+            </div>
+            <h2>Rechnung Nr. {invoice.nr}</h2>
+            <div>Datum: {invoice.date}</div>
+            <div>Kunde: {customer.display_name}</div>
+            <div>{customer.strasse}<br>{customer.plz} {customer.ort}</div>
+            <div>{intro_text}</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Beschreibung</th>
+                        <th class="right">Menge</th>
+                        <th class="right">Einzelpreis</th>
+                        <th class="right">Gesamt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join([f"<tr><td>{i['desc']}{' (Brutto)' if ust_enabled and i['is_brutto'] else ''}</td><td class='right'>{i['qty']:.2f}</td><td class='right'>{i['price']:,.2f} €</td><td class='right'>{i['total']:,.2f} €</td></tr>" for i in prepared_items])}
+                </tbody>
+            </table>
+            <table>
+                <tr><td class="right"><strong>Netto</strong></td><td class="right"><strong>{netto:,.2f} €</strong></td></tr>
+                <tr><td class="right"><strong>{'Brutto' if tax_rate == 0 else 'Brutto (inkl. 19% USt)'}</strong></td><td class="right"><strong>{brutto:,.2f} €</strong></td></tr>
+            </table>
+            {"<p>Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</p>" if tax_rate == 0 else ""}
+        </body>
+    </html>
+    """
+    zugferd_xml = build_zugferd_xml(company, customer, invoice, prepared_items, apply_ustg19=apply_ustg19)
+    attachment = Attachment(string=zugferd_xml, filename='factur-x.xml', description='ZUGFeRD 2.x XML', relationship='Alternative')
+    pdf_bytes = HTML(string=html).write_pdf(attachments=[attachment], pdf_variant='pdf/a-3b')
 
     pdf_path = f"./storage/invoices/invoice_{invoice.nr}.pdf"
-    pdf.output(pdf_path)
+    with open(pdf_path, 'wb') as f:
+        f.write(pdf_bytes)
+
+    with Session(engine) as inner:
+        invoice_record = inner.get(Invoice, invoice.id)
+        if invoice_record:
+            invoice_record.pdf_bytes = pdf_bytes
+            invoice_record.pdf_storage = 'db'
+            invoice_record.pdf_filename = os.path.basename(pdf_path)
+            inner.add(invoice_record)
+            inner.commit()
+
     return pdf_path
 
 def render_settings(session, comp):
@@ -1080,6 +1170,15 @@ def render_invoices(session, comp):
             ui.button('Abbrechen', on_click=correction_dialog.close).classes(C_BTN_SEC)
             ui.button('Erstellen', icon='check', on_click=confirm_correction).classes(C_BTN_PRIM)
     invs = session.exec(select(Invoice)).all()
+    def ensure_invoice_pdf_path(invoice):
+        pdf_path = f"./storage/invoices/invoice_{invoice.nr}.pdf"
+        if invoice.nr and os.path.exists(pdf_path):
+            return pdf_path
+        if invoice.nr and invoice.pdf_bytes:
+            with open(pdf_path, 'wb') as f:
+                f.write(invoice.pdf_bytes)
+            return pdf_path
+        return ""
     with ui.card().classes(C_CARD + " p-0 overflow-hidden mt-8"):
         with ui.row().classes(C_TABLE_HEADER):
             ui.label('Status').classes('w-24 font-medium text-slate-500 text-sm')
@@ -1107,15 +1206,10 @@ def render_invoices(session, comp):
                     ui.label(cname).classes('flex-1 font-semibold text-slate-900 text-sm truncate')
 
                     ui.label(f"{i.total_brutto:,.2f} €").classes('w-24 text-right font-mono font-medium text-sm')
-                    with ui.row().classes('w-28 justify-end'):
-                        if i.status != 'Entwurf':
-                            ui.button('Korrektur', icon='edit', on_click=lambda inv_id=i.id: (correction_payload.__setitem__('invoice_id', inv_id), correction_dialog.open())).classes(C_BTN_SEC + " w-full")
-                        else:
-                            ui.label('-').classes('text-slate-300 text-sm w-full text-right')
-                    pdf_path = f"./storage/invoices/invoice_{i.nr}.pdf"
+                    pdf_path = ensure_invoice_pdf_path(i)
                     with ui.row().classes('w-24 justify-end'):
-                        if i.nr and os.path.exists(pdf_path):
-                            ui.button('Download', icon='download', on_click=lambda p=pdf_path, i_id=i.id: download_invoice(p, i_id)).classes(C_BTN_SEC + " w-full")
+                        if i.nr and pdf_path and os.path.exists(pdf_path):
+                            ui.button('Download', icon='download', on_click=lambda p=pdf_path: ui.download(p)).classes(C_BTN_SEC + " w-full")
                         else:
                             ui.label('-').classes('text-slate-300 text-sm w-full text-right')
 
