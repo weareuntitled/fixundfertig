@@ -3,6 +3,8 @@ pandas
 requests
 python-dotenv
 sqlmodel
-fpdf2
+weasyprint
+jinja2
+lxml
 openpyxl
 python-multipart
