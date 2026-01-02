@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlmodel import Session, select
 
-from data import Invoice, InvoiceItem, engine
+from app.data import Invoice, InvoiceItem, engine
 
 def create_correction(original_invoice_id, use_negative_items=True):
     with Session(engine) as session:
