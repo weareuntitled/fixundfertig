@@ -1,12 +1,14 @@
 from nicegui import ui, app, events
 from sqlmodel import Session, select
 from datetime import datetime
+import base64
 from email.message import EmailMessage
 import smtplib
 from fpdf import FPDF
 import os
 
 from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import
+from services.invoices import finalize_invoice_transaction
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
     C_BADGE_GREEN, C_BADGE_BLUE, C_BADGE_GRAY, C_PAGE_TITLE, C_SECTION_TITLE,
@@ -538,23 +540,8 @@ def render_invoice_editor(session, comp, d):
                 total_brutto=brutto,
                 status='Offen'
             )
-            inner.add(invoice)
-            inner.commit()
-            inner.refresh(invoice)
-
-            for item in items:
-                inner.add(InvoiceItem(
-                    invoice_id=invoice.id,
-                    description=item['desc'].value or '',
-                    quantity=float(item['qty'].value or 0),
-                    unit_price=float(item['price'].value or 0)
-                ))
-
-            company.next_invoice_nr += 1
-            inner.add(company)
-            inner.commit()
-
-            generate_invoice_pdf(company, customer, invoice, items, apply_ustg19.value)
+        except Exception:
+            return ui.notify('Finalisierung fehlgeschlagen', color='red')
 
         ui.notify('Rechnung erstellt', color='green')
         app.storage.user['page'] = 'dashboard'
@@ -816,10 +803,13 @@ def render_invoice_create(session, comp):
                             customer,
                             invoice,
                             pdf_items,
-                            apply_ustg19=not ust_enabled,
+                            not ust_enabled,
+                            generate_invoice_pdf,
                             template_name=template_select.value or '',
                             intro_text=intro_text.value or ''
                         )
+                    except Exception:
+                        return ui.notify('Finalisierung fehlgeschlagen', color='red')
 
                     ui.notify('Rechnung erstellt', color='green')
                     app.storage.user['last_invoice_pdf'] = pdf_path

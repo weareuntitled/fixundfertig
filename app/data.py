@@ -1,4 +1,5 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
+from sqlalchemy import Column, LargeBinary
 from typing import Optional, List
 import pandas as pd
 import io
@@ -49,6 +50,8 @@ class Invoice(SQLModel, table=True):
     date: str
     total_brutto: float
     status: str = "Entwurf"
+    pdf_content: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    immutable: bool = False
 
 class InvoiceItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
