@@ -48,6 +48,9 @@ class Invoice(SQLModel, table=True):
     date: str
     total_brutto: float
     status: str = "Entwurf"
+    pdf_bytes: Optional[bytes] = Field(default=None)
+    pdf_storage: str = ""
+    pdf_filename: str = ""
 
 class InvoiceItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -111,6 +114,18 @@ def ensure_customer_schema():
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
 
 ensure_customer_schema()
+
+def ensure_invoice_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "pdf_bytes" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_bytes BLOB")
+        if "pdf_storage" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_storage TEXT DEFAULT ''")
+        if "pdf_filename" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_filename TEXT DEFAULT ''")
+
+ensure_invoice_schema()
 
 def ensure_expense_schema():
     with engine.connect() as conn:
