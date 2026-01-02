@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 
 from data import Company, engine
 from styles import C_BG, C_CONTAINER, C_HEADER, C_BRAND_BADGE, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
-from pages import render_dashboard, render_customers, render_invoices, render_expenses, render_settings
+from pages import render_dashboard, render_customers, render_invoices, render_expenses, render_settings, render_invoice_create
 
 # --- UI LOGIC ---
 
@@ -19,9 +19,8 @@ def layout_wrapper(content_func):
             def nav_item(label, target, icon):
                 active = app.storage.user.get('page', 'dashboard') == target
                 color = C_NAV_ITEM_ACTIVE if active else C_NAV_ITEM
-                with ui.button(on_click=lambda: set_page(target)).classes(color):
+                with ui.link(label, '#').on('click', lambda e: set_page(target)).classes(color):
                     with ui.row().classes('items-center gap-2'):
-                        ui.icon(icon, size='xs')
                         ui.label(label).classes('text-sm font-semibold normal-case')
 
             nav_item("Dashboard", "dashboard", "dashboard")
@@ -56,6 +55,7 @@ def index():
             if page == 'dashboard': render_dashboard(session, comp)
             elif page == 'customers': render_customers(session, comp)
             elif page == 'invoices': render_invoices(session, comp)
+            elif page == 'invoice_create': render_invoice_create(session, comp)
             elif page == 'expenses': render_expenses(session, comp)
             elif page == 'settings': render_settings(session, comp)
 

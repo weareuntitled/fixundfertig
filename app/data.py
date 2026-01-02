@@ -8,6 +8,13 @@ import os
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = "DanEP"
+    first_name: str = ""
+    last_name: str = ""
+    street: str = ""
+    postal_code: str = ""
+    city: str = ""
+    email: str = ""
+    phone: str = ""
     iban: str = ""
     tax_id: str = ""
     smtp_server: str = ""
@@ -55,6 +62,9 @@ class Expense(SQLModel, table=True):
     category: str
     description: str
     amount: float
+    source: str = ""
+    external_id: str = ""
+    webhook_url: str = ""
 
 os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
@@ -64,6 +74,20 @@ SQLModel.metadata.create_all(engine)
 def ensure_company_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
+        if "first_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN first_name TEXT DEFAULT ''")
+        if "last_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN last_name TEXT DEFAULT ''")
+        if "street" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN street TEXT DEFAULT ''")
+        if "postal_code" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN postal_code TEXT DEFAULT ''")
+        if "city" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN city TEXT DEFAULT ''")
+        if "email" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN email TEXT DEFAULT ''")
+        if "phone" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN phone TEXT DEFAULT ''")
         if "tax_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN tax_id TEXT DEFAULT ''")
         if "smtp_server" not in columns:
@@ -78,6 +102,18 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
 
 ensure_company_schema()
+
+def ensure_expense_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(expense)").fetchall()}
+        if "source" not in columns:
+            conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN source TEXT DEFAULT ''")
+        if "external_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN external_id TEXT DEFAULT ''")
+        if "webhook_url" not in columns:
+            conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN webhook_url TEXT DEFAULT ''")
+
+ensure_expense_schema()
 
 # --- IMPORT LOGIC ---
 def load_customer_import_dataframe(content, filename=""):

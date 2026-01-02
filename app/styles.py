@@ -12,8 +12,8 @@ C_BADGE_GRAY = "bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 
 
 C_HEADER = "bg-white/80 border-b border-slate-200/80 h-16 px-6 flex items-center justify-between sticky top-0 z-50 backdrop-blur"
 C_BRAND_BADGE = "bg-slate-900 text-white p-2 rounded-lg shadow-sm"
-C_NAV_ITEM = "flat text-slate-500 hover:text-slate-900 hover:bg-slate-100/70 px-3 py-1.5 rounded-md transition-all duration-200 no-shadow border-0"
-C_NAV_ITEM_ACTIVE = "flat bg-slate-900/5 text-slate-900 px-3 py-1.5 rounded-md transition-all duration-200 no-shadow border-0"
+C_NAV_ITEM = "text-slate-500 hover:text-slate-900 px-2.5 py-1.5 border-b-2 border-transparent hover:border-slate-300 transition-all duration-200"
+C_NAV_ITEM_ACTIVE = "text-slate-900 px-2.5 py-1.5 border-b-2 border-slate-900 transition-all duration-200"
 C_PAGE_TITLE = "text-2xl font-semibold text-slate-900 tracking-tight"
 C_SECTION_TITLE = "text-sm font-semibold text-slate-600"
 C_TABLE_HEADER = "w-full bg-slate-50 border-b border-slate-200 p-4 gap-4"
