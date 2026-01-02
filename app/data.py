@@ -1,4 +1,5 @@
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
+from sqlalchemy import Column, LargeBinary
 from typing import Optional, List
 import pandas as pd
 import io
@@ -48,6 +49,8 @@ class Invoice(SQLModel, table=True):
     date: str
     total_brutto: float
     status: str = "Entwurf"
+    pdf_content: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary))
+    immutable: bool = False
 
 class InvoiceItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -123,6 +126,16 @@ def ensure_expense_schema():
             conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN webhook_url TEXT DEFAULT ''")
 
 ensure_expense_schema()
+
+def ensure_invoice_schema():
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "pdf_content" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_content BLOB")
+        if "immutable" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN immutable INTEGER DEFAULT 0")
+
+ensure_invoice_schema()
 
 # --- IMPORT LOGIC ---
 def load_customer_import_dataframe(content, filename=""):
