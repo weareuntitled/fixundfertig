@@ -6,7 +6,7 @@ import smtplib
 import os
 import base64
 
-from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import, log_audit_action, InvoiceStatus
+from data import Company, Customer, Invoice, InvoiceItem, InvoiceItemTemplate, Expense, engine, load_customer_import_dataframe, load_expense_import_dataframe, load_invoice_import_dataframe, process_customer_import, process_expense_import, process_invoice_import, log_audit_action, InvoiceStatus
 from renderer import render_invoice_to_pdf_bytes
 from actions import create_correction
 from styles import (
@@ -581,21 +581,57 @@ def render_invoice_create(session, comp):
     customers = session.exec(select(Customer)).all()
     customer_options = {str(c.id): c.display_name for c in customers}
     templates = ['Standard', 'Dienstleistung', 'Beratung']
+    draft_invoice_id = app.storage.user.get('invoice_draft_id')
+    draft_invoice = session.get(Invoice, draft_invoice_id) if draft_invoice_id else None
+    draft_items = session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == draft_invoice.id)).all() if draft_invoice else []
+    template_items = session.exec(select(InvoiceItemTemplate).where(InvoiceItemTemplate.company_id == comp.id)).all()
+
+    def resolve_recipient(customer):
+        if not customer:
+            return '', '', '', ''
+        name = customer.recipient_name or customer.display_name or ''
+        street = customer.recipient_street or customer.strasse or ''
+        postal = customer.recipient_postal_code or customer.plz or ''
+        city = customer.recipient_city or customer.ort or ''
+        return name, street, postal, city
 
     with ui.row().classes('w-full gap-6 items-start flex-wrap md:flex-nowrap'):
         with ui.column().classes('w-full md:w-[680px] gap-4'):
             with ui.card().classes(C_CARD + " p-6 w-full"):
                 ui.label('Rechnungsdaten').classes(C_SECTION_TITLE + " mb-4")
-                template_select = ui.select(templates, value=templates[0], label='Vorlage').classes(C_INPUT)
-                selected_customer = ui.select(customer_options, label='Kunde').classes(C_INPUT)
-                title_input = ui.input('Titel', value='Rechnung').classes(C_INPUT)
-                invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT)
-                delivery_date = ui.input('Lieferdatum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT)
-                recipient_name = ui.input('Empfängername', value='').classes(C_INPUT)
+                selected_customer = ui.select(
+                    customer_options,
+                    label='Kunde',
+                    value=str(draft_invoice.customer_id) if draft_invoice else None
+                ).classes(C_INPUT)
+                template_select = ui.select(templates, value=templates[0], label='Rechnungsvorlage').classes(C_INPUT)
+                title_input = ui.input('Titel', value=(draft_invoice.title if draft_invoice else 'Rechnung')).classes(C_INPUT)
                 with ui.row().classes('w-full gap-4'):
-                    recipient_street = ui.input('Empfänger Straße', value='').classes(C_INPUT + " w-2/3")
-                    recipient_postal = ui.input('Empfänger PLZ', value='').classes(C_INPUT + " w-1/6")
-                    recipient_city = ui.input('Empfänger Ort', value='').classes(C_INPUT + " w-1/6")
+                    invoice_date = ui.input(
+                        'Datum',
+                        value=(draft_invoice.date if draft_invoice else datetime.now().strftime('%Y-%m-%d'))
+                    ).classes(C_INPUT + " w-1/2")
+                    delivery_date = ui.input(
+                        'Lieferdatum',
+                        value=(draft_invoice.delivery_date if draft_invoice else datetime.now().strftime('%Y-%m-%d'))
+                    ).classes(C_INPUT + " w-1/2")
+                recipient_name = ui.input(
+                    'Empfängername',
+                    value=(draft_invoice.recipient_name if draft_invoice else '')
+                ).classes(C_INPUT).props('readonly')
+                with ui.row().classes('w-full gap-4'):
+                    recipient_street = ui.input(
+                        'Empfänger Straße',
+                        value=(draft_invoice.recipient_street if draft_invoice else '')
+                    ).classes(C_INPUT + " w-2/3").props('readonly')
+                    recipient_postal = ui.input(
+                        'Empfänger PLZ',
+                        value=(draft_invoice.recipient_postal_code if draft_invoice else '')
+                    ).classes(C_INPUT + " w-1/6").props('readonly')
+                    recipient_city = ui.input(
+                        'Empfänger Ort',
+                        value=(draft_invoice.recipient_city if draft_invoice else '')
+                    ).classes(C_INPUT + " w-1/6").props('readonly')
                 intro_text = ui.textarea('Einleitungstext').classes(C_INPUT)
 
             with ui.card().classes(C_CARD + " p-6 w-full"):
@@ -605,6 +641,10 @@ def render_invoice_create(session, comp):
                 totals_brutto = ui.label('0,00 €').classes('font-mono text-sm text-slate-900 font-semibold')
                 brutto_label = ui.label('Brutto (inkl. 19% USt)').classes('text-xs text-slate-500')
                 ust_toggle = ui.checkbox('USt berechnen (19%)', value=True).classes('text-sm text-slate-600')
+                item_template_select = ui.select(
+                    {str(t.id): (t.title or t.description) for t in template_items},
+                    label='Standardposten'
+                ).classes(C_INPUT)
                 items_container = ui.column().classes('w-full gap-3 mt-3')
 
                 def calc_totals():
@@ -670,14 +710,44 @@ def render_invoice_create(session, comp):
                     item['row'].delete()
                     update_preview()
 
-                def add_item():
+                def refresh_template_options():
+                    item_template_select.set_options(
+                        {str(t.id): (t.title or t.description) for t in template_items}
+                    )
+
+                def save_item_template(item):
+                    desc = (item['desc'].value or '').strip()
+                    qty = float(item['qty'].value or 0)
+                    price = float(item['price'].value or 0)
+                    if not desc:
+                        return ui.notify('Bitte Beschreibung ausfüllen', color='red')
+                    if qty <= 0 or price <= 0:
+                        return ui.notify('Bitte gültige Beträge eingeben', color='red')
+                    with Session(engine) as inner:
+                        template = InvoiceItemTemplate(
+                            company_id=comp.id,
+                            title=desc,
+                            description=desc,
+                            quantity=qty,
+                            unit_price=price
+                        )
+                        inner.add(template)
+                        inner.commit()
+                        inner.refresh(template)
+                    template_items.append(template)
+                    refresh_template_options()
+                    item_template_select.set_value(str(template.id))
+                    ui.notify('Vorlage gespeichert', color='green')
+
+                def add_item(default_desc='', default_qty=1, default_price=0, default_is_brutto=False):
                     item = {}
                     with items_container:
                         with ui.row().classes('w-full gap-3 items-end flex-wrap') as row:
-                            desc = ui.input('Beschreibung').classes(C_INPUT + " flex-1 min-w-[220px]")
-                            qty = ui.number('Menge', value=1, format='%.2f').classes(C_INPUT + " w-28 min-w-[110px]")
-                            price = ui.number('Einzelpreis', value=0, format='%.2f').classes(C_INPUT + " w-32 min-w-[140px]")
-                            is_brutto = ui.checkbox('Brutto', value=False).classes('text-xs text-slate-500')
+                            desc = ui.input('Beschreibung', value=default_desc).classes(C_INPUT + " flex-1 min-w-[220px]")
+                            qty = ui.number('Menge', value=default_qty, format='%.2f').classes(C_INPUT + " w-28 min-w-[110px]")
+                            price = ui.number('Einzelpreis', value=default_price, format='%.2f').classes(C_INPUT + " w-32 min-w-[140px]")
+                            is_brutto = ui.checkbox('Brutto', value=default_is_brutto).classes('text-xs text-slate-500')
+                            ui.button('Als Vorlage speichern', icon='bookmark', on_click=lambda: save_item_template(item)).classes(C_BTN_SEC)
                             ui.button('Entfernen', on_click=lambda: remove_item(item)).classes(C_BTN_SEC)
                     item.update({'row': row, 'desc': desc, 'qty': qty, 'price': price, 'is_brutto': is_brutto})
                     items.append(item)
@@ -687,6 +757,11 @@ def render_invoice_create(session, comp):
                     update_preview()
 
                 ui.button('Posten hinzufügen', icon='add', on_click=add_item).classes(C_BTN_SEC + " w-fit")
+                ui.button(
+                    'Vorlage hinzufügen',
+                    icon='playlist_add',
+                    on_click=lambda: add_template_item()
+                ).classes(C_BTN_SEC + " w-fit ml-2")
                 ust_toggle.on('change', update_preview)
 
                 with ui.row().classes('w-full justify-end gap-6 mt-4'):
@@ -791,6 +866,30 @@ def render_invoice_create(session, comp):
                         ui.button('Abbrechen', on_click=gutschrift_dialog.close).classes(C_BTN_SEC)
                         ui.button('Bestätigen', icon='check', on_click=lambda: finalize_invoice(force_confirmed=True)).classes(C_BTN_PRIM)
 
+                def persist_item_templates(inner):
+                    for item in items:
+                        desc = (item['desc'].value or '').strip()
+                        qty = float(item['qty'].value or 0)
+                        price = float(item['price'].value or 0)
+                        if not desc or qty <= 0 or price <= 0:
+                            continue
+                        existing = inner.exec(
+                            select(InvoiceItemTemplate).where(
+                                (InvoiceItemTemplate.company_id == comp.id)
+                                & (InvoiceItemTemplate.description == desc)
+                                & (InvoiceItemTemplate.quantity == qty)
+                                & (InvoiceItemTemplate.unit_price == price)
+                            )
+                        ).first()
+                        if not existing:
+                            inner.add(InvoiceItemTemplate(
+                                company_id=comp.id,
+                                title=desc,
+                                description=desc,
+                                quantity=qty,
+                                unit_price=price
+                            ))
+
                 def save_draft():
                     if not selected_customer.value:
                         return ui.notify('Bitte Kunde auswählen', color='red')
@@ -803,22 +902,42 @@ def render_invoice_create(session, comp):
                         if not customer:
                             return ui.notify('Fehlende Daten', color='red')
 
-                        invoice = Invoice(
-                            customer_id=customer.id,
-                            nr=None,
-                            title=title_value,
-                            date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
-                            delivery_date=delivery_date.value or '',
-                            recipient_name=recipient_name.value or '',
-                            recipient_street=recipient_street.value or '',
-                            recipient_postal_code=recipient_postal.value or '',
-                            recipient_city=recipient_city.value or '',
-                            total_brutto=brutto,
-                            status=InvoiceStatus.DRAFT
-                        )
-                        inner.add(invoice)
-                        inner.commit()
-                        inner.refresh(invoice)
+                        if draft_invoice:
+                            invoice = inner.get(Invoice, draft_invoice.id)
+                            if not invoice:
+                                return ui.notify('Fehlende Daten', color='red')
+                            invoice.customer_id = customer.id
+                            invoice.title = title_value
+                            invoice.date = invoice_date.value or datetime.now().strftime('%Y-%m-%d')
+                            invoice.delivery_date = delivery_date.value or ''
+                            invoice.recipient_name = recipient_name.value or ''
+                            invoice.recipient_street = recipient_street.value or ''
+                            invoice.recipient_postal_code = recipient_postal.value or ''
+                            invoice.recipient_city = recipient_city.value or ''
+                            invoice.total_brutto = brutto
+                            invoice.status = InvoiceStatus.DRAFT
+                            existing_items = inner.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)).all()
+                            for existing in existing_items:
+                                inner.delete(existing)
+                            inner.add(invoice)
+                            inner.flush()
+                        else:
+                            invoice = Invoice(
+                                customer_id=customer.id,
+                                nr=None,
+                                title=title_value,
+                                date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                                delivery_date=delivery_date.value or '',
+                                recipient_name=recipient_name.value or '',
+                                recipient_street=recipient_street.value or '',
+                                recipient_postal_code=recipient_postal.value or '',
+                                recipient_city=recipient_city.value or '',
+                                total_brutto=brutto,
+                                status=InvoiceStatus.DRAFT
+                            )
+                            inner.add(invoice)
+                            inner.commit()
+                            inner.refresh(invoice)
 
                         for item in items:
                             inner.add(InvoiceItem(
@@ -828,11 +947,13 @@ def render_invoice_create(session, comp):
                                 unit_price=float(item['price'].value or 0)
                             ))
 
+                        persist_item_templates(inner)
                         log_audit_action(inner, "CREATE", invoice_id=invoice.id)
                         inner.commit()
 
                     ui.notify('Entwurf gespeichert', color='green')
                     app.storage.user['page'] = 'invoices'
+                    app.storage.user['invoice_draft_id'] = None
                     ui.navigate.to('/')
 
                 def finalize_invoice(force_confirmed=False):
@@ -854,21 +975,42 @@ def render_invoice_create(session, comp):
                                 if not company or not customer:
                                     return ui.notify('Fehlende Daten', color='red')
 
-                                invoice = Invoice(
-                                    customer_id=customer.id,
-                                    nr=company.next_invoice_nr,
-                                    title=title_value,
-                                    date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
-                                    delivery_date=delivery_date.value or '',
-                                    recipient_name=recipient_name.value or '',
-                                    recipient_street=recipient_street.value or '',
-                                    recipient_postal_code=recipient_postal.value or '',
-                                    recipient_city=recipient_city.value or '',
-                                    total_brutto=brutto,
-                                    status=InvoiceStatus.FINALIZED
-                                )
-                                inner.add(invoice)
-                                inner.flush()
+                                if draft_invoice:
+                                    invoice = inner.get(Invoice, draft_invoice.id)
+                                    if not invoice:
+                                        return ui.notify('Fehlende Daten', color='red')
+                                    invoice.customer_id = customer.id
+                                    invoice.nr = company.next_invoice_nr
+                                    invoice.title = title_value
+                                    invoice.date = invoice_date.value or datetime.now().strftime('%Y-%m-%d')
+                                    invoice.delivery_date = delivery_date.value or ''
+                                    invoice.recipient_name = recipient_name.value or ''
+                                    invoice.recipient_street = recipient_street.value or ''
+                                    invoice.recipient_postal_code = recipient_postal.value or ''
+                                    invoice.recipient_city = recipient_city.value or ''
+                                    invoice.total_brutto = brutto
+                                    invoice.status = InvoiceStatus.FINALIZED
+                                    existing_items = inner.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)).all()
+                                    for existing in existing_items:
+                                        inner.delete(existing)
+                                    inner.add(invoice)
+                                    inner.flush()
+                                else:
+                                    invoice = Invoice(
+                                        customer_id=customer.id,
+                                        nr=company.next_invoice_nr,
+                                        title=title_value,
+                                        date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                                        delivery_date=delivery_date.value or '',
+                                        recipient_name=recipient_name.value or '',
+                                        recipient_street=recipient_street.value or '',
+                                        recipient_postal_code=recipient_postal.value or '',
+                                        recipient_city=recipient_city.value or '',
+                                        total_brutto=brutto,
+                                        status=InvoiceStatus.FINALIZED
+                                    )
+                                    inner.add(invoice)
+                                    inner.flush()
 
                                 pdf_items = []
                                 for item in items:
@@ -889,6 +1031,7 @@ def render_invoice_create(session, comp):
                                         'is_brutto': is_brutto,
                                     })
 
+                                persist_item_templates(inner)
                                 company.next_invoice_nr += 1
                                 inner.add(company)
                                 log_audit_action(inner, "CREATE", invoice_id=invoice.id)
@@ -910,6 +1053,7 @@ def render_invoice_create(session, comp):
                     ui.notify('Rechnung erstellt', color='green')
                     app.storage.user['last_invoice_pdf'] = pdf_path
                     app.storage.user['last_invoice_id'] = invoice.id
+                    app.storage.user['invoice_draft_id'] = None
                     update_preview()
                     if send_after_finalize.value:
                         mail_info.set_text(f"Empfänger: {customer.email or 'Keine E-Mail hinterlegt'}")
@@ -927,6 +1071,7 @@ def render_invoice_create(session, comp):
 
                 def cancel_editor():
                     app.storage.user['page'] = 'invoices'
+                    app.storage.user['invoice_draft_id'] = None
                     ui.navigate.to('/')
 
                 with ui.row().classes('w-full justify-end gap-2 mt-4'):
@@ -940,7 +1085,7 @@ def render_invoice_create(session, comp):
                 preview_container = ui.column().classes('w-full gap-3')
 
                 with preview_container:
-                    preview_image = ui.html().classes('w-full border border-slate-200')
+                    preview_image = ui.html('', sanitize=False).classes('w-full border border-slate-200')
                     ui.button(
                         'Download',
                         icon='download',
@@ -952,7 +1097,32 @@ def render_invoice_create(session, comp):
 
                 update_preview()
 
-                selected_customer.on('change', update_preview)
+                def handle_customer_change():
+                    if not selected_customer.value:
+                        return
+                    customer = session.get(Customer, int(selected_customer.value))
+                    name, street, postal, city = resolve_recipient(customer)
+                    recipient_name.set_value(name)
+                    recipient_street.set_value(street)
+                    recipient_postal.set_value(postal)
+                    recipient_city.set_value(city)
+                    update_preview()
+
+                def add_template_item():
+                    if not item_template_select.value:
+                        return ui.notify('Bitte Standardposten auswählen', color='red')
+                    template_id = int(item_template_select.value)
+                    template = next((t for t in template_items if t.id == template_id), None)
+                    if not template:
+                        return ui.notify('Vorlage nicht gefunden', color='red')
+                    add_item(
+                        default_desc=template.description or template.title,
+                        default_qty=template.quantity,
+                        default_price=template.unit_price,
+                        default_is_brutto=False
+                    )
+
+                selected_customer.on('change', handle_customer_change)
                 title_input.on('change', update_preview)
                 invoice_date.on('change', update_preview)
                 delivery_date.on('change', update_preview)
@@ -960,6 +1130,23 @@ def render_invoice_create(session, comp):
                 recipient_street.on('change', update_preview)
                 recipient_postal.on('change', update_preview)
                 recipient_city.on('change', update_preview)
+
+                if selected_customer.value:
+                    customer = session.get(Customer, int(selected_customer.value))
+                    if customer:
+                        name, street, postal, city = resolve_recipient(customer)
+                        recipient_name.set_value(name)
+                        recipient_street.set_value(street)
+                        recipient_postal.set_value(postal)
+                        recipient_city.set_value(city)
+
+                for item in draft_items:
+                    add_item(
+                        default_desc=item.description or '',
+                        default_qty=item.quantity or 1,
+                        default_price=item.unit_price or 0,
+                        default_is_brutto=False
+                    )
 
 def render_invoices(session, comp):
     with ui.row().classes('w-full justify-between items-center mb-6'):
@@ -1039,12 +1226,16 @@ def render_invoices(session, comp):
                     ui.button('Abbrechen', on_click=cancel_import).classes(C_BTN_SEC + " w-fit")
                 confirm_btn.disable()
 
-            with ui.dialog() as d, ui.card().classes(C_CARD + " w-[900px] p-6"):
-                apply_ustg19, calc_totals = render_invoice_editor(session, comp, d)
-                apply_ustg19.on('change', calc_totals)
-
             ui.button('Import', icon='upload', on_click=d_import.open).classes(C_BTN_SEC)
-            ui.button('Rechnung erstellen', icon='add', on_click=d.open).classes(C_BTN_PRIM)
+            ui.button(
+                'Rechnung erstellen',
+                icon='add',
+                on_click=lambda: (
+                    app.storage.user.__setitem__('invoice_draft_id', None),
+                    app.storage.user.__setitem__('page', 'invoice_create'),
+                    ui.navigate.to('/')
+                )
+            ).classes(C_BTN_PRIM)
 
     correction_payload = {'invoice_id': None}
     with ui.dialog() as correction_dialog, ui.card().classes(C_CARD + " p-5 w-[420px]"):
@@ -1071,6 +1262,10 @@ def render_invoices(session, comp):
             ui.button('Abbrechen', on_click=correction_dialog.close).classes(C_BTN_SEC)
             ui.button('Erstellen', icon='check', on_click=confirm_correction).classes(C_BTN_PRIM)
     invs = session.exec(select(Invoice)).all()
+    def open_draft(invoice_id):
+        app.storage.user['invoice_draft_id'] = invoice_id
+        app.storage.user['page'] = 'invoice_create'
+        ui.navigate.to('/')
     def ensure_invoice_pdf_path(invoice):
         pdf_path = f"./storage/invoices/invoice_{invoice.nr}.pdf"
         if invoice.nr and os.path.exists(pdf_path):
@@ -1089,6 +1284,7 @@ def render_invoices(session, comp):
             ui.label('Betrag').classes('w-24 text-right font-medium text-slate-500 text-sm')
             ui.label('Korr.').classes('w-28 text-right font-medium text-slate-500 text-sm')
             ui.label('PDF').classes('w-24 text-right font-medium text-slate-500 text-sm')
+            ui.label('Aktion').classes('w-32 text-right font-medium text-slate-500 text-sm')
 
         with ui.column().classes('w-full gap-0'):
             for i in invs:
@@ -1111,6 +1307,15 @@ def render_invoices(session, comp):
                     with ui.row().classes('w-24 justify-end'):
                         if i.nr and pdf_path and os.path.exists(pdf_path):
                             ui.button('Download', icon='download', on_click=lambda p=pdf_path: ui.download(p)).classes(C_BTN_SEC + " w-full")
+                        else:
+                            ui.label('-').classes('text-slate-300 text-sm w-full text-right')
+                    with ui.row().classes('w-32 justify-end'):
+                        if i.status == InvoiceStatus.DRAFT and i.id:
+                            ui.button(
+                                'Entwurf öffnen',
+                                icon='edit',
+                                on_click=lambda inv_id=i.id: open_draft(inv_id)
+                            ).classes(C_BTN_SEC + " w-full")
                         else:
                             ui.label('-').classes('text-slate-300 text-sm w-full text-right')
 

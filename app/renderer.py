@@ -180,8 +180,8 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
         pdf.set_x(table_start_x)
         pdf.cell(table_widths[0], 6, item['description'])
         pdf.cell(table_widths[1], 6, f"{item['quantity']:.2f}", align="R")
-        pdf.cell(table_widths[2], 6, f"{item['unit_price']:.2f} €", align="R")
-        pdf.cell(table_widths[3], 6, f"{item['total']:.2f} €", align="R", ln=1)
+        pdf.cell(table_widths[2], 6, f"{item['unit_price']:.2f} EUR", align="R")
+        pdf.cell(table_widths[3], 6, f"{item['total']:.2f} EUR", align="R", ln=1)
 
     pdf.ln(4)
     totals_label_x = 120
@@ -190,18 +190,18 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 5, "Zwischensumme", align="R")
     pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 5, f"{totals['netto']:.2f} €", align="R", ln=1)
+    pdf.cell(30, 5, f"{totals['netto']:.2f} EUR", align="R", ln=1)
 
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 5, f"USt. ({totals['tax_rate'] * 100:.0f}%)", align="R")
     pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 5, f"{totals['tax_amount']:.2f} €", align="R", ln=1)
+    pdf.cell(30, 5, f"{totals['tax_amount']:.2f} EUR", align="R", ln=1)
 
     pdf.set_font("Helvetica", size=10, style="B")
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 6, "Gesamt", align="R")
     pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 6, f"{totals['brutto']:.2f} €", align="R", ln=1)
+    pdf.cell(30, 6, f"{totals['brutto']:.2f} EUR", align="R", ln=1)
 
     output = pdf.output(dest="S")
     if isinstance(output, bytearray):
