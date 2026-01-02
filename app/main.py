@@ -362,213 +362,18 @@ def render_settings(session, comp):
 
             ui.button('Speichern', icon='save', on_click=save_settings).classes(C_BTN_PRIM + " w-fit")
 
-def render_invoice_editor(session, comp):
-    with ui.dialog() as d, ui.card().classes(C_CARD + " w-[1200px] max-w-[95vw]"):
-        ui.label('Neue Rechnung').classes('text-lg font-bold text-slate-900 mb-4')
-
-        customers = session.exec(select(Customer)).all()
-        customer_options = {str(c.id): c.display_name for c in customers}
-
-        items = []
-        totals_netto = ui.label('0,00 €').classes('font-mono text-sm text-slate-700')
-        totals_brutto = ui.label('0,00 €').classes('font-mono text-sm text-slate-900 font-bold')
-
-        with ui.grid(columns=2).classes('w-full gap-6 items-start'):
-            with ui.column().classes('w-full gap-6'):
-                with ui.column().classes('w-full gap-3'):
-                    ui.label('Kopfdaten').classes('text-sm font-semibold text-slate-700')
-                    selected_customer = ui.select(customer_options, label='Kunde').classes(C_INPUT + " w-full")
-                    invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT + " w-full")
-
-                with ui.column().classes('w-full gap-3'):
-                    ui.label('Rechtliches').classes('text-sm font-semibold text-slate-700')
-                    legal_tax_id = ui.input('Steuernummer', value=comp.tax_id or '').classes(C_INPUT + " w-full")
-                    legal_terms = ui.input('Zahlungsziel', value='14 Tage').classes(C_INPUT + " w-full")
-                    legal_note = ui.textarea('Hinweis', value='').classes(C_INPUT + " w-full h-24")
-
-                with ui.column().classes('w-full gap-3'):
-                    ui.label('Postenliste').classes('text-sm font-semibold text-slate-700')
-                    with ui.row().classes('w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-500 font-semibold'):
-                        ui.label('Beschreibung').classes('flex-1')
-                        ui.label('Menge').classes('w-24 text-right')
-                        ui.label('Einzelpreis').classes('w-28 text-right')
-                        ui.label('Aktion').classes('w-20 text-right')
-                    items_container = ui.column().classes('w-full gap-2')
-
-                    def remove_item(item):
-                        items.remove(item)
-                        item['row'].delete()
-                        calc_totals()
-
-                    def add_item():
-                        item = {}
-                        with items_container:
-                            with ui.row().classes('w-full gap-3 items-end border border-slate-200 rounded-lg p-3') as row:
-                                desc = ui.input('Beschreibung').classes(C_INPUT + " flex-1")
-                                qty = ui.number('Menge', value=1, format='%.2f').classes(C_INPUT + " w-24")
-                                price = ui.number('Einzelpreis', value=0, format='%.2f').classes(C_INPUT + " w-28")
-                                ui.button('Entfernen', on_click=lambda: remove_item(item)).classes(C_BTN_SEC + " w-20")
-                        item.update({'row': row, 'desc': desc, 'qty': qty, 'price': price})
-                        items.append(item)
-                        qty.on('change', calc_totals)
-                        price.on('change', calc_totals)
-                        calc_totals()
-
-                    ui.button('Posten hinzufügen', icon='add', on_click=add_item).classes(C_BTN_SEC + " w-fit")
-
-                with ui.row().classes('w-full justify-end gap-6'):
-                    with ui.column().classes('items-end'):
-                        ui.label('Netto').classes('text-xs text-slate-500')
-                        totals_netto
-                    with ui.column().classes('items-end'):
-                        ui.label('Brutto (inkl. 19% USt)').classes('text-xs text-slate-500')
-                        totals_brutto
-
-            with ui.column().classes('w-full'):
-                with ui.column().classes('bg-slate-100 rounded-xl p-4 w-full'):
-                    with ui.column().classes('sticky top-6 w-full gap-3'):
-                        ui.label('Vorschau').classes('text-sm font-semibold text-slate-700')
-                        with ui.column().classes('bg-white shadow-xl aspect-[210/297] p-10 w-full'):
-                            ui.label('Rechnungsvorschau').classes('text-base font-semibold text-slate-900')
-                            with ui.column().classes('gap-2 mt-4'):
-                                preview_customer = ui.label('-').classes('text-sm text-slate-700')
-                                preview_date = ui.label('-').classes('text-sm text-slate-700')
-                            with ui.column().classes('gap-1 mt-6'):
-                                ui.label('Zwischensumme').classes('text-xs text-slate-400')
-                                preview_netto = ui.label('0,00 €').classes('font-mono text-sm text-slate-700')
-                                ui.label('Gesamt (inkl. 19% USt)').classes('text-xs text-slate-400 mt-2')
-                                preview_brutto = ui.label('0,00 €').classes('font-mono text-sm text-slate-900 font-bold')
-
-        def sync_preview():
-            preview_customer.set_text(customer_options.get(str(selected_customer.value), '-'))
-            preview_date.set_text(invoice_date.value or '-')
-
-        def calc_totals():
-            netto = 0.0
-            for item in items:
-                qty = float(item['qty'].value or 0)
-                price = float(item['price'].value or 0)
-                netto += qty * price
-            brutto = netto * 1.19
-            totals_netto.set_text(f"{netto:,.2f} €")
-            totals_brutto.set_text(f"{brutto:,.2f} €")
-            preview_netto.set_text(f"{netto:,.2f} €")
-            preview_brutto.set_text(f"{brutto:,.2f} €")
-            return netto, brutto
-
-        selected_customer.on('change', sync_preview)
-        invoice_date.on('change', sync_preview)
-        sync_preview()
-
-        def finalize_invoice():
-            if not selected_customer.value:
-                return ui.notify('Bitte Kunde auswählen', color='red')
-            if not items:
-                return ui.notify('Bitte mindestens einen Posten hinzufügen', color='red')
-
-            netto, brutto = calc_totals()
-            if netto <= 0:
-                return ui.notify('Bitte gültige Beträge eingeben', color='red')
-
-            with Session(engine) as inner:
-                company = inner.get(Company, comp.id)
-                customer = inner.get(Customer, int(selected_customer.value))
-                if not company or not customer:
-                    return ui.notify('Fehlende Daten', color='red')
-
-                invoice = Invoice(
-                    customer_id=customer.id,
-                    nr=company.next_invoice_nr,
-                    date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
-                    total_brutto=brutto,
-                    status='Offen'
-                )
-                inner.add(invoice)
-                inner.commit()
-                inner.refresh(invoice)
-
-                for item in items:
-                    inner.add(InvoiceItem(
-                        invoice_id=invoice.id,
-                        description=item['desc'].value or '',
-                        quantity=float(item['qty'].value or 0),
-                        unit_price=float(item['price'].value or 0)
-                    ))
-
-                company.next_invoice_nr += 1
-                inner.add(company)
-                inner.commit()
-
-                generate_invoice_pdf(company, customer, invoice, items)
-
-            ui.notify('Rechnung erstellt', color='green')
-            d.close()
-            ui.navigate.to('/')
-
-        with ui.row().classes('w-full justify-end gap-2 mt-6'):
-            ui.button('Abbrechen', on_click=d.close).classes(C_BTN_SEC)
-            ui.button('Finalisieren', icon='check', on_click=finalize_invoice).classes(C_BTN_PRIM)
-
-    return d
-
-def render_invoices(session, comp):
-    with ui.row().classes('w-full justify-between items-center mb-6'):
-        ui.label('Rechnungen').classes('text-2xl font-bold text-slate-900')
-        d = render_invoice_editor(session, comp)
-        ui.button('Rechnung erstellen', icon='add', on_click=d.open).classes(C_BTN_PRIM)
-    invs = session.exec(select(Invoice)).all()
-    
-    with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
-        # MANUELLE TABELLEN KOPFZEILE (Kein ui.table mehr!)
-        with ui.row().classes('w-full bg-slate-50 border-b border-slate-200 p-4 gap-4'):
-            ui.label('Status').classes('w-24 font-medium text-slate-500 text-sm')
-            ui.label('Nr').classes('w-16 font-medium text-slate-500 text-sm')
-            ui.label('Datum').classes('w-24 font-medium text-slate-500 text-sm')
-            ui.label('Kunde').classes('flex-1 font-medium text-slate-500 text-sm')
-            ui.label('Betrag').classes('w-24 text-right font-medium text-slate-500 text-sm')
-            ui.label('PDF').classes('w-24 text-right font-medium text-slate-500 text-sm')
-
-        # MANUELLE REIHEN
-        with ui.column().classes('w-full gap-0'):
-            for i in invs:
-                with ui.row().classes('w-full p-4 border-b border-slate-50 items-center gap-4 hover:bg-slate-50'):
-                    # Badge
-                    style = C_BADGE_GRAY
-                    if i.status == 'Offen': style = C_BADGE_BLUE
-                    if i.status == 'Bezahlt': style = C_BADGE_GREEN
-                    ui.label(i.status).classes(style + " w-24")
-                    
-                    ui.label(f"#{i.nr}" if i.nr else "-").classes('w-16 text-slate-600 font-mono text-sm')
-                    ui.label(i.date).classes('w-24 text-slate-600 text-sm')
-                    
-                    cname = "Unbekannt"
-                    if i.customer_id:
-                        cust = session.get(Customer, i.customer_id)
-                        if cust: cname = cust.display_name
-                    ui.label(cname).classes('flex-1 font-medium text-slate-900 text-sm truncate')
-                    
-                    ui.label(f"{i.total_brutto:,.2f} €").classes('w-24 text-right font-mono font-medium text-sm')
-                    pdf_path = f"./storage/invoices/invoice_{i.nr}.pdf"
-                    with ui.row().classes('w-24 justify-end'):
-                        if i.nr and os.path.exists(pdf_path):
-                            ui.button('Download', icon='download', on_click=lambda p=pdf_path: ui.download(p)).classes(C_BTN_SEC + " w-full")
-                        else:
-                            ui.label('-').classes('text-slate-300 text-sm w-full text-right')
-
-def render_invoice_editor(session, comp):
-    ui.label('Rechnungseditor').classes('text-2xl font-bold text-slate-900 mb-6')
+def render_invoice_editor(session, comp, d):
+    ui.label('Neue Rechnung').classes('text-lg font-bold text-slate-900 mb-4')
 
     customers = session.exec(select(Customer)).all()
     customer_options = {str(c.id): c.display_name for c in customers}
 
+    selected_customer = ui.select(customer_options, label='Kunde').classes(C_INPUT + " w-full")
+    invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT + " w-full")
+
     items = []
     totals_netto = ui.label('0,00 €').classes('font-mono text-sm text-slate-700')
     totals_brutto = ui.label('0,00 €').classes('font-mono text-sm text-slate-900 font-bold')
-
-    preview_customer = ui.label('Bitte Kunde wählen').classes('text-sm font-medium text-slate-900')
-    preview_date = ui.label('-').classes('text-xs text-slate-500')
-    preview_netto = ui.label('0,00 €').classes('font-mono text-sm text-slate-700')
-    preview_brutto = ui.label('0,00 €').classes('font-mono text-sm text-slate-900 font-bold')
 
     def calc_totals():
         netto = 0.0
@@ -579,157 +384,159 @@ def render_invoice_editor(session, comp):
         brutto = netto * 1.19
         totals_netto.set_text(f"{netto:,.2f} €")
         totals_brutto.set_text(f"{brutto:,.2f} €")
-        preview_netto.set_text(f"{netto:,.2f} €")
-        preview_brutto.set_text(f"{brutto:,.2f} €")
         return netto, brutto
 
-    def update_preview():
-        cust_name = 'Bitte Kunde wählen'
-        if selected_customer.value:
-            cust = session.get(Customer, int(selected_customer.value))
-            if cust:
-                cust_name = cust.display_name
-        preview_customer.set_text(cust_name)
-        preview_date.set_text(invoice_date.value or '-')
-        preview_items.clear()
-        if not items:
-            ui.label('Keine Posten').classes('text-xs text-slate-400').move(preview_items)
-        for item in items:
-            desc = item['desc'].value or ''
-            qty = float(item['qty'].value or 0)
-            price = float(item['price'].value or 0)
-            total = qty * price
-            with preview_items:
-                with ui.row().classes('w-full justify-between text-xs text-slate-600'):
-                    ui.label(desc if desc else '—').classes('truncate max-w-[220px]')
-                    ui.label(f"{total:,.2f} €").classes('font-mono')
+    def remove_item(item):
+        items.remove(item)
+        item['row'].delete()
         calc_totals()
 
-    with ui.row().classes('w-full gap-6 items-start'):
-        with ui.card().classes(C_CARD + " p-6 w-1/2"):
-            ui.label('Eingabe').classes('text-sm font-semibold text-slate-700 mb-4')
+    with ui.column().classes('w-full gap-3'):
+        ui.label('Rechnungsposten').classes('text-sm font-semibold text-slate-700')
+        items_container = ui.column().classes('w-full gap-3')
 
-            selected_customer = ui.select(customer_options, label='Kunde').classes(C_INPUT + " w-full")
-            invoice_date = ui.input('Datum', value=datetime.now().strftime('%Y-%m-%d')).classes(C_INPUT + " w-full")
+        def add_item():
+            item = {}
+            with items_container:
+                with ui.row().classes('w-full gap-3 items-end') as row:
+                    desc = ui.input('Beschreibung').classes(C_INPUT + " flex-1")
+                    qty = ui.number('Menge', value=1, format='%.2f').classes(C_INPUT + " w-28")
+                    price = ui.number('Einzelpreis', value=0, format='%.2f').classes(C_INPUT + " w-32")
+                    ui.button('Entfernen', on_click=lambda: remove_item(item)).classes(C_BTN_SEC)
+            item.update({'row': row, 'desc': desc, 'qty': qty, 'price': price})
+            items.append(item)
+            qty.on('change', calc_totals)
+            price.on('change', calc_totals)
+            calc_totals()
 
-            items = []
+        ui.button('Posten hinzufügen', icon='add', on_click=add_item).classes(C_BTN_SEC + " w-fit")
 
-            def calc_totals():
-                netto = 0.0
-                tax_rate = 0.0 if apply_ustg19.value else 0.19
-                for item in items:
-                    qty = float(item['qty'] or 0)
-                    price = float(item['price'] or 0)
-                    netto += qty * price
-                brutto = netto * 1.19
-                return netto, brutto
+    with ui.row().classes('w-full justify-end gap-6 mt-4'):
+        with ui.column().classes('items-end'):
+            ui.label('Netto').classes('text-xs text-slate-500')
+            totals_netto
+        with ui.column().classes('items-end'):
+            ui.label('Brutto (inkl. 19% USt)').classes('text-xs text-slate-500')
+            totals_brutto
 
-            def update_item(index, key, value):
-                items[index][key] = value
-                calc_totals()
-                render_preview.refresh()
+    def validate_finalization():
+        if not selected_customer.value:
+            ui.notify('Bitte Kunde auswählen', color='red')
+            return False
+        if not invoice_date.value:
+            ui.notify('Bitte Datum angeben', color='red')
+            return False
+        if not items:
+            ui.notify('Bitte mindestens einen Posten hinzufügen', color='red')
+            return False
+        for item in items:
+            desc = (item['desc'].value or '').strip()
+            qty = float(item['qty'].value or 0)
+            price = float(item['price'].value or 0)
+            if not desc:
+                ui.notify('Bitte Beschreibung ausfüllen', color='red')
+                return False
+            if qty <= 0 or price <= 0:
+                ui.notify('Bitte gültige Beträge eingeben', color='red')
+                return False
+        netto, _ = calc_totals()
+        if netto <= 0:
+            ui.notify('Bitte gültige Beträge eingeben', color='red')
+            return False
+        return True
 
-            def remove_item(index):
-                items.pop(index)
-                calc_totals()
-                render_items.refresh()
-                render_preview.refresh()
+    def save_draft():
+        if not selected_customer.value:
+            return ui.notify('Bitte Kunde auswählen', color='red')
 
-            @ui.refreshable
-            def render_items():
-                with ui.column().classes('w-full gap-3'):
-                    ui.label('Rechnungsposten').classes('text-sm font-semibold text-slate-700')
-                    if not items:
-                        ui.label('Keine Posten hinzugefügt').classes('text-sm text-slate-400')
-                    for index, item in enumerate(items):
-                        with ui.row().classes('w-full gap-3 items-end'):
-                            desc = ui.input('Beschreibung', value=item['desc']).classes(C_INPUT + " flex-1")
-                            qty = ui.number('Menge', value=item['qty'], format='%.2f').classes(C_INPUT + " w-28")
-                            price = ui.number('Einzelpreis', value=item['price'], format='%.2f').classes(C_INPUT + " w-32")
-                            ui.button('Entfernen', on_click=lambda i=index: remove_item(i)).classes(C_BTN_SEC)
-                        desc.on_value_change(lambda e, i=index: update_item(i, 'desc', e.value))
-                        qty.on_value_change(lambda e, i=index: update_item(i, 'qty', e.value))
-                        price.on_value_change(lambda e, i=index: update_item(i, 'price', e.value))
+        _, brutto = calc_totals()
 
-            def add_item():
-                items.append({'desc': '', 'qty': 1, 'price': 0})
-                calc_totals()
-                render_items.refresh()
-                render_preview.refresh()
+        with Session(engine) as inner:
+            customer = inner.get(Customer, int(selected_customer.value))
+            if not customer:
+                return ui.notify('Fehlende Daten', color='red')
 
-            render_items()
+            invoice = Invoice(
+                customer_id=customer.id,
+                nr=None,
+                date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                total_brutto=brutto,
+                status='Entwurf'
+            )
+            inner.add(invoice)
+            inner.commit()
+            inner.refresh(invoice)
 
-            ui.button('Posten hinzufügen', icon='add', on_click=add_item).classes(C_BTN_SEC + " w-fit")
+            for item in items:
+                inner.add(InvoiceItem(
+                    invoice_id=invoice.id,
+                    description=item['desc'].value or '',
+                    quantity=float(item['qty'].value or 0),
+                    unit_price=float(item['price'].value or 0)
+                ))
 
-            @ui.refreshable
-            def render_preview():
-                netto, brutto = calc_totals()
-                with ui.card().classes(C_CARD + " p-4 w-full mt-4"):
-                    ui.label('Vorschau').classes('text-sm font-semibold text-slate-700')
-                    with ui.column().classes('w-full gap-2 mt-2'):
-                        if not items:
-                            ui.label('Keine Posten vorhanden').classes('text-sm text-slate-400')
-                        else:
-                            for item in items:
-                                with ui.row().classes('w-full justify-between text-sm'):
-                                    ui.label(item['desc'] or 'Posten').classes('text-slate-700')
-                                    ui.label(f"{float(item['qty'] or 0):,.2f} x {float(item['price'] or 0):,.2f} €").classes('text-slate-500')
-                        with ui.row().classes('w-full justify-end gap-6 mt-3'):
-                            with ui.column().classes('items-end'):
-                                ui.label('Netto').classes('text-xs text-slate-500')
-                                ui.label(f"{netto:,.2f} €").classes('font-mono text-sm text-slate-700')
-                            with ui.column().classes('items-end'):
-                                ui.label('Brutto (inkl. 19% USt)').classes('text-xs text-slate-500')
-                                ui.label(f"{brutto:,.2f} €").classes('font-mono text-sm text-slate-900 font-bold')
+            inner.commit()
 
-            render_preview()
+        ui.notify('Entwurf gespeichert', color='green')
+        d.close()
+        ui.navigate.to('/')
 
-            def finalize_invoice():
-                if not selected_customer.value:
-                    return ui.notify('Bitte Kunde auswählen', color='red')
-                if not items:
-                    return ui.notify('Bitte mindestens einen Posten hinzufügen', color='red')
+    def finalize_invoice():
+        if not validate_finalization():
+            return
 
-                netto, brutto = calc_totals()
-                if netto <= 0:
-                    return ui.notify('Bitte gültige Beträge eingeben', color='red')
+        _, brutto = calc_totals()
 
-                with Session(engine) as inner:
-                    company = inner.get(Company, comp.id)
-                    customer = inner.get(Customer, int(selected_customer.value))
-                    if not company or not customer:
-                        return ui.notify('Fehlende Daten', color='red')
+        with Session(engine) as inner:
+            company = inner.get(Company, comp.id)
+            customer = inner.get(Customer, int(selected_customer.value))
+            if not company or not customer:
+                return ui.notify('Fehlende Daten', color='red')
 
-                    invoice = Invoice(
-                        customer_id=customer.id,
-                        nr=company.next_invoice_nr,
-                        date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
-                        total_brutto=brutto,
-                        status='Offen'
-                    )
-                    inner.add(invoice)
-                    inner.commit()
-                    inner.refresh(invoice)
+            invoice = Invoice(
+                customer_id=customer.id,
+                nr=company.next_invoice_nr,
+                date=invoice_date.value or datetime.now().strftime('%Y-%m-%d'),
+                total_brutto=brutto,
+                status='Offen'
+            )
+            inner.add(invoice)
+            inner.commit()
+            inner.refresh(invoice)
 
-                    for item in items:
-                        inner.add(InvoiceItem(
-                            invoice_id=invoice.id,
-                            description=item['desc'] or '',
-                            quantity=float(item['qty'] or 0),
-                            unit_price=float(item['price'] or 0)
-                        ))
+            for item in items:
+                inner.add(InvoiceItem(
+                    invoice_id=invoice.id,
+                    description=item['desc'].value or '',
+                    quantity=float(item['qty'].value or 0),
+                    unit_price=float(item['price'].value or 0)
+                ))
 
-                    company.next_invoice_nr += 1
-                    inner.add(company)
-                    inner.commit()
+            company.next_invoice_nr += 1
+            inner.add(company)
+            inner.commit()
 
-                    generate_invoice_pdf(company, customer, invoice, items, apply_ustg19.value)
+            generate_invoice_pdf(company, customer, invoice, items)
 
-                ui.notify('Rechnung erstellt', color='green')
-                ui.navigate.to('/')
+        ui.notify('Rechnung erstellt', color='green')
+        app.storage.user['page'] = 'dashboard'
+        d.close()
+        ui.navigate.to('/')
 
-            with ui.row().classes('w-full justify-end gap-2 mt-6'):
-                ui.button('Finalisieren', icon='check', on_click=finalize_invoice).classes(C_BTN_PRIM)
+    def cancel_editor():
+        d.close()
+        ui.navigate.to('/')
+
+    with ui.row().classes('w-full justify-end gap-2 mt-6'):
+        ui.button('Abbrechen', on_click=cancel_editor).classes(C_BTN_SEC)
+        ui.button('Entwurf speichern', icon='save', on_click=save_draft).classes(C_BTN_SEC)
+        ui.button('Finalisieren & Buchen', icon='check', on_click=finalize_invoice).classes(C_BTN_PRIM)
+
+def render_invoices(session, comp):
+    with ui.row().classes('w-full justify-between items-center mb-6'):
+        ui.label('Rechnungen').classes('text-2xl font-bold text-slate-900')
+        with ui.dialog() as d, ui.card().classes(C_CARD + " w-[900px]"):
+            render_invoice_editor(session, comp, d)
 
             apply_ustg19.on('change', calc_totals)
 
