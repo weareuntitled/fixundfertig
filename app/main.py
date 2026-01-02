@@ -19,9 +19,8 @@ def layout_wrapper(content_func):
             def nav_item(label, target, icon):
                 active = app.storage.user.get('page', 'dashboard') == target
                 color = C_NAV_ITEM_ACTIVE if active else C_NAV_ITEM
-                with ui.button(on_click=lambda: set_page(target)).classes(color):
+                with ui.link(label, '#').on('click', lambda e: set_page(target)).classes(color):
                     with ui.row().classes('items-center gap-2'):
-                        ui.icon(icon, size='xs')
                         ui.label(label).classes('text-sm font-semibold normal-case')
 
             nav_item("Dashboard", "dashboard", "dashboard")
@@ -57,6 +56,7 @@ def index():
             elif page == 'customers': render_customers(session, comp)
             elif page == 'customer_new': render_customer_new(session, comp)
             elif page == 'invoices': render_invoices(session, comp)
+            elif page == 'invoice_create': render_invoice_create(session, comp)
             elif page == 'expenses': render_expenses(session, comp)
             elif page == 'settings': render_settings(session, comp)
 
