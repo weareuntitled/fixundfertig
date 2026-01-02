@@ -66,7 +66,8 @@ class Invoice(SQLModel, table=True):
     recipient_postal_code: str = ""
     recipient_city: str = ""
     total_brutto: float
-    status: InvoiceStatus = InvoiceStatus.DRAFT
+    status: str = "Entwurf"
+    related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
 
 class InvoiceItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -187,20 +188,8 @@ ensure_expense_schema()
 def ensure_invoice_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
-        if "status" in columns:
-            conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Entwurf'")
-            conn.exec_driver_sql("UPDATE invoice SET status = 'FINALIZED' WHERE status IN ('Offen', 'Bezahlt')")
-            conn.exec_driver_sql("UPDATE invoice SET status = 'CANCELLED' WHERE status = 'Storniert'")
-        conn.exec_driver_sql(
-            """
-            CREATE TRIGGER IF NOT EXISTS invoice_finalized_immutable
-            BEFORE UPDATE ON invoice
-            WHEN OLD.status = 'FINALIZED' AND NEW.status != 'CANCELLED'
-            BEGIN
-                SELECT RAISE(ABORT, 'Finalized invoices are immutable');
-            END;
-            """
-        )
+        if "related_invoice_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN related_invoice_id INTEGER")
 
 ensure_invoice_schema()
 
