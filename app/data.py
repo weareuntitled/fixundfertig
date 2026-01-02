@@ -111,9 +111,16 @@ def process_customer_import(content, session, comp_id):
     session.commit()
     return count, ""
 
-def process_expense_import(content, session, comp_id):
+def read_expense_import(content):
     try: df = pd.read_csv(io.BytesIO(content))
-    except: return 0, "Format Error"
+    except:
+        try: df = pd.read_excel(io.BytesIO(content))
+        except: return None, "Datei konnte nicht gelesen werden. Bitte CSV oder XLS/XLSX verwenden."
+    return df, ""
+
+def process_expense_import(content, session, comp_id):
+    df, err = read_expense_import(content)
+    if err: return 0, err
     count = 0
     for _, row in df.iterrows():
         try:

@@ -4,7 +4,7 @@ from datetime import datetime
 from fpdf import FPDF
 import os
 
-from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, process_customer_import, process_expense_import
+from data import Company, Customer, Invoice, InvoiceItem, Expense, engine, process_customer_import, process_expense_import, read_expense_import
 from styles import (
     C_BG, C_CONTAINER, C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT,
     C_BADGE_GREEN, C_BADGE_BLUE, C_BADGE_GRAY, C_PAGE_TITLE, C_SECTION_TITLE,
@@ -398,17 +398,56 @@ def render_expenses(session, comp):
     with ui.row().classes('w-full justify-between items-center mb-6'):
         ui.label('Ausgaben').classes(C_PAGE_TITLE)
         with ui.dialog() as d, ui.card().classes(C_CARD + " p-5"):
-            ui.label('CSV Import').classes(C_SECTION_TITLE + " mb-4")
+            ui.label('Import').classes(C_SECTION_TITLE + " mb-4")
+            upload_state = {'content': None, 'df': None}
+            preview_container = ui.column().classes('w-full gap-2')
+
+            def render_preview():
+                preview_container.clear()
+                with preview_container:
+                    ui.label('Vorschau').classes('text-sm font-medium text-slate-500')
+                    if upload_state['df'] is None or upload_state['df'].empty:
+                        ui.label('Keine Daten gefunden').classes('text-sm text-slate-400')
+                        return
+                    preview_rows = upload_state['df'].head(5).fillna('').astype(str).to_dict('records')
+                    columns = [{'name': k, 'label': k, 'field': k} for k in preview_rows[0].keys()]
+                    ui.table(columns=columns, rows=preview_rows, row_key=columns[0]['name']).classes('w-full')
+
             def handle(e: events.UploadEventArguments):
-                try: content = e.content.read()
-                except: return ui.notify('Upload Fehler', color='red')
-                c, err = process_expense_import(content, session, comp.id)
+                try:
+                    content = e.content.read()
+                except AttributeError:
+                    ui.notify('Upload-Fehler: Content Attribut fehlt. Prüfe Python-Version.', color='red')
+                    print(f"DEBUG: Upload Event hat folgende Attribute: {dir(e)}")
+                    return
+
+                df, err = read_expense_import(content)
+                if err:
+                    ui.notify(err, color='red')
+                    upload_state['content'] = None
+                    upload_state['df'] = None
+                    confirm_btn.disable()
+                    render_preview()
+                    return
+                upload_state['content'] = content
+                upload_state['df'] = df
+                confirm_btn.enable()
+                render_preview()
+
+            def confirm_import():
+                if upload_state['content'] is None:
+                    return ui.notify('Bitte zuerst eine Datei hochladen.', color='red')
+                c, err = process_expense_import(upload_state['content'], session, comp.id)
                 if err: ui.notify(err, color='red')
                 else: 
                     ui.notify(f"{c} Importiert", color='green')
                     d.close()
                     ui.navigate.to('/')
-            ui.upload(on_upload=handle, auto_upload=True).classes('w-full')
+
+            ui.upload(on_upload=handle, auto_upload=True).props('accept=.csv,.xls,.xlsx').classes('w-full')
+            render_preview()
+            confirm_btn = ui.button('Import bestätigen', icon='check', on_click=confirm_import).classes(C_BTN_PRIM + " mt-3")
+            confirm_btn.disable()
         ui.button('Import', icon='upload', on_click=d.open).classes(C_BTN_PRIM)
 
     exps = session.exec(select(Expense)).all()
