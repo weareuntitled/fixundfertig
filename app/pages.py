@@ -1,5 +1,6 @@
 from nicegui import ui, app, events
-from sqlmodel import select
+from sqlmodel import Session, select
+from sqlalchemy import literal, case, union_all, func
 from datetime import datetime
 import os
 import base64
@@ -327,8 +328,6 @@ def render_invoices(session, comp):
 
 def render_ledger(session, comp):
     ui.label('Finanzen').classes(C_PAGE_TITLE + " mb-4")
-    invs = session.exec(select(Invoice)).all()
-    exps = session.exec(select(Expense)).all()
 
     def parse_date(value):
         try:
@@ -336,56 +335,68 @@ def render_ledger(session, comp):
         except Exception:
             return datetime.min
 
+    customer_name = func.coalesce(
+        func.nullif(Customer.name, ''),
+        func.trim(func.coalesce(Customer.vorname, '') + literal(' ') + func.coalesce(Customer.nachname, ''))
+    )
+
+    invoice_query = select(
+        Invoice.id.label('id'),
+        Invoice.date.label('date'),
+        Invoice.total_brutto.label('amount'),
+        literal('INCOME').label('type'),
+        case(
+            (Invoice.status == InvoiceStatus.DRAFT, 'Draft'),
+            (Invoice.status == 'Entwurf', 'Draft'),
+            (Invoice.status == 'Bezahlt', 'Paid'),
+            else_='Overdue',
+        ).label('status'),
+        func.coalesce(customer_name, literal('?')).label('party'),
+        Invoice.title.label('description'),
+        Invoice.status.label('invoice_status'),
+        Invoice.id.label('invoice_id'),
+        literal(None).label('expense_id'),
+    ).select_from(Invoice).outerjoin(Customer, Invoice.customer_id == Customer.id)
+
+    expense_query = select(
+        Expense.id.label('id'),
+        Expense.date.label('date'),
+        Expense.amount.label('amount'),
+        literal('EXPENSE').label('type'),
+        literal('Paid').label('status'),
+        func.coalesce(Expense.source, Expense.category, Expense.description, literal('-')).label('party'),
+        Expense.description.label('description'),
+        literal(None).label('invoice_status'),
+        literal(None).label('invoice_id'),
+        Expense.id.label('expense_id'),
+    )
+
+    rows = session.exec(union_all(invoice_query, expense_query)).all()
     items = []
-    for i in invs:
-        c = session.get(Customer, i.customer_id) if i.customer_id else None
-        status = "Paid" if i.status == InvoiceStatus.FINALIZED else "Draft" if i.status == InvoiceStatus.DRAFT else "Overdue"
+    for row in rows:
+        data = row._mapping if hasattr(row, '_mapping') else row
         items.append({
-            'id': f"inv-{i.id}",
-            'date': i.date,
-            'type': 'INCOME',
-            'type_label': 'Income',
-            'type_class': C_BADGE_GREEN + " w-20",
-            'amount': i.total_brutto,
-            'amount_label': amount_label,
-            'amount_class': 'w-24 text-right text-sm text-emerald-600',
-            'status': status,
-            'party': c.display_name if c else "?",
-            'row_type': 'INVOICE',
-            'invoice_id': i.id,
-            'invoice_status': i.status,
-            'customer_id': i.customer_id,
-            'pdf_filename': i.pdf_filename,
-            'nr': i.nr,
-            'sort_date': parse_date(i.date),
-        })
-    for e in exps:
-        vendor = e.source or e.category or e.description or "-"
-        amount_label = f"-{e.amount:,.2f} €"
-        items.append({
-            'id': f"exp-{e.id}",
-            'date': e.date,
-            'type': 'EXPENSE',
-            'type_label': 'Expense',
-            'type_class': "bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center w-20",
-            'amount': e.amount,
-            'amount_label': amount_label,
-            'amount_class': 'w-24 text-right text-sm text-rose-600',
-            'status': 'Paid',
-            'party': vendor,
-            'row_type': 'EXPENSE',
-            'expense_id': e.id,
-            'sort_date': parse_date(e.date),
+            'id': data['id'],
+            'date': data['date'],
+            'amount': data['amount'],
+            'type': data['type'],
+            'status': data['status'],
+            'party': data['party'],
+            'description': data['description'] or '',
+            'invoice_status': data['invoice_status'],
+            'invoice_id': data['invoice_id'],
+            'expense_id': data['expense_id'],
+            'sort_date': parse_date(data['date']),
         })
     items.sort(key=lambda x: x['sort_date'], reverse=True)
 
-    def on_edit(e):
-        row = e.args[0]
-        invoice_id = row.get('invoice_id')
-        if not invoice_id: return
-        app.storage.user['invoice_draft_id'] = invoice_id
-        app.storage.user['page'] = 'invoice_create'
-        ui.navigate.to('/')
+    state = {
+        'type': 'ALL',
+        'status': 'ALL',
+        'date_from': '',
+        'date_to': '',
+        'search': '',
+    }
 
     def apply_filters(data):
         filtered = []
@@ -396,6 +407,9 @@ def render_ledger(session, comp):
                 if item['sort_date'] < parse_date(state['date_from']): continue
             if state['date_to']:
                 if item['sort_date'] > parse_date(state['date_to']): continue
+            if state['search']:
+                haystack = f"{item['party']} {item.get('description','')}".lower()
+                if state['search'].lower() not in haystack: continue
             filtered.append(item)
         return filtered
 
@@ -415,55 +429,65 @@ def render_ledger(session, comp):
         state['date_to'] = e.value or ''
         render_list.refresh()
 
+    def set_search(e):
+        state['search'] = e.value or ''
+        render_list.refresh()
+
     with ui.card().classes(C_CARD + " p-4 mb-4 sticky top-0 z-30"):
-        with ui.row().classes('gap-4 w-full'):
+        with ui.row().classes('gap-4 w-full items-end flex-wrap'):
             ui.select({'ALL': 'Alle', 'INCOME': 'Income', 'EXPENSE': 'Expense'}, label='Typ', value=state['type'], on_change=set_type).classes(C_INPUT)
             ui.select({'ALL': 'Alle', 'Draft': 'Draft', 'Paid': 'Paid', 'Overdue': 'Overdue'}, label='Status', value=state['status'], on_change=set_status).classes(C_INPUT)
             ui.input('Von', on_change=set_date_from).props('type=date').classes(C_INPUT)
             ui.input('Bis', on_change=set_date_to).props('type=date').classes(C_INPUT)
+            ui.input('Suche', placeholder='Party oder Beschreibung', on_change=set_search).classes(C_INPUT + " min-w-[220px]")
 
     @ui.refreshable
     def render_list():
         data = apply_filters(items)
         with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
-            with ui.row().classes(C_TABLE_HEADER):
-                ui.label('Datum').classes('w-28 font-bold')
-                ui.label('Typ').classes('w-24 font-bold')
-                ui.label('Status').classes('w-24 font-bold')
-                ui.label('Kunde/Lieferant').classes('flex-1 font-bold')
-                ui.label('Betrag').classes('w-24 text-right font-bold')
-                ui.label('').classes('w-32')
+            with ui.element('div').classes(C_TABLE_HEADER + " hidden sm:grid sm:grid-cols-[110px_110px_110px_1fr_120px_120px] items-center"):
+                ui.label('Datum').classes('font-bold')
+                ui.label('Typ').classes('font-bold')
+                ui.label('Status').classes('font-bold')
+                ui.label('Kunde/Lieferant').classes('font-bold')
+                ui.label('Betrag').classes('font-bold text-right')
+                ui.label('').classes('font-bold text-right')
             for item in data:
-                with ui.row().classes(C_TABLE_ROW):
-                    ui.label(item['date']).classes('w-28 text-xs font-mono')
-                    badge_class = C_BADGE_GREEN if item['type'] == 'INCOME' else "bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-                    badge_label = "Income" if item['type'] == 'INCOME' else "Expense"
-                    ui.label(badge_label).classes(badge_class + " w-20")
-                    ui.label(item['status']).classes('w-24 text-xs')
-                    ui.label(item['party']).classes('flex-1 text-sm')
-                    amount_label = f"{item['amount']:,.2f} €" if item['type'] == 'INCOME' else f"-{item['amount']:,.2f} €"
-                    amount_class = 'w-24 text-right text-sm text-emerald-600' if item['type'] == 'INCOME' else 'w-24 text-right text-sm text-rose-600'
-                    ui.label(amount_label).classes(amount_class)
-                    with ui.row().classes('w-32 justify-end gap-1'):
-                        if item['invoice']:
-                            i = item['invoice']
-                            if i.status == InvoiceStatus.DRAFT:
+                with ui.element('div').classes(C_TABLE_ROW + " group grid grid-cols-1 sm:grid-cols-[110px_110px_110px_1fr_120px_120px] gap-2 sm:gap-0 items-start sm:items-center"):
+                    with ui.column().classes('gap-1'):
+                        ui.label('Datum').classes('sm:hidden text-[10px] uppercase text-slate-400')
+                        ui.label(item['date']).classes('text-xs font-mono')
+                    with ui.column().classes('gap-1'):
+                        ui.label('Typ').classes('sm:hidden text-[10px] uppercase text-slate-400')
+                        badge_class = C_BADGE_GREEN if item['type'] == 'INCOME' else "bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+                        badge_label = "Income" if item['type'] == 'INCOME' else "Expense"
+                        ui.label(badge_label).classes(badge_class + " w-20")
+                    with ui.column().classes('gap-1'):
+                        ui.label('Status').classes('sm:hidden text-[10px] uppercase text-slate-400')
+                        ui.label(item['status']).classes('text-xs')
+                    with ui.column().classes('gap-1'):
+                        ui.label('Kunde/Lieferant').classes('sm:hidden text-[10px] uppercase text-slate-400')
+                        ui.label(item['party']).classes('text-sm')
+                        if item.get('description'):
+                            ui.label(item['description']).classes('text-xs text-slate-500')
+                    with ui.column().classes('gap-1 sm:items-end'):
+                        ui.label('Betrag').classes('sm:hidden text-[10px] uppercase text-slate-400')
+                        amount_label = f"{item['amount']:,.2f} €" if item['type'] == 'INCOME' else f"-{item['amount']:,.2f} €"
+                        amount_class = 'text-right text-sm text-emerald-600' if item['type'] == 'INCOME' else 'text-right text-sm text-rose-600'
+                        ui.label(amount_label).classes(amount_class)
+                    with ui.row().classes('justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition'):
+                        if item['invoice_id']:
+                            i = session.get(Invoice, item['invoice_id'])
+                            if i and (i.status == InvoiceStatus.DRAFT or i.status == "Entwurf"):
                                 def edit(x=i):
                                     app.storage.user['invoice_draft_id'] = x.id
                                     app.storage.user['page'] = 'invoice_create'
                                     ui.navigate.to('/')
                                 ui.button(icon='edit', on_click=lambda x=i: edit(x)).props('flat dense').classes('text-slate-500')
-                            if i.status == InvoiceStatus.FINALIZED:
+                            if i and i.status == InvoiceStatus.FINALIZED:
                                 f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
-                                with ui.element('div'):
-                                    with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500'):
-                                        with ui.menu().props('auto-close no-parent-event'):
-                                            def on_send(x=i):
-                                                with get_session() as s:
-                                                    c = s.get(Customer, x.customer_id) if x.customer_id else None
-                                                send_invoice_email(comp, c, x)
-                                            ui.menu_item('Download', on_click=lambda p=f: download_invoice(p))
-                                            ui.menu_item('Senden', on_click=on_send)
+                                ui.button(icon='download', on_click=lambda p=f: download_invoice(p)).props('flat dense').classes('text-slate-500')
+                                ui.button(icon='mail', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('flat dense').classes('text-slate-500')
                         else:
                             ui.label('-').classes('text-xs text-slate-400')
 
