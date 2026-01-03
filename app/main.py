@@ -3,7 +3,7 @@ from nicegui import ui, app
 from sqlmodel import select
 from data import Company, engine, get_session
 from styles import C_BG, C_CONTAINER, C_HEADER, C_BRAND_BADGE, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
-from pages import render_customers, render_customer_new, render_invoices, render_invoice_create, render_settings
+from pages import render_dashboard, render_customers, render_customer_new, render_invoices, render_invoice_create, render_expenses, render_settings, render_ledger, render_automations
 
 def layout_wrapper(content_func):
     with ui.header().classes(C_HEADER):
@@ -26,8 +26,8 @@ def layout_wrapper(content_func):
 
             nav_item("Rechnungen", "invoices", "receipt_long")
             nav_item("Kunden", "customers", "group")
-            nav_item("Exporte", "exports", "ios_share")
-            nav_item("Automationen", "automations", "bolt")
+            nav_item("Finanzen", "ledger", "account_balance")
+            nav_item("Automationen", "automations", "sync")
             nav_item("Einstellungen", "settings", "settings")
 
     with ui.column().classes(C_BG + " w-full p-0"):
@@ -57,6 +57,9 @@ def index():
                     if page == 'customers': render_customers(session, comp)
                     elif page == 'customer_new': render_customer_new(session, comp)
                     elif page == 'invoices': render_invoices(session, comp)
+                    elif page == 'expenses': render_expenses(session, comp)
+                    elif page == 'ledger': render_ledger(session, comp)
+                    elif page == 'automations': render_automations(session, comp)
                     elif page == 'settings': render_settings(session, comp)
 
     layout_wrapper(content)
