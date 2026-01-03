@@ -6,7 +6,8 @@ def format_invoice_status(status: str) -> str:
     mapping = {
         InvoiceStatus.DRAFT: "Entwurf",
         InvoiceStatus.OPEN: "Offen",
-        InvoiceStatus.FINALIZED: "Offen",
+        InvoiceStatus.SENT: "Gesendet",
+        InvoiceStatus.PAID: "Bezahlt",
         InvoiceStatus.CANCELLED: "Storniert",
         "Bezahlt": "Bezahlt"
     }
@@ -14,7 +15,9 @@ def format_invoice_status(status: str) -> str:
 
 def invoice_status_badge(status: str) -> str:
     if status == InvoiceStatus.DRAFT: return C_BADGE_GRAY
-    if status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN): return C_BADGE_BLUE
+    if status == InvoiceStatus.OPEN: return C_BADGE_BLUE
+    if status == InvoiceStatus.SENT: return C_BADGE_BLUE
+    if status == InvoiceStatus.PAID: return C_BADGE_GREEN
     if status == InvoiceStatus.CANCELLED: return C_BADGE_GRAY
     if status == "Bezahlt": return C_BADGE_GREEN
     return C_BADGE_GRAY

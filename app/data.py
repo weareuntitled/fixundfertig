@@ -13,7 +13,8 @@ import os
 class InvoiceStatus(str, Enum):
     DRAFT = "DRAFT"
     OPEN = "OPEN"
-    FINALIZED = "FINALIZED"
+    SENT = "SENT"
+    PAID = "PAID"
     CANCELLED = "CANCELLED"
 
 class Company(SQLModel, table=True):
@@ -129,7 +130,7 @@ def prevent_finalized_invoice_updates(session, flush_context, instances):
             history = state.attrs.status.history
             old_status = history.deleted[0] if history.deleted else obj.status
             new_status = history.added[0] if history.added else obj.status
-            if old_status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN) and new_status != InvoiceStatus.CANCELLED:
+            if old_status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID) and new_status != InvoiceStatus.CANCELLED:
                 obj.status = InvoiceStatus.DRAFT
 
 def ensure_company_schema():
@@ -194,12 +195,13 @@ def ensure_invoice_schema():
         if "pdf_filename" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_filename TEXT DEFAULT ''")
         old_status_count = conn.exec_driver_sql(
-            "SELECT COUNT(*) FROM invoice WHERE status IN ('Entwurf','Bezahlt','Offen')"
+            "SELECT COUNT(*) FROM invoice WHERE status IN ('Entwurf','Bezahlt','Offen','FINALIZED')"
         ).fetchone()[0]
         if old_status_count > 0:
             conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Entwurf'")
-            conn.exec_driver_sql("UPDATE invoice SET status = 'FINALIZED' WHERE status = 'Bezahlt'")
+            conn.exec_driver_sql("UPDATE invoice SET status = 'PAID' WHERE status = 'Bezahlt'")
             conn.exec_driver_sql("UPDATE invoice SET status = 'OPEN' WHERE status = 'Offen'")
+            conn.exec_driver_sql("UPDATE invoice SET status = 'OPEN' WHERE status = 'FINALIZED'")
 
 ensure_invoice_schema()
 
@@ -341,10 +343,10 @@ def process_invoice_import(content, session, comp_id, filename=""):
             if kdnr:
                 cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
             if not cust: continue
-            status = InvoiceStatus.DRAFT
+            status = InvoiceStatus.OPEN
             is_storniert = str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']
             if is_storniert: status = InvoiceStatus.CANCELLED
-            if str(row.get('Zahldatum', '')).strip(): status = InvoiceStatus.FINALIZED
+            if str(row.get('Zahldatum', '')).strip(): status = InvoiceStatus.PAID
             inv = Invoice(
                 customer_id=cust.id,
                 nr=int(nr),

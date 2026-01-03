@@ -102,9 +102,9 @@ def render_dashboard(session, comp):
     invs = session.exec(select(Invoice)).all()
     exps = session.exec(select(Expense)).all()
     
-    umsatz = sum(i.total_brutto for i in invs if i.status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN))
+    umsatz = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.PAID)
     kosten = sum(e.amount for e in exps)
-    offen = sum(i.total_brutto for i in invs if i.status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN))
+    offen = sum(i.total_brutto for i in invs if i.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT))
     
     with ui.grid(columns=3).classes('w-full gap-4 mb-6'):
         kpi_card("Umsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-500")
@@ -315,7 +315,7 @@ def render_invoices(session, comp):
                 ui.label(c.display_name if c else "?").classes('flex-1 text-sm')
                 ui.label(f"{i.total_brutto:,.2f}").classes('w-24 text-right text-sm')
                 with ui.row().classes('w-32 justify-end gap-1'):
-                    if i.status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN):
+                    if i.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID):
                          with ui.element('div'):
                              with ui.row().classes('items-center gap-1'):
                                  loading_spinner = ui.spinner(size='sm').classes('text-slate-400')
@@ -375,8 +375,9 @@ def render_ledger(session, comp):
         literal('INCOME').label('type'),
         case(
             (Invoice.status == InvoiceStatus.DRAFT, 'Draft'),
-            (Invoice.status == InvoiceStatus.FINALIZED, 'Paid'),
-            (Invoice.status == InvoiceStatus.OPEN, 'Paid'),
+            (Invoice.status == InvoiceStatus.OPEN, 'Open'),
+            (Invoice.status == InvoiceStatus.SENT, 'Sent'),
+            (Invoice.status == InvoiceStatus.PAID, 'Paid'),
             (Invoice.status == InvoiceStatus.CANCELLED, 'Cancelled'),
             else_='Overdue',
         ).label('status'),
@@ -465,7 +466,7 @@ def render_ledger(session, comp):
     with ui.card().classes(C_CARD + " p-4 mb-4 sticky top-0 z-30"):
         with ui.row().classes('gap-4 w-full items-end flex-wrap'):
             ui.select({'ALL': 'Alle', 'INCOME': 'Income', 'EXPENSE': 'Expense'}, label='Typ', value=state['type'], on_change=set_type).classes(C_INPUT)
-            ui.select({'ALL': 'Alle', 'Draft': 'Draft', 'Paid': 'Paid', 'Overdue': 'Overdue'}, label='Status', value=state['status'], on_change=set_status).classes(C_INPUT)
+            ui.select({'ALL': 'Alle', 'Draft': 'Draft', 'Open': 'Open', 'Sent': 'Sent', 'Paid': 'Paid', 'Cancelled': 'Cancelled', 'Overdue': 'Overdue'}, label='Status', value=state['status'], on_change=set_status).classes(C_INPUT)
             ui.input('Von', on_change=set_date_from).props('type=date').classes(C_INPUT)
             ui.input('Bis', on_change=set_date_to).props('type=date').classes(C_INPUT)
             ui.input('Suche', placeholder='Party oder Beschreibung', on_change=set_search).classes(C_INPUT + " min-w-[220px]")
@@ -518,7 +519,7 @@ def render_ledger(session, comp):
                                     app.storage.user['page'] = 'invoice_create'
                                     ui.navigate.to('/')
                                 ui.button(icon='edit', on_click=lambda x=i: edit(x)).props('flat dense').classes('text-slate-500')
-                            if i and i.status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN):
+                            if i and i.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID):
                                 f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
                                 ui.button(icon='download', on_click=lambda p=i: download_invoice_file(p)).props('flat dense').classes('text-slate-500')
                                 ui.button(icon='mail', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('flat dense').classes('text-slate-500')

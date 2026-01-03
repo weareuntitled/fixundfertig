@@ -82,6 +82,6 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     # 6. Increment Number & Audit
     company.next_invoice_nr += 1
     session.add(company)
-    log_audit_action(session, "INVOICE_FINALIZED", invoice_id=inv.id)
+    session.add(AuditLog(action="OPEN", invoice_id=inv.id, timestamp=datetime.now().isoformat()))
     
     return inv
