@@ -35,6 +35,26 @@ def render_settings(session, comp: Company) -> None:
             tax = ui.input("Steuernummer", value=comp.tax_id).classes(C_INPUT)
             vat = ui.input("USt-ID", value=comp.vat_id).classes(C_INPUT)
 
+    with settings_card("Business Meta", classes="mb-4"):
+        business_type_options = [
+            "Einzelunternehmen",
+            "Freelancer",
+            "GbR/Partnership",
+            "GmbH",
+            "UG",
+            "Nonprofit",
+            "Other",
+        ]
+        with settings_grid():
+            business_type = ui.select(
+                "Unternehmensform",
+                options=business_type_options,
+                value=comp.business_type or "Einzelunternehmen",
+            ).classes(C_INPUT)
+            is_small_business = ui.switch(
+                "Kleinunternehmer",
+                value=bool(comp.is_small_business) if comp.is_small_business is not None else False,
+            ).classes(C_INPUT)
     with settings_card("Integrationen", classes="mb-4"):
         ui.label("Email Connection").classes("text-sm font-semibold text-slate-700")
         ui.label("Gmail, Outlook und IMAP folgen in einem späteren Release.").classes("text-sm text-slate-500")
@@ -75,6 +95,8 @@ def render_settings(session, comp: Company) -> None:
                 c.iban = iban.value or ""
                 c.tax_id = tax.value or ""
                 c.vat_id = vat.value or ""
+                c.business_type = business_type.value or "Einzelunternehmen"
+                c.is_small_business = bool(is_small_business.value)
                 c.default_sender_email = default_sender_email.value or ""
                 c.n8n_webhook_url = n8n_webhook_url.value or ""
                 c.n8n_secret = n8n_secret.value or ""
