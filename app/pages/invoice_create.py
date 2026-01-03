@@ -101,8 +101,6 @@ def render_invoice_create(session, comp: Company) -> None:
         preview_state["pending"] = True
         preview_state["last_change"] = time.monotonic()
 
-    # Recipient inputs declared later, but referenced in update_preview
-    rec_name = rec_street = rec_zip = rec_city = None
     ust_switch = None
 
     def update_preview():
@@ -118,10 +116,10 @@ def render_invoice_create(session, comp: Company) -> None:
                     rec_z = c.recipient_postal_code or c.plz
                     rec_c = c.recipient_city or c.ort
 
-        final_n = rec_name.value if rec_name and rec_name.value else rec_n
-        final_s = rec_street.value if rec_street and rec_street.value else rec_s
-        final_z = rec_zip.value if rec_zip and rec_zip.value else rec_z
-        final_c = rec_city.value if rec_city and rec_city.value else rec_c
+        final_n = recipient_defaults["name"] or rec_n
+        final_s = recipient_defaults["street"] or rec_s
+        final_z = recipient_defaults["zip"] or rec_z
+        final_c = recipient_defaults["city"] or rec_c
 
         inv = Invoice(
             nr=comp.next_invoice_nr,
@@ -222,12 +220,7 @@ def render_invoice_create(session, comp: Company) -> None:
                     state["title"],
                     state["date"],
                     state["delivery_date"],
-                    {
-                        "name": rec_name.value if rec_name else "",
-                        "street": rec_street.value if rec_street else "",
-                        "zip": rec_zip.value if rec_zip else "",
-                        "city": rec_city.value if rec_city else "",
-                    },
+                    recipient_defaults,
                     state["items"],
                     ust_switch.value if ust_switch else True,
                 )
@@ -274,10 +267,18 @@ def render_invoice_create(session, comp: Company) -> None:
                             with get_session() as s:
                                 c = s.get(Customer, int(value))
                                 if c:
-                                    rec_name.value = c.recipient_name or c.display_name
-                                    rec_street.value = c.recipient_street or c.strasse
-                                    rec_zip.value = c.recipient_postal_code or c.plz
-                                    rec_city.value = c.recipient_city or c.ort
+                                    recipient_defaults.update(
+                                        {
+                                            "name": c.recipient_name or c.display_name or "",
+                                            "street": c.recipient_street or c.strasse or "",
+                                            "zip": c.recipient_postal_code or c.plz or "",
+                                            "city": c.recipient_city or c.ort or "",
+                                        }
+                                    )
+                                else:
+                                    recipient_defaults.update({"name": "", "street": "", "zip": "", "city": ""})
+                        else:
+                            recipient_defaults.update({"name": "", "street": "", "zip": "", "city": ""})
                         request_preview_update()
 
                     def on_cust_event(e):
@@ -306,30 +307,6 @@ def render_invoice_create(session, comp: Company) -> None:
                             value=state["delivery_date"],
                             on_change=lambda e: (state.update({"delivery_date": e.value}), mark_dirty(), request_preview_update()),
                         ).classes(C_INPUT)
-
-                with ui.expansion("Anschrift anpassen").classes("w-full border border-slate-200 rounded bg-white text-sm"):
-                    with ui.column().classes("p-3 gap-2 w-full"):
-                        rec_name = ui.input(
-                            "Name",
-                            value=recipient_defaults["name"],
-                            on_change=lambda e: (mark_dirty(), request_preview_update()),
-                        ).classes(C_INPUT + " dense")
-                        rec_street = ui.input(
-                            "Straße",
-                            value=recipient_defaults["street"],
-                            on_change=lambda e: (mark_dirty(), request_preview_update()),
-                        ).classes(C_INPUT + " dense")
-                        with ui.row().classes("w-full gap-2"):
-                            rec_zip = ui.input(
-                                "PLZ",
-                                value=recipient_defaults["zip"],
-                                on_change=lambda e: (mark_dirty(), request_preview_update()),
-                            ).classes(C_INPUT + " w-20 dense")
-                            rec_city = ui.input(
-                                "Ort",
-                                value=recipient_defaults["city"],
-                                on_change=lambda e: (mark_dirty(), request_preview_update()),
-                            ).classes(C_INPUT + " flex-1 dense")
 
                 with ui.card().classes(C_CARD + " p-4 w-full"):
                     with ui.row().classes("justify-between w-full"):
