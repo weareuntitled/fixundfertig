@@ -27,21 +27,49 @@ def log_invoice_action(action, invoice_id):
 
 def download_invoice_file(invoice):
     if invoice and invoice.id: log_invoice_action("PRINT", invoice.id)
-    if not invoice.pdf_filename:
+    pdf_path = invoice.pdf_filename
+    if not pdf_path:
         pdf_bytes = render_invoice_to_pdf_bytes(invoice)
         if isinstance(pdf_bytes, bytearray): pdf_bytes = bytes(pdf_bytes)
         if not isinstance(pdf_bytes, bytes): raise TypeError("PDF output must be bytes")
         filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
-        ui.download(pdf_bytes, filename=filename)
+        pdf_path = f"storage/invoices/{filename}"
+        os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+        invoice.pdf_filename = filename
+        invoice.pdf_storage = "local"
+        with get_session() as s:
+            inv = s.get(Invoice, invoice.id)
+            if inv:
+                inv.pdf_filename = filename
+                inv.pdf_storage = "local"
+                s.add(inv)
+                s.commit()
+        ui.download(pdf_path)
         return
-    pdf_path = invoice.pdf_filename
     if not os.path.isabs(pdf_path) and not pdf_path.startswith("storage/"):
         pdf_path = f"storage/invoices/{pdf_path}"
     if os.path.exists(pdf_path): ui.download(pdf_path)
     else:
         pdf_bytes = render_invoice_to_pdf_bytes(invoice)
-        filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
-        ui.download(pdf_bytes, filename=filename)
+        if isinstance(pdf_bytes, bytearray): pdf_bytes = bytes(pdf_bytes)
+        if not isinstance(pdf_bytes, bytes): raise TypeError("PDF output must be bytes")
+        filename = os.path.basename(invoice.pdf_filename) if invoice.pdf_filename else f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
+        pdf_path = f"storage/invoices/{filename}"
+        os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+        invoice.pdf_filename = filename
+        invoice.pdf_storage = "local"
+        with get_session() as s:
+            inv = s.get(Invoice, invoice.id)
+            if inv:
+                inv.pdf_filename = filename
+                inv.pdf_storage = "local"
+                s.add(inv)
+                s.commit()
+        ui.download(pdf_path)
 
 def build_invoice_mailto(comp, customer, invoice):
     subject = f"Rechnung {invoice.nr or ''}".strip()
