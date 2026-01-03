@@ -29,6 +29,9 @@ def download_invoice(pdf_path, invoice_id=None):
     if pdf_path and os.path.exists(pdf_path): ui.download(pdf_path)
     else: ui.notify("PDF Datei fehlt", color="red")
 
+def request_invoice_download(pdf_path, invoice_id=None):
+    download_invoice(pdf_path, invoice_id=invoice_id)
+
 def build_invoice_mailto(comp, customer, invoice):
     subject = f"Rechnung {invoice.nr or ''}".strip()
     amount = f"{invoice.total_brutto:,.2f} EUR"
@@ -271,11 +274,8 @@ def render_invoices(session, comp):
                 with ui.row().classes('w-32 justify-end gap-1'):
                     if i.status == InvoiceStatus.FINALIZED:
                          f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
-                         with ui.element('div'):
-                             with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500'):
-                                 with ui.menu().props('auto-close no-parent-event'):
-                                     ui.menu_item('Download', on_click=lambda p=f: download_invoice(p))
-                                     ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x))
+                         ui.button(icon='download', on_click=lambda p=f, inv_id=i.id: request_invoice_download(p, inv_id)).props('round dense no-parent-event').classes('p-2 text-slate-500')
+                         ui.button(icon='email', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('round dense no-parent-event').classes('p-2 text-slate-500')
 
 def render_customers(session, comp):
     ui.label('Kunden').classes(C_PAGE_TITLE)
