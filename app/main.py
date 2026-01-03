@@ -3,7 +3,7 @@ from nicegui import ui, app
 from sqlmodel import select
 from data import Company, engine, get_session
 from styles import C_BG, C_CONTAINER, C_HEADER, C_BRAND_BADGE, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
-from pages import render_dashboard, render_customers, render_customer_new, render_invoices, render_invoice_create, render_expenses, render_settings, render_ledger, render_exports
+from pages import render_dashboard, render_customers, render_customer_new, render_invoices, render_invoice_create, render_invoice_detail, render_expenses, render_settings, render_ledger, render_exports
 
 def layout_wrapper(content_func):
     with ui.header().classes(C_HEADER):
@@ -52,6 +52,8 @@ def index():
             comp = session.exec(select(Company)).first()
             if page == 'invoice_create':
                 render_invoice_create(session, comp)
+            elif page == 'invoice_detail':
+                render_invoice_detail(session, comp)
             else:
                 with ui.column().classes(C_CONTAINER):
                     if page == 'customers': render_customers(session, comp)
