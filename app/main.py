@@ -3,7 +3,7 @@ from nicegui import ui, app
 from sqlmodel import Session, select
 from data import Company, engine
 from styles import C_BG, C_CONTAINER, C_HEADER, C_BRAND_BADGE, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
-from pages import render_dashboard, render_customers, render_customer_new, render_invoices, render_invoice_create, render_expenses, render_settings
+from pages import render_dashboard, render_customers, render_customer_new, render_invoices, render_invoice_create, render_expenses, render_settings, render_ledger
 
 def layout_wrapper(content_func):
     with ui.header().classes(C_HEADER):
@@ -26,8 +26,7 @@ def layout_wrapper(content_func):
 
             nav_item("Dashboard", "dashboard", "dashboard")
             nav_item("Kunden", "customers", "group")
-            nav_item("Rechnungen", "invoices", "receipt")
-            nav_item("Ausgaben", "expenses", "credit_card")
+            nav_item("Finanzen", "ledger", "account_balance")
             nav_item("Einstellungen", "settings", "settings")
 
     with ui.column().classes(C_BG + " w-full p-0"):
@@ -59,6 +58,7 @@ def index():
                     elif page == 'customer_new': render_customer_new(session, comp)
                     elif page == 'invoices': render_invoices(session, comp)
                     elif page == 'expenses': render_expenses(session, comp)
+                    elif page == 'ledger': render_ledger(session, comp)
                     elif page == 'settings': render_settings(session, comp)
 
     layout_wrapper(content)

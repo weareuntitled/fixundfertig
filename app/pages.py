@@ -14,7 +14,7 @@ from data import (
 )
 from renderer import render_invoice_to_pdf_bytes
 from actions import create_correction
-from styles import C_CARD, C_BTN_PRIM, C_BTN_SEC, C_INPUT, C_PAGE_TITLE, C_SECTION_TITLE, C_TABLE_HEADER, C_TABLE_ROW
+from styles import C_CARD, C_BTN_PRIM, C_BTN_SEC, C_INPUT, C_PAGE_TITLE, C_SECTION_TITLE, C_TABLE_HEADER, C_TABLE_ROW, C_BADGE_GREEN
 from ui_components import format_invoice_status, invoice_status_badge, kpi_card, sticky_header
 from logic import finalize_invoice_logic
 
@@ -276,6 +276,132 @@ def render_invoices(session, comp):
                                  with ui.menu().props('auto-close no-parent-event'):
                                      ui.menu_item('Download', on_click=lambda p=f: download_invoice(p))
                                      ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x))
+
+def render_ledger(session, comp):
+    ui.label('Finanzen').classes(C_PAGE_TITLE + " mb-4")
+    invs = session.exec(select(Invoice)).all()
+    exps = session.exec(select(Expense)).all()
+
+    def parse_date(value):
+        try:
+            return datetime.fromisoformat(value)
+        except Exception:
+            return datetime.min
+
+    items = []
+    for i in invs:
+        c = session.get(Customer, i.customer_id) if i.customer_id else None
+        status = "Paid" if i.status == "Bezahlt" else "Draft" if i.status == InvoiceStatus.DRAFT or i.status == "Entwurf" else "Overdue"
+        items.append({
+            'id': i.id,
+            'date': i.date,
+            'amount': i.total_brutto,
+            'type': 'INCOME',
+            'status': status,
+            'party': c.display_name if c else "?",
+            'invoice': i,
+            'expense': None,
+            'sort_date': parse_date(i.date),
+        })
+    for e in exps:
+        vendor = e.source or e.category or e.description or "-"
+        items.append({
+            'id': e.id,
+            'date': e.date,
+            'amount': e.amount,
+            'type': 'EXPENSE',
+            'status': 'Paid',
+            'party': vendor,
+            'invoice': None,
+            'expense': e,
+            'sort_date': parse_date(e.date),
+        })
+    items.sort(key=lambda x: x['sort_date'], reverse=True)
+
+    state = {
+        'type': 'ALL',
+        'status': 'ALL',
+        'date_from': '',
+        'date_to': '',
+    }
+
+    def apply_filters(data):
+        filtered = []
+        for item in data:
+            if state['type'] != 'ALL' and item['type'] != state['type']: continue
+            if state['status'] != 'ALL' and item['status'] != state['status']: continue
+            if state['date_from']:
+                if item['sort_date'] < parse_date(state['date_from']): continue
+            if state['date_to']:
+                if item['sort_date'] > parse_date(state['date_to']): continue
+            filtered.append(item)
+        return filtered
+
+    def set_type(e):
+        state['type'] = e.value or 'ALL'
+        render_list.refresh()
+
+    def set_status(e):
+        state['status'] = e.value or 'ALL'
+        render_list.refresh()
+
+    def set_date_from(e):
+        state['date_from'] = e.value or ''
+        render_list.refresh()
+
+    def set_date_to(e):
+        state['date_to'] = e.value or ''
+        render_list.refresh()
+
+    with ui.card().classes(C_CARD + " p-4 mb-4 sticky top-0 z-30"):
+        with ui.row().classes('gap-4 w-full'):
+            ui.select({'ALL': 'Alle', 'INCOME': 'Income', 'EXPENSE': 'Expense'}, label='Typ', value=state['type'], on_change=set_type).classes(C_INPUT)
+            ui.select({'ALL': 'Alle', 'Draft': 'Draft', 'Paid': 'Paid', 'Overdue': 'Overdue'}, label='Status', value=state['status'], on_change=set_status).classes(C_INPUT)
+            ui.input('Von', on_change=set_date_from).props('type=date').classes(C_INPUT)
+            ui.input('Bis', on_change=set_date_to).props('type=date').classes(C_INPUT)
+
+    @ui.refreshable
+    def render_list():
+        data = apply_filters(items)
+        with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+            with ui.row().classes(C_TABLE_HEADER):
+                ui.label('Datum').classes('w-28 font-bold')
+                ui.label('Typ').classes('w-24 font-bold')
+                ui.label('Status').classes('w-24 font-bold')
+                ui.label('Kunde/Lieferant').classes('flex-1 font-bold')
+                ui.label('Betrag').classes('w-24 text-right font-bold')
+                ui.label('').classes('w-32')
+            for item in data:
+                with ui.row().classes(C_TABLE_ROW):
+                    ui.label(item['date']).classes('w-28 text-xs font-mono')
+                    badge_class = C_BADGE_GREEN if item['type'] == 'INCOME' else "bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+                    badge_label = "Income" if item['type'] == 'INCOME' else "Expense"
+                    ui.label(badge_label).classes(badge_class + " w-20")
+                    ui.label(item['status']).classes('w-24 text-xs')
+                    ui.label(item['party']).classes('flex-1 text-sm')
+                    amount_label = f"{item['amount']:,.2f} €" if item['type'] == 'INCOME' else f"-{item['amount']:,.2f} €"
+                    amount_class = 'w-24 text-right text-sm text-emerald-600' if item['type'] == 'INCOME' else 'w-24 text-right text-sm text-rose-600'
+                    ui.label(amount_label).classes(amount_class)
+                    with ui.row().classes('w-32 justify-end gap-1'):
+                        if item['invoice']:
+                            i = item['invoice']
+                            if i.status == InvoiceStatus.DRAFT or i.status == "Entwurf":
+                                def edit(x=i):
+                                    app.storage.user['invoice_draft_id'] = x.id
+                                    app.storage.user['page'] = 'invoice_create'
+                                    ui.navigate.to('/')
+                                ui.button(icon='edit', on_click=lambda x=i: edit(x)).props('flat dense').classes('text-slate-500')
+                            if i.status == InvoiceStatus.FINALIZED:
+                                f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
+                                with ui.element('div'):
+                                    with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500'):
+                                        with ui.menu().props('auto-close no-parent-event'):
+                                            ui.menu_item('Download', on_click=lambda p=f: download_invoice(p))
+                                            ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x))
+                        else:
+                            ui.label('-').classes('text-xs text-slate-400')
+
+    render_list()
 
 def render_customers(session, comp):
     ui.label('Kunden').classes(C_PAGE_TITLE)
