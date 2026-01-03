@@ -3,6 +3,33 @@ from sqlmodel import Session, select
 
 from data import Invoice, InvoiceItem, InvoiceStatus, engine, log_audit_action
 
+STATUS_AUDIT_ACTIONS = {
+    InvoiceStatus.SENT: "INVOICE_SENT",
+    InvoiceStatus.PAID: "INVOICE_PAID",
+    InvoiceStatus.OPEN: "INVOICE_OPEN",
+    InvoiceStatus.FINALIZED: "INVOICE_FINALIZED",
+    InvoiceStatus.CANCELLED: "INVOICE_CANCELLED",
+}
+
+def update_status_logic(session, invoice_id, target_status):
+    invoice = session.get(Invoice, int(invoice_id))
+    if not invoice:
+        return None, "Rechnung nicht gefunden"
+    if invoice.status == InvoiceStatus.DRAFT:
+        return None, "Entwürfe können nicht aktualisiert werden"
+    if invoice.status == InvoiceStatus.CANCELLED:
+        return None, "Rechnung ist bereits storniert"
+    if invoice.status == target_status:
+        return None, "Status ist bereits gesetzt"
+    if target_status not in STATUS_AUDIT_ACTIONS:
+        return None, "Ungültiger Zielstatus"
+
+    invoice.status = target_status
+    invoice.updated_at = datetime.now().isoformat()
+    session.add(invoice)
+    log_audit_action(session, STATUS_AUDIT_ACTIONS[target_status], invoice_id=invoice.id)
+    return invoice, ""
+
 def create_correction(original_invoice_id, use_negative_items=True):
     with Session(engine) as session:
         original = session.get(Invoice, int(original_invoice_id))
@@ -82,6 +109,6 @@ def cancel_invoice(invoice_id):
 
         inv.status = InvoiceStatus.CANCELLED
         session.add(inv)
-        log_audit_action(session, "CANCELLED", invoice_id=inv.id)
+        log_audit_action(session, "INVOICE_CANCELLED", invoice_id=inv.id)
         session.commit()
     return True, ""
