@@ -2,7 +2,11 @@
 # APP/MAIN.PY (REPLACE FULL FILE)
 # =========================
 
+import json
 import os
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+
 from nicegui import ui, app
 from sqlmodel import select
 
@@ -21,6 +25,69 @@ from pages import (
     render_ledger,
     render_exports,
 )
+
+
+def _format_nominatim_result(item: dict) -> dict:
+    address = item.get("address") or {}
+    road = address.get("road") or address.get("pedestrian") or address.get("path") or ""
+    house_number = address.get("house_number") or ""
+    street = " ".join(part for part in [road, house_number] if part).strip()
+    if not street:
+        street = address.get("street") or ""
+    postal_code = address.get("postcode") or ""
+    city = (
+        address.get("city")
+        or address.get("town")
+        or address.get("village")
+        or address.get("municipality")
+        or address.get("county")
+        or ""
+    )
+    country_code = (address.get("country_code") or "").upper()
+    country = address.get("country") or country_code
+    label = item.get("display_name") or ", ".join(
+        part for part in [street, f"{postal_code} {city}".strip(), country] if part
+    )
+    return {
+        "label": label,
+        "street": street,
+        "zip": postal_code,
+        "city": city,
+        "country": country,
+    }
+
+
+@app.get("/api/address-autocomplete")
+def address_autocomplete(q: str = "", country: str = "DE"):
+    query = (q or "").strip()
+    if len(query) < 3:
+        return []
+
+    params = {
+        "q": query,
+        "format": "json",
+        "addressdetails": 1,
+        "limit": 6,
+    }
+    if country:
+        params["countrycodes"] = country.lower()
+    url = f"https://nominatim.openstreetmap.org/search?{urlencode(params)}"
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "FixundFertig/1.0 (autocomplete)",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urlopen(request, timeout=6) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    if not isinstance(payload, list):
+        return []
+    return [_format_nominatim_result(item) for item in payload]
 
 def set_page(name: str):
     app.storage.user["page"] = name
@@ -87,6 +154,9 @@ def index():
             if page == "invoice_detail":
                 render_invoice_detail(session, comp)
                 return
+            if page == "settings":
+                render_settings(session, comp)
+                return
 
             # Normal pages in container
             with ui.column().classes(C_CONTAINER):
@@ -107,8 +177,6 @@ def index():
                     render_ledger(session, comp)
                 elif page == "exports":
                     render_exports(session, comp)
-                elif page == "settings":
-                    render_settings(session, comp)
                 else:
                     # fallback
                     render_invoices(session, comp)
