@@ -26,7 +26,7 @@ def log_invoice_action(action, invoice_id):
         s.commit()
 
 def download_invoice_file(invoice):
-    if invoice and invoice.id: log_invoice_action("PRINT", invoice.id)
+    if invoice and invoice.id: log_invoice_action("EXPORT_CREATED", invoice.id)
     pdf_path = invoice.pdf_filename
     if not pdf_path:
         pdf_bytes = render_invoice_to_pdf_bytes(invoice)
@@ -102,9 +102,9 @@ def render_dashboard(session, comp):
     invs = session.exec(select(Invoice)).all()
     exps = session.exec(select(Expense)).all()
     
-    umsatz = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
+    umsatz = sum(i.total_brutto for i in invs if i.status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN))
     kosten = sum(e.amount for e in exps)
-    offen = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
+    offen = sum(i.total_brutto for i in invs if i.status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN))
     
     with ui.grid(columns=3).classes('w-full gap-4 mb-6'):
         kpi_card("Umsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-500")
@@ -223,6 +223,8 @@ def render_invoice_create(session, comp):
             for x in exist: inner.delete(x)
             for i in state['items']:
                  inner.add(InvoiceItem(invoice_id=inv.id, description=i['desc'], quantity=float(i['qty']), unit_price=float(i['price'])))
+            action = "INVOICE_UPDATED_DRAFT" if draft_id else "INVOICE_CREATED_DRAFT"
+            log_audit_action(inner, action, invoice_id=inv.id)
             inner.commit()
         ui.notify('Gespeichert', color='green')
         ui.navigate.to('/')
@@ -313,7 +315,7 @@ def render_invoices(session, comp):
                 ui.label(c.display_name if c else "?").classes('flex-1 text-sm')
                 ui.label(f"{i.total_brutto:,.2f}").classes('w-24 text-right text-sm')
                 with ui.row().classes('w-32 justify-end gap-1'):
-                    if i.status == InvoiceStatus.FINALIZED:
+                    if i.status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN):
                          with ui.element('div'):
                              with ui.row().classes('items-center gap-1'):
                                  loading_spinner = ui.spinner(size='sm').classes('text-slate-400')
@@ -374,6 +376,7 @@ def render_ledger(session, comp):
         case(
             (Invoice.status == InvoiceStatus.DRAFT, 'Draft'),
             (Invoice.status == InvoiceStatus.FINALIZED, 'Paid'),
+            (Invoice.status == InvoiceStatus.OPEN, 'Paid'),
             (Invoice.status == InvoiceStatus.CANCELLED, 'Cancelled'),
             else_='Overdue',
         ).label('status'),
@@ -515,7 +518,7 @@ def render_ledger(session, comp):
                                     app.storage.user['page'] = 'invoice_create'
                                     ui.navigate.to('/')
                                 ui.button(icon='edit', on_click=lambda x=i: edit(x)).props('flat dense').classes('text-slate-500')
-                            if i and i.status == InvoiceStatus.FINALIZED:
+                            if i and i.status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN):
                                 f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
                                 ui.button(icon='download', on_click=lambda p=i: download_invoice_file(p)).props('flat dense').classes('text-slate-500')
                                 ui.button(icon='mail', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('flat dense').classes('text-slate-500')
