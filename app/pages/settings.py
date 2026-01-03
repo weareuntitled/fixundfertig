@@ -25,16 +25,75 @@ def render_settings(session, comp: Company) -> None:
 
             ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").props("flat dense").classes("w-full")
 
-        with settings_card("Adresse"):
-            with settings_grid():
-                with ui.element("div").classes("relative w-full"):
-                    street = ui.input("Straße", value=comp.street).classes(C_INPUT)
-                    street_dropdown = ui.element("div").classes(
-                        "absolute left-0 right-0 mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-sm"
-                    )
-                plz = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
-                city = ui.input("Ort", value=comp.city).classes(C_INPUT)
-                country = ui.input("Land", value=comp.country).classes(C_INPUT)
+    with settings_card("Business Meta", classes="mb-4"):
+        business_type_options = [
+            "Einzelunternehmen",
+            "Freelancer",
+            "GbR/Partnership",
+            "GmbH",
+            "UG",
+            "Nonprofit",
+            "Other",
+        ]
+        with settings_grid():
+            business_type = ui.select(
+                "Unternehmensform",
+                options=business_type_options,
+                value=comp.business_type or "Einzelunternehmen",
+            ).classes(C_INPUT)
+            is_small_business = ui.switch(
+                "Kleinunternehmer",
+                value=bool(comp.is_small_business) if comp.is_small_business is not None else False,
+            ).classes(C_INPUT)
+    with settings_card("Integrationen", classes="mb-4"):
+        ui.label("Email Connection").classes("text-sm font-semibold text-slate-700")
+        ui.label("Gmail, Outlook und IMAP folgen in einem späteren Release.").classes("text-sm text-slate-500")
+        with ui.row().classes("w-full gap-2 flex-wrap"):
+            ui.button("Gmail").props("flat dense").classes("text-slate-500").disable()
+            ui.button("Outlook").props("flat dense").classes("text-slate-500").disable()
+            ui.button("IMAP").props("flat dense").classes("text-slate-500").disable()
+        with settings_grid():
+            default_sender_email = ui.input(
+                "Standard Absender-Email (optional)",
+                value=comp.default_sender_email,
+            ).classes(C_INPUT)
+        ui.label("Der Standard-Absender wird später für automatische Mails verwendet.").classes("text-sm text-slate-500")
+
+        ui.separator().classes("my-4")
+
+        ui.label("n8n").classes("text-sm font-semibold text-slate-700")
+        ui.label("Webhooks für zukünftige Automationen, z. B. Rechnungen erstellen oder senden.").classes(
+            "text-sm text-slate-500"
+        )
+        with settings_grid():
+            n8n_webhook_url = ui.input("n8n Webhook URL", value=comp.n8n_webhook_url).classes(C_INPUT)
+            n8n_secret = ui.input("n8n Secret", value=comp.n8n_secret).classes(C_INPUT)
+            n8n_enabled = ui.switch("n8n aktivieren", value=comp.n8n_enabled).props("dense color=grey-8")
+
+        def save():
+            with get_session() as s:
+                c = s.get(Company, int(comp.id))
+                c.name = name.value or ""
+                c.first_name = first_name.value or ""
+                c.last_name = last_name.value or ""
+                c.street = street.value or ""
+                c.postal_code = plz.value or ""
+                c.city = city.value or ""
+                c.country = country.value or ""
+                c.email = email.value or ""
+                c.phone = phone.value or ""
+                c.iban = iban.value or ""
+                c.tax_id = tax.value or ""
+                c.vat_id = vat.value or ""
+                c.business_type = business_type.value or "Einzelunternehmen"
+                c.is_small_business = bool(is_small_business.value)
+                c.default_sender_email = default_sender_email.value or ""
+                c.n8n_webhook_url = n8n_webhook_url.value or ""
+                c.n8n_secret = n8n_secret.value or ""
+                c.n8n_enabled = bool(n8n_enabled.value)
+                s.add(c)
+                s.commit()
+            ui.notify("Gespeichert", color="green")
 
         with settings_card("Business Meta"):
             with settings_grid():
