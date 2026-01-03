@@ -51,9 +51,15 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     
     filename = f"rechnung_{inv.nr}.pdf"
     path = f"storage/invoices/{filename}"
+    if os.path.exists(path):
+        suffix = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        filename = f"rechnung_{inv.nr}_{suffix}.pdf"
+        path = f"storage/invoices/{filename}"
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "wb") as f:
         f.write(pdf_bytes)
+    os.replace(temp_path, path)
         
     inv.pdf_filename = filename
     inv.pdf_storage = "local"
