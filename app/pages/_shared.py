@@ -51,6 +51,8 @@ from ui_components import (
     format_invoice_status,
     invoice_status_badge,
     kpi_card,
+    settings_card,
+    settings_grid,
     sticky_header,
 )
 
@@ -498,3 +500,4 @@ def _render_status_stepper(invoice: Invoice) -> None:
 # -------------------------
 # Expenses
 # -------------------------
+

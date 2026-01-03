@@ -6,19 +6,15 @@ from ._shared import *
 def render_customer_new(session, comp: Company) -> None:
     ui.label("Neuer Kunde").classes(C_PAGE_TITLE)
 
-    with ui.card().classes(C_CARD + " p-6 w-full max-w-2xl"):
-        name = ui.input("Firma").classes(C_INPUT)
-        first = ui.input("Vorname").classes(C_INPUT)
-        last = ui.input("Nachname").classes(C_INPUT)
-        with ui.column().classes("w-full gap-1"):
+    with settings_card(classes="max-w-2xl"):
+        with settings_grid():
+            name = ui.input("Firma").classes(C_INPUT)
+            first = ui.input("Vorname").classes(C_INPUT)
+            last = ui.input("Nachname").classes(C_INPUT)
             street = ui.input("Straße").classes(C_INPUT)
-            street_dropdown = ui.column().classes(
-                "w-full border border-slate-200 rounded-lg bg-white shadow-lg max-h-56 overflow-auto"
-            ).props("role=listbox aria-label=Adressvorschläge")
-        plz = ui.input("PLZ").classes(C_INPUT)
-        city = ui.input("Ort").classes(C_INPUT)
-        country = ui.input("Land").classes(C_INPUT)
-        email = ui.input("Email").classes(C_INPUT)
+            plz = ui.input("PLZ").classes(C_INPUT)
+            city = ui.input("Ort").classes(C_INPUT)
+            email = ui.input("Email").classes(C_INPUT)
 
         use_address_autocomplete(
             street,

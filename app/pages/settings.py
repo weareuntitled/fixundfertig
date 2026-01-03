@@ -6,8 +6,7 @@ from ._shared import *
 def render_settings(session, comp: Company) -> None:
     ui.label("Einstellungen").classes(C_PAGE_TITLE + " mb-6")
 
-    with ui.card().classes(C_CARD + " p-6 w-full mb-4"):
-        ui.label("Logo").classes(C_SECTION_TITLE)
+    with settings_card("Logo", classes="mb-4"):
 
         def on_up(e):
             os.makedirs("./storage", exist_ok=True)
@@ -17,23 +16,19 @@ def render_settings(session, comp: Company) -> None:
 
         ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").props("flat dense").classes("w-full")
 
-    with ui.card().classes(C_CARD + " p-6 w-full"):
-        name = ui.input("Firma", value=comp.name).classes(C_INPUT)
-        first_name = ui.input("Vorname", value=comp.first_name).classes(C_INPUT)
-        last_name = ui.input("Nachname", value=comp.last_name).classes(C_INPUT)
-        with ui.column().classes("w-full gap-1"):
+    with settings_card():
+        with settings_grid():
+            name = ui.input("Firma", value=comp.name).classes(C_INPUT)
+            first_name = ui.input("Vorname", value=comp.first_name).classes(C_INPUT)
+            last_name = ui.input("Nachname", value=comp.last_name).classes(C_INPUT)
             street = ui.input("Straße", value=comp.street).classes(C_INPUT)
-            street_dropdown = ui.column().classes(
-                "w-full border border-slate-200 rounded-lg bg-white shadow-lg max-h-56 overflow-auto"
-            ).props("role=listbox aria-label=Adressvorschläge")
-        plz = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
-        city = ui.input("Ort", value=comp.city).classes(C_INPUT)
-        country = ui.input("Land", value=comp.country).classes(C_INPUT)
-        email = ui.input("Email", value=comp.email).classes(C_INPUT)
-        phone = ui.input("Telefon", value=comp.phone).classes(C_INPUT)
-        iban = ui.input("IBAN", value=comp.iban).classes(C_INPUT)
-        tax = ui.input("Steuernummer", value=comp.tax_id).classes(C_INPUT)
-        vat = ui.input("USt-ID", value=comp.vat_id).classes(C_INPUT)
+            plz = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
+            city = ui.input("Ort", value=comp.city).classes(C_INPUT)
+            email = ui.input("Email", value=comp.email).classes(C_INPUT)
+            phone = ui.input("Telefon", value=comp.phone).classes(C_INPUT)
+            iban = ui.input("IBAN", value=comp.iban).classes(C_INPUT)
+            tax = ui.input("Steuernummer", value=comp.tax_id).classes(C_INPUT)
+            vat = ui.input("USt-ID", value=comp.vat_id).classes(C_INPUT)
 
         def save():
             with get_session() as s:
