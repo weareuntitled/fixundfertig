@@ -11,6 +11,7 @@ import json
 import time
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from nicegui import ui, app
 from sqlmodel import select
@@ -43,12 +44,15 @@ from styles import (
     C_TABLE_HEADER,
     C_TABLE_ROW,
     C_BADGE_GREEN,
+    C_CONTAINER,
 )
 
 from ui_components import (
     format_invoice_status,
     invoice_status_badge,
     kpi_card,
+    settings_card,
+    settings_grid,
     sticky_header,
 )
 
@@ -89,6 +93,125 @@ def _open_invoice_editor(draft_id: int | None) -> None:
     app.storage.user["invoice_draft_id"] = int(draft_id) if draft_id else None
     app.storage.user["page"] = "invoice_create"
     ui.navigate.to("/")
+
+
+def _fetch_address_autocomplete(query: str, country_code: str) -> list[dict]:
+    if len(query.strip()) < 3:
+        return []
+    base_url = os.environ.get("APP_BASE_URL", "http://localhost:8080")
+    params = urlencode({"q": query, "country": country_code})
+    url = f"{base_url}/api/address-autocomplete?{params}"
+    request = Request(url, headers={"Accept": "application/json"})
+    try:
+        with urlopen(request, timeout=6) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return payload
+
+
+def use_address_autocomplete(
+    street_input: ui.input,
+    zip_input: ui.input,
+    city_input: ui.input,
+    country_input: ui.input,
+    dropdown_container: ui.element,
+    *,
+    country_code: str = "DE",
+    debounce_seconds: float = 0.35,
+) -> None:
+    state = {
+        "query": "",
+        "results": [],
+        "open": False,
+        "active_index": -1,
+        "pending": False,
+        "last_change": 0.0,
+    }
+
+    def set_dropdown_visible(visible: bool) -> None:
+        dropdown_container.style(f"display: {'block' if visible else 'none'}")
+
+    set_dropdown_visible(False)
+
+    def apply_result(result: dict) -> None:
+        street_input.value = result.get("street") or ""
+        zip_input.value = result.get("zip") or ""
+        city_input.value = result.get("city") or ""
+        country_value = result.get("country") or country_input.value or country_code
+        country_input.value = country_value
+        state["open"] = False
+        state["active_index"] = -1
+        set_dropdown_visible(False)
+
+    def update_dropdown() -> None:
+        dropdown_container.clear()
+        if not state["open"] or not state["results"]:
+            set_dropdown_visible(False)
+            return
+
+        set_dropdown_visible(True)
+        for idx, result in enumerate(state["results"]):
+            label = result.get("label") or ""
+            is_active = idx == state["active_index"]
+            option_classes = "w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
+            if is_active:
+                option_classes += " bg-slate-100"
+            with ui.element("button").props(
+                f"type=button role=option aria-selected={'true' if is_active else 'false'}"
+            ).classes(option_classes).on("click", lambda _, r=result: apply_result(r)):
+                ui.label(label).classes("text-left text-slate-700")
+
+    def on_input_change(_) -> None:
+        state["query"] = street_input.value or ""
+        state["pending"] = True
+        state["last_change"] = time.monotonic()
+
+    def on_keydown(e) -> None:
+        key = (e.args or {}).get("key")
+        if key == "ArrowDown":
+            if state["results"]:
+                state["open"] = True
+                state["active_index"] = (state["active_index"] + 1) % len(state["results"])
+                update_dropdown()
+        elif key == "ArrowUp":
+            if state["results"]:
+                state["open"] = True
+                state["active_index"] = (state["active_index"] - 1) % len(state["results"])
+                update_dropdown()
+        elif key == "Enter":
+            if state["open"] and 0 <= state["active_index"] < len(state["results"]):
+                apply_result(state["results"][state["active_index"]])
+        elif key == "Escape":
+            state["open"] = False
+            state["active_index"] = -1
+            set_dropdown_visible(False)
+
+    def debounce_tick() -> None:
+        if not state["pending"]:
+            return
+        if time.monotonic() - state["last_change"] < debounce_seconds:
+            return
+        state["pending"] = False
+        query = state["query"].strip()
+        if len(query) < 3:
+            state["results"] = []
+            state["open"] = False
+            state["active_index"] = -1
+            update_dropdown()
+            return
+        results = _fetch_address_autocomplete(query, country_code)
+        state["results"] = results
+        state["open"] = bool(results)
+        state["active_index"] = 0 if results else -1
+        update_dropdown()
+
+    street_input.on("input", on_input_change)
+    street_input.on("keydown", on_keydown)
+    street_input.on("focus", lambda _: update_dropdown())
+    ui.timer(0.1, debounce_tick)
 
 
 # -------------------------
@@ -377,5 +500,4 @@ def _render_status_stepper(invoice: Invoice) -> None:
 # -------------------------
 # Expenses
 # -------------------------
-
 

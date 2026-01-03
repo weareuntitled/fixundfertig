@@ -137,7 +137,6 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     company, customer = _load_company_customer(invoice)
     line_items, totals = _prepare_items(invoice, company)
     is_small_business = bool(company and company.is_small_business)
-    show_vat = not is_small_business and totals["tax_rate"] > 0
 
     recipient_name = _sanitize_pdf_text(invoice.recipient_name or (customer.display_name if customer else ''))
     recipient_street = _sanitize_pdf_text(invoice.recipient_street or (customer.strasse if customer else ''))
@@ -226,7 +225,7 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.set_xy(totals_value_x, pdf.get_y())
     pdf.cell(30, 5, _sanitize_pdf_text(f"{totals['netto']:.2f} EUR"), align="R", ln=1)
 
-    if show_vat:
+    if not is_small_business:
         pdf.set_xy(totals_label_x, pdf.get_y())
         pdf.cell(40, 5, f"USt. ({totals['tax_rate'] * 100:.0f}%)", align="R")
         pdf.set_xy(totals_value_x, pdf.get_y())
