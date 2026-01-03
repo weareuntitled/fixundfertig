@@ -55,6 +55,30 @@ def render_settings(session, comp: Company) -> None:
                 "Kleinunternehmer",
                 value=bool(comp.is_small_business) if comp.is_small_business is not None else False,
             ).classes(C_INPUT)
+    with settings_card("Integrationen", classes="mb-4"):
+        ui.label("Email Connection").classes("text-sm font-semibold text-slate-700")
+        ui.label("Gmail, Outlook und IMAP folgen in einem späteren Release.").classes("text-sm text-slate-500")
+        with ui.row().classes("w-full gap-2 flex-wrap"):
+            ui.button("Gmail").props("flat dense").classes("text-slate-500").disable()
+            ui.button("Outlook").props("flat dense").classes("text-slate-500").disable()
+            ui.button("IMAP").props("flat dense").classes("text-slate-500").disable()
+        with settings_grid():
+            default_sender_email = ui.input(
+                "Standard Absender-Email (optional)",
+                value=comp.default_sender_email,
+            ).classes(C_INPUT)
+        ui.label("Der Standard-Absender wird später für automatische Mails verwendet.").classes("text-sm text-slate-500")
+
+        ui.separator().classes("my-4")
+
+        ui.label("n8n").classes("text-sm font-semibold text-slate-700")
+        ui.label("Webhooks für zukünftige Automationen, z. B. Rechnungen erstellen oder senden.").classes(
+            "text-sm text-slate-500"
+        )
+        with settings_grid():
+            n8n_webhook_url = ui.input("n8n Webhook URL", value=comp.n8n_webhook_url).classes(C_INPUT)
+            n8n_secret = ui.input("n8n Secret", value=comp.n8n_secret).classes(C_INPUT)
+            n8n_enabled = ui.switch("n8n aktivieren", value=comp.n8n_enabled).props("dense color=grey-8")
 
         def save():
             with get_session() as s:
@@ -73,6 +97,10 @@ def render_settings(session, comp: Company) -> None:
                 c.vat_id = vat.value or ""
                 c.business_type = business_type.value or "Einzelunternehmen"
                 c.is_small_business = bool(is_small_business.value)
+                c.default_sender_email = default_sender_email.value or ""
+                c.n8n_webhook_url = n8n_webhook_url.value or ""
+                c.n8n_secret = n8n_secret.value or ""
+                c.n8n_enabled = bool(n8n_enabled.value)
                 s.add(c)
                 s.commit()
             ui.notify("Gespeichert", color="green")
