@@ -3,6 +3,8 @@ from sqlmodel import Session, select
 from datetime import datetime
 import os
 import base64
+import json
+from urllib.parse import urlencode
 
 # Imports
 from data import (
@@ -26,6 +28,31 @@ def download_invoice(pdf_path, invoice_id=None):
     if invoice_id: log_invoice_action("PRINT", invoice_id)
     if pdf_path and os.path.exists(pdf_path): ui.download(pdf_path)
     else: ui.notify("PDF Datei fehlt", color="red")
+
+def build_invoice_mailto(comp, customer, invoice):
+    subject = f"Rechnung {invoice.nr or ''}".strip()
+    amount = f"{invoice.total_brutto:,.2f} EUR"
+    body_lines = [
+        f"Guten Tag {customer.display_name if customer else ''},".strip(),
+        "",
+        f"im Anhang finden Sie Ihre Rechnung {invoice.nr or ''} vom {invoice.date} über {amount}.",
+        "",
+        "Viele Grüße",
+        comp.name if comp else ""
+    ]
+    params = urlencode({
+        "subject": subject,
+        "body": "\n".join(line for line in body_lines if line is not None),
+    })
+    recipient = customer.email if customer and customer.email else ""
+    return f"mailto:{recipient}?{params}"
+
+def send_invoice_email(comp, customer, invoice):
+    if not customer or not customer.email:
+        ui.notify("Keine Email-Adresse beim Kunden hinterlegt", color="red")
+        return
+    mailto = build_invoice_mailto(comp, customer, invoice)
+    ui.run_javascript(f"window.location.href = {json.dumps(mailto)}")
 
 # --- DASHBOARD ---
 def render_dashboard(session, comp):
@@ -91,7 +118,7 @@ def render_invoice_create(session, comp):
     }
     
     # Iframe Preview
-    preview_html = ui.html('', sanitize=False).classes('w-full h-full bg-slate-300')
+    preview_html = None
 
     def update_preview():
         cust_id = state['customer_id']
@@ -116,7 +143,8 @@ def render_invoice_create(session, comp):
             pdf = render_invoice_to_pdf_bytes(inv)
             b64 = base64.b64encode(pdf).decode('utf-8')
             # Iframe 100% height fix
-            preview_html.content = f'<iframe src="data:application/pdf;base64,{b64}" style="width:100%; height:100%; border:none;"></iframe>'
+            if preview_html:
+                preview_html.content = f'<iframe src="data:application/pdf;base64,{b64}" style="width:100%; height:100%; border:none;"></iframe>'
         except Exception as e: print(e)
 
     def on_finalize():
@@ -157,7 +185,7 @@ def render_invoice_create(session, comp):
     sticky_header('Rechnungs-Editor', on_cancel=lambda: ui.navigate.to('/'), on_save=on_save_draft, on_finalize=on_finalize)
 
     with ui.column().classes('w-full h-[calc(100vh-64px)] p-0 m-0'):
-        with ui.splitter(value=40).classes('w-full flex-grow') as splitter:
+        with ui.splitter(value=40).props('horizontal').classes('w-full flex-grow') as splitter:
             # LINKS
             with splitter.before:
                 with ui.column().classes('w-full p-4 gap-4 h-full overflow-y-auto'):
@@ -219,7 +247,7 @@ def render_invoice_create(session, comp):
             # RECHTS
             with splitter.after:
                 with ui.column().classes('w-full h-full bg-slate-200 p-0 m-0 overflow-hidden'):
-                    preview_html
+                    preview_html = ui.html('', sanitize=False).classes('w-full h-full bg-slate-300')
     update_preview()
 
 # --- OTHER PAGES (Settings, Customers, Expenses) ---
@@ -243,7 +271,11 @@ def render_invoices(session, comp):
                 with ui.row().classes('w-32 justify-end gap-1'):
                     if i.status == InvoiceStatus.FINALIZED:
                          f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
-                         ui.button(icon='download').on('click', lambda e, p=f: download_invoice(p), js_handler='(e) => { e.stopPropagation(); emit(); }').classes('flat round dense text-slate-500')
+                         with ui.element('div').on('click', lambda e: e.stop_propagation()):
+                             with ui.button(icon='more_vert').classes('flat round dense text-slate-500'):
+                                 with ui.menu().props('auto-close'):
+                                     ui.menu_item('Download', on_click=lambda e, p=f: (e.stop_propagation(), download_invoice(p)))
+                                     ui.menu_item('Senden', on_click=lambda e, x=i: (e.stop_propagation(), send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)))
 
 def render_customers(session, comp):
     ui.label('Kunden').classes(C_PAGE_TITLE)
