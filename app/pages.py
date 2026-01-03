@@ -24,10 +24,18 @@ def log_invoice_action(action, invoice_id):
         log_audit_action(s, action, invoice_id=invoice_id)
         s.commit()
 
-def download_invoice(pdf_path, invoice_id=None):
-    if invoice_id: log_invoice_action("PRINT", invoice_id)
-    if pdf_path and os.path.exists(pdf_path): ui.download(pdf_path)
-    else: ui.notify("PDF Datei fehlt", color="red")
+def download_invoice_file(invoice):
+    if invoice and invoice.id: log_invoice_action("PRINT", invoice.id)
+    if not invoice.pdf_filename:
+        pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+        filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
+        ui.download(pdf_bytes, filename=filename)
+        return
+    pdf_path = invoice.pdf_filename
+    if not os.path.isabs(pdf_path) and not pdf_path.startswith("storage/"):
+        pdf_path = f"storage/invoices/{pdf_path}"
+    if os.path.exists(pdf_path): ui.download(pdf_path)
+    else: ui.notify(f"PDF Datei fehlt: {pdf_path}", color="red")
 
 def request_invoice_download(pdf_path, invoice_id=None):
     download_invoice(pdf_path, invoice_id=invoice_id)
