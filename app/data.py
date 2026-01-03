@@ -35,8 +35,10 @@ class Company(SQLModel, table=True):
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
+    default_sender_email: str = ""
     n8n_webhook_url: str = ""
     n8n_secret: str = ""
+    n8n_enabled: bool = False
     google_drive_folder_id: str = ""
     next_invoice_nr: int = 10000
 
@@ -178,10 +180,14 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_user TEXT DEFAULT ''")
         if "smtp_password" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_password TEXT DEFAULT ''")
+        if "default_sender_email" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN default_sender_email TEXT DEFAULT ''")
         if "n8n_webhook_url" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_webhook_url TEXT DEFAULT ''")
         if "n8n_secret" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_secret TEXT DEFAULT ''")
+        if "n8n_enabled" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_enabled INTEGER DEFAULT 0")
         if "google_drive_folder_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN google_drive_folder_id TEXT DEFAULT ''")
         if "next_invoice_nr" not in columns:
