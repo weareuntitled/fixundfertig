@@ -1,10 +1,11 @@
 from nicegui import ui, app, events
 from sqlmodel import Session, select
 from sqlalchemy import literal, case, union_all, func
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import base64
 import json
+import time
 from urllib.parse import urlencode
 
 # Imports
@@ -26,7 +27,7 @@ def log_invoice_action(action, invoice_id):
         s.commit()
 
 def download_invoice_file(invoice):
-    if invoice and invoice.id: log_invoice_action("PRINT", invoice.id)
+    if invoice and invoice.id: log_invoice_action("EXPORT_CREATED", invoice.id)
     pdf_path = invoice.pdf_filename
     if not pdf_path:
         pdf_bytes = render_invoice_to_pdf_bytes(invoice)
@@ -102,9 +103,9 @@ def render_dashboard(session, comp):
     invs = session.exec(select(Invoice)).all()
     exps = session.exec(select(Expense)).all()
     
-    umsatz = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
+    umsatz = sum(i.total_brutto for i in invs if i.status in (InvoiceStatus.PAID, InvoiceStatus.FINALIZED))
     kosten = sum(e.amount for e in exps)
-    offen = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
+    offen = sum(i.total_brutto for i in invs if i.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.FINALIZED))
     
     with ui.grid(columns=3).classes('w-full gap-4 mb-6'):
         kpi_card("Umsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-500")
@@ -158,9 +159,94 @@ def render_invoice_create(session, comp):
         'title': draft.title if draft else 'Rechnung',
         'ust': True
     }
+
+    blocked_statuses = {InvoiceStatus.FINALIZED, "OPEN", "SENT", "PAID", "Bezahlt"}
+    if draft and draft.status in blocked_statuses:
+        def create_revision_and_edit(reason):
+            with get_session() as inner:
+                original = inner.get(Invoice, draft.id)
+                if not original: return None
+                new_inv = Invoice(
+                    customer_id=original.customer_id,
+                    nr=None,
+                    title=original.title,
+                    date=original.date,
+                    delivery_date=original.delivery_date,
+                    recipient_name=original.recipient_name,
+                    recipient_street=original.recipient_street,
+                    recipient_postal_code=original.recipient_postal_code,
+                    recipient_city=original.recipient_city,
+                    total_brutto=original.total_brutto,
+                    status=InvoiceStatus.DRAFT
+                )
+                inner.add(new_inv)
+                inner.commit()
+                inner.refresh(new_inv)
+                items = inner.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == original.id)).all()
+                for item in items:
+                    inner.add(InvoiceItem(
+                        invoice_id=new_inv.id,
+                        description=item.description,
+                        quantity=item.quantity,
+                        unit_price=item.unit_price
+                    ))
+                log_audit_action(inner, f"RISK_EDIT: {reason}", invoice_id=original.id)
+                inner.commit()
+                return new_inv.id
+
+        sticky_header('Rechnungs-Editor', on_cancel=lambda: ui.navigate.to('/'))
+
+        with ui.column().classes('w-full h-[calc(100vh-64px)] p-0 m-0'):
+            with ui.column().classes('w-full p-4 gap-4'):
+                with ui.card().classes(C_CARD + " p-4 w-full"):
+                    ui.label('Ändern auf Risiko').classes(C_SECTION_TITLE)
+                    ui.label('Diese Rechnung ist nicht mehr direkt editierbar.').classes('text-sm text-slate-600')
+
+                    with ui.dialog() as risk_dialog:
+                        with ui.card().classes(C_CARD + " p-4 w-full"):
+                            ui.label('Ändern auf Risiko').classes(C_SECTION_TITLE)
+                            reason_input = ui.textarea('Grund', placeholder='Grund der Änderung').classes(C_INPUT)
+                            risk_checkbox = ui.checkbox('Ich verstehe das Risiko und möchte eine Revision erstellen.')
+                            with ui.row().classes('justify-end w-full'):
+                                action_button = ui.button('Revision erstellen und ändern', on_click=lambda: on_risk_confirm()).classes(C_BTN_PRIM)
+                                action_button.disable()
+
+                            def validate_risk():
+                                if risk_checkbox.value and reason_input.value:
+                                    action_button.enable()
+                                else:
+                                    action_button.disable()
+
+                            reason_input.on('update:model-value', lambda e: validate_risk())
+                            risk_checkbox.on('update:model-value', lambda e: validate_risk())
+
+                    def on_risk_confirm():
+                        if not risk_checkbox.value or not reason_input.value: return
+                        new_id = create_revision_and_edit(reason_input.value)
+                        if not new_id:
+                            ui.notify('Revision konnte nicht erstellt werden', color='red')
+                            return
+                        app.storage.user['invoice_draft_id'] = new_id
+                        app.storage.user['page'] = 'invoice_create'
+                        risk_dialog.close()
+                        ui.navigate.to('/')
+
+                    ui.button('Ändern auf Risiko', on_click=lambda: risk_dialog.open()).classes(C_BTN_PRIM)
+        return
     
     # Iframe Preview
     preview_html = None
+
+    autosave_state = {'dirty': False, 'last_change': 0.0, 'saving': False}
+    preview_state = {'pending': False, 'last_change': 0.0}
+
+    def mark_dirty():
+        autosave_state['dirty'] = True
+        autosave_state['last_change'] = time.monotonic()
+
+    def request_preview_update():
+        preview_state['pending'] = True
+        preview_state['last_change'] = time.monotonic()
 
     def update_preview():
         cust_id = state['customer_id']
@@ -192,6 +278,11 @@ def render_invoice_create(session, comp):
                 preview_html.content = f'<iframe src="data:application/pdf;base64,{b64}" style="width:100%; height:100%; border:none;"></iframe>'
         except Exception as e: print(e)
 
+    def debounce_preview():
+        if preview_state['pending'] and time.monotonic() - preview_state['last_change'] >= 0.3:
+            preview_state['pending'] = False
+            update_preview()
+
     def on_finalize():
         if not state['customer_id']: return ui.notify('Kunde fehlt', color='red')
         with get_session() as inner:
@@ -206,7 +297,8 @@ def render_invoice_create(session, comp):
         app.storage.user['invoice_draft_id'] = None
         ui.navigate.to('/')
 
-    def on_save_draft():
+    def save_draft():
+        nonlocal draft_id
         with get_session() as inner:
             if draft_id: inv = inner.get(Invoice, draft_id)
             else: inv = Invoice(status=InvoiceStatus.DRAFT)
@@ -223,9 +315,32 @@ def render_invoice_create(session, comp):
             for x in exist: inner.delete(x)
             for i in state['items']:
                  inner.add(InvoiceItem(invoice_id=inv.id, description=i['desc'], quantity=float(i['qty']), unit_price=float(i['price'])))
+            action = "INVOICE_UPDATED_DRAFT" if draft_id else "INVOICE_CREATED_DRAFT"
+            log_audit_action(inner, action, invoice_id=inv.id)
             inner.commit()
+            if not draft_id:
+                draft_id = inv.id
+                app.storage.user['invoice_draft_id'] = inv.id
+        return draft_id
+
+    def on_save_draft():
+        save_draft()
         ui.notify('Gespeichert', color='green')
         ui.navigate.to('/')
+
+    def on_autosave():
+        save_draft()
+
+    def autosave_tick():
+        if autosave_state['dirty'] and not autosave_state['saving']:
+            if time.monotonic() - autosave_state['last_change'] >= 3.0:
+                autosave_state['saving'] = True
+                on_autosave()
+                autosave_state['dirty'] = False
+                autosave_state['saving'] = False
+
+    ui.timer(0.1, debounce_preview)
+    ui.timer(3.0, autosave_tick)
 
     sticky_header('Rechnungs-Editor', on_cancel=lambda: ui.navigate.to('/'), on_save=on_save_draft, on_finalize=on_finalize)
 
@@ -238,30 +353,31 @@ def render_invoice_create(session, comp):
                     cust_select = ui.select(cust_opts, label='Kunde', value=state['customer_id'], with_input=True).classes(C_INPUT)
                     def on_cust(e):
                         state['customer_id'] = e.value
+                        mark_dirty()
                         if e.value:
                             with get_session() as s:
                                 c = s.get(Customer, int(e.value))
                                 if c: rec_name.value = c.display_name; rec_street.value = c.strasse; rec_zip.value = c.plz; rec_city.value = c.ort
-                        update_preview()
+                        request_preview_update()
                     cust_select.on('update:model-value', on_cust)
                     
                     with ui.grid(columns=2).classes('w-full gap-2'):
-                         ui.input('Titel', value=state['title'], on_change=lambda e: (state.update({'title': e.value}), update_preview())).classes(C_INPUT)
-                         ui.input('Rechnung', value=state['date'], on_change=lambda e: (state.update({'date': e.value}), update_preview())).classes(C_INPUT)
-                         ui.input('Lieferung', value=state['delivery_date'], on_change=lambda e: (state.update({'delivery_date': e.value}), update_preview())).classes(C_INPUT)
+                         ui.input('Titel', value=state['title'], on_change=lambda e: (state.update({'title': e.value}), mark_dirty(), request_preview_update())).classes(C_INPUT)
+                         ui.input('Rechnung', value=state['date'], on_change=lambda e: (state.update({'date': e.value}), mark_dirty(), request_preview_update())).classes(C_INPUT)
+                         ui.input('Lieferung', value=state['delivery_date'], on_change=lambda e: (state.update({'delivery_date': e.value}), mark_dirty(), request_preview_update())).classes(C_INPUT)
 
                 with ui.expansion('Anschrift anpassen').classes('w-full border border-slate-200 rounded bg-white text-sm'):
                     with ui.column().classes('p-3 gap-2 w-full'):
-                        rec_name = ui.input('Name', on_change=update_preview).classes(C_INPUT+" dense")
-                        rec_street = ui.input('Straße', on_change=update_preview).classes(C_INPUT+" dense")
+                        rec_name = ui.input('Name', on_change=request_preview_update).classes(C_INPUT+" dense")
+                        rec_street = ui.input('Straße', on_change=request_preview_update).classes(C_INPUT+" dense")
                         with ui.row().classes('w-full gap-2'):
-                            rec_zip = ui.input('PLZ', on_change=update_preview).classes(C_INPUT+" w-20 dense")
-                            rec_city = ui.input('Ort', on_change=update_preview).classes(C_INPUT+" flex-1 dense")
+                            rec_zip = ui.input('PLZ', on_change=request_preview_update).classes(C_INPUT+" w-20 dense")
+                            rec_city = ui.input('Ort', on_change=request_preview_update).classes(C_INPUT+" flex-1 dense")
 
                 with ui.card().classes(C_CARD + " p-4 w-full"):
                     with ui.row().classes('justify-between w-full'):
                         ui.label('Posten').classes(C_SECTION_TITLE)
-                        ust_switch = ui.switch('19% MwSt', value=state['ust'], on_change=lambda e: (state.update({'ust': e.value}), update_preview())).props('dense color=grey-8')
+                        ust_switch = ui.switch('19% MwSt', value=state['ust'], on_change=lambda e: (state.update({'ust': e.value}), mark_dirty(), request_preview_update())).props('dense color=grey-8')
                     
                     if template_items:
                         item_template_select = ui.select({str(t.id): t.title for t in template_items}, label='Vorlage', with_input=True).classes(C_INPUT + " mb-2 dense")
@@ -272,18 +388,18 @@ def render_invoice_create(session, comp):
                         with items_col:
                             for item in state['items']:
                                 with ui.row().classes('w-full gap-1 items-start bg-slate-50 p-2 rounded border'):
-                                    ui.textarea(value=item['desc'], on_change=lambda e, i=item: (i.update({'desc': e.value}), update_preview())).classes('flex-1 dense text-sm').props('rows=1 placeholder="Text" auto-grow')
+                                    ui.textarea(value=item['desc'], on_change=lambda e, i=item: (i.update({'desc': e.value}), mark_dirty(), request_preview_update())).classes('flex-1 dense text-sm').props('rows=1 placeholder="Text" auto-grow')
                                     with ui.column().classes('gap-1'):
-                                        ui.number(value=item['qty'], on_change=lambda e, i=item: (i.update({'qty': float(e.value or 0)}), update_preview())).classes('w-16 dense')
-                                        ui.number(value=item['price'], on_change=lambda e, i=item: (i.update({'price': float(e.value or 0)}), update_preview())).classes('w-20 dense')
-                                    ui.button(icon='close', on_click=lambda i=item: (state['items'].remove(i), render_list(), update_preview())).classes('flat dense text-red')
+                                        ui.number(value=item['qty'], on_change=lambda e, i=item: (i.update({'qty': float(e.value or 0)}), mark_dirty(), request_preview_update())).classes('w-16 dense')
+                                        ui.number(value=item['price'], on_change=lambda e, i=item: (i.update({'price': float(e.value or 0)}), mark_dirty(), request_preview_update())).classes('w-20 dense')
+                                    ui.button(icon='close', on_click=lambda i=item: (state['items'].remove(i), mark_dirty(), render_list(), request_preview_update())).classes('flat dense text-red')
                     render_list()
                     
-                    def add_new(): state['items'].append({'desc':'', 'qty':1.0, 'price':0.0, 'is_brutto':False}); render_list()
+                    def add_new(): state['items'].append({'desc':'', 'qty':1.0, 'price':0.0, 'is_brutto':False}); mark_dirty(); render_list(); request_preview_update()
                     def add_tmpl():
                          if not item_template_select.value: return
                          t = next((x for x in template_items if str(x.id)==item_template_select.value),None)
-                         if t: state['items'].append({'desc':t.description,'qty':t.quantity,'price':t.unit_price,'is_brutto':False}); render_list(); update_preview(); item_template_select.value=None
+                         if t: state['items'].append({'desc':t.description,'qty':t.quantity,'price':t.unit_price,'is_brutto':False}); mark_dirty(); render_list(); request_preview_update(); item_template_select.value=None
 
                     with ui.row().classes('gap-2 mt-2'):
                         ui.button('Posten', icon='add', on_click=add_new).props('flat dense').classes('text-slate-600')
@@ -313,7 +429,7 @@ def render_invoices(session, comp):
                 ui.label(c.display_name if c else "?").classes('flex-1 text-sm')
                 ui.label(f"{i.total_brutto:,.2f}").classes('w-24 text-right text-sm')
                 with ui.row().classes('w-32 justify-end gap-1'):
-                    if i.status == InvoiceStatus.FINALIZED:
+                    if i.status != InvoiceStatus.CANCELLED:
                          with ui.element('div'):
                              with ui.row().classes('items-center gap-1'):
                                  loading_spinner = ui.spinner(size='sm').classes('text-slate-400')
@@ -349,8 +465,61 @@ def render_invoices(session, comp):
                                                  ui.notify(f"Fehler: {e}", color='red')
                                              set_loading(False)
 
-                                         ui.menu_item('Download', on_click=on_download)
-                                         ui.menu_item('Senden', on_click=on_send)
+                                         def on_status_change(target_status, x=i):
+                                             ui.notify('Wird vorbereitet…')
+                                             set_loading(True)
+                                             try:
+                                                 with get_session() as s:
+                                                     with s.begin():
+                                                         _, err = update_status_logic(s, x.id, target_status)
+                                                 if err:
+                                                     ui.notify(err, color='red')
+                                                 else:
+                                                     ui.notify('Status aktualisiert', color='green')
+                                             except Exception as e:
+                                                 ui.notify(f"Fehler: {e}", color='red')
+                                             set_loading(False)
+                                             ui.navigate.to('/')
+
+                                         def on_cancel(x=i):
+                                             ui.notify('Wird vorbereitet…')
+                                             set_loading(True)
+                                             try:
+                                                 ok, err = cancel_invoice(x.id)
+                                                 if not ok:
+                                                     ui.notify(err, color='red')
+                                                 else:
+                                                     ui.notify('Storniert', color='green')
+                                             except Exception as e:
+                                                 ui.notify(f"Fehler: {e}", color='red')
+                                             set_loading(False)
+                                             ui.navigate.to('/')
+
+                                         def on_delete(x=i):
+                                             ui.notify('Wird vorbereitet…')
+                                             set_loading(True)
+                                             try:
+                                                 ok, err = delete_draft(x.id)
+                                                 if not ok:
+                                                     ui.notify(err, color='red')
+                                                 else:
+                                                     ui.notify('Gelöscht', color='green')
+                                             except Exception as e:
+                                                 ui.notify(f"Fehler: {e}", color='red')
+                                             set_loading(False)
+                                             ui.navigate.to('/')
+
+                                         if i.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID, InvoiceStatus.FINALIZED):
+                                             ui.menu_item('Download', on_click=on_download)
+                                             ui.menu_item('Senden', on_click=on_send)
+                                         if i.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
+                                             ui.menu_item('Als gesendet markieren', on_click=lambda x=i: on_status_change(InvoiceStatus.SENT, x))
+                                         if i.status == InvoiceStatus.SENT:
+                                             ui.menu_item('Als bezahlt markieren', on_click=lambda x=i: on_status_change(InvoiceStatus.PAID, x))
+                                         if i.status == InvoiceStatus.DRAFT:
+                                             ui.menu_item('Entwurf löschen', on_click=on_delete)
+                                         elif i.status != InvoiceStatus.CANCELLED:
+                                             ui.menu_item('Stornieren', on_click=on_cancel)
 
 def render_ledger(session, comp):
     ui.label('Finanzen').classes(C_PAGE_TITLE + " mb-4")
@@ -373,7 +542,10 @@ def render_ledger(session, comp):
         literal('INCOME').label('type'),
         case(
             (Invoice.status == InvoiceStatus.DRAFT, 'Draft'),
-            (Invoice.status == InvoiceStatus.FINALIZED, 'Paid'),
+            (Invoice.status == InvoiceStatus.OPEN, 'Open'),
+            (Invoice.status == InvoiceStatus.SENT, 'Sent'),
+            (Invoice.status == InvoiceStatus.PAID, 'Paid'),
+            (Invoice.status == InvoiceStatus.FINALIZED, 'Open'),
             (Invoice.status == InvoiceStatus.CANCELLED, 'Cancelled'),
             else_='Overdue',
         ).label('status'),
@@ -462,7 +634,7 @@ def render_ledger(session, comp):
     with ui.card().classes(C_CARD + " p-4 mb-4 sticky top-0 z-30"):
         with ui.row().classes('gap-4 w-full items-end flex-wrap'):
             ui.select({'ALL': 'Alle', 'INCOME': 'Income', 'EXPENSE': 'Expense'}, label='Typ', value=state['type'], on_change=set_type).classes(C_INPUT)
-            ui.select({'ALL': 'Alle', 'Draft': 'Draft', 'Paid': 'Paid', 'Overdue': 'Overdue'}, label='Status', value=state['status'], on_change=set_status).classes(C_INPUT)
+            ui.select({'ALL': 'Alle', 'Draft': 'Draft', 'Open': 'Open', 'Sent': 'Sent', 'Paid': 'Paid', 'Cancelled': 'Cancelled'}, label='Status', value=state['status'], on_change=set_status).classes(C_INPUT)
             ui.input('Von', on_change=set_date_from).props('type=date').classes(C_INPUT)
             ui.input('Bis', on_change=set_date_to).props('type=date').classes(C_INPUT)
             ui.input('Suche', placeholder='Party oder Beschreibung', on_change=set_search).classes(C_INPUT + " min-w-[220px]")
@@ -515,7 +687,7 @@ def render_ledger(session, comp):
                                     app.storage.user['page'] = 'invoice_create'
                                     ui.navigate.to('/')
                                 ui.button(icon='edit', on_click=lambda x=i: edit(x)).props('flat dense').classes('text-slate-500')
-                            if i and i.status == InvoiceStatus.FINALIZED:
+                            if i and i.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID, InvoiceStatus.FINALIZED):
                                 f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
                                 ui.button(icon='download', on_click=lambda p=i: download_invoice_file(p)).props('flat dense').classes('text-slate-500')
                                 ui.button(icon='mail', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('flat dense').classes('text-slate-500')
@@ -611,6 +783,62 @@ def render_settings(session, comp):
                 s.add(c); s.commit()
             ui.notify('Gespeichert')
         ui.button('Speichern', on_click=save).classes(C_BTN_PRIM)
+
+def render_automations(session, comp):
+    ui.label('Automationen').classes(C_PAGE_TITLE + " mb-6")
+
+    status_state = {
+        'value': 'connected' if comp.n8n_webhook_url and comp.n8n_secret else 'not_connected'
+    }
+    status_labels = {
+        'not_connected': ('Nicht verbunden', C_BADGE_GRAY),
+        'connected': ('Verbunden', C_BADGE_GREEN),
+        'error': ('Fehler', 'bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center')
+    }
+
+    @ui.refreshable
+    def render_status():
+        label, classes = status_labels[status_state['value']]
+        ui.label(label).classes(classes)
+
+    with ui.card().classes(C_CARD + " p-6 w-full"):
+        ui.label('n8n Verbindung').classes(C_SECTION_TITLE + " mb-4")
+        with ui.row().classes('items-center gap-2 mb-6'):
+            ui.label('Status').classes('text-sm text-slate-600')
+            render_status()
+
+        n8n_webhook_url = ui.input('n8n Webhook URL', value=comp.n8n_webhook_url).classes(C_INPUT)
+        n8n_secret = ui.input('n8n Secret', value=comp.n8n_secret).classes(C_INPUT)
+        google_drive_folder_id = ui.input('Google Drive Ordner-ID (optional)', value=comp.google_drive_folder_id).classes(C_INPUT)
+
+        def save():
+            with get_session() as s:
+                c = s.get(Company, comp.id)
+                c.n8n_webhook_url = n8n_webhook_url.value
+                c.n8n_secret = n8n_secret.value
+                c.google_drive_folder_id = google_drive_folder_id.value
+                s.add(c); s.commit()
+            comp.n8n_webhook_url = n8n_webhook_url.value
+            comp.n8n_secret = n8n_secret.value
+            comp.google_drive_folder_id = google_drive_folder_id.value
+            status_state['value'] = 'connected' if comp.n8n_webhook_url and comp.n8n_secret else 'not_connected'
+            render_status.refresh()
+            ui.notify('Gespeichert')
+
+        def send_test_event():
+            payload = {
+                'event': 'test',
+                'company_id': comp.id,
+                'timestamp': datetime.now().isoformat()
+            }
+            ok = send_n8n_event(comp, payload)
+            status_state['value'] = 'connected' if ok else 'error'
+            render_status.refresh()
+            if ok: ui.notify('Test Event gesendet', color='green')
+
+        with ui.row().classes('gap-3 mt-4'):
+            ui.button('Speichern', on_click=save).classes(C_BTN_PRIM)
+            ui.button('Test Event senden', on_click=send_test_event).classes(C_BTN_SEC)
 
 def render_expenses(session, comp):
     ui.label('Ausgaben').classes(C_PAGE_TITLE)

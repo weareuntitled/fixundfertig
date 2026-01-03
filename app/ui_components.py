@@ -5,6 +5,9 @@ from styles import C_CARD, C_CARD_HOVER, C_BADGE_GRAY, C_BADGE_BLUE, C_BADGE_GRE
 def format_invoice_status(status: str) -> str:
     mapping = {
         InvoiceStatus.DRAFT: "Entwurf",
+        InvoiceStatus.OPEN: "Offen",
+        InvoiceStatus.SENT: "Gesendet",
+        InvoiceStatus.PAID: "Bezahlt",
         InvoiceStatus.FINALIZED: "Offen",
         InvoiceStatus.CANCELLED: "Storniert",
         "Bezahlt": "Bezahlt"
@@ -13,6 +16,9 @@ def format_invoice_status(status: str) -> str:
 
 def invoice_status_badge(status: str) -> str:
     if status == InvoiceStatus.DRAFT: return C_BADGE_GRAY
+    if status == InvoiceStatus.OPEN: return C_BADGE_BLUE
+    if status == InvoiceStatus.SENT: return C_BADGE_GRAY
+    if status == InvoiceStatus.PAID: return C_BADGE_GREEN
     if status == InvoiceStatus.FINALIZED: return C_BADGE_BLUE
     if status == InvoiceStatus.CANCELLED: return C_BADGE_GRAY
     if status == "Bezahlt": return C_BADGE_GREEN
