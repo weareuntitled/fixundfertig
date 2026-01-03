@@ -12,6 +12,7 @@ import os
 # --- DB MODELLE ---
 class InvoiceStatus(str, Enum):
     DRAFT = "DRAFT"
+    OPEN = "OPEN"
     FINALIZED = "FINALIZED"
     CANCELLED = "CANCELLED"
 
@@ -128,7 +129,7 @@ def prevent_finalized_invoice_updates(session, flush_context, instances):
             history = state.attrs.status.history
             old_status = history.deleted[0] if history.deleted else obj.status
             new_status = history.added[0] if history.added else obj.status
-            if old_status == InvoiceStatus.FINALIZED and new_status != InvoiceStatus.CANCELLED:
+            if old_status in (InvoiceStatus.FINALIZED, InvoiceStatus.OPEN) and new_status != InvoiceStatus.CANCELLED:
                 obj.status = InvoiceStatus.DRAFT
 
 def ensure_company_schema():
@@ -198,7 +199,7 @@ def ensure_invoice_schema():
         if old_status_count > 0:
             conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Entwurf'")
             conn.exec_driver_sql("UPDATE invoice SET status = 'FINALIZED' WHERE status = 'Bezahlt'")
-            conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Offen'")
+            conn.exec_driver_sql("UPDATE invoice SET status = 'OPEN' WHERE status = 'Offen'")
 
 ensure_invoice_schema()
 
@@ -354,7 +355,7 @@ def process_invoice_import(content, session, comp_id, filename=""):
             session.add(inv)
             session.flush()
             if is_storniert:
-                log_audit_action(session, "STORNIRT", invoice_id=inv.id)
+                log_audit_action(session, "INVOICE_CANCELLED", invoice_id=inv.id)
             count += 1
         except: continue
     session.commit()

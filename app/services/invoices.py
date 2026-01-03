@@ -19,7 +19,7 @@ def finalize_invoice_transaction(company_id, customer_id, invoice_date, total_br
                 nr=company.next_invoice_nr,
                 date=invoice_date,
                 total_brutto=total_brutto,
-                status=InvoiceStatus.FINALIZED
+                status=InvoiceStatus.OPEN
             )
             inner.add(invoice)
             inner.flush()
