@@ -28,6 +28,8 @@ def download_invoice_file(invoice):
     if invoice and invoice.id: log_invoice_action("PRINT", invoice.id)
     if not invoice.pdf_filename:
         pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+        if isinstance(pdf_bytes, bytearray): pdf_bytes = bytes(pdf_bytes)
+        if not isinstance(pdf_bytes, bytes): raise TypeError("PDF output must be bytes")
         filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
         ui.download(pdf_bytes, filename=filename)
         return
@@ -149,6 +151,8 @@ def render_invoice_create(session, comp):
         
         try:
             pdf = render_invoice_to_pdf_bytes(inv)
+            if isinstance(pdf, bytearray): pdf = bytes(pdf)
+            if not isinstance(pdf, bytes): raise TypeError("PDF output must be bytes")
             b64 = base64.b64encode(pdf).decode('utf-8')
             # Iframe 100% height fix
             if preview_html:
