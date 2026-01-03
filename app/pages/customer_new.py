@@ -22,20 +22,20 @@ def render_customer_new(session, comp: Company) -> None:
     def save():
         with get_session() as s:
             c = Customer(
-                    company_id=int(comp.id),
-                    kdnr=0,
-                    name=name.value or "",
-                    vorname=first.value or "",
-                    nachname=last.value or "",
-                    email=email.value or "",
-                    strasse=street.value or "",
-                    plz=plz.value or "",
-                    ort=city.value or "",
-                    country=country.value or "",
-                )
-                s.add(c)
-                s.commit()
-            app.storage.user["page"] = "customers"
-            ui.navigate.to("/")
+                company_id=int(comp.id),
+                kdnr=0,
+                name=name.value or "",
+                vorname=first.value or "",
+                nachname=last.value or "",
+                email=email.value or "",
+                strasse=street.value or "",
+                plz=plz.value or "",
+                ort=city.value or "",
+                country=country.value or "",
+            )
+            s.add(c)
+            s.commit()
+        app.storage.user["page"] = "customers"
+        ui.navigate.to("/")
 
-        ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)
+    ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)
