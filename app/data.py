@@ -73,9 +73,20 @@ class Invoice(SQLModel, table=True):
     recipient_city: str = ""
     total_brutto: float
     status: InvoiceStatus = InvoiceStatus.DRAFT
+    revision_nr: int = 0
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
     pdf_bytes: Optional[bytes] = Field(default=None)
     pdf_storage: str = ""
     pdf_filename: str = ""
+
+class InvoiceRevision(SQLModel, table=True):
+    invoice_id: int = Field(foreign_key="invoice.id", primary_key=True)
+    revision_nr: int = Field(primary_key=True)
+    changed_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    reason: str = ""
+    snapshot_json: str = ""
+    pdf_filename_previous: str = ""
 
 class InvoiceItem(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -195,15 +206,38 @@ def ensure_invoice_schema():
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_storage TEXT DEFAULT ''")
         if "pdf_filename" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_filename TEXT DEFAULT ''")
+        if "revision_nr" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN revision_nr INTEGER DEFAULT 0")
+        if "updated_at" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
+        if "related_invoice_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN related_invoice_id INTEGER")
         old_status_count = conn.exec_driver_sql(
-            "SELECT COUNT(*) FROM invoice WHERE status IN ('Entwurf','Bezahlt','Offen')"
+            "SELECT COUNT(*) FROM invoice WHERE status IN ('Entwurf','Bezahlt','Offen','FINALIZED')"
         ).fetchone()[0]
         if old_status_count > 0:
             conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Entwurf'")
-            conn.exec_driver_sql("UPDATE invoice SET status = 'FINALIZED' WHERE status = 'Bezahlt'")
-            conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Offen'")
+            conn.exec_driver_sql("UPDATE invoice SET status = 'PAID' WHERE status = 'Bezahlt'")
+            conn.exec_driver_sql("UPDATE invoice SET status = 'OPEN' WHERE status = 'Offen'")
+            conn.exec_driver_sql("UPDATE invoice SET status = 'OPEN' WHERE status = 'FINALIZED'")
 
 ensure_invoice_schema()
+
+def ensure_invoice_revision_schema():
+    with engine.connect() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS invoice_revision ("
+            "invoice_id INTEGER NOT NULL,"
+            "revision_nr INTEGER NOT NULL,"
+            "changed_at TEXT DEFAULT (datetime('now')),"
+            "reason TEXT DEFAULT '',"
+            "snapshot_json TEXT DEFAULT '',"
+            "pdf_filename_previous TEXT DEFAULT '',"
+            "PRIMARY KEY (invoice_id, revision_nr)"
+            ")"
+        )
+
+ensure_invoice_revision_schema()
 
 def ensure_expense_schema():
     with engine.connect() as conn:
@@ -343,10 +377,10 @@ def process_invoice_import(content, session, comp_id, filename=""):
             if kdnr:
                 cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
             if not cust: continue
-            status = InvoiceStatus.DRAFT
+            status = InvoiceStatus.OPEN
             is_storniert = str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']
             if is_storniert: status = InvoiceStatus.CANCELLED
-            if str(row.get('Zahldatum', '')).strip(): status = InvoiceStatus.FINALIZED
+            if str(row.get('Zahldatum', '')).strip(): status = InvoiceStatus.PAID
             inv = Invoice(
                 customer_id=cust.id,
                 nr=int(nr),
@@ -357,7 +391,7 @@ def process_invoice_import(content, session, comp_id, filename=""):
             session.add(inv)
             session.flush()
             if is_storniert:
-                log_audit_action(session, "STORNIRT", invoice_id=inv.id)
+                log_audit_action(session, "INVOICE_CANCELLED", invoice_id=inv.id)
             count += 1
         except: continue
     session.commit()
