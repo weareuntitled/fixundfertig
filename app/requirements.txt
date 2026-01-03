@@ -1,8 +1,5 @@
 nicegui
 pandas
-requests
-python-dotenv
 sqlmodel
 fpdf2
-openpyxl
 python-multipart

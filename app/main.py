@@ -1,27 +1,28 @@
+import os
 from nicegui import ui, app
 from sqlmodel import Session, select
-
 from data import Company, engine
 from styles import C_BG, C_CONTAINER, C_HEADER, C_BRAND_BADGE, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from pages import render_dashboard, render_customers, render_customer_new, render_invoices, render_invoice_create, render_expenses, render_settings
 
-# --- UI LOGIC ---
-
 def layout_wrapper(content_func):
-    # HEADER
     with ui.header().classes(C_HEADER):
-        with ui.row().classes('items-center gap-3'):
-            with ui.element('div').classes(C_BRAND_BADGE):
-                ui.icon('bolt', size='xs')
-            ui.label('FixundFertig').classes('font-bold text-slate-900 tracking-tight')
+        # LINKER BEREICH: Logo/Titel als Home-Link
+        with ui.link(target='/').classes('no-underline text-inherit cursor-pointer'):
+            with ui.row().classes('items-center gap-3'):
+                with ui.element('div').classes(C_BRAND_BADGE):
+                    ui.icon('bolt', size='xs')
+                ui.label('FixundFertig').classes('font-bold text-slate-900 tracking-tight text-lg')
         
+        # RECHTER BEREICH: Navigation
         with ui.row().classes('gap-1'):
             def nav_item(label, target, icon):
                 active = app.storage.user.get('page', 'dashboard') == target
                 color = C_NAV_ITEM_ACTIVE if active else C_NAV_ITEM
-                with ui.link('', '#').on('click', lambda e: set_page(target)).classes(color):
+                with ui.button(on_click=lambda: set_page(target)).classes(f"flat {color} no-shadow"):
                     with ui.row().classes('items-center gap-2'):
-                        ui.label(label).classes('text-sm font-semibold normal-case')
+                        ui.icon(icon, size='xs')
+                        ui.label(label).classes('text-sm font-semibold normal-case hidden sm:block')
 
             nav_item("Dashboard", "dashboard", "dashboard")
             nav_item("Kunden", "customers", "group")
@@ -29,19 +30,16 @@ def layout_wrapper(content_func):
             nav_item("Ausgaben", "expenses", "credit_card")
             nav_item("Einstellungen", "settings", "settings")
 
-    # CONTENT
-    with ui.column().classes(C_BG + " w-full"):
-        with ui.column().classes(C_CONTAINER):
-            content_func()
+    with ui.column().classes(C_BG + " w-full p-0"):
+        content_func()
 
 def set_page(name):
     app.storage.user['page'] = name
     ui.navigate.to('/')
 
-# --- PAGES ---
-
 @ui.page('/')
 def index():
+    app.add_static_files('/storage', 'storage')
     with Session(engine) as session:
         if not session.exec(select(Company)).first():
             session.add(Company())
@@ -52,14 +50,17 @@ def index():
     def content():
         with Session(engine) as session:
             comp = session.exec(select(Company)).first()
-            if page == 'dashboard': render_dashboard(session, comp)
-            elif page == 'customers': render_customers(session, comp)
-            elif page == 'customer_new': render_customer_new(session, comp)
-            elif page == 'invoices': render_invoices(session, comp)
-            elif page == 'invoice_create': render_invoice_create(session, comp)
-            elif page == 'expenses': render_expenses(session, comp)
-            elif page == 'settings': render_settings(session, comp)
+            if page == 'invoice_create':
+                render_invoice_create(session, comp)
+            else:
+                with ui.column().classes(C_CONTAINER):
+                    if page == 'dashboard': render_dashboard(session, comp)
+                    elif page == 'customers': render_customers(session, comp)
+                    elif page == 'customer_new': render_customer_new(session, comp)
+                    elif page == 'invoices': render_invoices(session, comp)
+                    elif page == 'expenses': render_expenses(session, comp)
+                    elif page == 'settings': render_settings(session, comp)
 
     layout_wrapper(content)
 
-ui.run(title='FixundFertig Ultimate', port=8080, language='de', storage_secret='secret2026')
+ui.run(title='FixundFertig', port=8080, language='de', storage_secret='secret2026', favicon='🚀')

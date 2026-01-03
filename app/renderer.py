@@ -1,211 +1,238 @@
 from fpdf import FPDF
 from sqlmodel import Session, select
-
 from data import Company, Customer, Invoice, InvoiceItem, engine
-
+import os
 
 class PDFInvoice(FPDF):
-    def __init__(self, company: Company | None):
+    def __init__(self, company):
         super().__init__(format="A4", unit="mm")
         self.company = company
-        self.set_auto_page_break(auto=True, margin=25)
+        self.set_auto_page_break(auto=True, margin=35)
         self.set_margins(20, 20, 20)
+        self.alias_nb_pages()
 
     def header(self):
-        self.set_draw_color(60, 60, 60)
-        self.line(0, 105, 5, 105)
-        self.line(0, 210, 5, 210)
+        # Logo Check
+        logo_path = "./storage/logo.png"
+        if os.path.exists(logo_path):
+            try:
+                # x=150 (rechts), y=15, w=40mm
+                self.image(logo_path, x=150, y=15, w=40)
+            except:
+                pass # Falls Bild defekt, ignorieren
+        else:
+            # Fallback: Firmenname groß
+            if self.company:
+                self.set_font("Helvetica", "B", 20)
+                self.set_xy(120, 20)
+                self.multi_cell(70, 8, self.company.name, align="R")
 
+        # Falzmarken
         self.set_draw_color(200, 200, 200)
-        self.rect(20, 45, 85, 45)
+        self.set_line_width(0.1)
+        self.line(0, 105, 7, 105)
+        self.line(0, 148.5, 10, 148.5)
+        self.line(0, 210, 7, 210)
 
-        if not self.company:
-            return
-
-        self.set_font("Helvetica", size=9)
-        self.set_xy(120, 20)
-        header_lines = [
-            f"{self.company.name}",
-            f"{self.company.first_name} {self.company.last_name}".strip(),
-            f"{self.company.street}",
-            f"{self.company.postal_code} {self.company.city}".strip(),
-        ]
-        if self.company.email:
-            header_lines.append(self.company.email)
-        if self.company.phone:
-            header_lines.append(self.company.phone)
-        if self.company.iban:
-            header_lines.append(f"IBAN: {self.company.iban}")
-        if self.company.tax_id:
-            header_lines.append(f"St-Nr: {self.company.tax_id}")
-        if self.company.vat_id:
-            header_lines.append(f"USt-IdNr: {self.company.vat_id}")
-
-        header_text = "\n".join(line for line in header_lines if line)
-        self.multi_cell(0, 4, header_text, align="R")
+        # Absenderzeile (Klein)
+        if self.company:
+            self.set_xy(20, 45)
+            self.set_font("Helvetica", size=7)
+            self.set_text_color(100, 100, 100)
+            line = f"{self.company.name} | {self.company.street} | {self.company.postal_code} {self.company.city}"
+            self.cell(85, 4, line, border="B")
 
     def footer(self):
-        self.set_y(-25)
+        if not self.company: return
+        self.set_y(-35)
         self.set_font("Helvetica", size=8)
+        self.set_text_color(100, 100, 100)
+        
+        # 3 Spalten Layout für Footer
+        # Wir nutzen feste X-Positionen
+        y = self.get_y()
+        
+        # Spalte 1: Adresse
+        self.set_xy(20, y)
+        self.multi_cell(50, 4, f"{self.company.name}\n{self.company.street}\n{self.company.postal_code} {self.company.city}", align="L")
+        
+        # Spalte 2: Kontakt
+        self.set_xy(80, y)
+        c_info = []
+        if self.company.phone: c_info.append(f"Tel: {self.company.phone}")
+        if self.company.email: c_info.append(f"Mail: {self.company.email}")
+        if self.company.vat_id: c_info.append(f"USt-Id: {self.company.vat_id}")
+        self.multi_cell(60, 4, "\n".join(c_info), align="C")
+        
+        # Spalte 3: Bank
+        self.set_xy(150, y)
+        b_info = []
+        if self.company.iban: b_info.append(f"IBAN: {self.company.iban}")
+        if self.company.tax_id: b_info.append(f"St-Nr: {self.company.tax_id}")
+        self.multi_cell(40, 4, "\n".join(b_info), align="R")
 
-        bank_details = []
-        if self.company and self.company.iban:
-            bank_details.append(f"IBAN: {self.company.iban}")
-        if self.company and self.company.tax_id:
-            bank_details.append(f"St-Nr: {self.company.tax_id}")
-        if self.company and self.company.vat_id:
-            bank_details.append(f"USt-IdNr: {self.company.vat_id}")
-        if bank_details:
-            self.multi_cell(0, 4, " | ".join(bank_details), align="L")
-        self.cell(0, 4, f"Seite {self.page_no()}", align="R")
-
-
-def _load_company_customer(invoice: Invoice):
-    with Session(engine) as session:
-        company = session.exec(select(Company)).first()
-        customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
-    return company, customer
-
-
-def _collect_line_items(invoice: Invoice):
-    preview_items = invoice.__dict__.get('line_items')
-    if preview_items is not None:
-        return preview_items
-    if not invoice.id:
-        return []
-    with Session(engine) as session:
-        return session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)).all()
-
-
-def _derive_tax_rate(invoice: Invoice, line_items):
-    stored_tax_rate = invoice.__dict__.get('tax_rate')
-    if stored_tax_rate is not None:
-        return float(stored_tax_rate)
-    return 0.19
-
-
-def _prepare_items(invoice: Invoice):
-    raw_items = _collect_line_items(invoice)
-    tax_rate = _derive_tax_rate(invoice, raw_items)
-    prepared = []
-    net_total = 0.0
-    for item in raw_items:
-        if isinstance(item, dict):
-            desc = item.get('desc') or item.get('description') or ''
-            qty = float(item.get('qty') or item.get('quantity') or 0)
-            price = float(item.get('price') or item.get('unit_price') or 0)
-            is_brutto = bool(item.get('is_brutto') or False)
-        else:
-            desc = item.description or ''
-            qty = float(item.quantity or 0)
-            price = float(item.unit_price or 0)
-            is_brutto = False
-
-        unit_netto = price
-        if tax_rate > 0 and is_brutto:
-            unit_netto = price / (1 + tax_rate)
-
-        total = qty * unit_netto
-        net_total += total
-        prepared.append({
-            'description': desc,
-            'quantity': qty,
-            'unit_price': unit_netto,
-            'total': total,
-        })
-
-    brutto = float(invoice.total_brutto or 0) or (net_total * (1 + tax_rate))
-    tax_amount = brutto - net_total
-    return prepared, {'netto': net_total, 'brutto': brutto, 'tax_rate': tax_rate, 'tax_amount': tax_amount}
-
+        # Seitenzahl
+        self.set_y(-10)
+        self.cell(0, 10, f"Seite {self.page_no()}/{{nb}}", align="C")
 
 def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
-    company, customer = _load_company_customer(invoice)
-    line_items, totals = _prepare_items(invoice)
-
-    recipient_name = invoice.recipient_name or (customer.display_name if customer else '')
-    recipient_street = invoice.recipient_street or (customer.strasse if customer else '')
-    recipient_postal = invoice.recipient_postal_code or (customer.plz if customer else '')
-    recipient_city = invoice.recipient_city or (customer.ort if customer else '')
+    # Daten laden
+    with Session(engine) as session:
+        company = session.exec(select(Company)).first() or Company()
+        customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
+        
+        # Items laden (Memory oder DB)
+        items = invoice.__dict__.get('line_items')
+        if not items and invoice.id:
+            db_items = session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)).all()
+            items = [{'desc': i.description, 'qty': i.quantity, 'price': i.unit_price, 'is_brutto': False} for i in db_items]
+        if not items: items = []
 
     pdf = PDFInvoice(company)
     pdf.add_page()
-
-    return_address = ''
-    if company:
-        return_address = f"{company.name} · {company.street} · {company.postal_code} {company.city}".strip()
-
-    pdf.set_xy(20, 45)
-    pdf.set_font("Helvetica", size=8, style="U")
-    pdf.cell(85, 4, return_address)
-
-    pdf.set_xy(20, 50)
+    
+    # 1. Empfänger
+    pdf.set_xy(20, 52)
     pdf.set_font("Helvetica", size=10)
-    recipient_lines = [
-        recipient_name,
-        recipient_street,
-        f"{recipient_postal} {recipient_city}".strip(),
-    ]
-    pdf.multi_cell(85, 5, "\n".join(line for line in recipient_lines if line))
+    pdf.set_text_color(0, 0, 0)
+    
+    r_name = invoice.recipient_name or (customer.display_name if customer else '')
+    r_street = invoice.recipient_street or (customer.strasse if customer else '')
+    r_city = f"{invoice.recipient_postal_code} {invoice.recipient_city}".strip()
+    if not r_city.strip() and customer: 
+        r_city = f"{customer.plz} {customer.ort}".strip()
+    
+    pdf.multi_cell(85, 5, f"{r_name}\n{r_street}\n{r_city}")
 
-    pdf.set_xy(125, 65)
+    # 2. Info Block (Rechts)
+    pdf.set_xy(125, 50)
     pdf.set_font("Helvetica", size=9)
-    info_lines = [
-        f"Datum: {invoice.date}",
-        f"Rechnung Nr: {invoice.nr or ''}",
-    ]
+    # Kleiner Trick für saubere Ausrichtung: Label fett, Wert normal
+    def info_line(label, val):
+        x = pdf.get_x()
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(35, 6, label)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(40, 6, str(val), align="R", ln=1)
+        pdf.set_x(x)
+    
+    info_line("Datum:", invoice.date)
+    info_line("Rechnung Nr.:", invoice.nr if invoice.nr else "ENTWURF")
     if customer and customer.kdnr:
-        info_lines.append(f"Kundennr: {customer.kdnr}")
-    pdf.multi_cell(60, 4.5, "\n".join(info_lines))
+        info_line("Kunden-Nr.:", customer.kdnr)
+    info_line("Lieferdatum:", invoice.delivery_date)
 
-    pdf.set_xy(20, 105)
-    pdf.set_font("Helvetica", size=14, style="B")
-    pdf.cell(0, 8, invoice.title or "Rechnung", ln=1)
+    # 3. Titel
+    pdf.set_xy(20, 95)
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, invoice.title or "Rechnung", ln=1)
+    
     pdf.set_font("Helvetica", size=10)
-    pdf.multi_cell(0, 5, "Vielen Dank für Ihren Auftrag. Nachfolgend finden Sie die Rechnung.")
+    pdf.ln(2)
+    pdf.multi_cell(0, 5, "Vielen Dank für Ihren Auftrag. Wir stellen folgende Leistungen in Rechnung:")
+    pdf.ln(8)
 
-    pdf.ln(3)
-    table_start_x = 20
-    table_widths = [80, 20, 35, 35]
-    pdf.set_x(table_start_x)
-    pdf.set_font("Helvetica", size=9, style="B")
-    pdf.set_fill_color(230, 230, 230)
-    pdf.cell(table_widths[0], 7, "Beschreibung", fill=True)
-    pdf.cell(table_widths[1], 7, "Menge", align="R", fill=True)
-    pdf.cell(table_widths[2], 7, "Einzelpreis", align="R", fill=True)
-    pdf.cell(table_widths[3], 7, "Gesamt", align="R", fill=True, ln=1)
-
+    # 4. Tabelle
+    # Spaltenbreiten (Summe = 170mm Nutzbreite)
+    # Beschreibung | Menge | Einzel | Gesamt
+    w_desc = 85
+    w_qty = 20
+    w_price = 30
+    w_total = 35
+    
+    # Header
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(245, 245, 245)
+    pdf.cell(w_desc, 8, "Beschreibung", 0, 0, 'L', True)
+    pdf.cell(w_qty, 8, "Menge", 0, 0, 'C', True)
+    pdf.cell(w_price, 8, "Einzelpreis", 0, 0, 'R', True)
+    pdf.cell(w_total, 8, "Gesamt", 0, 1, 'R', True)
+    
+    # Rows
     pdf.set_font("Helvetica", size=9)
-    for item in line_items:
-        pdf.set_x(table_start_x)
-        pdf.cell(table_widths[0], 6, item['description'])
-        pdf.cell(table_widths[1], 6, f"{item['quantity']:.2f}", align="R")
-        pdf.cell(table_widths[2], 6, f"{item['unit_price']:.2f} EUR", align="R")
-        pdf.cell(table_widths[3], 6, f"{item['total']:.2f} EUR", align="R", ln=1)
+    
+    tax_rate = invoice.__dict__.get('tax_rate', 0.19)
+    netto_sum = 0.0
+    
+    for item in items:
+        # Daten Normalisieren
+        desc = item.get('desc', '') if isinstance(item, dict) else item.description
+        qty = float(item.get('qty', 0)) if isinstance(item, dict) else float(item.quantity)
+        price = float(item.get('price', 0)) if isinstance(item, dict) else float(item.unit_price)
+        is_brutto = item.get('is_brutto', False) if isinstance(item, dict) else False
+        
+        # Netto Berechnen
+        unit_net = price
+        if tax_rate > 0 and is_brutto:
+            unit_net = price / (1 + tax_rate)
+        
+        line_total = qty * unit_net
+        netto_sum += line_total
+        
+        # MultiCell für Beschreibung (damit sie umbricht und nicht zu breit ist)
+        # Wir müssen die maximale Höhe der Zeile berechnen
+        
+        x_start = pdf.get_x()
+        y_start = pdf.get_y()
+        
+        # Page Break Check (grob)
+        if y_start > 250:
+            pdf.add_page()
+            y_start = pdf.get_y()
+            x_start = pdf.get_x()
 
-    pdf.ln(4)
-    totals_label_x = 120
-    totals_value_x = 170
-    pdf.set_font("Helvetica", size=10)
-    pdf.set_xy(totals_label_x, pdf.get_y())
-    pdf.cell(40, 5, "Zwischensumme", align="R")
-    pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 5, f"{totals['netto']:.2f} EUR", align="R", ln=1)
+        # Wir drucken die Beschreibung zuerst, um die Höhe zu kennen
+        pdf.multi_cell(w_desc, 6, desc, align='L')
+        y_end = pdf.get_y()
+        row_height = y_end - y_start
+        
+        # Cursor zurück für die anderen Spalten
+        pdf.set_xy(x_start + w_desc, y_start)
+        
+        # Menge
+        pdf.cell(w_qty, row_height, f"{qty:.2f}", 0, 0, 'C')
+        # Einzel
+        pdf.cell(w_price, row_height, f"{unit_net:,.2f} €", 0, 0, 'R')
+        # Gesamt
+        pdf.cell(w_total, row_height, f"{line_total:,.2f} €", 0, 1, 'R')
+        
+        # Linie unten (optional, hier weggelassen für cleaner look, oder:)
+        pdf.set_draw_color(240, 240, 240)
+        pdf.line(20, pdf.get_y(), 190, pdf.get_y())
 
-    pdf.set_xy(totals_label_x, pdf.get_y())
-    pdf.cell(40, 5, f"USt. ({totals['tax_rate'] * 100:.0f}%)", align="R")
-    pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 5, f"{totals['tax_amount']:.2f} EUR", align="R", ln=1)
+    # 5. Summen
+    pdf.ln(5)
+    # Check Page Break
+    if pdf.get_y() > 240: pdf.add_page()
 
-    pdf.set_font("Helvetica", size=10, style="B")
-    pdf.set_xy(totals_label_x, pdf.get_y())
-    pdf.cell(40, 6, "Gesamt", align="R")
-    pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 6, f"{totals['brutto']:.2f} EUR", align="R", ln=1)
+    x_val = 120
+    w_lbl = 35
+    w_res = 35
+    
+    pdf.set_x(x_val)
+    pdf.cell(w_lbl, 6, "Netto:", 0, 0, 'R')
+    pdf.cell(w_res, 6, f"{netto_sum:,.2f} EUR", 0, 1, 'R')
+    
+    tax_amount = netto_sum * tax_rate
+    final_total = netto_sum + tax_amount
+    
+    if tax_rate > 0:
+        pdf.set_x(x_val)
+        pdf.cell(w_lbl, 6, f"USt ({tax_rate*100:.0f}%):", 0, 0, 'R')
+        pdf.cell(w_res, 6, f"{tax_amount:,.2f} EUR", 0, 1, 'R')
+    
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_x(x_val)
+    # Strich
+    pdf.line(x_val+10, pdf.get_y(), 190, pdf.get_y())
+    
+    pdf.cell(w_lbl, 10, "Gesamtbetrag:", 0, 0, 'R')
+    pdf.cell(w_res, 10, f"{final_total:,.2f} EUR", 0, 1, 'R')
+    
+    # Kleinunternehmer
+    if tax_rate == 0:
+        pdf.ln(5)
+        pdf.set_font("Helvetica", size=8)
+        pdf.multi_cell(0, 5, "Es erfolgt kein Ausweis der Umsatzsteuer aufgrund der Anwendung der Kleinunternehmerregelung gem. § 19 UStG.")
 
-    output = pdf.output(dest="S")
-    if isinstance(output, bytearray):
-        return bytes(output)
-    if isinstance(output, str):
-        return output.encode("latin-1")
-    return output
+    return bytes(pdf.output())
