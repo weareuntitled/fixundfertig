@@ -3,6 +3,7 @@ from sqlalchemy import event, inspect
 from typing import Optional, List
 from enum import Enum  # <--- WICHTIG: Das hat gefehlt!
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
+from contextlib import contextmanager
 from datetime import datetime
 import pandas as pd
 import io
@@ -68,7 +69,7 @@ class Invoice(SQLModel, table=True):
     recipient_postal_code: str = ""
     recipient_city: str = ""
     total_brutto: float
-    status: str = "Entwurf"
+    status: InvoiceStatus = InvoiceStatus.DRAFT
     pdf_bytes: Optional[bytes] = Field(default=None)
     pdf_storage: str = ""
     pdf_filename: str = ""
@@ -111,6 +112,11 @@ os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
 SQLModel.metadata.create_all(engine)
+
+@contextmanager
+def get_session():
+    with Session(engine) as session:
+        yield session
 
 @event.listens_for(Session, "before_flush")
 def prevent_finalized_invoice_updates(session, flush_context, instances):
@@ -186,6 +192,9 @@ def ensure_invoice_schema():
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_storage TEXT DEFAULT ''")
         if "pdf_filename" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_filename TEXT DEFAULT ''")
+        conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Entwurf'")
+        conn.exec_driver_sql("UPDATE invoice SET status = 'FINALIZED' WHERE status = 'Bezahlt'")
+        conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Offen'")
 
 ensure_invoice_schema()
 
@@ -327,10 +336,10 @@ def process_invoice_import(content, session, comp_id, filename=""):
             if kdnr:
                 cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
             if not cust: continue
-            status = "Offen"
+            status = InvoiceStatus.DRAFT
             is_storniert = str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']
-            if is_storniert: status = "Entwurf"
-            if str(row.get('Zahldatum', '')).strip(): status = "Bezahlt"
+            if is_storniert: status = InvoiceStatus.CANCELLED
+            if str(row.get('Zahldatum', '')).strip(): status = InvoiceStatus.FINALIZED
             inv = Invoice(
                 customer_id=cust.id,
                 nr=int(nr),

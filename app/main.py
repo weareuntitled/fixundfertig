@@ -1,7 +1,7 @@
 import os
 from nicegui import ui, app
-from sqlmodel import Session, select
-from data import Company, engine
+from sqlmodel import select
+from data import Company, engine, get_session
 from styles import C_BG, C_CONTAINER, C_HEADER, C_BRAND_BADGE, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from pages import render_dashboard, render_customers, render_customer_new, render_invoices, render_invoice_create, render_expenses, render_settings, render_ledger
 
@@ -39,7 +39,7 @@ def set_page(name):
 @ui.page('/')
 def index():
     app.add_static_files('/storage', 'storage')
-    with Session(engine) as session:
+    with get_session() as session:
         if not session.exec(select(Company)).first():
             session.add(Company())
             session.commit()
@@ -47,7 +47,7 @@ def index():
     page = app.storage.user.get('page', 'dashboard')
     
     def content():
-        with Session(engine) as session:
+        with get_session() as session:
             comp = session.exec(select(Company)).first()
             if page == 'invoice_create':
                 render_invoice_create(session, comp)
