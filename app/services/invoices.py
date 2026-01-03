@@ -1,8 +1,9 @@
 from sqlmodel import Session, select
 
-from data import Company, Customer, Invoice, InvoiceItem, engine
+from data import Company, Customer, Invoice, InvoiceItem, InvoiceStatus, engine
 
 
+# Deprecated: This service is currently unused; keep for backward compatibility.
 def finalize_invoice_transaction(company_id, customer_id, invoice_date, total_brutto, items, apply_ustg19, pdf_generator, template_name='', intro_text=''):
     with Session(engine) as inner:
         with inner.begin():
@@ -18,7 +19,7 @@ def finalize_invoice_transaction(company_id, customer_id, invoice_date, total_br
                 nr=company.next_invoice_nr,
                 date=invoice_date,
                 total_brutto=total_brutto,
-                status='Offen'
+                status=InvoiceStatus.FINALIZED
             )
             inner.add(invoice)
             inner.flush()
@@ -41,9 +42,8 @@ def finalize_invoice_transaction(company_id, customer_id, invoice_date, total_br
                 intro_text=intro_text
             )
             with open(pdf_path, 'rb') as f:
-                invoice.pdf_content = f.read()
+                invoice.pdf_bytes = f.read()
 
-            invoice.immutable = True
             company.next_invoice_nr += 1
             inner.add(company)
             inner.add(invoice)
