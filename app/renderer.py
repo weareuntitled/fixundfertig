@@ -124,6 +124,10 @@ def _prepare_items(invoice: Invoice):
 
 
 def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
+    layout = {
+        "totals_label_x": 95,
+        "totals_value_x": 145,
+    }
     company, customer = _load_company_customer(invoice)
     line_items, totals = _prepare_items(invoice)
 
@@ -206,8 +210,8 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
         pdf.cell(table_widths[3], 6, _sanitize_pdf_text(f"{item['total']:.2f} EUR"), align="R", ln=1)
 
     pdf.ln(4)
-    totals_label_x = 120
-    totals_value_x = 170
+    totals_label_x = layout["totals_label_x"]
+    totals_value_x = layout["totals_value_x"]
     pdf.set_font("DejaVu", size=10)
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 5, "Zwischensumme", align="R")
