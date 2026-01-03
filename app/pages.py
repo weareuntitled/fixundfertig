@@ -1,7 +1,7 @@
 from nicegui import ui, app, events
 from sqlmodel import Session, select
 from sqlalchemy import literal, case, union_all, func
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import base64
 import json
@@ -15,7 +15,7 @@ from data import (
 )
 from renderer import render_invoice_to_pdf_bytes
 from actions import create_correction
-from styles import C_CARD, C_BTN_PRIM, C_BTN_SEC, C_INPUT, C_PAGE_TITLE, C_SECTION_TITLE, C_TABLE_HEADER, C_TABLE_ROW, C_BADGE_GREEN
+from styles import C_CARD, C_BTN_PRIM, C_INPUT, C_PAGE_TITLE, C_SECTION_TITLE, C_TABLE_HEADER, C_TABLE_ROW, C_BADGE_GREEN
 from ui_components import format_invoice_status, invoice_status_badge, kpi_card, sticky_header
 from logic import finalize_invoice_logic
 
@@ -297,60 +297,195 @@ def render_invoice_create(session, comp):
 # --- OTHER PAGES (Settings, Customers, Expenses) ---
 def render_invoices(session, comp):
     ui.label('Rechnungen').classes(C_PAGE_TITLE + " mb-4")
-    with ui.row().classes('mb-4'):
-        ui.button('Neue Rechnung', icon='add', on_click=lambda: (app.storage.user.__setitem__('invoice_draft_id', None), app.storage.user.__setitem__('page', 'invoice_create'), ui.navigate.to('/'))).classes(C_BTN_PRIM)
-    invs = session.exec(select(Invoice).order_by(Invoice.id.desc())).all()
-    with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
-        with ui.row().classes(C_TABLE_HEADER):
-            ui.label('Nr').classes('w-20 font-bold'); ui.label('Kunde').classes('flex-1 font-bold'); ui.label('Betrag').classes('w-24 text-right'); ui.label('').classes('w-32')
-        for i in invs:
-            def go(x=i):
-                if x.status == InvoiceStatus.DRAFT: app.storage.user['invoice_draft_id']=x.id; app.storage.user['page']='invoice_create'
-                ui.navigate.to('/')
-            with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-slate-50").on('click', lambda _, x=i: go(x)):
-                ui.label(f"#{i.nr}" if i.nr else "-").classes('w-20 text-xs font-mono')
-                c = session.get(Customer, i.customer_id) if i.customer_id else None
-                ui.label(c.display_name if c else "?").classes('flex-1 text-sm')
-                ui.label(f"{i.total_brutto:,.2f}").classes('w-24 text-right text-sm')
-                with ui.row().classes('w-32 justify-end gap-1'):
-                    if i.status == InvoiceStatus.FINALIZED:
-                         with ui.element('div'):
-                             with ui.row().classes('items-center gap-1'):
-                                 loading_spinner = ui.spinner(size='sm').classes('text-slate-400')
-                                 loading_label = ui.label('Wird vorbereitet…').classes('text-xs text-slate-500')
-                                 loading_spinner.visible = False
-                                 loading_label.visible = False
+    with ui.row().classes('mb-4 items-center justify-between gap-3'):
+        with ui.row().classes('gap-2'):
+            ui.button('Neue Rechnung', icon='add', on_click=lambda: (app.storage.user.__setitem__('invoice_draft_id', None), app.storage.user.__setitem__('page', 'invoice_create'), ui.navigate.to('/'))).classes(C_BTN_PRIM)
 
-                                 def set_loading(active):
-                                     loading_spinner.visible = active
-                                     loading_label.visible = active
-                                     if active: action_button.disable()
-                                     else: action_button.enable()
+    invs = session.exec(select(Invoice)).all()
+    customers = {c.id: c for c in session.exec(select(Customer)).all()}
 
-                                 with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500') as action_button:
-                                     with ui.menu().props('auto-close no-parent-event'):
-                                         def on_download(x=i):
-                                             ui.notify('Wird vorbereitet…')
-                                             set_loading(True)
-                                             try:
-                                                 download_invoice_file(x)
-                                             except Exception as e:
-                                                 ui.notify(f"Fehler: {e}", color='red')
-                                             set_loading(False)
+    state = {
+        'search': '',
+        'status': 'ALL',
+        'range': 'ALL',
+    }
 
-                                         def on_send(x=i):
-                                             ui.notify('Wird vorbereitet…')
-                                             set_loading(True)
-                                             try:
-                                                 with get_session() as s:
-                                                     c = s.get(Customer, x.customer_id) if x.customer_id else None
-                                                 send_invoice_email(comp, c, x)
-                                             except Exception as e:
-                                                 ui.notify(f"Fehler: {e}", color='red')
-                                             set_loading(False)
+    def parse_date(value):
+        try:
+            return datetime.fromisoformat(value)
+        except Exception:
+            return datetime.min
 
-                                         ui.menu_item('Download', on_click=on_download)
-                                         ui.menu_item('Senden', on_click=on_send)
+    def status_matches(invoice_status):
+        if state['status'] == 'ALL': return True
+        if state['status'] == 'DRAFT': return invoice_status == InvoiceStatus.DRAFT
+        if state['status'] == 'CANCELLED': return invoice_status == InvoiceStatus.CANCELLED
+        if state['status'] in ['OPEN', 'SENT', 'PAID']: return invoice_status == InvoiceStatus.FINALIZED
+        return True
+
+    def range_from_key():
+        now = datetime.now()
+        if state['range'] == '7': return now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=6), now
+        if state['range'] == '30': return now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=29), now
+        if state['range'] == 'YEAR': return now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0), now
+        return None, None
+
+    def apply_filters(data):
+        filtered = []
+        start, end = range_from_key()
+        for inv in data:
+            if not status_matches(inv.status): continue
+            sort_date = parse_date(inv.date)
+            if start and sort_date < start: continue
+            if end and sort_date > end: continue
+            if state['search']:
+                c = customers.get(inv.customer_id)
+                haystack = f"{c.display_name if c else ''} {inv.nr or ''} {inv.title or ''} {inv.total_brutto:,.2f}".lower()
+                if state['search'].lower() not in haystack: continue
+            filtered.append({
+                'invoice': inv,
+                'customer': customers.get(inv.customer_id),
+                'sort_date': sort_date,
+            })
+        filtered.sort(key=lambda x: x['sort_date'], reverse=True)
+        return filtered
+
+    def set_search(e):
+        state['search'] = e.value or ''
+        render_list.refresh()
+
+    def set_status(value):
+        state['status'] = value
+        render_list.refresh()
+
+    def set_range(value):
+        state['range'] = value
+        render_list.refresh()
+
+    def chip_class(active):
+        if active: return "bg-slate-900 text-white border border-slate-900 px-3 py-1 rounded-full text-xs font-medium"
+        return "bg-white text-slate-600 border border-slate-200 px-3 py-1 rounded-full text-xs font-medium hover:bg-slate-50"
+
+    with ui.card().classes(C_CARD + " p-4 mb-4"):
+        with ui.row().classes('gap-3 w-full items-end flex-wrap'):
+            ui.input('Suche', placeholder='Kunde, Nr, Titel, Betrag', on_change=set_search).classes(C_INPUT + " min-w-[220px]")
+            with ui.column().classes('gap-2'):
+                ui.label('Status').classes('text-xs text-slate-400')
+                with ui.row().classes('gap-2 flex-wrap'):
+                    for key, label in [('ALL', 'Alle'), ('DRAFT', 'Draft'), ('OPEN', 'Open'), ('SENT', 'Sent'), ('PAID', 'Paid'), ('CANCELLED', 'Cancelled')]:
+                        ui.button(label, on_click=lambda _, v=key: set_status(v)).props('dense').classes(chip_class(state['status'] == key))
+            with ui.column().classes('gap-2'):
+                ui.label('Zeitraum').classes('text-xs text-slate-400')
+                with ui.row().classes('gap-2 flex-wrap'):
+                    for key, label in [('7', '7 Tage'), ('30', '30 Tage'), ('YEAR', 'Jahr'), ('ALL', 'Alle')]:
+                        ui.button(label, on_click=lambda _, v=key: set_range(v)).props('dense').classes(chip_class(state['range'] == key))
+
+    def duplicate_invoice(inv):
+        with get_session() as s:
+            orig = s.get(Invoice, inv.id)
+            if not orig: return
+            new_inv = Invoice(
+                customer_id=orig.customer_id,
+                nr=None,
+                title=orig.title,
+                date=datetime.now().strftime('%Y-%m-%d'),
+                delivery_date=orig.delivery_date,
+                recipient_name=orig.recipient_name,
+                recipient_street=orig.recipient_street,
+                recipient_postal_code=orig.recipient_postal_code,
+                recipient_city=orig.recipient_city,
+                total_brutto=orig.total_brutto,
+                status=InvoiceStatus.DRAFT,
+            )
+            s.add(new_inv)
+            s.commit()
+            items = s.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == orig.id)).all()
+            for it in items:
+                s.add(InvoiceItem(invoice_id=new_inv.id, description=it.description, quantity=it.quantity, unit_price=it.unit_price))
+            s.commit()
+        ui.notify('Dupliziert', color='green')
+        app.storage.user['invoice_draft_id'] = new_inv.id
+        app.storage.user['page'] = 'invoice_create'
+        ui.navigate.to('/')
+
+    def update_status(inv, status):
+        with get_session() as s:
+            item = s.get(Invoice, inv.id)
+            if not item: return
+            item.status = status
+            s.add(item)
+            s.commit()
+        inv.status = status
+        render_list.refresh()
+
+    def cancel_invoice(inv):
+        update_status(inv, InvoiceStatus.CANCELLED)
+
+    def create_correction_action(inv):
+        correction, error = create_correction(inv.id)
+        if error:
+            ui.notify(error, color='red')
+            return
+        ui.notify('Korrektur erstellt', color='green')
+        render_list.refresh()
+
+    @ui.refreshable
+    def render_list():
+        current_invs = session.exec(select(Invoice)).all()
+        data = apply_filters(current_invs)
+        if len(data) == 0:
+            with ui.card().classes(C_CARD + " p-8 text-center"):
+                ui.label('Keine Rechnungen gefunden').classes('text-lg font-semibold')
+                ui.label('Lege deine erste Rechnung an und starte mit Templates oder Automationen.').classes('text-sm text-slate-500 mb-4')
+                ui.button('Erste Rechnung erstellen', icon='add', on_click=lambda: (app.storage.user.__setitem__('invoice_draft_id', None), app.storage.user.__setitem__('page', 'invoice_create'), ui.navigate.to('/'))).classes(C_BTN_PRIM)
+                with ui.row().classes('justify-center gap-4 mt-4 text-xs text-slate-400'):
+                    ui.label('• Vorlagen beschleunigen die Erstellung')
+                    ui.label('• Automationen verbinden n8n & Versand')
+            return
+        with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+            with ui.element('div').classes(C_TABLE_HEADER + " hidden md:grid md:grid-cols-[90px_1.4fr_120px_120px_120px_200px] items-center"):
+                ui.label('Nr').classes('font-bold text-xs text-slate-500')
+                ui.label('Kunde').classes('font-bold text-xs text-slate-500')
+                ui.label('Datum').classes('font-bold text-xs text-slate-500')
+                ui.label('Betrag').classes('font-bold text-xs text-slate-500 text-right')
+                ui.label('Status').classes('font-bold text-xs text-slate-500 text-right')
+                ui.label('Actions').classes('font-bold text-xs text-slate-500 text-right')
+            for item in data:
+                i = item['invoice']
+                c = item['customer']
+                def go(x=i):
+                    if x.status == InvoiceStatus.DRAFT: app.storage.user['invoice_draft_id']=x.id; app.storage.user['page']='invoice_create'
+                    ui.navigate.to('/')
+                with ui.element('div').classes(C_TABLE_ROW + " group grid grid-cols-1 md:grid-cols-[90px_1.4fr_120px_120px_120px_200px] gap-2 md:gap-0 items-start md:items-center cursor-pointer hover:bg-slate-50").on('click', lambda _, x=i: go(x)):
+                    with ui.column().classes('gap-1'):
+                        ui.label('Nr').classes('md:hidden text-[10px] uppercase text-slate-400')
+                        ui.label(f"#{i.nr}" if i.nr else "-").classes('text-xs font-mono')
+                    with ui.column().classes('gap-1'):
+                        ui.label('Kunde').classes('md:hidden text-[10px] uppercase text-slate-400')
+                        ui.label(c.display_name if c else "?").classes('text-sm')
+                        ui.label(i.title or 'Rechnung').classes('text-xs text-slate-500')
+                    with ui.column().classes('gap-1'):
+                        ui.label('Datum').classes('md:hidden text-[10px] uppercase text-slate-400')
+                        ui.label(i.date).classes('text-xs font-mono')
+                    with ui.column().classes('gap-1 md:items-end'):
+                        ui.label('Betrag').classes('md:hidden text-[10px] uppercase text-slate-400')
+                        ui.label(f"{i.total_brutto:,.2f} €").classes('text-sm text-right')
+                    with ui.column().classes('gap-1 md:items-end'):
+                        ui.label('Status').classes('md:hidden text-[10px] uppercase text-slate-400')
+                        ui.label(format_invoice_status(i.status)).classes(invoice_status_badge(i.status) + " ml-auto")
+                    with ui.row().classes('justify-end gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition'):
+                        ui.button(icon='picture_as_pdf', on_click=lambda x=i: download_invoice_file(x)).props('flat dense no-parent-event').classes('text-slate-500')
+                        ui.button(icon='send', on_click=lambda x=i: send_invoice_email(comp, customers.get(x.customer_id), x)).props('flat dense no-parent-event').classes('text-slate-500')
+                        ui.button(icon='content_copy', on_click=lambda x=i: duplicate_invoice(x)).props('flat dense no-parent-event').classes('text-slate-500')
+                        with ui.button(icon='more_vert').props('flat dense no-parent-event').classes('text-slate-500'):
+                            with ui.menu().props('auto-close no-parent-event'):
+                                ui.menu_item('Status ändern: Entwurf', on_click=lambda x=i: update_status(x, InvoiceStatus.DRAFT))
+                                ui.menu_item('Status ändern: Offen', on_click=lambda x=i: update_status(x, InvoiceStatus.FINALIZED))
+                                ui.menu_item('Stornieren', on_click=lambda x=i: cancel_invoice(x))
+                                ui.menu_item('Korrektur', on_click=lambda x=i: create_correction_action(x))
+                                ui.menu_item('Risiko-Edit', on_click=lambda: ui.notify('Risiko-Edit folgt'))
+
+    render_list()
 
 def render_ledger(session, comp):
     ui.label('Finanzen').classes(C_PAGE_TITLE + " mb-4")
