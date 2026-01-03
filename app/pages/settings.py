@@ -21,9 +21,14 @@ def render_settings(session, comp: Company) -> None:
             name = ui.input("Firma", value=comp.name).classes(C_INPUT)
             first_name = ui.input("Vorname", value=comp.first_name).classes(C_INPUT)
             last_name = ui.input("Nachname", value=comp.last_name).classes(C_INPUT)
-            street = ui.input("Straße", value=comp.street).classes(C_INPUT)
+            with ui.element("div").classes("relative w-full"):
+                street = ui.input("Straße", value=comp.street).classes(C_INPUT)
+                street_dropdown = ui.element("div").classes(
+                    "absolute left-0 right-0 mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-sm"
+                )
             plz = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
             city = ui.input("Ort", value=comp.city).classes(C_INPUT)
+            country = ui.input("Land", value=comp.country).classes(C_INPUT)
             email = ui.input("Email", value=comp.email).classes(C_INPUT)
             phone = ui.input("Telefon", value=comp.phone).classes(C_INPUT)
             iban = ui.input("IBAN", value=comp.iban).classes(C_INPUT)

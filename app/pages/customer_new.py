@@ -11,9 +11,14 @@ def render_customer_new(session, comp: Company) -> None:
             name = ui.input("Firma").classes(C_INPUT)
             first = ui.input("Vorname").classes(C_INPUT)
             last = ui.input("Nachname").classes(C_INPUT)
-            street = ui.input("Straße").classes(C_INPUT)
+            with ui.element("div").classes("relative w-full"):
+                street = ui.input("Straße").classes(C_INPUT)
+                street_dropdown = ui.element("div").classes(
+                    "absolute left-0 right-0 mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-sm"
+                )
             plz = ui.input("PLZ").classes(C_INPUT)
             city = ui.input("Ort").classes(C_INPUT)
+            country = ui.input("Land", value=comp.country or "DE").classes(C_INPUT)
             email = ui.input("Email").classes(C_INPUT)
 
         use_address_autocomplete(
