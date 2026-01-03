@@ -29,6 +29,14 @@ def render_customer_new(session, comp: Company) -> None:
             street_dropdown,
         )
 
+        use_address_autocomplete(
+            street,
+            plz,
+            city,
+            country,
+            street_dropdown,
+        )
+
         def save():
             with get_session() as s:
                 c = Customer(
