@@ -36,7 +36,7 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
         recipient_street=recipient_data.get('street'),
         recipient_postal_code=recipient_data.get('zip'),
         recipient_city=recipient_data.get('city'),
-        status=InvoiceStatus.FINALIZED
+        status=InvoiceStatus.OPEN
     )
     
     # 3. Calculate Totals
@@ -85,3 +85,26 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     session.add(AuditLog(action="FINALIZED", invoice_id=inv.id, timestamp=datetime.now().isoformat()))
     
     return inv
+
+def update_status_logic(session, invoice_id, new_status):
+    inv = session.get(Invoice, int(invoice_id))
+    if not inv:
+        return None, "Rechnung nicht gefunden"
+
+    status_map = {
+        InvoiceStatus.OPEN: InvoiceStatus.SENT,
+        InvoiceStatus.SENT: InvoiceStatus.PAID
+    }
+    current = inv.status
+    if current == InvoiceStatus.FINALIZED:
+        current = InvoiceStatus.OPEN
+
+    if new_status not in status_map.values():
+        return None, "Ungültiger Status"
+    if current not in status_map or status_map[current] != new_status:
+        return None, "Ungültiger Statuswechsel"
+
+    inv.status = new_status
+    session.add(inv)
+    session.add(AuditLog(action=f"STATUS_{new_status.value}", invoice_id=inv.id, timestamp=datetime.now().isoformat()))
+    return inv, ""

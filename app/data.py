@@ -12,6 +12,9 @@ import os
 # --- DB MODELLE ---
 class InvoiceStatus(str, Enum):
     DRAFT = "DRAFT"
+    OPEN = "OPEN"
+    SENT = "SENT"
+    PAID = "PAID"
     FINALIZED = "FINALIZED"
     CANCELLED = "CANCELLED"
 
@@ -128,7 +131,7 @@ def prevent_finalized_invoice_updates(session, flush_context, instances):
             history = state.attrs.status.history
             old_status = history.deleted[0] if history.deleted else obj.status
             new_status = history.added[0] if history.added else obj.status
-            if old_status == InvoiceStatus.FINALIZED and new_status != InvoiceStatus.CANCELLED:
+            if old_status == InvoiceStatus.FINALIZED and new_status not in (InvoiceStatus.CANCELLED, InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID):
                 obj.status = InvoiceStatus.DRAFT
 
 def ensure_company_schema():

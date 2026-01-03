@@ -14,10 +14,10 @@ from data import (
     log_audit_action, InvoiceStatus, get_session
 )
 from renderer import render_invoice_to_pdf_bytes
-from actions import create_correction
+from actions import create_correction, delete_draft, cancel_invoice
 from styles import C_CARD, C_BTN_PRIM, C_BTN_SEC, C_INPUT, C_PAGE_TITLE, C_SECTION_TITLE, C_TABLE_HEADER, C_TABLE_ROW, C_BADGE_GREEN
 from ui_components import format_invoice_status, invoice_status_badge, kpi_card, sticky_header
-from logic import finalize_invoice_logic
+from logic import finalize_invoice_logic, update_status_logic
 
 # Helper
 def log_invoice_action(action, invoice_id):
@@ -102,9 +102,9 @@ def render_dashboard(session, comp):
     invs = session.exec(select(Invoice)).all()
     exps = session.exec(select(Expense)).all()
     
-    umsatz = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
+    umsatz = sum(i.total_brutto for i in invs if i.status in (InvoiceStatus.PAID, InvoiceStatus.FINALIZED))
     kosten = sum(e.amount for e in exps)
-    offen = sum(i.total_brutto for i in invs if i.status == InvoiceStatus.FINALIZED)
+    offen = sum(i.total_brutto for i in invs if i.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.FINALIZED))
     
     with ui.grid(columns=3).classes('w-full gap-4 mb-6'):
         kpi_card("Umsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-500")
@@ -313,7 +313,7 @@ def render_invoices(session, comp):
                 ui.label(c.display_name if c else "?").classes('flex-1 text-sm')
                 ui.label(f"{i.total_brutto:,.2f}").classes('w-24 text-right text-sm')
                 with ui.row().classes('w-32 justify-end gap-1'):
-                    if i.status == InvoiceStatus.FINALIZED:
+                    if i.status != InvoiceStatus.CANCELLED:
                          with ui.element('div'):
                              with ui.row().classes('items-center gap-1'):
                                  loading_spinner = ui.spinner(size='sm').classes('text-slate-400')
@@ -349,8 +349,61 @@ def render_invoices(session, comp):
                                                  ui.notify(f"Fehler: {e}", color='red')
                                              set_loading(False)
 
-                                         ui.menu_item('Download', on_click=on_download)
-                                         ui.menu_item('Senden', on_click=on_send)
+                                         def on_status_change(target_status, x=i):
+                                             ui.notify('Wird vorbereitet…')
+                                             set_loading(True)
+                                             try:
+                                                 with get_session() as s:
+                                                     with s.begin():
+                                                         _, err = update_status_logic(s, x.id, target_status)
+                                                 if err:
+                                                     ui.notify(err, color='red')
+                                                 else:
+                                                     ui.notify('Status aktualisiert', color='green')
+                                             except Exception as e:
+                                                 ui.notify(f"Fehler: {e}", color='red')
+                                             set_loading(False)
+                                             ui.navigate.to('/')
+
+                                         def on_cancel(x=i):
+                                             ui.notify('Wird vorbereitet…')
+                                             set_loading(True)
+                                             try:
+                                                 ok, err = cancel_invoice(x.id)
+                                                 if not ok:
+                                                     ui.notify(err, color='red')
+                                                 else:
+                                                     ui.notify('Storniert', color='green')
+                                             except Exception as e:
+                                                 ui.notify(f"Fehler: {e}", color='red')
+                                             set_loading(False)
+                                             ui.navigate.to('/')
+
+                                         def on_delete(x=i):
+                                             ui.notify('Wird vorbereitet…')
+                                             set_loading(True)
+                                             try:
+                                                 ok, err = delete_draft(x.id)
+                                                 if not ok:
+                                                     ui.notify(err, color='red')
+                                                 else:
+                                                     ui.notify('Gelöscht', color='green')
+                                             except Exception as e:
+                                                 ui.notify(f"Fehler: {e}", color='red')
+                                             set_loading(False)
+                                             ui.navigate.to('/')
+
+                                         if i.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID, InvoiceStatus.FINALIZED):
+                                             ui.menu_item('Download', on_click=on_download)
+                                             ui.menu_item('Senden', on_click=on_send)
+                                         if i.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
+                                             ui.menu_item('Als gesendet markieren', on_click=lambda x=i: on_status_change(InvoiceStatus.SENT, x))
+                                         if i.status == InvoiceStatus.SENT:
+                                             ui.menu_item('Als bezahlt markieren', on_click=lambda x=i: on_status_change(InvoiceStatus.PAID, x))
+                                         if i.status == InvoiceStatus.DRAFT:
+                                             ui.menu_item('Entwurf löschen', on_click=on_delete)
+                                         elif i.status != InvoiceStatus.CANCELLED:
+                                             ui.menu_item('Stornieren', on_click=on_cancel)
 
 def render_ledger(session, comp):
     ui.label('Finanzen').classes(C_PAGE_TITLE + " mb-4")
@@ -373,7 +426,10 @@ def render_ledger(session, comp):
         literal('INCOME').label('type'),
         case(
             (Invoice.status == InvoiceStatus.DRAFT, 'Draft'),
-            (Invoice.status == InvoiceStatus.FINALIZED, 'Paid'),
+            (Invoice.status == InvoiceStatus.OPEN, 'Open'),
+            (Invoice.status == InvoiceStatus.SENT, 'Sent'),
+            (Invoice.status == InvoiceStatus.PAID, 'Paid'),
+            (Invoice.status == InvoiceStatus.FINALIZED, 'Open'),
             (Invoice.status == InvoiceStatus.CANCELLED, 'Cancelled'),
             else_='Overdue',
         ).label('status'),
@@ -462,7 +518,7 @@ def render_ledger(session, comp):
     with ui.card().classes(C_CARD + " p-4 mb-4 sticky top-0 z-30"):
         with ui.row().classes('gap-4 w-full items-end flex-wrap'):
             ui.select({'ALL': 'Alle', 'INCOME': 'Income', 'EXPENSE': 'Expense'}, label='Typ', value=state['type'], on_change=set_type).classes(C_INPUT)
-            ui.select({'ALL': 'Alle', 'Draft': 'Draft', 'Paid': 'Paid', 'Overdue': 'Overdue'}, label='Status', value=state['status'], on_change=set_status).classes(C_INPUT)
+            ui.select({'ALL': 'Alle', 'Draft': 'Draft', 'Open': 'Open', 'Sent': 'Sent', 'Paid': 'Paid', 'Cancelled': 'Cancelled'}, label='Status', value=state['status'], on_change=set_status).classes(C_INPUT)
             ui.input('Von', on_change=set_date_from).props('type=date').classes(C_INPUT)
             ui.input('Bis', on_change=set_date_to).props('type=date').classes(C_INPUT)
             ui.input('Suche', placeholder='Party oder Beschreibung', on_change=set_search).classes(C_INPUT + " min-w-[220px]")
@@ -515,7 +571,7 @@ def render_ledger(session, comp):
                                     app.storage.user['page'] = 'invoice_create'
                                     ui.navigate.to('/')
                                 ui.button(icon='edit', on_click=lambda x=i: edit(x)).props('flat dense').classes('text-slate-500')
-                            if i and i.status == InvoiceStatus.FINALIZED:
+                            if i and i.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID, InvoiceStatus.FINALIZED):
                                 f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
                                 ui.button(icon='download', on_click=lambda p=i: download_invoice_file(p)).props('flat dense').classes('text-slate-500')
                                 ui.button(icon='mail', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('flat dense').classes('text-slate-500')
