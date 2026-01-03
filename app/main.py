@@ -53,7 +53,7 @@ def index():
             if page == 'invoice_create':
                 render_invoice_create(session, comp)
             elif page == 'invoice_detail':
-                render_invoice_detail(session, comp, app.storage.user.get('invoice_detail_id'))
+                render_invoice_detail(session, comp)
             else:
                 with ui.column().classes(C_CONTAINER):
                     if page == 'customers': render_customers(session, comp)

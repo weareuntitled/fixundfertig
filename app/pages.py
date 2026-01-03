@@ -10,8 +10,8 @@ from urllib.parse import urlencode
 
 # Imports
 from data import (
-    Company, Customer, Invoice, InvoiceItem, InvoiceItemTemplate, Expense, 
-    process_customer_import, process_expense_import, 
+    Company, Customer, Invoice, InvoiceItem, InvoiceItemTemplate, Expense, InvoiceRevision,
+    process_customer_import, process_expense_import,
     log_audit_action, InvoiceStatus, get_session
 )
 from renderer import render_invoice_to_pdf_bytes
@@ -25,6 +25,85 @@ def log_invoice_action(action, invoice_id):
     with get_session() as s:
         log_audit_action(s, action, invoice_id=invoice_id)
         s.commit()
+
+def _snapshot_invoice(session, invoice):
+    items = session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)).all()
+    return json.dumps({
+        "invoice": {
+            "id": invoice.id,
+            "customer_id": invoice.customer_id,
+            "nr": invoice.nr,
+            "title": invoice.title,
+            "date": invoice.date,
+            "delivery_date": invoice.delivery_date,
+            "recipient_name": invoice.recipient_name,
+            "recipient_street": invoice.recipient_street,
+            "recipient_postal_code": invoice.recipient_postal_code,
+            "recipient_city": invoice.recipient_city,
+            "total_brutto": invoice.total_brutto,
+            "status": invoice.status.value if hasattr(invoice.status, "value") else str(invoice.status),
+            "revision_nr": invoice.revision_nr,
+            "updated_at": invoice.updated_at,
+            "related_invoice_id": invoice.related_invoice_id,
+            "pdf_filename": invoice.pdf_filename,
+            "pdf_storage": invoice.pdf_storage,
+        },
+        "items": [
+            {
+                "id": item.id,
+                "description": item.description,
+                "quantity": item.quantity,
+                "unit_price": item.unit_price,
+            }
+            for item in items
+        ],
+    })
+
+def create_invoice_revision_and_edit(invoice_id, reason):
+    with get_session() as inner:
+        original = inner.get(Invoice, invoice_id)
+        if not original:
+            return None
+        next_revision = (original.revision_nr or 0) + 1
+        snapshot_json = _snapshot_invoice(inner, original)
+        inner.add(InvoiceRevision(
+            invoice_id=original.id,
+            revision_nr=next_revision,
+            reason=reason,
+            snapshot_json=snapshot_json,
+            pdf_filename_previous=original.pdf_filename or "",
+        ))
+        original.revision_nr = next_revision
+        original.updated_at = datetime.now().isoformat()
+        inner.add(original)
+        new_inv = Invoice(
+            customer_id=original.customer_id,
+            nr=None,
+            title=original.title,
+            date=original.date,
+            delivery_date=original.delivery_date,
+            recipient_name=original.recipient_name,
+            recipient_street=original.recipient_street,
+            recipient_postal_code=original.recipient_postal_code,
+            recipient_city=original.recipient_city,
+            total_brutto=original.total_brutto,
+            status=InvoiceStatus.DRAFT,
+            related_invoice_id=original.id,
+        )
+        inner.add(new_inv)
+        inner.commit()
+        inner.refresh(new_inv)
+        items = inner.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == original.id)).all()
+        for item in items:
+            inner.add(InvoiceItem(
+                invoice_id=new_inv.id,
+                description=item.description,
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+            ))
+        log_audit_action(inner, "INVOICE_RISK_EDIT", invoice_id=original.id)
+        inner.commit()
+        return new_inv.id
 
 def download_invoice_file(invoice):
     if invoice and invoice.id: log_invoice_action("EXPORT_CREATED", invoice.id)
@@ -126,7 +205,8 @@ def render_dashboard(session, comp):
                     app.storage.user['invoice_draft_id'] = i.id
                     app.storage.user['page'] = 'invoice_create'
                 else:
-                    app.storage.user['page'] = 'invoices'
+                    app.storage.user['invoice_detail_id'] = i.id
+                    app.storage.user['page'] = 'invoice_detail'
                 ui.navigate.to('/')
 
              with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-slate-50").on('click', lambda _, x=inv: go(x)):
@@ -160,40 +240,8 @@ def render_invoice_create(session, comp):
         'ust': True
     }
 
-    blocked_statuses = {InvoiceStatus.FINALIZED, "OPEN", "SENT", "PAID", "Bezahlt"}
+    blocked_statuses = {InvoiceStatus.FINALIZED, InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID}
     if draft and draft.status in blocked_statuses:
-        def create_revision_and_edit(reason):
-            with get_session() as inner:
-                original = inner.get(Invoice, draft.id)
-                if not original: return None
-                new_inv = Invoice(
-                    customer_id=original.customer_id,
-                    nr=None,
-                    title=original.title,
-                    date=original.date,
-                    delivery_date=original.delivery_date,
-                    recipient_name=original.recipient_name,
-                    recipient_street=original.recipient_street,
-                    recipient_postal_code=original.recipient_postal_code,
-                    recipient_city=original.recipient_city,
-                    total_brutto=original.total_brutto,
-                    status=InvoiceStatus.DRAFT
-                )
-                inner.add(new_inv)
-                inner.commit()
-                inner.refresh(new_inv)
-                items = inner.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == original.id)).all()
-                for item in items:
-                    inner.add(InvoiceItem(
-                        invoice_id=new_inv.id,
-                        description=item.description,
-                        quantity=item.quantity,
-                        unit_price=item.unit_price
-                    ))
-                log_audit_action(inner, "INVOICE_RISK_EDIT", invoice_id=original.id)
-                inner.commit()
-                return new_inv.id
-
         sticky_header('Rechnungs-Editor', on_cancel=lambda: ui.navigate.to('/'))
 
         with ui.column().classes('w-full h-[calc(100vh-64px)] p-0 m-0'):
@@ -204,7 +252,7 @@ def render_invoice_create(session, comp):
 
                     with ui.dialog() as risk_dialog:
                         with ui.card().classes(C_CARD + " p-4 w-full"):
-                            ui.label('Ändern auf Risiko').classes(C_SECTION_TITLE)
+                            ui.label('Edit with risk').classes(C_SECTION_TITLE)
                             reason_input = ui.textarea('Grund', placeholder='Grund der Änderung').classes(C_INPUT)
                             risk_checkbox = ui.checkbox('Ich verstehe das Risiko und möchte eine Revision erstellen.')
                             with ui.row().classes('justify-end w-full'):
@@ -222,7 +270,7 @@ def render_invoice_create(session, comp):
 
                     def on_risk_confirm():
                         if not risk_checkbox.value or not reason_input.value: return
-                        new_id = create_revision_and_edit(reason_input.value)
+                        new_id = create_invoice_revision_and_edit(draft.id, reason_input.value)
                         if not new_id:
                             ui.notify('Revision konnte nicht erstellt werden', color='red')
                             return
@@ -231,7 +279,7 @@ def render_invoice_create(session, comp):
                         risk_dialog.close()
                         ui.navigate.to('/')
 
-                    ui.button('Ändern auf Risiko', on_click=lambda: risk_dialog.open()).classes(C_BTN_PRIM)
+                    ui.button('Edit with risk', on_click=lambda: risk_dialog.open()).classes(C_BTN_PRIM)
         return
     
     # Iframe Preview
@@ -410,6 +458,94 @@ def render_invoice_create(session, comp):
                 preview_html = ui.html('', sanitize=False).classes('w-full h-full min-h-[70vh] bg-slate-300')
     update_preview()
 
+# --- DETAIL ---
+def render_invoice_detail(session, comp):
+    invoice_id = app.storage.user.get('invoice_detail_id')
+    if not invoice_id:
+        ui.notify('Keine Rechnung ausgewählt', color='red')
+        app.storage.user['page'] = 'invoices'
+        ui.navigate.to('/')
+        return
+    invoice = session.get(Invoice, int(invoice_id))
+    if not invoice:
+        ui.notify('Rechnung nicht gefunden', color='red')
+        app.storage.user['page'] = 'invoices'
+        ui.navigate.to('/')
+        return
+
+    customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
+    ui.label('Rechnung').classes(C_PAGE_TITLE + " mb-4")
+
+    step_status = InvoiceStatus.OPEN if invoice.status == InvoiceStatus.FINALIZED else invoice.status
+    steps = [
+        (InvoiceStatus.DRAFT, "Draft"),
+        (InvoiceStatus.OPEN, "Open"),
+        (InvoiceStatus.SENT, "Sent"),
+        (InvoiceStatus.PAID, "Paid"),
+        (InvoiceStatus.CANCELLED, "Cancelled"),
+    ]
+
+    with ui.card().classes(C_CARD + " p-4 mb-4"):
+        ui.label('Status').classes(C_SECTION_TITLE + " mb-2")
+        with ui.row().classes('items-center gap-2 flex-wrap'):
+            for index, (status, label) in enumerate(steps):
+                if status == step_status:
+                    active_class = "text-rose-600 font-semibold" if status == InvoiceStatus.CANCELLED else "text-emerald-600 font-semibold"
+                    ui.label(label).classes(active_class + " text-sm")
+                else:
+                    ui.label(label).classes("text-slate-400 text-sm")
+                if index < len(steps) - 1:
+                    ui.label('→').classes('text-slate-300 text-sm')
+
+    with ui.card().classes(C_CARD + " p-4 mb-4"):
+        ui.label('Details').classes(C_SECTION_TITLE + " mb-2")
+        with ui.row().classes('w-full gap-6 flex-wrap text-sm'):
+            ui.label(f"Nr: {invoice.nr or '-'}").classes('font-mono')
+            ui.label(f"Kunde: {customer.display_name if customer else '-'}")
+            ui.label(f"Datum: {invoice.date}")
+            ui.label(f"Betrag: {invoice.total_brutto:,.2f} €")
+            ui.label(f"Status: {format_invoice_status(invoice.status)}").classes(invoice_status_badge(invoice.status))
+
+    with ui.row().classes('gap-3'):
+        if invoice.status == InvoiceStatus.DRAFT:
+            def edit():
+                app.storage.user['invoice_draft_id'] = invoice.id
+                app.storage.user['page'] = 'invoice_create'
+                ui.navigate.to('/')
+            ui.button('Edit', on_click=edit).classes(C_BTN_PRIM)
+        else:
+            with ui.dialog() as risk_dialog:
+                with ui.card().classes(C_CARD + " p-4 w-full"):
+                    ui.label('Edit with risk').classes(C_SECTION_TITLE)
+                    reason_input = ui.textarea('Grund', placeholder='Grund der Änderung').classes(C_INPUT)
+                    risk_checkbox = ui.checkbox('Ich verstehe das Risiko und möchte eine Revision erstellen.')
+                    with ui.row().classes('justify-end w-full'):
+                        action_button = ui.button('Revision erstellen und ändern', on_click=lambda: on_risk_confirm()).classes(C_BTN_PRIM)
+                        action_button.disable()
+
+                    def validate_risk():
+                        if risk_checkbox.value and reason_input.value:
+                            action_button.enable()
+                        else:
+                            action_button.disable()
+
+                    reason_input.on('update:model-value', lambda e: validate_risk())
+                    risk_checkbox.on('update:model-value', lambda e: validate_risk())
+
+            def on_risk_confirm():
+                if not risk_checkbox.value or not reason_input.value:
+                    return
+                new_id = create_invoice_revision_and_edit(invoice.id, reason_input.value)
+                if not new_id:
+                    ui.notify('Revision konnte nicht erstellt werden', color='red')
+                    return
+                app.storage.user['invoice_draft_id'] = new_id
+                app.storage.user['page'] = 'invoice_create'
+                risk_dialog.close()
+                ui.navigate.to('/')
+
+            ui.button('Edit with risk', on_click=lambda: risk_dialog.open()).classes(C_BTN_PRIM)
+
 # --- OTHER PAGES (Settings, Customers, Expenses) ---
 def render_invoice_detail(session, comp, invoice_id):
     invoice = session.get(Invoice, invoice_id) if invoice_id else None
@@ -507,8 +643,12 @@ def render_invoices(session, comp):
             ui.label('Nr').classes('w-20 font-bold'); ui.label('Kunde').classes('flex-1 font-bold'); ui.label('Betrag').classes('w-24 text-right'); ui.label('').classes('w-32')
         for i in invs:
             def go(x=i):
-                app.storage.user['invoice_detail_id'] = x.id
-                app.storage.user['page'] = 'invoice_detail'
+                if x.status == InvoiceStatus.DRAFT:
+                    app.storage.user['invoice_draft_id']=x.id
+                    app.storage.user['page']='invoice_create'
+                else:
+                    app.storage.user['invoice_detail_id'] = x.id
+                    app.storage.user['page'] = 'invoice_detail'
                 ui.navigate.to('/')
             with ui.row().classes(C_TABLE_ROW + " hover:bg-slate-50"):
                 with ui.row().classes('flex-1 items-center gap-2 cursor-pointer').on('click', lambda _, x=i: go(x)):
