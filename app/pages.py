@@ -328,7 +328,7 @@ def render_ledger(session, comp):
     items = []
     for i in invs:
         c = session.get(Customer, i.customer_id) if i.customer_id else None
-        status = "Paid" if i.status == "Bezahlt" else "Draft" if i.status == InvoiceStatus.DRAFT or i.status == "Entwurf" else "Overdue"
+        status = "Paid" if i.status == InvoiceStatus.FINALIZED else "Draft" if i.status == InvoiceStatus.DRAFT else "Overdue"
         items.append({
             'id': i.id,
             'date': i.date,
@@ -422,7 +422,7 @@ def render_ledger(session, comp):
                     with ui.row().classes('w-32 justify-end gap-1'):
                         if item['invoice']:
                             i = item['invoice']
-                            if i.status == InvoiceStatus.DRAFT or i.status == "Entwurf":
+                            if i.status == InvoiceStatus.DRAFT:
                                 def edit(x=i):
                                     app.storage.user['invoice_draft_id'] = x.id
                                     app.storage.user['page'] = 'invoice_create'
