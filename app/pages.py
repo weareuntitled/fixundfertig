@@ -24,10 +24,18 @@ def log_invoice_action(action, invoice_id):
         log_audit_action(s, action, invoice_id=invoice_id)
         s.commit()
 
-def download_invoice(pdf_path, invoice_id=None):
-    if invoice_id: log_invoice_action("PRINT", invoice_id)
-    if pdf_path and os.path.exists(pdf_path): ui.download(pdf_path)
-    else: ui.notify("PDF Datei fehlt", color="red")
+def download_invoice_file(invoice):
+    if invoice and invoice.id: log_invoice_action("PRINT", invoice.id)
+    if not invoice.pdf_filename:
+        pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+        filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
+        ui.download(pdf_bytes, filename=filename)
+        return
+    pdf_path = invoice.pdf_filename
+    if not os.path.isabs(pdf_path) and not pdf_path.startswith("storage/"):
+        pdf_path = f"storage/invoices/{pdf_path}"
+    if os.path.exists(pdf_path): ui.download(pdf_path)
+    else: ui.notify(f"PDF Datei fehlt: {pdf_path}", color="red")
 
 def build_invoice_mailto(comp, customer, invoice):
     subject = f"Rechnung {invoice.nr or ''}".strip()
@@ -270,12 +278,11 @@ def render_invoices(session, comp):
                 ui.label(f"{i.total_brutto:,.2f}").classes('w-24 text-right text-sm')
                 with ui.row().classes('w-32 justify-end gap-1'):
                     if i.status == InvoiceStatus.FINALIZED:
-                         f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
                          with ui.element('div'):
                              with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500'):
                                  with ui.menu().props('auto-close no-parent-event'):
-                                     ui.menu_item('Download', on_click=lambda p=f: download_invoice(p)).props('no-parent-event')
-                                     ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('no-parent-event')
+                                     ui.menu_item('Download', on_click=lambda x=i: download_invoice_file(x))
+                                     ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x))
 
 def render_customers(session, comp):
     ui.label('Kunden').classes(C_PAGE_TITLE)
