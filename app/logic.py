@@ -1,9 +1,12 @@
 import os
+import csv
+import zipfile
+import shutil
 from datetime import datetime
 import requests
 from nicegui import ui
 from sqlmodel import Session, select
-from data import Invoice, InvoiceItem, Company, InvoiceStatus, AuditLog, get_session
+from data import Invoice, InvoiceItem, Company, Customer, InvoiceStatus, AuditLog
 from renderer import render_invoice_to_pdf_bytes
 
 def calculate_totals(items, ust_enabled):
@@ -88,24 +91,130 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     
     return inv
 
-def send_n8n_event(comp, payload):
-    if not comp or not comp.n8n_webhook_url:
-        ui.notify("N8N Webhook fehlt", color="red")
-        return False
-    if not comp.n8n_secret:
-        ui.notify("N8N Secret fehlt", color="red")
-        return False
+def _build_export_path(filename):
+    base_dir = "storage/exports"
+    os.makedirs(base_dir, exist_ok=True)
+    path = os.path.join(base_dir, filename)
+    if os.path.exists(path):
+        suffix = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        name, ext = os.path.splitext(filename)
+        path = os.path.join(base_dir, f"{name}_{suffix}{ext}")
+    return path
 
-    headers = {"X-N8N-SECRET": comp.n8n_secret}
-    try:
-        response = requests.post(comp.n8n_webhook_url, json=payload, headers=headers, timeout=3)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        ui.notify(f"N8N Fehler: {e}", color="red")
-        return False
+def _write_csv(path, headers, rows):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=";")
+        writer.writerow(headers)
+        for row in rows:
+            writer.writerow(row)
 
-    with get_session() as session:
-        session.add(AuditLog(action="N8N_PUSHED", timestamp=datetime.now().isoformat()))
-        session.commit()
+def _create_zip(path, entries):
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for file_path, arcname in entries:
+            if file_path and os.path.exists(file_path):
+                zf.write(file_path, arcname=arcname or os.path.basename(file_path))
 
-    return True
+def _ensure_invoice_pdf_path(session, invoice):
+    pdf_path = invoice.pdf_filename
+    if pdf_path:
+        if not os.path.isabs(pdf_path) and not pdf_path.startswith("storage/"):
+            pdf_path = f"storage/invoices/{pdf_path}"
+        if os.path.exists(pdf_path):
+            return pdf_path
+    pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+    if isinstance(pdf_bytes, bytearray): pdf_bytes = bytes(pdf_bytes)
+    if not isinstance(pdf_bytes, bytes): raise TypeError("PDF output must be bytes")
+    filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else f"rechnung_{invoice.id}.pdf"
+    pdf_path = f"storage/invoices/{filename}"
+    if os.path.exists(pdf_path):
+        suffix = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        filename = f"rechnung_{invoice.nr}_{suffix}.pdf" if invoice.nr else f"rechnung_{invoice.id}_{suffix}.pdf"
+        pdf_path = f"storage/invoices/{filename}"
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    temp_path = f"{pdf_path}.tmp"
+    with open(temp_path, "wb") as f:
+        f.write(pdf_bytes)
+    os.replace(temp_path, pdf_path)
+    invoice.pdf_filename = filename
+    invoice.pdf_storage = "local"
+    session.add(invoice)
+    session.flush()
+    return pdf_path
+
+def _log_export_created(session):
+    session.add(AuditLog(action="EXPORT_CREATED", timestamp=datetime.now().isoformat()))
+
+def export_invoices_pdf_zip(session):
+    invoices = session.exec(select(Invoice)).all()
+    entries = []
+    for inv in invoices:
+        path = _ensure_invoice_pdf_path(session, inv)
+        entries.append((path, os.path.basename(path)))
+    zip_path = _build_export_path("rechnungen_pdf.zip")
+    _create_zip(zip_path, entries)
+    _log_export_created(session)
+    session.commit()
+    return zip_path
+
+def export_invoices_csv(session):
+    invoices = session.exec(select(Invoice)).all()
+    headers = [
+        "id", "nr", "titel", "datum", "lieferdatum",
+        "kunde_id", "summe_brutto", "status"
+    ]
+    rows = [
+        [
+            inv.id, inv.nr, inv.title, inv.date, inv.delivery_date,
+            inv.customer_id, f"{inv.total_brutto:.2f}", inv.status
+        ]
+        for inv in invoices
+    ]
+    csv_path = _build_export_path("rechnungen.csv")
+    _write_csv(csv_path, headers, rows)
+    _log_export_created(session)
+    session.commit()
+    return csv_path
+
+def export_invoice_items_csv(session):
+    items = session.exec(select(InvoiceItem)).all()
+    headers = ["id", "rechnung_id", "beschreibung", "menge", "preis"]
+    rows = [
+        [item.id, item.invoice_id, item.description, item.quantity, item.unit_price]
+        for item in items
+    ]
+    csv_path = _build_export_path("positionen.csv")
+    _write_csv(csv_path, headers, rows)
+    _log_export_created(session)
+    session.commit()
+    return csv_path
+
+def export_customers_csv(session):
+    customers = session.exec(select(Customer)).all()
+    headers = [
+        "id", "kdnr", "name", "vorname", "nachname", "email",
+        "strasse", "plz", "ort", "ust_id"
+    ]
+    rows = [
+        [
+            c.id, c.kdnr, c.name, c.vorname, c.nachname, c.email,
+            c.strasse, c.plz, c.ort, c.vat_id
+        ]
+        for c in customers
+    ]
+    csv_path = _build_export_path("kunden.csv")
+    _write_csv(csv_path, headers, rows)
+    _log_export_created(session)
+    session.commit()
+    return csv_path
+
+def export_database_backup(session):
+    db_path = "storage/database.db"
+    backup_path = _build_export_path("database_backup.db")
+    if os.path.exists(db_path):
+        shutil.copy2(db_path, backup_path)
+    else:
+        with open(backup_path, "wb") as f:
+            f.write(b"")
+    _log_export_created(session)
+    session.commit()
+    return backup_path
