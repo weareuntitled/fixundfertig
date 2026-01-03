@@ -4,6 +4,10 @@ from sqlmodel import Session, select
 from data import Company, Customer, Invoice, InvoiceItem, engine
 
 
+def _sanitize_pdf_text(value: str) -> str:
+    return value.replace("€", "EUR")
+
+
 class PDFInvoice(FPDF):
     def __init__(self, company: Company | None):
         super().__init__(format="A4", unit="mm")
@@ -25,24 +29,24 @@ class PDFInvoice(FPDF):
         self.set_font("Helvetica", size=9)
         self.set_xy(120, 20)
         header_lines = [
-            f"{self.company.name}",
-            f"{self.company.first_name} {self.company.last_name}".strip(),
-            f"{self.company.street}",
-            f"{self.company.postal_code} {self.company.city}".strip(),
+            _sanitize_pdf_text(f"{self.company.name}"),
+            _sanitize_pdf_text(f"{self.company.first_name} {self.company.last_name}".strip()),
+            _sanitize_pdf_text(f"{self.company.street}"),
+            _sanitize_pdf_text(f"{self.company.postal_code} {self.company.city}".strip()),
         ]
         if self.company.email:
-            header_lines.append(self.company.email)
+            header_lines.append(_sanitize_pdf_text(self.company.email))
         if self.company.phone:
-            header_lines.append(self.company.phone)
+            header_lines.append(_sanitize_pdf_text(self.company.phone))
         if self.company.iban:
-            header_lines.append(f"IBAN: {self.company.iban}")
+            header_lines.append(_sanitize_pdf_text(f"IBAN: {self.company.iban}"))
         if self.company.tax_id:
-            header_lines.append(f"St-Nr: {self.company.tax_id}")
+            header_lines.append(_sanitize_pdf_text(f"St-Nr: {self.company.tax_id}"))
         if self.company.vat_id:
-            header_lines.append(f"USt-IdNr: {self.company.vat_id}")
+            header_lines.append(_sanitize_pdf_text(f"USt-IdNr: {self.company.vat_id}"))
 
         header_text = "\n".join(line for line in header_lines if line)
-        self.multi_cell(0, 4, header_text, align="R")
+        self.multi_cell(0, 4, _sanitize_pdf_text(header_text), align="R")
 
     def footer(self):
         self.set_y(-25)
@@ -50,14 +54,14 @@ class PDFInvoice(FPDF):
 
         bank_details = []
         if self.company and self.company.iban:
-            bank_details.append(f"IBAN: {self.company.iban}")
+            bank_details.append(_sanitize_pdf_text(f"IBAN: {self.company.iban}"))
         if self.company and self.company.tax_id:
-            bank_details.append(f"St-Nr: {self.company.tax_id}")
+            bank_details.append(_sanitize_pdf_text(f"St-Nr: {self.company.tax_id}"))
         if self.company and self.company.vat_id:
-            bank_details.append(f"USt-IdNr: {self.company.vat_id}")
+            bank_details.append(_sanitize_pdf_text(f"USt-IdNr: {self.company.vat_id}"))
         if bank_details:
-            self.multi_cell(0, 4, " | ".join(bank_details), align="L")
-        self.cell(0, 4, f"Seite {self.page_no()}", align="R")
+            self.multi_cell(0, 4, _sanitize_pdf_text(" | ".join(bank_details)), align="L")
+        self.cell(0, 4, _sanitize_pdf_text(f"Seite {self.page_no()}"), align="R")
 
 
 def _load_company_customer(invoice: Invoice):
@@ -123,21 +127,23 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     company, customer = _load_company_customer(invoice)
     line_items, totals = _prepare_items(invoice)
 
-    recipient_name = invoice.recipient_name or (customer.display_name if customer else '')
-    recipient_street = invoice.recipient_street or (customer.strasse if customer else '')
-    recipient_postal = invoice.recipient_postal_code or (customer.plz if customer else '')
-    recipient_city = invoice.recipient_city or (customer.ort if customer else '')
+    recipient_name = _sanitize_pdf_text(invoice.recipient_name or (customer.display_name if customer else ''))
+    recipient_street = _sanitize_pdf_text(invoice.recipient_street or (customer.strasse if customer else ''))
+    recipient_postal = _sanitize_pdf_text(invoice.recipient_postal_code or (customer.plz if customer else ''))
+    recipient_city = _sanitize_pdf_text(invoice.recipient_city or (customer.ort if customer else ''))
 
     pdf = PDFInvoice(company)
     pdf.add_page()
 
     return_address = ''
     if company:
-        return_address = f"{company.name} · {company.street} · {company.postal_code} {company.city}".strip()
+        return_address = _sanitize_pdf_text(
+            f"{company.name} · {company.street} · {company.postal_code} {company.city}".strip()
+        )
 
     pdf.set_xy(20, 45)
     pdf.set_font("Helvetica", size=8, style="U")
-    pdf.cell(85, 4, return_address)
+    pdf.cell(85, 4, _sanitize_pdf_text(return_address))
 
     pdf.set_xy(20, 50)
     pdf.set_font("Helvetica", size=10)
@@ -146,23 +152,23 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
         recipient_street,
         f"{recipient_postal} {recipient_city}".strip(),
     ]
-    pdf.multi_cell(85, 5, "\n".join(line for line in recipient_lines if line))
+    pdf.multi_cell(85, 5, _sanitize_pdf_text("\n".join(line for line in recipient_lines if line)))
 
     pdf.set_xy(125, 65)
     pdf.set_font("Helvetica", size=9)
     info_lines = [
-        f"Datum: {invoice.date}",
-        f"Rechnung Nr: {invoice.nr or ''}",
+        _sanitize_pdf_text(f"Datum: {invoice.date}"),
+        _sanitize_pdf_text(f"Rechnung Nr: {invoice.nr or ''}"),
     ]
     if customer and customer.kdnr:
-        info_lines.append(f"Kundennr: {customer.kdnr}")
-    pdf.multi_cell(60, 4.5, "\n".join(info_lines))
+        info_lines.append(_sanitize_pdf_text(f"Kundennr: {customer.kdnr}"))
+    pdf.multi_cell(60, 4.5, _sanitize_pdf_text("\n".join(info_lines)))
 
     pdf.set_xy(20, 105)
     pdf.set_font("Helvetica", size=14, style="B")
-    pdf.cell(0, 8, invoice.title or "Rechnung", ln=1)
+    pdf.cell(0, 8, _sanitize_pdf_text(invoice.title or "Rechnung"), ln=1)
     pdf.set_font("Helvetica", size=10)
-    pdf.multi_cell(0, 5, "Vielen Dank für Ihren Auftrag. Nachfolgend finden Sie die Rechnung.")
+    pdf.multi_cell(0, 5, _sanitize_pdf_text("Vielen Dank für Ihren Auftrag. Nachfolgend finden Sie die Rechnung."))
 
     pdf.ln(3)
     table_start_x = 20
@@ -178,10 +184,10 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.set_font("Helvetica", size=9)
     for item in line_items:
         pdf.set_x(table_start_x)
-        pdf.cell(table_widths[0], 6, item['description'])
+        pdf.cell(table_widths[0], 6, _sanitize_pdf_text(item['description']))
         pdf.cell(table_widths[1], 6, f"{item['quantity']:.2f}", align="R")
-        pdf.cell(table_widths[2], 6, f"{item['unit_price']:.2f} EUR", align="R")
-        pdf.cell(table_widths[3], 6, f"{item['total']:.2f} EUR", align="R", ln=1)
+        pdf.cell(table_widths[2], 6, _sanitize_pdf_text(f"{item['unit_price']:.2f} EUR"), align="R")
+        pdf.cell(table_widths[3], 6, _sanitize_pdf_text(f"{item['total']:.2f} EUR"), align="R", ln=1)
 
     pdf.ln(4)
     totals_label_x = 120
@@ -190,18 +196,18 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 5, "Zwischensumme", align="R")
     pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 5, f"{totals['netto']:.2f} EUR", align="R", ln=1)
+    pdf.cell(30, 5, _sanitize_pdf_text(f"{totals['netto']:.2f} EUR"), align="R", ln=1)
 
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 5, f"USt. ({totals['tax_rate'] * 100:.0f}%)", align="R")
     pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 5, f"{totals['tax_amount']:.2f} EUR", align="R", ln=1)
+    pdf.cell(30, 5, _sanitize_pdf_text(f"{totals['tax_amount']:.2f} EUR"), align="R", ln=1)
 
     pdf.set_font("Helvetica", size=10, style="B")
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 6, "Gesamt", align="R")
     pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 6, f"{totals['brutto']:.2f} EUR", align="R", ln=1)
+    pdf.cell(30, 6, _sanitize_pdf_text(f"{totals['brutto']:.2f} EUR"), align="R", ln=1)
 
     output = pdf.output(dest="S")
     if isinstance(output, bytearray):
