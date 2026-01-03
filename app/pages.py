@@ -15,9 +15,9 @@ from data import (
 )
 from renderer import render_invoice_to_pdf_bytes
 from actions import create_correction
-from styles import C_CARD, C_BTN_PRIM, C_BTN_SEC, C_INPUT, C_PAGE_TITLE, C_SECTION_TITLE, C_TABLE_HEADER, C_TABLE_ROW, C_BADGE_GREEN
+from styles import C_CARD, C_CARD_HOVER, C_BTN_PRIM, C_BTN_SEC, C_INPUT, C_PAGE_TITLE, C_SECTION_TITLE, C_TABLE_HEADER, C_TABLE_ROW, C_BADGE_GREEN
 from ui_components import format_invoice_status, invoice_status_badge, kpi_card, sticky_header
-from logic import finalize_invoice_logic
+from logic import finalize_invoice_logic, export_invoices_pdf_zip, export_invoices_csv, export_invoice_items_csv, export_customers_csv, export_database_backup
 
 # Helper
 def log_invoice_action(action, invoice_id):
@@ -547,6 +547,38 @@ def render_customer_new(session, comp):
                 s.add(c); s.commit()
             ui.navigate.to('/')
         ui.button('Speichern', on_click=save).classes(C_BTN_PRIM)
+
+def render_exports(session, comp):
+    ui.label('Exporte').classes(C_PAGE_TITLE + " mb-4")
+
+    def run_export(action, label):
+        ui.notify('Wird vorbereitet…')
+        try:
+            with get_session() as s:
+                path = action(s)
+            if path and os.path.exists(path):
+                ui.download(path)
+                ui.notify(f"{label} bereit", color='green')
+            else:
+                ui.notify('Export fehlgeschlagen', color='red')
+        except Exception as e:
+            ui.notify(f"Fehler: {e}", color='red')
+
+    def export_card(title, description, action):
+        with ui.card().classes(C_CARD + " p-5 " + C_CARD_HOVER + " w-full"):
+            ui.label(title).classes('font-semibold text-slate-900')
+            ui.label(description).classes('text-sm text-slate-500 mb-2')
+            ui.button('Download', icon='download', on_click=action).classes(C_BTN_SEC)
+
+    with ui.grid(columns=2).classes('w-full gap-4'):
+        export_card('PDF ZIP', 'Alle Rechnungs-PDFs als ZIP-Datei', lambda: run_export(export_invoices_pdf_zip, 'PDF ZIP'))
+        export_card('Rechnungen CSV', 'Alle Rechnungen als CSV-Datei', lambda: run_export(export_invoices_csv, 'Rechnungen CSV'))
+        export_card('Positionen CSV', 'Alle Rechnungspositionen als CSV-Datei', lambda: run_export(export_invoice_items_csv, 'Positionen CSV'))
+        export_card('Kunden CSV', 'Alle Kunden als CSV-Datei', lambda: run_export(export_customers_csv, 'Kunden CSV'))
+
+    with ui.expansion('Erweitert').classes('w-full mt-4'):
+        with ui.column().classes('w-full gap-2 p-2'):
+            export_card('DB-Backup', 'SQLite Datenbank sichern', lambda: run_export(export_database_backup, 'DB-Backup'))
 
 def render_settings(session, comp):
     ui.label('Einstellungen').classes(C_PAGE_TITLE + " mb-6")
