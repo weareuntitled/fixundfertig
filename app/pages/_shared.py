@@ -43,6 +43,7 @@ from styles import (
     C_TABLE_HEADER,
     C_TABLE_ROW,
     C_BADGE_GREEN,
+    C_CONTAINER,
 )
 
 from ui_components import (
@@ -89,6 +90,69 @@ def _open_invoice_editor(draft_id: int | None) -> None:
     app.storage.user["invoice_draft_id"] = int(draft_id) if draft_id else None
     app.storage.user["page"] = "invoice_create"
     ui.navigate.to("/")
+
+
+def render_logo_card() -> None:
+    with ui.card().classes(C_CARD + " p-5 w-full"):
+        ui.label("Logo").classes(C_SECTION_TITLE)
+        ui.label("Quadratisches PNG oder JPG empfohlen.").classes("text-sm text-slate-500 mb-2")
+
+        def on_up(e):
+            os.makedirs("./storage", exist_ok=True)
+            with open("./storage/logo.png", "wb") as f:
+                f.write(e.content.read())
+            ui.notify("Hochgeladen", color="green")
+
+        ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").props("flat dense").classes("w-full")
+
+
+def render_contact_card(comp: Company):
+    with ui.card().classes(C_CARD + " p-5 w-full"):
+        ui.label("Kontakt").classes(C_SECTION_TITLE)
+        first_name = ui.input("Vorname", value=comp.first_name).classes(C_INPUT)
+        last_name = ui.input("Nachname", value=comp.last_name).classes(C_INPUT)
+        email = ui.input("Email", value=comp.email).classes(C_INPUT)
+        phone = ui.input("Telefon", value=comp.phone).classes(C_INPUT)
+    return {
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": email,
+        "phone": phone,
+    }
+
+
+def render_address_card(comp: Company):
+    with ui.card().classes(C_CARD + " p-5 w-full"):
+        ui.label("Adresse").classes(C_SECTION_TITLE)
+        street = ui.input("Straße", value=comp.street).classes(C_INPUT)
+        postal_code = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
+        city = ui.input("Ort", value=comp.city).classes(C_INPUT)
+    return {
+        "street": street,
+        "postal_code": postal_code,
+        "city": city,
+    }
+
+
+def render_business_meta_card(comp: Company):
+    with ui.card().classes(C_CARD + " p-5 w-full"):
+        ui.label("Firma").classes(C_SECTION_TITLE)
+        name = ui.input("Firma", value=comp.name).classes(C_INPUT)
+        iban = ui.input("IBAN", value=comp.iban).classes(C_INPUT)
+        tax = ui.input("Steuernummer", value=comp.tax_id).classes(C_INPUT)
+        vat = ui.input("USt-ID", value=comp.vat_id).classes(C_INPUT)
+    return {
+        "name": name,
+        "iban": iban,
+        "tax_id": tax,
+        "vat_id": vat,
+    }
+
+
+def render_integrations_card() -> None:
+    with ui.card().classes(C_CARD + " p-5 w-full"):
+        ui.label("Integrationen").classes(C_SECTION_TITLE)
+        ui.label("Noch keine Integrationen verbunden.").classes("text-sm text-slate-500")
 
 
 # -------------------------
@@ -377,5 +441,3 @@ def _render_status_stepper(invoice: Invoice) -> None:
 # -------------------------
 # Expenses
 # -------------------------
-
-
