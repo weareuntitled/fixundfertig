@@ -30,7 +30,7 @@ def sticky_header(title, on_cancel, on_save=None, on_finalize=None):
     # Stattdessen ein sticky div/row.
     # z-index 40, damit es unter dem Haupt-Header (z-50) durchscrollt, falls nötig, 
     # oder einfach oben im Content klebt.
-    with ui.row().classes('bg-white border-b border-slate-200 p-4 sticky top-0 z-40 flex justify-between items-center w-full shadow-sm'):
+    with ui.row().classes('bg-white border-b border-slate-200 p-4 sticky top-0 z-60 flex justify-between items-center w-full shadow-sm'):
         with ui.row().classes('items-center gap-2'):
             ui.icon('description', size='sm').classes('text-slate-500')
             ui.label(title).classes('text-lg font-bold text-slate-800')
