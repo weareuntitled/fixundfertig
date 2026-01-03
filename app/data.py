@@ -218,7 +218,8 @@ def ensure_invoice_schema():
         if "revision_nr" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN revision_nr INTEGER DEFAULT 0")
         if "updated_at" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))")
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN updated_at TEXT DEFAULT ''")
+            conn.exec_driver_sql("UPDATE invoice SET updated_at = datetime('now') WHERE updated_at IS NULL OR updated_at = ''")
         if "related_invoice_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN related_invoice_id INTEGER")
         old_status_count = conn.exec_driver_sql(
