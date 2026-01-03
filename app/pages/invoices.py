@@ -1,0 +1,149 @@
+from __future__ import annotations
+from ._shared import *
+
+# Auto generated page renderer
+
+def render_invoices(session, comp: Company) -> None:
+    ui.label("Rechnungen").classes(C_PAGE_TITLE)
+    ui.label("Finale Rechnungen links, Entwürfe und Mahnungen rechts.").classes("text-sm text-slate-500 mb-4")
+
+    with ui.row().classes("w-full justify-between items-center mb-4"):
+        ui.button("Neue Rechnung", on_click=lambda: _open_invoice_editor(None)).classes(C_BTN_PRIM)
+
+    invs = session.exec(select(Invoice).order_by(Invoice.id.desc())).all()
+    drafts = [i for i in invs if i.status == InvoiceStatus.DRAFT]
+    finals = [i for i in invs if i.status != InvoiceStatus.DRAFT]
+
+    now = datetime.now()
+    overdue_days = 14
+    reminders: list[Invoice] = []
+    for inv in finals:
+        if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.FINALIZED):
+            if _parse_iso_date(inv.date) < (now - timedelta(days=overdue_days)):
+                reminders.append(inv)
+
+    cust_cache: dict[int, Customer | None] = {}
+
+    def cust_name(inv: Invoice) -> str:
+        if not inv.customer_id:
+            return "?"
+        cid = int(inv.customer_id)
+        if cid not in cust_cache:
+            cust_cache[cid] = session.get(Customer, cid)
+        c = cust_cache[cid]
+        return c.display_name if c else "?"
+
+    def run_download(inv: Invoice) -> None:
+        try:
+            download_invoice_file(inv)
+        except Exception as e:
+            ui.notify(f"Fehler: {e}", color="red")
+
+    def run_send(inv: Invoice) -> None:
+        try:
+            c = cust_cache.get(int(inv.customer_id)) if inv.customer_id else None
+            if not c and inv.customer_id:
+                c = session.get(Customer, int(inv.customer_id))
+            send_invoice_email(comp, c, inv)
+        except Exception as e:
+            ui.notify(f"Fehler: {e}", color="red")
+
+    def set_status(inv: Invoice, target_status: InvoiceStatus) -> None:
+        try:
+            with get_session() as s:
+                with s.begin():
+                    _, err = update_status_logic(s, int(inv.id), target_status)
+            if err:
+                ui.notify(err, color="red")
+            else:
+                ui.notify("Status aktualisiert", color="green")
+                ui.navigate.to("/")
+        except Exception as e:
+            ui.notify(f"Fehler: {e}", color="red")
+
+    def do_cancel(inv: Invoice) -> None:
+        try:
+            ok, err = cancel_invoice(int(inv.id))
+            if not ok:
+                ui.notify(err, color="red")
+            else:
+                ui.notify("Storniert", color="green")
+                ui.navigate.to("/")
+        except Exception as e:
+            ui.notify(f"Fehler: {e}", color="red")
+
+    with ui.element("div").classes("grid grid-cols-10 gap-4 w-full"):
+        # Left column
+        with ui.column().classes("col-span-10 lg:col-span-7 gap-3"):
+            with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+                with ui.row().classes(C_TABLE_HEADER):
+                    ui.label("Nr").classes("w-24 font-bold text-xs text-slate-500")
+                    ui.label("Kunde").classes("flex-1 font-bold text-xs text-slate-500")
+                    ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-slate-500")
+                    ui.label("Status").classes("w-28 text-right font-bold text-xs text-slate-500")
+                    ui.label("").classes("w-44 text-right font-bold text-xs text-slate-500")
+
+                if not finals:
+                    with ui.row().classes(C_TABLE_ROW):
+                        ui.label("Noch keine Rechnungen vorhanden").classes("text-sm text-slate-500")
+                else:
+                    for inv in finals:
+                        with ui.row().classes(C_TABLE_ROW + " group"):
+                            with ui.row().classes("flex-1 items-center gap-4 cursor-pointer").on("click", lambda _, x=inv: _open_invoice_detail(int(x.id))):
+                                ui.label(f"#{inv.nr}" if inv.nr else "-").classes("w-24 text-xs font-mono text-slate-700")
+                                ui.label(cust_name(inv)).classes("flex-1 text-sm text-slate-900")
+                                ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes("w-28 text-right text-sm font-mono text-slate-800")
+                                with ui.row().classes("w-28 justify-end"):
+                                    ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))
+
+                            with ui.row().classes("w-44 justify-end gap-2"):
+                                ui.button("Download", on_click=lambda x=inv: run_download(x)).props("flat dense no-parent-event").classes("text-slate-600")
+                                ui.button("Senden", on_click=lambda x=inv: run_send(x)).props("flat dense no-parent-event").classes("text-slate-600")
+
+                                with ui.button(icon="more_vert").props("flat dense no-parent-event").classes("text-slate-600"):
+                                    with ui.menu().props("auto-close no-parent-event"):
+                                        if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
+                                            ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))
+                                        if inv.status == InvoiceStatus.SENT:
+                                            ui.menu_item("Als bezahlt markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.PAID))
+                                        if inv.status != InvoiceStatus.CANCELLED:
+                                            ui.menu_item("Stornieren", on_click=lambda x=inv: do_cancel(x))
+
+        # Right column
+        with ui.column().classes("col-span-10 lg:col-span-3 gap-4"):
+            # Drafts
+            with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+                with ui.row().classes("px-4 py-3 border-b border-slate-200 items-center justify-between"):
+                    ui.label("Entwürfe").classes("text-sm font-semibold text-slate-700")
+                    ui.label(f"{len(drafts)}").classes("text-xs text-slate-500")
+
+                if not drafts:
+                    with ui.row().classes("px-4 py-3"):
+                        ui.label("Keine Entwürfe").classes("text-sm text-slate-500")
+                else:
+                    for d in drafts[:12]:
+                        with ui.row().classes("px-4 py-3 border-b border-slate-100 items-center justify-between"):
+                            with ui.row().classes("gap-2 items-center cursor-pointer").on("click", lambda _, x=d: _open_invoice_editor(int(x.id))):
+                                ui.label("Entwurf").classes(invoice_status_badge(InvoiceStatus.DRAFT))
+                                ui.label(cust_name(d)).classes("text-sm text-slate-900")
+                            with ui.row().classes("gap-2"):
+                                ui.button("Edit", on_click=lambda x=d: _open_invoice_editor(int(x.id))).props("flat dense no-parent-event").classes("text-slate-600")
+                                ui.button("Löschen", on_click=lambda x=d: (delete_draft(int(x.id)), ui.navigate.to("/"))).props("flat dense no-parent-event").classes("text-rose-600")
+
+            # Reminders
+            with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+                with ui.row().classes("px-4 py-3 border-b border-slate-200 items-center justify-between"):
+                    ui.label("Mahnungen").classes("text-sm font-semibold text-slate-700")
+                    ui.label(f"{len(reminders)}").classes("text-xs text-slate-500")
+
+                if not reminders:
+                    with ui.row().classes("px-4 py-3"):
+                        ui.label("Keine überfälligen Rechnungen").classes("text-sm text-slate-500")
+                else:
+                    for r in reminders[:12]:
+                        with ui.row().classes("px-4 py-3 border-b border-slate-100 items-center justify-between"):
+                            with ui.row().classes("gap-2 items-center cursor-pointer").on("click", lambda _, x=r: _open_invoice_detail(int(x.id))):
+                                ui.label("Overdue").classes("bg-amber-50 text-amber-800 border border-amber-100 px-2 py-0.5 rounded-full text-xs font-medium")
+                                ui.label(f"#{r.nr}" if r.nr else "Rechnung").classes("text-xs font-mono text-slate-700")
+                                ui.label(cust_name(r)).classes("text-sm text-slate-900")
+                            ui.label(f"{float(r.total_brutto or 0):,.2f} €").classes("text-sm font-mono text-slate-700")
