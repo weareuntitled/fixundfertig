@@ -3,6 +3,7 @@ from sqlalchemy import event, inspect
 from typing import Optional, List
 from enum import Enum  # <--- WICHTIG: Das hat gefehlt!
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
+from contextlib import contextmanager
 from datetime import datetime
 import pandas as pd
 import io
@@ -111,6 +112,11 @@ os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
 SQLModel.metadata.create_all(engine)
+
+@contextmanager
+def get_session():
+    with Session(engine) as session:
+        yield session
 
 @event.listens_for(Session, "before_flush")
 def prevent_finalized_invoice_updates(session, flush_context, instances):
