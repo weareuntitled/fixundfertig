@@ -23,6 +23,8 @@ class Company(SQLModel, table=True):
     name: str = "DanEP"
     first_name: str = ""
     last_name: str = ""
+    business_type: str = "Einzelunternehmen"
+    is_small_business: bool = False
     street: str = ""
     postal_code: str = ""
     city: str = ""
@@ -35,8 +37,10 @@ class Company(SQLModel, table=True):
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
+    default_sender_email: str = ""
     n8n_webhook_url: str = ""
     n8n_secret: str = ""
+    n8n_enabled: bool = False
     google_drive_folder_id: str = ""
     next_invoice_nr: int = 10000
 
@@ -156,6 +160,18 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN first_name TEXT DEFAULT ''")
         if "last_name" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN last_name TEXT DEFAULT ''")
+        if "business_type" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN business_type TEXT DEFAULT 'Einzelunternehmen'")
+        if "is_small_business" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN is_small_business INTEGER DEFAULT 0")
+        conn.exec_driver_sql(
+            "UPDATE company SET business_type = 'Einzelunternehmen' "
+            "WHERE business_type IS NULL OR business_type = ''"
+        )
+        conn.exec_driver_sql(
+            "UPDATE company SET is_small_business = 0 "
+            "WHERE is_small_business IS NULL"
+        )
         if "street" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN street TEXT DEFAULT ''")
         if "postal_code" not in columns:
@@ -178,10 +194,14 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_user TEXT DEFAULT ''")
         if "smtp_password" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_password TEXT DEFAULT ''")
+        if "default_sender_email" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN default_sender_email TEXT DEFAULT ''")
         if "n8n_webhook_url" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_webhook_url TEXT DEFAULT ''")
         if "n8n_secret" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_secret TEXT DEFAULT ''")
+        if "n8n_enabled" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_enabled INTEGER DEFAULT 0")
         if "google_drive_folder_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN google_drive_folder_id TEXT DEFAULT ''")
         if "next_invoice_nr" not in columns:
