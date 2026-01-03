@@ -48,7 +48,7 @@ def render_settings(session, comp: Company) -> None:
         ]
         with settings_grid():
             business_type = ui.select(
-                business_type_options,
+                options=business_type_options,
                 label="Unternehmensform",
                 value=comp.business_type or "Einzelunternehmen",
             ).classes(C_INPUT)
