@@ -10,10 +10,23 @@ def render_customer_new(session, comp: Company) -> None:
         name = ui.input("Firma").classes(C_INPUT)
         first = ui.input("Vorname").classes(C_INPUT)
         last = ui.input("Nachname").classes(C_INPUT)
-        street = ui.input("Straße").classes(C_INPUT)
+        with ui.column().classes("w-full gap-1"):
+            street = ui.input("Straße").classes(C_INPUT)
+            street_dropdown = ui.column().classes(
+                "w-full border border-slate-200 rounded-lg bg-white shadow-lg max-h-56 overflow-auto"
+            ).props("role=listbox aria-label=Adressvorschläge")
         plz = ui.input("PLZ").classes(C_INPUT)
         city = ui.input("Ort").classes(C_INPUT)
+        country = ui.input("Land").classes(C_INPUT)
         email = ui.input("Email").classes(C_INPUT)
+
+        use_address_autocomplete(
+            street,
+            plz,
+            city,
+            country,
+            street_dropdown,
+        )
 
         def save():
             with get_session() as s:
@@ -27,6 +40,7 @@ def render_customer_new(session, comp: Company) -> None:
                     strasse=street.value or "",
                     plz=plz.value or "",
                     ort=city.value or "",
+                    country=country.value or "",
                 )
                 s.add(c)
                 s.commit()

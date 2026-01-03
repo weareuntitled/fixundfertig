@@ -21,9 +21,14 @@ def render_settings(session, comp: Company) -> None:
         name = ui.input("Firma", value=comp.name).classes(C_INPUT)
         first_name = ui.input("Vorname", value=comp.first_name).classes(C_INPUT)
         last_name = ui.input("Nachname", value=comp.last_name).classes(C_INPUT)
-        street = ui.input("Straße", value=comp.street).classes(C_INPUT)
+        with ui.column().classes("w-full gap-1"):
+            street = ui.input("Straße", value=comp.street).classes(C_INPUT)
+            street_dropdown = ui.column().classes(
+                "w-full border border-slate-200 rounded-lg bg-white shadow-lg max-h-56 overflow-auto"
+            ).props("role=listbox aria-label=Adressvorschläge")
         plz = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
         city = ui.input("Ort", value=comp.city).classes(C_INPUT)
+        country = ui.input("Land", value=comp.country).classes(C_INPUT)
         email = ui.input("Email", value=comp.email).classes(C_INPUT)
         phone = ui.input("Telefon", value=comp.phone).classes(C_INPUT)
         iban = ui.input("IBAN", value=comp.iban).classes(C_INPUT)
@@ -39,6 +44,7 @@ def render_settings(session, comp: Company) -> None:
                 c.street = street.value or ""
                 c.postal_code = plz.value or ""
                 c.city = city.value or ""
+                c.country = country.value or ""
                 c.email = email.value or ""
                 c.phone = phone.value or ""
                 c.iban = iban.value or ""
@@ -47,5 +53,13 @@ def render_settings(session, comp: Company) -> None:
                 s.add(c)
                 s.commit()
             ui.notify("Gespeichert", color="green")
+
+        use_address_autocomplete(
+            street,
+            plz,
+            city,
+            country,
+            street_dropdown,
+        )
 
         ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)
