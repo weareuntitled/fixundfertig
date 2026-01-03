@@ -470,6 +470,11 @@ def render_ledger(session, comp):
     @ui.refreshable
     def render_list():
         data = apply_filters(items)
+        if len(data) == 0:
+            with ui.card().classes(C_CARD + " p-4"):
+                with ui.row().classes('w-full justify-center'):
+                    ui.label('Keine Ergebnisse gefunden').classes('text-sm text-slate-500')
+            return
         with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
             with ui.element('div').classes(C_TABLE_HEADER + " hidden sm:grid sm:grid-cols-[110px_110px_110px_1fr_120px_120px] items-center"):
                 ui.label('Datum').classes('font-bold')
