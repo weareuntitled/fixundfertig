@@ -486,7 +486,7 @@ def render_ledger(session, comp):
                                 ui.button(icon='edit', on_click=lambda x=i: edit(x)).props('flat dense').classes('text-slate-500')
                             if i and i.status == InvoiceStatus.FINALIZED:
                                 f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
-                                ui.button(icon='download', on_click=lambda p=f: download_invoice(p)).props('flat dense').classes('text-slate-500')
+                                ui.button(icon='download', on_click=lambda p=i: download_invoice_file(p)).props('flat dense').classes('text-slate-500')
                                 ui.button(icon='mail', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('flat dense').classes('text-slate-500')
                         else:
                             ui.label('-').classes('text-xs text-slate-400')
