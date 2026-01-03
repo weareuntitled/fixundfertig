@@ -116,4 +116,3 @@ def index():
     layout_wrapper(content)
 
 ui.run(title="FixundFertig", port=8080, language="de", storage_secret="secret2026", favicon="🚀")
-
