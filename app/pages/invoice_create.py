@@ -147,7 +147,9 @@ def render_invoice_create(session, comp: Company) -> None:
         with get_session() as s:
             if draft_id:
                 inv = s.get(Invoice, int(draft_id))
-            else:
+                if not inv:
+                    draft_id = None
+            if not draft_id:
                 inv = Invoice(status=InvoiceStatus.DRAFT)
 
             if state["customer_id"]:
@@ -247,14 +249,19 @@ def render_invoice_create(session, comp: Company) -> None:
                 with ui.card().classes(C_CARD + " p-4 w-full"):
                     ui.label("Kopfdaten").classes(C_SECTION_TITLE)
 
-                    cust_select = ui.select(cust_opts, label="Kunde", value=state["customer_id"], with_input=True).classes(C_INPUT)
+                    cust_select = ui.select(
+                        cust_opts,
+                        label="Kunde",
+                        value=state["customer_id"],
+                        with_input=True,
+                    ).classes(C_INPUT)
 
-                    def on_cust(e):
-                        state["customer_id"] = e.value
+                    def on_cust(value):
+                        state["customer_id"] = value
                         mark_dirty()
-                        if e.value:
+                        if value:
                             with get_session() as s:
-                                c = s.get(Customer, int(e.value))
+                                c = s.get(Customer, int(value))
                                 if c:
                                     rec_name.value = c.recipient_name or c.display_name
                                     rec_street.value = c.recipient_street or c.strasse
@@ -262,7 +269,15 @@ def render_invoice_create(session, comp: Company) -> None:
                                     rec_city.value = c.recipient_city or c.ort
                         request_preview_update()
 
-                    cust_select.on("update:model-value", on_cust)
+                    def on_cust_event(e):
+                        value = None
+                        if hasattr(e, "args") and isinstance(e.args, dict):
+                            value = e.args.get("value")
+                        elif hasattr(e, "value"):
+                            value = e.value
+                        on_cust(value)
+
+                    cust_select.on("update:model-value", on_cust_event)
 
                     with ui.grid(columns=2).classes("w-full gap-2"):
                         ui.input(
