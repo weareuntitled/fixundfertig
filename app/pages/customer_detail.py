@@ -27,25 +27,45 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         ui.button(icon="arrow_back", on_click=back).props("flat round").classes("text-slate-500")
         ui.label(customer.display_name).classes(C_PAGE_TITLE)
 
-    with settings_card(classes="max-w-3xl"):
-        with settings_grid():
-            name = ui.input("Firma", value=customer.name).classes(C_INPUT)
-            first = ui.input("Vorname", value=customer.vorname).classes(C_INPUT)
-            last = ui.input("Nachname", value=customer.nachname).classes(C_INPUT)
-            email = ui.input("Email", value=customer.email).classes(C_INPUT)
-            street = ui.input("Straße", value=customer.strasse).classes(C_INPUT)
-            plz = ui.input("PLZ", value=customer.plz).classes(C_INPUT)
-            city = ui.input("Ort", value=customer.ort).classes(C_INPUT)
-            vat = ui.input("USt-ID", value=customer.vat_id).classes(C_INPUT)
+    with ui.element("div").classes("w-full"):
+        with ui.grid(columns=2).classes("w-full gap-4"):
+            with settings_card("Kontakt"):
+                with settings_grid():
+                    name = ui.input("Firma", value=customer.name).classes(C_INPUT)
+                    first = ui.input("Vorname", value=customer.vorname).classes(C_INPUT)
+                    last = ui.input("Nachname", value=customer.nachname).classes(C_INPUT)
+                    email = ui.input("Email", value=customer.email).classes(C_INPUT)
+                    vat = ui.input("USt-ID", value=customer.vat_id).classes(C_INPUT)
 
-    with settings_card("Rechnungsempfänger", classes="max-w-3xl mt-4"):
-        with settings_grid():
-            recipient_name = ui.input("Rechnungsempfänger", value=customer.recipient_name).classes(C_INPUT)
-            recipient_street = ui.input("Rechnungsstraße", value=customer.recipient_street).classes(C_INPUT)
-            recipient_plz = ui.input("Rechnungs-PLZ", value=customer.recipient_postal_code).classes(C_INPUT)
-            recipient_city = ui.input("Rechnungs-Ort", value=customer.recipient_city).classes(C_INPUT)
+            with settings_card("Adresse"):
+                with settings_grid():
+                    street = ui.input("Straße", value=customer.strasse).classes(C_INPUT)
+                    plz = ui.input("PLZ", value=customer.plz).classes(C_INPUT)
+                    city = ui.input("Ort", value=customer.ort).classes(C_INPUT)
+                    country = ui.input("Land", value=customer.country).classes(C_INPUT)
 
-    fields = [name, first, last, email, street, plz, city, vat, recipient_name, recipient_street, recipient_plz, recipient_city]
+            with settings_card("Rechnungsempfänger"):
+                with settings_grid():
+                    recipient_name = ui.input("Rechnungsempfänger", value=customer.recipient_name).classes(C_INPUT)
+                    recipient_street = ui.input("Rechnungsstraße", value=customer.recipient_street).classes(C_INPUT)
+                    recipient_plz = ui.input("Rechnungs-PLZ", value=customer.recipient_postal_code).classes(C_INPUT)
+                    recipient_city = ui.input("Rechnungs-Ort", value=customer.recipient_city).classes(C_INPUT)
+
+    fields = [
+        name,
+        first,
+        last,
+        email,
+        street,
+        plz,
+        city,
+        country,
+        vat,
+        recipient_name,
+        recipient_street,
+        recipient_plz,
+        recipient_city,
+    ]
 
     def set_editable(editing: bool):
         for f in fields:
@@ -70,6 +90,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
             c.plz = plz.value or ""
             c.ort = city.value or ""
             c.vat_id = vat.value or ""
+            c.country = country.value or ""
             c.recipient_name = recipient_name.value or ""
             c.recipient_street = recipient_street.value or ""
             c.recipient_postal_code = recipient_plz.value or ""
@@ -91,6 +112,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         plz.value = customer.plz
         city.value = customer.ort
         vat.value = customer.vat_id
+        country.value = customer.country
         recipient_name.value = customer.recipient_name
         recipient_street.value = customer.recipient_street
         recipient_plz.value = customer.recipient_postal_code
