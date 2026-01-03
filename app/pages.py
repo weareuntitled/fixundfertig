@@ -202,70 +202,68 @@ def render_invoice_create(session, comp):
     sticky_header('Rechnungs-Editor', on_cancel=lambda: ui.navigate.to('/'), on_save=on_save_draft, on_finalize=on_finalize)
 
     with ui.column().classes('w-full h-[calc(100vh-64px)] p-0 m-0'):
-        with ui.splitter(value=40).props('horizontal').classes('w-full flex-grow') as splitter:
+        with ui.grid().classes('w-full flex-grow grid-cols-1 md:grid-cols-2'):
             # LINKS
-            with splitter.before:
-                with ui.column().classes('w-full p-4 gap-4 h-full overflow-y-auto'):
-                    with ui.card().classes(C_CARD + " p-4 w-full"):
-                        ui.label('Kopfdaten').classes(C_SECTION_TITLE)
-                        cust_select = ui.select(cust_opts, label='Kunde', value=state['customer_id'], with_input=True).classes(C_INPUT)
-                        def on_cust(e):
-                            state['customer_id'] = e.value
-                            if e.value:
-                                with get_session() as s:
-                                    c = s.get(Customer, int(e.value))
-                                    if c: rec_name.value = c.display_name; rec_street.value = c.strasse; rec_zip.value = c.plz; rec_city.value = c.ort
-                            update_preview()
-                        cust_select.on('update:model-value', on_cust)
-                        
-                        with ui.grid(columns=2).classes('w-full gap-2'):
-                             ui.input('Titel', value=state['title'], on_change=lambda e: (state.update({'title': e.value}), update_preview())).classes(C_INPUT)
-                             ui.input('Rechnung', value=state['date'], on_change=lambda e: (state.update({'date': e.value}), update_preview())).classes(C_INPUT)
-                             ui.input('Lieferung', value=state['delivery_date'], on_change=lambda e: (state.update({'delivery_date': e.value}), update_preview())).classes(C_INPUT)
+            with ui.column().classes('w-full p-4 gap-4 h-full overflow-y-auto'):
+                with ui.card().classes(C_CARD + " p-4 w-full"):
+                    ui.label('Kopfdaten').classes(C_SECTION_TITLE)
+                    cust_select = ui.select(cust_opts, label='Kunde', value=state['customer_id'], with_input=True).classes(C_INPUT)
+                    def on_cust(e):
+                        state['customer_id'] = e.value
+                        if e.value:
+                            with get_session() as s:
+                                c = s.get(Customer, int(e.value))
+                                if c: rec_name.value = c.display_name; rec_street.value = c.strasse; rec_zip.value = c.plz; rec_city.value = c.ort
+                        update_preview()
+                    cust_select.on('update:model-value', on_cust)
+                    
+                    with ui.grid(columns=2).classes('w-full gap-2'):
+                         ui.input('Titel', value=state['title'], on_change=lambda e: (state.update({'title': e.value}), update_preview())).classes(C_INPUT)
+                         ui.input('Rechnung', value=state['date'], on_change=lambda e: (state.update({'date': e.value}), update_preview())).classes(C_INPUT)
+                         ui.input('Lieferung', value=state['delivery_date'], on_change=lambda e: (state.update({'delivery_date': e.value}), update_preview())).classes(C_INPUT)
 
-                    with ui.expansion('Anschrift anpassen').classes('w-full border border-slate-200 rounded bg-white text-sm'):
-                        with ui.column().classes('p-3 gap-2 w-full'):
-                            rec_name = ui.input('Name', on_change=update_preview).classes(C_INPUT+" dense")
-                            rec_street = ui.input('Straße', on_change=update_preview).classes(C_INPUT+" dense")
-                            with ui.row().classes('w-full gap-2'):
-                                rec_zip = ui.input('PLZ', on_change=update_preview).classes(C_INPUT+" w-20 dense")
-                                rec_city = ui.input('Ort', on_change=update_preview).classes(C_INPUT+" flex-1 dense")
+                with ui.expansion('Anschrift anpassen').classes('w-full border border-slate-200 rounded bg-white text-sm'):
+                    with ui.column().classes('p-3 gap-2 w-full'):
+                        rec_name = ui.input('Name', on_change=update_preview).classes(C_INPUT+" dense")
+                        rec_street = ui.input('Straße', on_change=update_preview).classes(C_INPUT+" dense")
+                        with ui.row().classes('w-full gap-2'):
+                            rec_zip = ui.input('PLZ', on_change=update_preview).classes(C_INPUT+" w-20 dense")
+                            rec_city = ui.input('Ort', on_change=update_preview).classes(C_INPUT+" flex-1 dense")
 
-                    with ui.card().classes(C_CARD + " p-4 w-full"):
-                        with ui.row().classes('justify-between w-full'):
-                            ui.label('Posten').classes(C_SECTION_TITLE)
-                            ust_switch = ui.switch('19% MwSt', value=state['ust'], on_change=lambda e: (state.update({'ust': e.value}), update_preview())).props('dense color=grey-8')
-                        
-                        if template_items:
-                            item_template_select = ui.select({str(t.id): t.title for t in template_items}, label='Vorlage', with_input=True).classes(C_INPUT + " mb-2 dense")
+                with ui.card().classes(C_CARD + " p-4 w-full"):
+                    with ui.row().classes('justify-between w-full'):
+                        ui.label('Posten').classes(C_SECTION_TITLE)
+                        ust_switch = ui.switch('19% MwSt', value=state['ust'], on_change=lambda e: (state.update({'ust': e.value}), update_preview())).props('dense color=grey-8')
+                    
+                    if template_items:
+                        item_template_select = ui.select({str(t.id): t.title for t in template_items}, label='Vorlage', with_input=True).classes(C_INPUT + " mb-2 dense")
 
-                        items_col = ui.column().classes('w-full gap-2')
-                        def render_list():
-                            items_col.clear()
-                            with items_col:
-                                for item in state['items']:
-                                    with ui.row().classes('w-full gap-1 items-start bg-slate-50 p-2 rounded border'):
-                                        ui.textarea(value=item['desc'], on_change=lambda e, i=item: (i.update({'desc': e.value}), update_preview())).classes('flex-1 dense text-sm').props('rows=1 placeholder="Text" auto-grow')
-                                        with ui.column().classes('gap-1'):
-                                            ui.number(value=item['qty'], on_change=lambda e, i=item: (i.update({'qty': float(e.value or 0)}), update_preview())).classes('w-16 dense')
-                                            ui.number(value=item['price'], on_change=lambda e, i=item: (i.update({'price': float(e.value or 0)}), update_preview())).classes('w-20 dense')
-                                        ui.button(icon='close', on_click=lambda i=item: (state['items'].remove(i), render_list(), update_preview())).classes('flat dense text-red')
-                        render_list()
-                        
-                        def add_new(): state['items'].append({'desc':'', 'qty':1.0, 'price':0.0, 'is_brutto':False}); render_list()
-                        def add_tmpl():
-                             if not item_template_select.value: return
-                             t = next((x for x in template_items if str(x.id)==item_template_select.value),None)
-                             if t: state['items'].append({'desc':t.description,'qty':t.quantity,'price':t.unit_price,'is_brutto':False}); render_list(); update_preview(); item_template_select.value=None
+                    items_col = ui.column().classes('w-full gap-2')
+                    def render_list():
+                        items_col.clear()
+                        with items_col:
+                            for item in state['items']:
+                                with ui.row().classes('w-full gap-1 items-start bg-slate-50 p-2 rounded border'):
+                                    ui.textarea(value=item['desc'], on_change=lambda e, i=item: (i.update({'desc': e.value}), update_preview())).classes('flex-1 dense text-sm').props('rows=1 placeholder="Text" auto-grow')
+                                    with ui.column().classes('gap-1'):
+                                        ui.number(value=item['qty'], on_change=lambda e, i=item: (i.update({'qty': float(e.value or 0)}), update_preview())).classes('w-16 dense')
+                                        ui.number(value=item['price'], on_change=lambda e, i=item: (i.update({'price': float(e.value or 0)}), update_preview())).classes('w-20 dense')
+                                    ui.button(icon='close', on_click=lambda i=item: (state['items'].remove(i), render_list(), update_preview())).classes('flat dense text-red')
+                    render_list()
+                    
+                    def add_new(): state['items'].append({'desc':'', 'qty':1.0, 'price':0.0, 'is_brutto':False}); render_list()
+                    def add_tmpl():
+                         if not item_template_select.value: return
+                         t = next((x for x in template_items if str(x.id)==item_template_select.value),None)
+                         if t: state['items'].append({'desc':t.description,'qty':t.quantity,'price':t.unit_price,'is_brutto':False}); render_list(); update_preview(); item_template_select.value=None
 
-                        with ui.row().classes('gap-2 mt-2'):
-                            ui.button('Posten', icon='add', on_click=add_new).props('flat dense').classes('text-slate-600')
-                            if template_items: ui.button('Vorlage', icon='playlist_add', on_click=add_tmpl).props('flat dense').classes('text-slate-600')
+                    with ui.row().classes('gap-2 mt-2'):
+                        ui.button('Posten', icon='add', on_click=add_new).props('flat dense').classes('text-slate-600')
+                        if template_items: ui.button('Vorlage', icon='playlist_add', on_click=add_tmpl).props('flat dense').classes('text-slate-600')
 
             # RECHTS
-            with splitter.after:
-                with ui.column().classes('w-full h-full min-h-[70vh] bg-slate-200 p-0 m-0 overflow-hidden'):
-                    preview_html = ui.html('', sanitize=False).classes('w-full h-full min-h-[70vh] bg-slate-300')
+            with ui.column().classes('w-full h-full min-h-[70vh] bg-slate-200 p-0 m-0 overflow-hidden'):
+                preview_html = ui.html('', sanitize=False).classes('w-full h-full min-h-[70vh] bg-slate-300')
     update_preview()
 
 # --- OTHER PAGES (Settings, Customers, Expenses) ---
