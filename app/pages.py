@@ -190,7 +190,7 @@ def render_invoice_create(session, comp):
                         quantity=item.quantity,
                         unit_price=item.unit_price
                     ))
-                log_audit_action(inner, f"RISK_EDIT: {reason}", invoice_id=original.id)
+                log_audit_action(inner, "INVOICE_RISK_EDIT", invoice_id=original.id)
                 inner.commit()
                 return new_inv.id
 
