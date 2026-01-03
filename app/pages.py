@@ -274,8 +274,8 @@ def render_invoices(session, comp):
                          with ui.element('div'):
                              with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500'):
                                  with ui.menu().props('auto-close no-parent-event'):
-                                     ui.menu_item('Download', on_click=lambda p=f: download_invoice(p))
-                                     ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x))
+                                     ui.menu_item('Download', on_click=lambda p=f: download_invoice(p)).props('no-parent-event')
+                                     ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('no-parent-event')
 
 def render_customers(session, comp):
     ui.label('Kunden').classes(C_PAGE_TITLE)
