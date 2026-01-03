@@ -254,8 +254,8 @@ def render_invoice_create(session, comp):
 
             # RECHTS
             with splitter.after:
-                with ui.column().classes('w-full h-full bg-slate-200 p-0 m-0 overflow-hidden'):
-                    preview_html = ui.html('', sanitize=False).classes('w-full h-full bg-slate-300')
+                with ui.column().classes('w-full h-full min-h-[70vh] bg-slate-200 p-0 m-0 overflow-hidden'):
+                    preview_html = ui.html('', sanitize=False).classes('w-full h-full min-h-[70vh] bg-slate-300')
     update_preview()
 
 # --- OTHER PAGES (Settings, Customers, Expenses) ---
