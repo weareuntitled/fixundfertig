@@ -35,7 +35,10 @@ def download_invoice_file(invoice):
     if not os.path.isabs(pdf_path) and not pdf_path.startswith("storage/"):
         pdf_path = f"storage/invoices/{pdf_path}"
     if os.path.exists(pdf_path): ui.download(pdf_path)
-    else: ui.notify(f"PDF Datei fehlt: {pdf_path}", color="red")
+    else:
+        pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+        filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
+        ui.download(pdf_bytes, filename=filename)
 
 def build_invoice_mailto(comp, customer, invoice):
     subject = f"Rechnung {invoice.nr or ''}".strip()
@@ -256,8 +259,8 @@ def render_invoice_create(session, comp):
 
             # RECHTS
             with splitter.after:
-                with ui.column().classes('w-full h-full bg-slate-200 p-0 m-0 overflow-hidden'):
-                    preview_html = ui.html('', sanitize=False).classes('w-full h-full bg-slate-300')
+                with ui.column().classes('w-full h-full min-h-[70vh] bg-slate-200 p-0 m-0 overflow-hidden'):
+                    preview_html = ui.html('', sanitize=False).classes('w-full h-full min-h-[70vh] bg-slate-300')
     update_preview()
 
 # --- OTHER PAGES (Settings, Customers, Expenses) ---
@@ -295,11 +298,11 @@ def render_invoices(session, comp):
 
                                  with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500') as action_button:
                                      with ui.menu().props('auto-close no-parent-event'):
-                                         def on_download(p=f):
+                                         def on_download(x=i):
                                              ui.notify('Wird vorbereitet…')
                                              set_loading(True)
                                              try:
-                                                 download_invoice(p)
+                                                 download_invoice_file(x)
                                              except Exception as e:
                                                  ui.notify(f"Fehler: {e}", color='red')
                                              set_loading(False)
@@ -333,38 +336,53 @@ def render_ledger(session, comp):
     for i in invs:
         c = session.get(Customer, i.customer_id) if i.customer_id else None
         status = "Paid" if i.status == "Bezahlt" else "Draft" if i.status == InvoiceStatus.DRAFT or i.status == "Entwurf" else "Overdue"
+        amount_label = f"{i.total_brutto:,.2f} €"
         items.append({
-            'id': i.id,
+            'id': f"inv-{i.id}",
             'date': i.date,
-            'amount': i.total_brutto,
             'type': 'INCOME',
+            'type_label': 'Income',
+            'type_class': C_BADGE_GREEN + " w-20",
+            'amount': i.total_brutto,
+            'amount_label': amount_label,
+            'amount_class': 'w-24 text-right text-sm text-emerald-600',
             'status': status,
             'party': c.display_name if c else "?",
-            'invoice': i,
-            'expense': None,
+            'row_type': 'INVOICE',
+            'invoice_id': i.id,
+            'invoice_status': i.status,
+            'customer_id': i.customer_id,
+            'pdf_filename': i.pdf_filename,
+            'nr': i.nr,
             'sort_date': parse_date(i.date),
         })
     for e in exps:
         vendor = e.source or e.category or e.description or "-"
+        amount_label = f"-{e.amount:,.2f} €"
         items.append({
-            'id': e.id,
+            'id': f"exp-{e.id}",
             'date': e.date,
-            'amount': e.amount,
             'type': 'EXPENSE',
+            'type_label': 'Expense',
+            'type_class': "bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center w-20",
+            'amount': e.amount,
+            'amount_label': amount_label,
+            'amount_class': 'w-24 text-right text-sm text-rose-600',
             'status': 'Paid',
             'party': vendor,
-            'invoice': None,
-            'expense': e,
+            'row_type': 'EXPENSE',
+            'expense_id': e.id,
             'sort_date': parse_date(e.date),
         })
     items.sort(key=lambda x: x['sort_date'], reverse=True)
 
-    state = {
-        'type': 'ALL',
-        'status': 'ALL',
-        'date_from': '',
-        'date_to': '',
-    }
+    def on_edit(e):
+        row = e.args[0]
+        invoice_id = row.get('invoice_id')
+        if not invoice_id: return
+        app.storage.user['invoice_draft_id'] = invoice_id
+        app.storage.user['page'] = 'invoice_create'
+        ui.navigate.to('/')
 
     def apply_filters(data):
         filtered = []
