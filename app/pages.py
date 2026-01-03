@@ -423,11 +423,12 @@ def render_invoices(session, comp):
             def go(x=i):
                 if x.status == InvoiceStatus.DRAFT: app.storage.user['invoice_draft_id']=x.id; app.storage.user['page']='invoice_create'
                 ui.navigate.to('/')
-            with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-slate-50").on('click', lambda _, x=i: go(x)):
-                ui.label(f"#{i.nr}" if i.nr else "-").classes('w-20 text-xs font-mono')
-                c = session.get(Customer, i.customer_id) if i.customer_id else None
-                ui.label(c.display_name if c else "?").classes('flex-1 text-sm')
-                ui.label(f"{i.total_brutto:,.2f}").classes('w-24 text-right text-sm')
+            with ui.row().classes(C_TABLE_ROW + " hover:bg-slate-50"):
+                with ui.row().classes('flex-1 items-center gap-2 cursor-pointer').on('click', lambda _, x=i: go(x)):
+                    ui.label(f"#{i.nr}" if i.nr else "-").classes('w-20 text-xs font-mono')
+                    c = session.get(Customer, i.customer_id) if i.customer_id else None
+                    ui.label(c.display_name if c else "?").classes('flex-1 text-sm')
+                    ui.label(f"{i.total_brutto:,.2f}").classes('w-24 text-right text-sm')
                 with ui.row().classes('w-32 justify-end gap-1'):
                     if i.status != InvoiceStatus.CANCELLED:
                          with ui.element('div'):
