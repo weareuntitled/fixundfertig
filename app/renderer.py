@@ -17,6 +17,7 @@ class PDFInvoice(FPDF):
         if not font_path.exists():
             raise FileNotFoundError(f"Missing font file: {font_path}")
         self.add_font("DejaVu", "", str(font_path), uni=True)
+        self.add_font("DejaVu", "B", str(font_path), uni=True)
         self.set_auto_page_break(auto=True, margin=35)
         self.set_margins(20, 20, 20)
         self.alias_nb_pages()
