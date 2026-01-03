@@ -16,19 +16,17 @@ def layout_wrapper(content_func):
         
         # RECHTER BEREICH: Navigation
         with ui.row().classes('gap-1'):
-            def nav_item(label, target, icon):
+            def nav_item(label, target):
                 active = app.storage.user.get('page', 'invoices') == target
                 color = C_NAV_ITEM_ACTIVE if active else C_NAV_ITEM
                 with ui.button(on_click=lambda: set_page(target)).classes(f"flat {color} no-shadow"):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon(icon, size='xs')
-                        ui.label(label).classes('text-sm font-semibold normal-case hidden sm:block')
+                    ui.label(label).classes('text-sm font-semibold normal-case')
 
-            nav_item("Rechnungen", "invoices", "receipt_long")
-            nav_item("Kunden", "customers", "group")
-            nav_item("Finanzen", "ledger", "account_balance")
-            nav_item("Export", "exports", "file_download")
-            nav_item("Einstellungen", "settings", "settings")
+            nav_item("Invoices", "invoices")
+            nav_item("Customers", "customers")
+            nav_item("Finance", "ledger")
+            nav_item("Automations", "exports")
+            nav_item("Settings", "settings")
 
     with ui.column().classes(C_BG + " w-full p-0"):
         content_func()
