@@ -357,7 +357,7 @@ def process_invoice_import(content, session, comp_id, filename=""):
             session.add(inv)
             session.flush()
             if is_storniert:
-                log_audit_action(session, "STORNIRT", invoice_id=inv.id)
+                log_audit_action(session, "INVOICE_CANCELLED", invoice_id=inv.id)
             count += 1
         except: continue
     session.commit()

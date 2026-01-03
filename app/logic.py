@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from sqlmodel import Session, select
-from data import Invoice, InvoiceItem, Company, InvoiceStatus, AuditLog
+from data import Invoice, InvoiceItem, Company, InvoiceStatus, log_audit_action
 from renderer import render_invoice_to_pdf_bytes
 
 def calculate_totals(items, ust_enabled):

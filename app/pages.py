@@ -26,7 +26,7 @@ def log_invoice_action(action, invoice_id):
         s.commit()
 
 def download_invoice_file(invoice):
-    if invoice and invoice.id: log_invoice_action("PRINT", invoice.id)
+    if invoice and invoice.id: log_invoice_action("EXPORT_CREATED", invoice.id)
     pdf_path = invoice.pdf_filename
     if not pdf_path:
         pdf_bytes = render_invoice_to_pdf_bytes(invoice)
@@ -223,6 +223,8 @@ def render_invoice_create(session, comp):
             for x in exist: inner.delete(x)
             for i in state['items']:
                  inner.add(InvoiceItem(invoice_id=inv.id, description=i['desc'], quantity=float(i['qty']), unit_price=float(i['price'])))
+            action = "INVOICE_UPDATED_DRAFT" if draft_id else "INVOICE_CREATED_DRAFT"
+            log_audit_action(inner, action, invoice_id=inv.id)
             inner.commit()
         ui.notify('Gespeichert', color='green')
         ui.navigate.to('/')
