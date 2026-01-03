@@ -23,6 +23,8 @@ class Company(SQLModel, table=True):
     name: str = "DanEP"
     first_name: str = ""
     last_name: str = ""
+    business_type: str = "Einzelunternehmen"
+    is_small_business: bool = False
     street: str = ""
     postal_code: str = ""
     city: str = ""
@@ -156,6 +158,18 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN first_name TEXT DEFAULT ''")
         if "last_name" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN last_name TEXT DEFAULT ''")
+        if "business_type" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN business_type TEXT DEFAULT 'Einzelunternehmen'")
+        if "is_small_business" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN is_small_business INTEGER DEFAULT 0")
+        conn.exec_driver_sql(
+            "UPDATE company SET business_type = 'Einzelunternehmen' "
+            "WHERE business_type IS NULL OR business_type = ''"
+        )
+        conn.exec_driver_sql(
+            "UPDATE company SET is_small_business = 0 "
+            "WHERE is_small_business IS NULL"
+        )
         if "street" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN street TEXT DEFAULT ''")
         if "postal_code" not in columns:
