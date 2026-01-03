@@ -37,6 +37,9 @@ def download_invoice_file(invoice):
     if os.path.exists(pdf_path): ui.download(pdf_path)
     else: ui.notify(f"PDF Datei fehlt: {pdf_path}", color="red")
 
+def request_invoice_download(pdf_path, invoice_id=None):
+    download_invoice(pdf_path, invoice_id=invoice_id)
+
 def build_invoice_mailto(comp, customer, invoice):
     subject = f"Rechnung {invoice.nr or ''}".strip()
     amount = f"{invoice.total_brutto:,.2f} EUR"
@@ -278,41 +281,9 @@ def render_invoices(session, comp):
                 ui.label(f"{i.total_brutto:,.2f}").classes('w-24 text-right text-sm')
                 with ui.row().classes('w-32 justify-end gap-1'):
                     if i.status == InvoiceStatus.FINALIZED:
-                         with ui.element('div'):
-                             with ui.row().classes('items-center gap-1'):
-                                 loading_spinner = ui.spinner(size='sm').classes('text-slate-400')
-                                 loading_label = ui.label('Wird vorbereitet…').classes('text-xs text-slate-500')
-                                 loading_spinner.visible = False
-                                 loading_label.visible = False
-
-                                 def set_loading(active):
-                                     loading_spinner.visible = active
-                                     loading_label.visible = active
-                                     if active: action_button.disable()
-                                     else: action_button.enable()
-
-                                 with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500') as action_button:
-                                     with ui.menu().props('auto-close no-parent-event'):
-                                         def on_download(p=f):
-                                             ui.notify('Wird vorbereitet…')
-                                             set_loading(True)
-                                             try:
-                                                 download_invoice(p)
-                                             except Exception as e:
-                                                 ui.notify(f"Fehler: {e}", color='red')
-                                             set_loading(False)
-
-                                         def on_send(x=i):
-                                             ui.notify('Wird vorbereitet…')
-                                             set_loading(True)
-                                             try:
-                                                 send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)
-                                             except Exception as e:
-                                                 ui.notify(f"Fehler: {e}", color='red')
-                                             set_loading(False)
-
-                                         ui.menu_item('Download', on_click=on_download)
-                                         ui.menu_item('Senden', on_click=on_send)
+                         f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
+                         ui.button(icon='download', on_click=lambda p=f, inv_id=i.id: request_invoice_download(p, inv_id)).props('round dense no-parent-event').classes('p-2 text-slate-500')
+                         ui.button(icon='email', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)).props('round dense no-parent-event').classes('p-2 text-slate-500')
 
 def render_ledger(session, comp):
     ui.label('Finanzen').classes(C_PAGE_TITLE + " mb-4")
