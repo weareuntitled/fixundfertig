@@ -4,36 +4,62 @@ from ._shared import *
 # Auto generated page renderer
 
 def render_settings(session, comp: Company) -> None:
-    with ui.column().classes(C_CONTAINER):
-        ui.label("Einstellungen").classes(C_PAGE_TITLE + " mb-2")
+    ui.label("Einstellungen").classes(C_PAGE_TITLE + " mb-6")
 
-        with ui.element("div").classes("w-full grid grid-cols-1 lg:grid-cols-3 gap-4"):
-            with ui.column().classes("w-full gap-4 lg:col-span-2"):
-                business_fields = render_business_meta_card(comp)
-                contact_fields = render_contact_card(comp)
-                address_fields = render_address_card(comp)
+    with ui.card().classes(C_CARD + " p-6 w-full mb-4"):
+        ui.label("Logo").classes(C_SECTION_TITLE)
 
-                with ui.row().classes("w-full justify-end"):
-                    def save():
-                        with get_session() as s:
-                            c = s.get(Company, int(comp.id))
-                            c.name = business_fields["name"].value or ""
-                            c.iban = business_fields["iban"].value or ""
-                            c.tax_id = business_fields["tax_id"].value or ""
-                            c.vat_id = business_fields["vat_id"].value or ""
-                            c.first_name = contact_fields["first_name"].value or ""
-                            c.last_name = contact_fields["last_name"].value or ""
-                            c.email = contact_fields["email"].value or ""
-                            c.phone = contact_fields["phone"].value or ""
-                            c.street = address_fields["street"].value or ""
-                            c.postal_code = address_fields["postal_code"].value or ""
-                            c.city = address_fields["city"].value or ""
-                            s.add(c)
-                            s.commit()
-                        ui.notify("Gespeichert", color="green")
+        def on_up(e):
+            os.makedirs("./storage", exist_ok=True)
+            with open("./storage/logo.png", "wb") as f:
+                f.write(e.content.read())
+            ui.notify("Hochgeladen", color="green")
 
-                    ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)
+        ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").props("flat dense").classes("w-full")
 
-            with ui.column().classes("w-full gap-4"):
-                render_logo_card()
-                render_integrations_card()
+    with ui.card().classes(C_CARD + " p-6 w-full"):
+        name = ui.input("Firma", value=comp.name).classes(C_INPUT)
+        first_name = ui.input("Vorname", value=comp.first_name).classes(C_INPUT)
+        last_name = ui.input("Nachname", value=comp.last_name).classes(C_INPUT)
+        with ui.column().classes("w-full gap-1"):
+            street = ui.input("Straße", value=comp.street).classes(C_INPUT)
+            street_dropdown = ui.column().classes(
+                "w-full border border-slate-200 rounded-lg bg-white shadow-lg max-h-56 overflow-auto"
+            ).props("role=listbox aria-label=Adressvorschläge")
+        plz = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
+        city = ui.input("Ort", value=comp.city).classes(C_INPUT)
+        country = ui.input("Land", value=comp.country).classes(C_INPUT)
+        email = ui.input("Email", value=comp.email).classes(C_INPUT)
+        phone = ui.input("Telefon", value=comp.phone).classes(C_INPUT)
+        iban = ui.input("IBAN", value=comp.iban).classes(C_INPUT)
+        tax = ui.input("Steuernummer", value=comp.tax_id).classes(C_INPUT)
+        vat = ui.input("USt-ID", value=comp.vat_id).classes(C_INPUT)
+
+        def save():
+            with get_session() as s:
+                c = s.get(Company, int(comp.id))
+                c.name = name.value or ""
+                c.first_name = first_name.value or ""
+                c.last_name = last_name.value or ""
+                c.street = street.value or ""
+                c.postal_code = plz.value or ""
+                c.city = city.value or ""
+                c.country = country.value or ""
+                c.email = email.value or ""
+                c.phone = phone.value or ""
+                c.iban = iban.value or ""
+                c.tax_id = tax.value or ""
+                c.vat_id = vat.value or ""
+                s.add(c)
+                s.commit()
+            ui.notify("Gespeichert", color="green")
+
+        use_address_autocomplete(
+            street,
+            plz,
+            city,
+            country,
+            street_dropdown,
+        )
+
+        ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)

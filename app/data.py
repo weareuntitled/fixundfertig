@@ -28,6 +28,7 @@ class Company(SQLModel, table=True):
     street: str = ""
     postal_code: str = ""
     city: str = ""
+    country: str = ""
     email: str = ""
     phone: str = ""
     iban: str = ""
@@ -55,6 +56,7 @@ class Customer(SQLModel, table=True):
     strasse: str = ""
     plz: str = ""
     ort: str = ""
+    country: str = ""
     vat_id: str = ""
     recipient_name: str = ""
     recipient_street: str = ""
@@ -178,6 +180,8 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN postal_code TEXT DEFAULT ''")
         if "city" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN city TEXT DEFAULT ''")
+        if "country" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN country TEXT DEFAULT ''")
         if "email" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN email TEXT DEFAULT ''")
         if "phone" not in columns:
@@ -222,6 +226,8 @@ def ensure_customer_schema():
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
         if "recipient_city" not in columns:
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_city TEXT DEFAULT ''")
+        if "country" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN country TEXT DEFAULT ''")
         if "offen_eur" not in columns:
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
         if "archived" not in columns:
