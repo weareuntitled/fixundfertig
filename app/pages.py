@@ -272,10 +272,40 @@ def render_invoices(session, comp):
                     if i.status == InvoiceStatus.FINALIZED:
                          f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
                          with ui.element('div'):
-                             with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500'):
-                                 with ui.menu().props('auto-close no-parent-event'):
-                                     ui.menu_item('Download', on_click=lambda p=f: download_invoice(p))
-                                     ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x))
+                             with ui.row().classes('items-center gap-1'):
+                                 loading_spinner = ui.spinner(size='sm').classes('text-slate-400')
+                                 loading_label = ui.label('Wird vorbereitet…').classes('text-xs text-slate-500')
+                                 loading_spinner.visible = False
+                                 loading_label.visible = False
+
+                                 def set_loading(active):
+                                     loading_spinner.visible = active
+                                     loading_label.visible = active
+                                     if active: action_button.disable()
+                                     else: action_button.enable()
+
+                                 with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500') as action_button:
+                                     with ui.menu().props('auto-close no-parent-event'):
+                                         def on_download(p=f):
+                                             ui.notify('Wird vorbereitet…')
+                                             set_loading(True)
+                                             try:
+                                                 download_invoice(p)
+                                             except Exception as e:
+                                                 ui.notify(f"Fehler: {e}", color='red')
+                                             set_loading(False)
+
+                                         def on_send(x=i):
+                                             ui.notify('Wird vorbereitet…')
+                                             set_loading(True)
+                                             try:
+                                                 send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)
+                                             except Exception as e:
+                                                 ui.notify(f"Fehler: {e}", color='red')
+                                             set_loading(False)
+
+                                         ui.menu_item('Download', on_click=on_download)
+                                         ui.menu_item('Senden', on_click=on_send)
 
 def render_customers(session, comp):
     ui.label('Kunden').classes(C_PAGE_TITLE)
