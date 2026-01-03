@@ -243,7 +243,7 @@ def render_invoices(session, comp):
                 with ui.row().classes('w-32 justify-end gap-1'):
                     if i.status == InvoiceStatus.FINALIZED:
                          f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
-                         ui.button(icon='download', on_click=lambda e, p=f: (e.stop_propagation(), download_invoice(p))).classes('flat round dense text-slate-500')
+                         ui.button(icon='download').on('click', lambda e, p=f: download_invoice(p), js_handler='(e) => { e.stopPropagation(); emit(); }').classes('flat round dense text-slate-500')
 
 def render_customers(session, comp):
     ui.label('Kunden').classes(C_PAGE_TITLE)
