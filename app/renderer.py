@@ -27,45 +27,16 @@ class PDFInvoice(FPDF):
         logo_path = "./storage/logo.png"
         if os.path.exists(logo_path):
             try:
-                # x=150 (rechts), y=15, w=40mm
-                self.image(logo_path, x=150, y=15, w=40)
+                # x=20 (links), y=15, w=35mm
+                self.image(logo_path, x=20, y=15, w=35)
             except:
                 pass # Falls Bild defekt, ignorieren
         else:
             # Fallback: Firmenname groß
             if self.company:
-                self.set_font("DejaVu", size=9)
-                self.set_xy(120, 20)
-                self.multi_cell(70, 8, self.company.name, align="R")
-
-        # Falzmarken
-        self.set_draw_color(200, 200, 200)
-        self.rect(20, 45, 85, 45)
-
-        if not self.company:
-            return
-
-        self.set_font("DejaVu", size=9)
-        self.set_xy(120, 20)
-        header_lines = [
-            _sanitize_pdf_text(f"{self.company.name}"),
-            _sanitize_pdf_text(f"{self.company.first_name} {self.company.last_name}".strip()),
-            _sanitize_pdf_text(f"{self.company.street}"),
-            _sanitize_pdf_text(f"{self.company.postal_code} {self.company.city}".strip()),
-        ]
-        if self.company.email:
-            header_lines.append(_sanitize_pdf_text(self.company.email))
-        if self.company.phone:
-            header_lines.append(_sanitize_pdf_text(self.company.phone))
-        if self.company.iban:
-            header_lines.append(_sanitize_pdf_text(f"IBAN: {self.company.iban}"))
-        if self.company.tax_id:
-            header_lines.append(_sanitize_pdf_text(f"St-Nr: {self.company.tax_id}"))
-        if self.company.vat_id:
-            header_lines.append(_sanitize_pdf_text(f"USt-IdNr: {self.company.vat_id}"))
-
-        header_text = "\n".join(line for line in header_lines if line)
-        self.multi_cell(0, 4, _sanitize_pdf_text(header_text), align="R")
+                self.set_font("DejaVu", size=14, style="B")
+                self.set_xy(20, 20)
+                self.multi_cell(80, 8, self.company.name, align="L")
 
     def footer(self):
         if not self.company: return
@@ -164,42 +135,58 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf = PDFInvoice(company)
     pdf.add_page()
 
-    return_address = ''
-    if company:
-        return_address = _sanitize_pdf_text(
-            f"{company.name} · {company.street} · {company.postal_code} {company.city}".strip()
-        )
+    pdf.set_xy(120, 18)
+    pdf.set_font("DejaVu", size=18, style="B")
+    pdf.cell(70, 8, _sanitize_pdf_text(invoice.title or "Rechnung"), align="R")
 
-    pdf.set_xy(20, 45)
-    pdf.set_font("DejaVu", size=8, style="U")
-    pdf.cell(85, 4, _sanitize_pdf_text(return_address))
+    pdf.set_xy(120, 30)
+    pdf.set_font("DejaVu", size=9)
+    info_lines = [
+        _sanitize_pdf_text(f"Rechnung Nr: {invoice.nr or ''}"),
+        _sanitize_pdf_text(f"Datum: {invoice.date}"),
+    ]
+    if invoice.delivery_date:
+        info_lines.append(_sanitize_pdf_text(f"Lieferdatum: {invoice.delivery_date}"))
+    if customer and customer.kdnr:
+        info_lines.append(_sanitize_pdf_text(f"Kundennr: {customer.kdnr}"))
+    pdf.multi_cell(70, 4.5, _sanitize_pdf_text("\n".join(info_lines)), align="R")
 
     pdf.set_xy(20, 50)
-    pdf.set_font("DejaVu", size=10)
+    pdf.set_font("DejaVu", size=9, style="B")
+    pdf.cell(0, 5, _sanitize_pdf_text("Von"))
+    company_lines = []
+    if company:
+        company_lines = [
+            _sanitize_pdf_text(company.name),
+            _sanitize_pdf_text(f"{company.first_name} {company.last_name}".strip()),
+            _sanitize_pdf_text(company.street),
+            _sanitize_pdf_text(f"{company.postal_code} {company.city}".strip()),
+        ]
+        if company.email:
+            company_lines.append(_sanitize_pdf_text(company.email))
+        if company.phone:
+            company_lines.append(_sanitize_pdf_text(company.phone))
+    pdf.set_xy(20, 56)
+    pdf.set_font("DejaVu", size=9)
+    pdf.multi_cell(80, 4.5, _sanitize_pdf_text("\n".join(line for line in company_lines if line)))
+
+    pdf.set_xy(120, 50)
+    pdf.set_font("DejaVu", size=9, style="B")
+    pdf.cell(0, 5, _sanitize_pdf_text("Rechnung an"))
     recipient_lines = [
         recipient_name,
         recipient_street,
         f"{recipient_postal} {recipient_city}".strip(),
     ]
-    pdf.multi_cell(85, 5, _sanitize_pdf_text("\n".join(line for line in recipient_lines if line)))
-
-    pdf.set_xy(125, 65)
+    pdf.set_xy(120, 56)
     pdf.set_font("DejaVu", size=9)
-    info_lines = [
-        _sanitize_pdf_text(f"Datum: {invoice.date}"),
-        _sanitize_pdf_text(f"Rechnung Nr: {invoice.nr or ''}"),
-    ]
-    if customer and customer.kdnr:
-        info_lines.append(_sanitize_pdf_text(f"Kundennr: {customer.kdnr}"))
-    pdf.multi_cell(60, 4.5, _sanitize_pdf_text("\n".join(info_lines)))
+    pdf.multi_cell(70, 4.5, _sanitize_pdf_text("\n".join(line for line in recipient_lines if line)))
 
-    pdf.set_xy(20, 105)
-    pdf.set_font("DejaVu", size=14, style="B")
-    pdf.cell(0, 8, _sanitize_pdf_text(invoice.title or "Rechnung"), ln=1)
+    pdf.set_xy(20, 95)
     pdf.set_font("DejaVu", size=10)
     pdf.multi_cell(0, 5, _sanitize_pdf_text("Vielen Dank für Ihren Auftrag. Nachfolgend finden Sie die Rechnung."))
 
-    pdf.ln(3)
+    pdf.ln(2)
     table_start_x = 20
     table_widths = [80, 20, 35, 35]
     pdf.set_x(table_start_x)
