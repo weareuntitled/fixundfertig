@@ -1,7 +1,9 @@
 import os
 from datetime import datetime
+import requests
+from nicegui import ui
 from sqlmodel import Session, select
-from data import Invoice, InvoiceItem, Company, InvoiceStatus, AuditLog
+from data import Invoice, InvoiceItem, Company, InvoiceStatus, AuditLog, get_session
 from renderer import render_invoice_to_pdf_bytes
 
 def calculate_totals(items, ust_enabled):
@@ -85,3 +87,25 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     session.add(AuditLog(action="FINALIZED", invoice_id=inv.id, timestamp=datetime.now().isoformat()))
     
     return inv
+
+def send_n8n_event(comp, payload):
+    if not comp or not comp.n8n_webhook_url:
+        ui.notify("N8N Webhook fehlt", color="red")
+        return False
+    if not comp.n8n_secret:
+        ui.notify("N8N Secret fehlt", color="red")
+        return False
+
+    headers = {"X-N8N-SECRET": comp.n8n_secret}
+    try:
+        response = requests.post(comp.n8n_webhook_url, json=payload, headers=headers, timeout=3)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        ui.notify(f"N8N Fehler: {e}", color="red")
+        return False
+
+    with get_session() as session:
+        session.add(AuditLog(action="N8N_PUSHED", timestamp=datetime.now().isoformat()))
+        session.commit()
+
+    return True

@@ -15,9 +15,9 @@ from data import (
 )
 from renderer import render_invoice_to_pdf_bytes
 from actions import create_correction
-from styles import C_CARD, C_BTN_PRIM, C_BTN_SEC, C_INPUT, C_PAGE_TITLE, C_SECTION_TITLE, C_TABLE_HEADER, C_TABLE_ROW, C_BADGE_GREEN
+from styles import C_CARD, C_BTN_PRIM, C_BTN_SEC, C_INPUT, C_PAGE_TITLE, C_SECTION_TITLE, C_TABLE_HEADER, C_TABLE_ROW, C_BADGE_GREEN, C_BADGE_GRAY
 from ui_components import format_invoice_status, invoice_status_badge, kpi_card, sticky_header
-from logic import finalize_invoice_logic
+from logic import finalize_invoice_logic, send_n8n_event
 
 # Helper
 def log_invoice_action(action, invoice_id):
@@ -579,6 +579,62 @@ def render_settings(session, comp):
                 s.add(c); s.commit()
             ui.notify('Gespeichert')
         ui.button('Speichern', on_click=save).classes(C_BTN_PRIM)
+
+def render_automations(session, comp):
+    ui.label('Automationen').classes(C_PAGE_TITLE + " mb-6")
+
+    status_state = {
+        'value': 'connected' if comp.n8n_webhook_url and comp.n8n_secret else 'not_connected'
+    }
+    status_labels = {
+        'not_connected': ('Nicht verbunden', C_BADGE_GRAY),
+        'connected': ('Verbunden', C_BADGE_GREEN),
+        'error': ('Fehler', 'bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center')
+    }
+
+    @ui.refreshable
+    def render_status():
+        label, classes = status_labels[status_state['value']]
+        ui.label(label).classes(classes)
+
+    with ui.card().classes(C_CARD + " p-6 w-full"):
+        ui.label('n8n Verbindung').classes(C_SECTION_TITLE + " mb-4")
+        with ui.row().classes('items-center gap-2 mb-6'):
+            ui.label('Status').classes('text-sm text-slate-600')
+            render_status()
+
+        n8n_webhook_url = ui.input('n8n Webhook URL', value=comp.n8n_webhook_url).classes(C_INPUT)
+        n8n_secret = ui.input('n8n Secret', value=comp.n8n_secret).classes(C_INPUT)
+        google_drive_folder_id = ui.input('Google Drive Ordner-ID (optional)', value=comp.google_drive_folder_id).classes(C_INPUT)
+
+        def save():
+            with get_session() as s:
+                c = s.get(Company, comp.id)
+                c.n8n_webhook_url = n8n_webhook_url.value
+                c.n8n_secret = n8n_secret.value
+                c.google_drive_folder_id = google_drive_folder_id.value
+                s.add(c); s.commit()
+            comp.n8n_webhook_url = n8n_webhook_url.value
+            comp.n8n_secret = n8n_secret.value
+            comp.google_drive_folder_id = google_drive_folder_id.value
+            status_state['value'] = 'connected' if comp.n8n_webhook_url and comp.n8n_secret else 'not_connected'
+            render_status.refresh()
+            ui.notify('Gespeichert')
+
+        def send_test_event():
+            payload = {
+                'event': 'test',
+                'company_id': comp.id,
+                'timestamp': datetime.now().isoformat()
+            }
+            ok = send_n8n_event(comp, payload)
+            status_state['value'] = 'connected' if ok else 'error'
+            render_status.refresh()
+            if ok: ui.notify('Test Event gesendet', color='green')
+
+        with ui.row().classes('gap-3 mt-4'):
+            ui.button('Speichern', on_click=save).classes(C_BTN_PRIM)
+            ui.button('Test Event senden', on_click=send_test_event).classes(C_BTN_SEC)
 
 def render_expenses(session, comp):
     ui.label('Ausgaben').classes(C_PAGE_TITLE)
