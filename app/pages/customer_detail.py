@@ -27,28 +27,27 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         ui.button(icon="arrow_back", on_click=back).props("flat round").classes("text-slate-500")
         ui.label(customer.display_name).classes(C_PAGE_TITLE)
 
-    with ui.element("div").classes("w-full"):
-        with ui.grid(columns=2).classes("w-full gap-4"):
-            contact_fields = customer_contact_card(
-                name_value=customer.name,
-                first_value=customer.vorname,
-                last_value=customer.nachname,
-                email_value=customer.email,
-            )
-            address_fields = customer_address_card(
-                street_value=customer.strasse,
-                plz_value=customer.plz,
-                city_value=customer.ort,
-                country_value=customer.country,
-            )
-            business_fields = customer_business_meta_card(vat_value=customer.vat_id)
+    with settings_two_column_layout():
+        contact_fields = customer_contact_card(
+            name_value=customer.name,
+            first_value=customer.vorname,
+            last_value=customer.nachname,
+            email_value=customer.email,
+        )
+        address_fields = customer_address_card(
+            street_value=customer.strasse,
+            plz_value=customer.plz,
+            city_value=customer.ort,
+            country_value=customer.country,
+        )
+        business_fields = customer_business_meta_card(vat_value=customer.vat_id)
 
-            with settings_card("Rechnungsempfänger"):
-                with settings_grid():
-                    recipient_name = ui.input("Rechnungsempfänger", value=customer.recipient_name).classes(C_INPUT)
-                    recipient_street = ui.input("Rechnungsstraße", value=customer.recipient_street).classes(C_INPUT)
-                    recipient_plz = ui.input("Rechnungs-PLZ", value=customer.recipient_postal_code).classes(C_INPUT)
-                    recipient_city = ui.input("Rechnungs-Ort", value=customer.recipient_city).classes(C_INPUT)
+        with settings_card("Rechnungsempfänger"):
+            with settings_grid():
+                recipient_name = ui.input("Rechnungsempfänger", value=customer.recipient_name).classes(C_INPUT)
+                recipient_street = ui.input("Rechnungsstraße", value=customer.recipient_street).classes(C_INPUT)
+                recipient_plz = ui.input("Rechnungs-PLZ", value=customer.recipient_postal_code).classes(C_INPUT)
+                recipient_city = ui.input("Rechnungs-Ort", value=customer.recipient_city).classes(C_INPUT)
 
     name = contact_fields["name"]
     first = contact_fields["first"]

@@ -6,10 +6,9 @@ from ._shared import *
 def render_customer_new(session, comp: Company) -> None:
     ui.label("Neuer Kunde").classes(C_PAGE_TITLE)
 
-    with ui.element("div").classes("w-full max-w-4xl"):
-        with ui.grid(columns=2).classes("w-full gap-4"):
-            contact_fields = customer_contact_card()
-            address_fields = customer_address_card(country_value=comp.country or "DE")
+    with settings_two_column_layout(max_width_class="max-w-4xl"):
+        contact_fields = customer_contact_card()
+        address_fields = customer_address_card(country_value=comp.country or "DE")
 
     name = contact_fields["name"]
     first = contact_fields["first"]

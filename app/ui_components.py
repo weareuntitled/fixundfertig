@@ -55,6 +55,12 @@ def settings_grid(columns: int = 2):
     with ui.grid(columns=columns).classes("w-full gap-4"):
         yield
 
+@contextmanager
+def settings_two_column_layout(max_width_class: str = "max-w-5xl"):
+    with ui.element("div").classes(f"w-full {max_width_class} mx-auto"):
+        with ui.grid(columns=2).classes("w-full gap-4"):
+            yield
+
 def sticky_header(title, on_cancel, on_save=None, on_finalize=None):
     # WICHTIG: Kein ui.header() nutzen, da wir schon im Layout sind!
     # Stattdessen ein sticky div/row.
