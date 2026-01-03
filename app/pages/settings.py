@@ -39,6 +39,7 @@ def render_settings(session, comp: Company) -> None:
                 c.street = street.value or ""
                 c.postal_code = plz.value or ""
                 c.city = city.value or ""
+                c.country = country.value or ""
                 c.email = email.value or ""
                 c.phone = phone.value or ""
                 c.iban = iban.value or ""
@@ -47,5 +48,13 @@ def render_settings(session, comp: Company) -> None:
                 s.add(c)
                 s.commit()
             ui.notify("Gespeichert", color="green")
+
+        use_address_autocomplete(
+            street,
+            plz,
+            city,
+            country,
+            street_dropdown,
+        )
 
         ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)

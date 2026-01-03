@@ -16,6 +16,14 @@ def render_customer_new(session, comp: Company) -> None:
             city = ui.input("Ort").classes(C_INPUT)
             email = ui.input("Email").classes(C_INPUT)
 
+        use_address_autocomplete(
+            street,
+            plz,
+            city,
+            country,
+            street_dropdown,
+        )
+
         def save():
             with get_session() as s:
                 c = Customer(
@@ -28,6 +36,7 @@ def render_customer_new(session, comp: Company) -> None:
                     strasse=street.value or "",
                     plz=plz.value or "",
                     ort=city.value or "",
+                    country=country.value or "",
                 )
                 s.add(c)
                 s.commit()
