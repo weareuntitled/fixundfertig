@@ -57,6 +57,7 @@ class Customer(SQLModel, table=True):
     recipient_postal_code: str = ""
     recipient_city: str = ""
     offen_eur: float = 0.0
+    archived: bool = False
     
     @property
     def display_name(self):
@@ -203,6 +204,8 @@ def ensure_customer_schema():
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_city TEXT DEFAULT ''")
         if "offen_eur" not in columns:
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
+        if "archived" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN archived INTEGER DEFAULT 0")
 
 ensure_customer_schema()
 
