@@ -35,7 +35,10 @@ def download_invoice_file(invoice):
     if not os.path.isabs(pdf_path) and not pdf_path.startswith("storage/"):
         pdf_path = f"storage/invoices/{pdf_path}"
     if os.path.exists(pdf_path): ui.download(pdf_path)
-    else: ui.notify(f"PDF Datei fehlt: {pdf_path}", color="red")
+    else:
+        pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+        filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
+        ui.download(pdf_bytes, filename=filename)
 
 def build_invoice_mailto(comp, customer, invoice):
     subject = f"Rechnung {invoice.nr or ''}".strip()
@@ -293,11 +296,11 @@ def render_invoices(session, comp):
 
                                  with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500') as action_button:
                                      with ui.menu().props('auto-close no-parent-event'):
-                                         def on_download(p=f):
+                                         def on_download(x=i):
                                              ui.notify('Wird vorbereitet…')
                                              set_loading(True)
                                              try:
-                                                 download_invoice(p)
+                                                 download_invoice_file(x)
                                              except Exception as e:
                                                  ui.notify(f"Fehler: {e}", color='red')
                                              set_loading(False)
@@ -429,11 +432,10 @@ def render_ledger(session, comp):
                                     ui.navigate.to('/')
                                 ui.button(icon='edit', on_click=lambda x=i: edit(x)).props('flat dense').classes('text-slate-500')
                             if i.status == InvoiceStatus.FINALIZED:
-                                f = f"storage/invoices/{i.pdf_filename or f'rechnung_{i.nr}.pdf'}"
                                 with ui.element('div'):
                                     with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500'):
                                         with ui.menu().props('auto-close no-parent-event'):
-                                            ui.menu_item('Download', on_click=lambda p=f: download_invoice(p))
+                                            ui.menu_item('Download', on_click=lambda x=i: download_invoice_file(x))
                                             ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x))
                         else:
                             ui.label('-').classes('text-xs text-slate-400')
