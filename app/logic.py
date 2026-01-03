@@ -42,30 +42,9 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     # 3. Calculate Totals
     _, brutto, tax_rate = calculate_totals(items, ust_enabled)
     inv.total_brutto = brutto
-    
-    session.add(inv)
-    session.flush() # Get ID
-    
-    # 4. Save Items & Prepare for PDF
-    pdf_items = []
-    for i in items:
-        if not i['desc']: continue
-        qty = float(i['qty'])
-        price = float(i['price'])
-        session.add(InvoiceItem(
-            invoice_id=inv.id,
-            description=i['desc'],
-            quantity=qty,
-            unit_price=price
-        ))
-        pdf_items.append(i) 
 
-    # 5. Increment Number & Audit
-    company.next_invoice_nr += 1
-    session.add(company)
-    session.add(AuditLog(action="FINALIZED", invoice_id=inv.id, timestamp=datetime.now().isoformat()))
-    
-    # 6. Generate PDF
+    # 4. Prepare PDF
+    pdf_items = [i for i in items if i['desc']]
     inv.__dict__['line_items'] = pdf_items
     inv.__dict__['tax_rate'] = tax_rate
     pdf_bytes = render_invoice_to_pdf_bytes(inv)
@@ -79,6 +58,24 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     inv.pdf_filename = filename
     inv.pdf_storage = "local"
     inv.pdf_bytes = pdf_bytes
+
     session.add(inv)
+    session.flush() # Get ID
+
+    # 5. Save Items
+    for i in pdf_items:
+        qty = float(i['qty'])
+        price = float(i['price'])
+        session.add(InvoiceItem(
+            invoice_id=inv.id,
+            description=i['desc'],
+            quantity=qty,
+            unit_price=price
+        ))
+
+    # 6. Increment Number & Audit
+    company.next_invoice_nr += 1
+    session.add(company)
+    session.add(AuditLog(action="FINALIZED", invoice_id=inv.id, timestamp=datetime.now().isoformat()))
     
     return inv
