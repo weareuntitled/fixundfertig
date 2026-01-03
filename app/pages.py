@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import base64
 import json
+import time
 from urllib.parse import urlencode
 
 # Imports
@@ -158,9 +159,94 @@ def render_invoice_create(session, comp):
         'title': draft.title if draft else 'Rechnung',
         'ust': True
     }
+
+    blocked_statuses = {InvoiceStatus.FINALIZED, "OPEN", "SENT", "PAID", "Bezahlt"}
+    if draft and draft.status in blocked_statuses:
+        def create_revision_and_edit(reason):
+            with get_session() as inner:
+                original = inner.get(Invoice, draft.id)
+                if not original: return None
+                new_inv = Invoice(
+                    customer_id=original.customer_id,
+                    nr=None,
+                    title=original.title,
+                    date=original.date,
+                    delivery_date=original.delivery_date,
+                    recipient_name=original.recipient_name,
+                    recipient_street=original.recipient_street,
+                    recipient_postal_code=original.recipient_postal_code,
+                    recipient_city=original.recipient_city,
+                    total_brutto=original.total_brutto,
+                    status=InvoiceStatus.DRAFT
+                )
+                inner.add(new_inv)
+                inner.commit()
+                inner.refresh(new_inv)
+                items = inner.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == original.id)).all()
+                for item in items:
+                    inner.add(InvoiceItem(
+                        invoice_id=new_inv.id,
+                        description=item.description,
+                        quantity=item.quantity,
+                        unit_price=item.unit_price
+                    ))
+                log_audit_action(inner, f"RISK_EDIT: {reason}", invoice_id=original.id)
+                inner.commit()
+                return new_inv.id
+
+        sticky_header('Rechnungs-Editor', on_cancel=lambda: ui.navigate.to('/'))
+
+        with ui.column().classes('w-full h-[calc(100vh-64px)] p-0 m-0'):
+            with ui.column().classes('w-full p-4 gap-4'):
+                with ui.card().classes(C_CARD + " p-4 w-full"):
+                    ui.label('Ändern auf Risiko').classes(C_SECTION_TITLE)
+                    ui.label('Diese Rechnung ist nicht mehr direkt editierbar.').classes('text-sm text-slate-600')
+
+                    with ui.dialog() as risk_dialog:
+                        with ui.card().classes(C_CARD + " p-4 w-full"):
+                            ui.label('Ändern auf Risiko').classes(C_SECTION_TITLE)
+                            reason_input = ui.textarea('Grund', placeholder='Grund der Änderung').classes(C_INPUT)
+                            risk_checkbox = ui.checkbox('Ich verstehe das Risiko und möchte eine Revision erstellen.')
+                            with ui.row().classes('justify-end w-full'):
+                                action_button = ui.button('Revision erstellen und ändern', on_click=lambda: on_risk_confirm()).classes(C_BTN_PRIM)
+                                action_button.disable()
+
+                            def validate_risk():
+                                if risk_checkbox.value and reason_input.value:
+                                    action_button.enable()
+                                else:
+                                    action_button.disable()
+
+                            reason_input.on('update:model-value', lambda e: validate_risk())
+                            risk_checkbox.on('update:model-value', lambda e: validate_risk())
+
+                    def on_risk_confirm():
+                        if not risk_checkbox.value or not reason_input.value: return
+                        new_id = create_revision_and_edit(reason_input.value)
+                        if not new_id:
+                            ui.notify('Revision konnte nicht erstellt werden', color='red')
+                            return
+                        app.storage.user['invoice_draft_id'] = new_id
+                        app.storage.user['page'] = 'invoice_create'
+                        risk_dialog.close()
+                        ui.navigate.to('/')
+
+                    ui.button('Ändern auf Risiko', on_click=lambda: risk_dialog.open()).classes(C_BTN_PRIM)
+        return
     
     # Iframe Preview
     preview_html = None
+
+    autosave_state = {'dirty': False, 'last_change': 0.0, 'saving': False}
+    preview_state = {'pending': False, 'last_change': 0.0}
+
+    def mark_dirty():
+        autosave_state['dirty'] = True
+        autosave_state['last_change'] = time.monotonic()
+
+    def request_preview_update():
+        preview_state['pending'] = True
+        preview_state['last_change'] = time.monotonic()
 
     def update_preview():
         cust_id = state['customer_id']
@@ -192,6 +278,11 @@ def render_invoice_create(session, comp):
                 preview_html.content = f'<iframe src="data:application/pdf;base64,{b64}" style="width:100%; height:100%; border:none;"></iframe>'
         except Exception as e: print(e)
 
+    def debounce_preview():
+        if preview_state['pending'] and time.monotonic() - preview_state['last_change'] >= 0.3:
+            preview_state['pending'] = False
+            update_preview()
+
     def on_finalize():
         if not state['customer_id']: return ui.notify('Kunde fehlt', color='red')
         with get_session() as inner:
@@ -206,7 +297,8 @@ def render_invoice_create(session, comp):
         app.storage.user['invoice_draft_id'] = None
         ui.navigate.to('/')
 
-    def on_save_draft():
+    def save_draft():
+        nonlocal draft_id
         with get_session() as inner:
             if draft_id: inv = inner.get(Invoice, draft_id)
             else: inv = Invoice(status=InvoiceStatus.DRAFT)
@@ -224,8 +316,29 @@ def render_invoice_create(session, comp):
             for i in state['items']:
                  inner.add(InvoiceItem(invoice_id=inv.id, description=i['desc'], quantity=float(i['qty']), unit_price=float(i['price'])))
             inner.commit()
+            if not draft_id:
+                draft_id = inv.id
+                app.storage.user['invoice_draft_id'] = inv.id
+        return draft_id
+
+    def on_save_draft():
+        save_draft()
         ui.notify('Gespeichert', color='green')
         ui.navigate.to('/')
+
+    def on_autosave():
+        save_draft()
+
+    def autosave_tick():
+        if autosave_state['dirty'] and not autosave_state['saving']:
+            if time.monotonic() - autosave_state['last_change'] >= 3.0:
+                autosave_state['saving'] = True
+                on_autosave()
+                autosave_state['dirty'] = False
+                autosave_state['saving'] = False
+
+    ui.timer(0.1, debounce_preview)
+    ui.timer(3.0, autosave_tick)
 
     sticky_header('Rechnungs-Editor', on_cancel=lambda: ui.navigate.to('/'), on_save=on_save_draft, on_finalize=on_finalize)
 
@@ -238,30 +351,31 @@ def render_invoice_create(session, comp):
                     cust_select = ui.select(cust_opts, label='Kunde', value=state['customer_id'], with_input=True).classes(C_INPUT)
                     def on_cust(e):
                         state['customer_id'] = e.value
+                        mark_dirty()
                         if e.value:
                             with get_session() as s:
                                 c = s.get(Customer, int(e.value))
                                 if c: rec_name.value = c.display_name; rec_street.value = c.strasse; rec_zip.value = c.plz; rec_city.value = c.ort
-                        update_preview()
+                        request_preview_update()
                     cust_select.on('update:model-value', on_cust)
                     
                     with ui.grid(columns=2).classes('w-full gap-2'):
-                         ui.input('Titel', value=state['title'], on_change=lambda e: (state.update({'title': e.value}), update_preview())).classes(C_INPUT)
-                         ui.input('Rechnung', value=state['date'], on_change=lambda e: (state.update({'date': e.value}), update_preview())).classes(C_INPUT)
-                         ui.input('Lieferung', value=state['delivery_date'], on_change=lambda e: (state.update({'delivery_date': e.value}), update_preview())).classes(C_INPUT)
+                         ui.input('Titel', value=state['title'], on_change=lambda e: (state.update({'title': e.value}), mark_dirty(), request_preview_update())).classes(C_INPUT)
+                         ui.input('Rechnung', value=state['date'], on_change=lambda e: (state.update({'date': e.value}), mark_dirty(), request_preview_update())).classes(C_INPUT)
+                         ui.input('Lieferung', value=state['delivery_date'], on_change=lambda e: (state.update({'delivery_date': e.value}), mark_dirty(), request_preview_update())).classes(C_INPUT)
 
                 with ui.expansion('Anschrift anpassen').classes('w-full border border-slate-200 rounded bg-white text-sm'):
                     with ui.column().classes('p-3 gap-2 w-full'):
-                        rec_name = ui.input('Name', on_change=update_preview).classes(C_INPUT+" dense")
-                        rec_street = ui.input('Straße', on_change=update_preview).classes(C_INPUT+" dense")
+                        rec_name = ui.input('Name', on_change=request_preview_update).classes(C_INPUT+" dense")
+                        rec_street = ui.input('Straße', on_change=request_preview_update).classes(C_INPUT+" dense")
                         with ui.row().classes('w-full gap-2'):
-                            rec_zip = ui.input('PLZ', on_change=update_preview).classes(C_INPUT+" w-20 dense")
-                            rec_city = ui.input('Ort', on_change=update_preview).classes(C_INPUT+" flex-1 dense")
+                            rec_zip = ui.input('PLZ', on_change=request_preview_update).classes(C_INPUT+" w-20 dense")
+                            rec_city = ui.input('Ort', on_change=request_preview_update).classes(C_INPUT+" flex-1 dense")
 
                 with ui.card().classes(C_CARD + " p-4 w-full"):
                     with ui.row().classes('justify-between w-full'):
                         ui.label('Posten').classes(C_SECTION_TITLE)
-                        ust_switch = ui.switch('19% MwSt', value=state['ust'], on_change=lambda e: (state.update({'ust': e.value}), update_preview())).props('dense color=grey-8')
+                        ust_switch = ui.switch('19% MwSt', value=state['ust'], on_change=lambda e: (state.update({'ust': e.value}), mark_dirty(), request_preview_update())).props('dense color=grey-8')
                     
                     if template_items:
                         item_template_select = ui.select({str(t.id): t.title for t in template_items}, label='Vorlage', with_input=True).classes(C_INPUT + " mb-2 dense")
@@ -272,18 +386,18 @@ def render_invoice_create(session, comp):
                         with items_col:
                             for item in state['items']:
                                 with ui.row().classes('w-full gap-1 items-start bg-slate-50 p-2 rounded border'):
-                                    ui.textarea(value=item['desc'], on_change=lambda e, i=item: (i.update({'desc': e.value}), update_preview())).classes('flex-1 dense text-sm').props('rows=1 placeholder="Text" auto-grow')
+                                    ui.textarea(value=item['desc'], on_change=lambda e, i=item: (i.update({'desc': e.value}), mark_dirty(), request_preview_update())).classes('flex-1 dense text-sm').props('rows=1 placeholder="Text" auto-grow')
                                     with ui.column().classes('gap-1'):
-                                        ui.number(value=item['qty'], on_change=lambda e, i=item: (i.update({'qty': float(e.value or 0)}), update_preview())).classes('w-16 dense')
-                                        ui.number(value=item['price'], on_change=lambda e, i=item: (i.update({'price': float(e.value or 0)}), update_preview())).classes('w-20 dense')
-                                    ui.button(icon='close', on_click=lambda i=item: (state['items'].remove(i), render_list(), update_preview())).classes('flat dense text-red')
+                                        ui.number(value=item['qty'], on_change=lambda e, i=item: (i.update({'qty': float(e.value or 0)}), mark_dirty(), request_preview_update())).classes('w-16 dense')
+                                        ui.number(value=item['price'], on_change=lambda e, i=item: (i.update({'price': float(e.value or 0)}), mark_dirty(), request_preview_update())).classes('w-20 dense')
+                                    ui.button(icon='close', on_click=lambda i=item: (state['items'].remove(i), mark_dirty(), render_list(), request_preview_update())).classes('flat dense text-red')
                     render_list()
                     
-                    def add_new(): state['items'].append({'desc':'', 'qty':1.0, 'price':0.0, 'is_brutto':False}); render_list()
+                    def add_new(): state['items'].append({'desc':'', 'qty':1.0, 'price':0.0, 'is_brutto':False}); mark_dirty(); render_list(); request_preview_update()
                     def add_tmpl():
                          if not item_template_select.value: return
                          t = next((x for x in template_items if str(x.id)==item_template_select.value),None)
-                         if t: state['items'].append({'desc':t.description,'qty':t.quantity,'price':t.unit_price,'is_brutto':False}); render_list(); update_preview(); item_template_select.value=None
+                         if t: state['items'].append({'desc':t.description,'qty':t.quantity,'price':t.unit_price,'is_brutto':False}); mark_dirty(); render_list(); request_preview_update(); item_template_select.value=None
 
                     with ui.row().classes('gap-2 mt-2'):
                         ui.button('Posten', icon='add', on_click=add_new).props('flat dense').classes('text-slate-600')
