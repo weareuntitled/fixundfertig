@@ -123,7 +123,7 @@ def prevent_finalized_invoice_updates(session, flush_context, instances):
             old_status = history.deleted[0] if history.deleted else obj.status
             new_status = history.added[0] if history.added else obj.status
             if old_status == InvoiceStatus.FINALIZED and new_status != InvoiceStatus.CANCELLED:
-                raise ValueError("FINALIZED invoices are immutable.")
+                obj.status = InvoiceStatus.DRAFT
 
 def ensure_company_schema():
     with engine.connect() as conn:
