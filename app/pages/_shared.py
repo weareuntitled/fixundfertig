@@ -44,12 +44,15 @@ from styles import (
     C_TABLE_HEADER,
     C_TABLE_ROW,
     C_BADGE_GREEN,
+    C_CONTAINER,
 )
 
 from ui_components import (
     format_invoice_status,
     invoice_status_badge,
     kpi_card,
+    settings_card,
+    settings_grid,
     sticky_header,
 )
 
@@ -127,14 +130,10 @@ def use_address_autocomplete(
         "pending": False,
         "last_change": 0.0,
     }
-    dropdown_id = f"address-autocomplete-{id(street_input)}"
 
     def set_dropdown_visible(visible: bool) -> None:
         dropdown_container.style(f"display: {'block' if visible else 'none'}")
-        street_input.props(f"aria-expanded={'true' if visible else 'false'}")
 
-    dropdown_container.props(f"id={dropdown_id}")
-    street_input.props(f"aria-controls={dropdown_id} aria-autocomplete=list aria-expanded=false")
     set_dropdown_visible(False)
 
     def apply_result(result: dict) -> None:
@@ -154,21 +153,16 @@ def use_address_autocomplete(
             return
 
         set_dropdown_visible(True)
-        active_option_id = ""
         for idx, result in enumerate(state["results"]):
             label = result.get("label") or ""
             is_active = idx == state["active_index"]
-            option_id = f"{dropdown_id}-option-{idx}"
             option_classes = "w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
             if is_active:
                 option_classes += " bg-slate-100"
-                active_option_id = option_id
             with ui.element("button").props(
-                f"type=button role=option id={option_id} aria-selected={'true' if is_active else 'false'}"
+                f"type=button role=option aria-selected={'true' if is_active else 'false'}"
             ).classes(option_classes).on("click", lambda _, r=result: apply_result(r)):
                 ui.label(label).classes("text-left text-slate-700")
-        if active_option_id:
-            street_input.props(f"aria-activedescendant={active_option_id}")
 
     def on_input_change(_) -> None:
         state["query"] = street_input.value or ""
@@ -506,3 +500,4 @@ def _render_status_stepper(invoice: Invoice) -> None:
 # -------------------------
 # Expenses
 # -------------------------
+

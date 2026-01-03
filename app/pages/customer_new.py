@@ -6,19 +6,28 @@ from ._shared import *
 def render_customer_new(session, comp: Company) -> None:
     ui.label("Neuer Kunde").classes(C_PAGE_TITLE)
 
-    with ui.card().classes(C_CARD + " p-6 w-full max-w-2xl"):
-        name = ui.input("Firma").classes(C_INPUT)
-        first = ui.input("Vorname").classes(C_INPUT)
-        last = ui.input("Nachname").classes(C_INPUT)
-        with ui.column().classes("w-full gap-1"):
-            street = ui.input("Straße").classes(C_INPUT)
-            street_dropdown = ui.column().classes(
-                "w-full border border-slate-200 rounded-lg bg-white shadow-lg max-h-56 overflow-auto"
-            ).props("role=listbox aria-label=Adressvorschläge")
-        plz = ui.input("PLZ").classes(C_INPUT)
-        city = ui.input("Ort").classes(C_INPUT)
-        country = ui.input("Land").classes(C_INPUT)
-        email = ui.input("Email").classes(C_INPUT)
+    with settings_card(classes="max-w-2xl"):
+        with settings_grid():
+            name = ui.input("Firma").classes(C_INPUT)
+            first = ui.input("Vorname").classes(C_INPUT)
+            last = ui.input("Nachname").classes(C_INPUT)
+            with ui.element("div").classes("relative w-full"):
+                street = ui.input("Straße").classes(C_INPUT)
+                street_dropdown = ui.element("div").classes(
+                    "absolute left-0 right-0 mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-sm"
+                )
+            plz = ui.input("PLZ").classes(C_INPUT)
+            city = ui.input("Ort").classes(C_INPUT)
+            country = ui.input("Land", value=comp.country or "DE").classes(C_INPUT)
+            email = ui.input("Email").classes(C_INPUT)
+
+        use_address_autocomplete(
+            street,
+            plz,
+            city,
+            country,
+            street_dropdown,
+        )
 
         use_address_autocomplete(
             street,

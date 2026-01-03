@@ -88,9 +88,11 @@ def _derive_tax_rate(invoice: Invoice, line_items):
     return 0.19
 
 
-def _prepare_items(invoice: Invoice):
+def _prepare_items(invoice: Invoice, company: Company | None = None):
     raw_items = _collect_line_items(invoice)
     tax_rate = _derive_tax_rate(invoice, raw_items)
+    if company and company.is_small_business:
+        tax_rate = 0.0
     prepared = []
     net_total = 0.0
     for item in raw_items:
@@ -118,8 +120,12 @@ def _prepare_items(invoice: Invoice):
             'total': total,
         })
 
-    brutto = float(invoice.total_brutto or 0) or (net_total * (1 + tax_rate))
-    tax_amount = brutto - net_total
+    if tax_rate == 0:
+        brutto = net_total
+        tax_amount = 0.0
+    else:
+        brutto = float(invoice.total_brutto or 0) or (net_total * (1 + tax_rate))
+        tax_amount = brutto - net_total
     return prepared, {'netto': net_total, 'brutto': brutto, 'tax_rate': tax_rate, 'tax_amount': tax_amount}
 
 
@@ -129,7 +135,8 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
         "totals_value_x": 145,
     }
     company, customer = _load_company_customer(invoice)
-    line_items, totals = _prepare_items(invoice)
+    line_items, totals = _prepare_items(invoice, company)
+    is_small_business = bool(company and company.is_small_business)
 
     recipient_name = _sanitize_pdf_text(invoice.recipient_name or (customer.display_name if customer else ''))
     recipient_street = _sanitize_pdf_text(invoice.recipient_street or (customer.strasse if customer else ''))
@@ -218,16 +225,22 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.set_xy(totals_value_x, pdf.get_y())
     pdf.cell(30, 5, _sanitize_pdf_text(f"{totals['netto']:.2f} EUR"), align="R", ln=1)
 
-    pdf.set_xy(totals_label_x, pdf.get_y())
-    pdf.cell(40, 5, f"USt. ({totals['tax_rate'] * 100:.0f}%)", align="R")
-    pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 5, _sanitize_pdf_text(f"{totals['tax_amount']:.2f} EUR"), align="R", ln=1)
+    if not is_small_business:
+        pdf.set_xy(totals_label_x, pdf.get_y())
+        pdf.cell(40, 5, f"USt. ({totals['tax_rate'] * 100:.0f}%)", align="R")
+        pdf.set_xy(totals_value_x, pdf.get_y())
+        pdf.cell(30, 5, _sanitize_pdf_text(f"{totals['tax_amount']:.2f} EUR"), align="R", ln=1)
 
     pdf.set_font("DejaVu", size=10, style="B")
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 6, "Gesamt", align="R")
     pdf.set_xy(totals_value_x, pdf.get_y())
     pdf.cell(30, 6, _sanitize_pdf_text(f"{totals['brutto']:.2f} EUR"), align="R", ln=1)
+
+    if is_small_business:
+        pdf.ln(2)
+        pdf.set_font("DejaVu", size=9)
+        pdf.multi_cell(0, 4, _sanitize_pdf_text("Kleinunternehmerregelung gemäß § 19 UStG."))
 
     output = pdf.output(dest="S")
     if isinstance(output, str):

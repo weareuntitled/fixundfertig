@@ -154,6 +154,9 @@ def index():
             if page == "invoice_detail":
                 render_invoice_detail(session, comp)
                 return
+            if page == "settings":
+                render_settings(session, comp)
+                return
 
             # Normal pages in container
             with ui.column().classes(C_CONTAINER):
@@ -174,8 +177,6 @@ def index():
                     render_ledger(session, comp)
                 elif page == "exports":
                     render_exports(session, comp)
-                elif page == "settings":
-                    render_settings(session, comp)
                 else:
                     # fallback
                     render_invoices(session, comp)

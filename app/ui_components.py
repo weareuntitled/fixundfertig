@@ -1,6 +1,17 @@
+from contextlib import contextmanager
+
 from nicegui import ui
 from data import InvoiceStatus
-from styles import C_CARD, C_CARD_HOVER, C_BADGE_GRAY, C_BADGE_BLUE, C_BADGE_GREEN, C_BTN_SEC, C_BTN_PRIM
+from styles import (
+    C_BADGE_BLUE,
+    C_BADGE_GRAY,
+    C_BADGE_GREEN,
+    C_BTN_PRIM,
+    C_BTN_SEC,
+    C_CARD,
+    C_CARD_HOVER,
+    C_SECTION_TITLE,
+)
 
 def format_invoice_status(status: str) -> str:
     mapping = {
@@ -30,6 +41,19 @@ def kpi_card(label, value, icon, color):
             ui.label(label).classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
             ui.label(value).classes('text-2xl font-bold text-slate-800')
         ui.icon(icon).classes(f"text-3xl {color} opacity-20")
+
+@contextmanager
+def settings_card(title: str | None = None, classes: str = ""):
+    with ui.card().classes(f"{C_CARD} p-6 w-full {classes}".strip()) as card:
+        if title:
+            ui.label(title).classes(C_SECTION_TITLE)
+        yield card
+
+
+@contextmanager
+def settings_grid(columns: int = 2):
+    with ui.grid(columns=columns).classes("w-full gap-4"):
+        yield
 
 def sticky_header(title, on_cancel, on_save=None, on_finalize=None):
     # WICHTIG: Kein ui.header() nutzen, da wir schon im Layout sind!
