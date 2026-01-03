@@ -1,4 +1,5 @@
 from fpdf import FPDF
+from pathlib import Path
 from sqlmodel import Session, select
 from data import Company, Customer, Invoice, InvoiceItem, engine
 
@@ -11,6 +12,10 @@ class PDFInvoice(FPDF):
     def __init__(self, company):
         super().__init__(format="A4", unit="mm")
         self.company = company
+        font_path = Path(__file__).resolve().parent / "assets" / "fonts" / "DejaVuSans.ttf"
+        if not font_path.exists():
+            raise FileNotFoundError(f"Missing font file: {font_path}")
+        self.add_font("DejaVu", "", str(font_path), uni=True)
         self.set_auto_page_break(auto=True, margin=35)
         self.set_margins(20, 20, 20)
         self.alias_nb_pages()
@@ -27,7 +32,7 @@ class PDFInvoice(FPDF):
         else:
             # Fallback: Firmenname groß
             if self.company:
-                self.set_font("Helvetica", "B", 20)
+                self.set_font("DejaVu", size=9)
                 self.set_xy(120, 20)
                 self.multi_cell(70, 8, self.company.name, align="R")
 
@@ -38,7 +43,7 @@ class PDFInvoice(FPDF):
         if not self.company:
             return
 
-        self.set_font("Helvetica", size=9)
+        self.set_font("DejaVu", size=9)
         self.set_xy(120, 20)
         header_lines = [
             _sanitize_pdf_text(f"{self.company.name}"),
@@ -63,7 +68,7 @@ class PDFInvoice(FPDF):
     def footer(self):
         if not self.company: return
         self.set_y(-35)
-        self.set_font("Helvetica", size=8)
+        self.set_font("DejaVu", size=8)
 
         bank_details = []
         if self.company and self.company.iban:
@@ -156,11 +161,11 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
         )
 
     pdf.set_xy(20, 45)
-    pdf.set_font("Helvetica", size=8, style="U")
+    pdf.set_font("DejaVu", size=8, style="U")
     pdf.cell(85, 4, _sanitize_pdf_text(return_address))
 
     pdf.set_xy(20, 50)
-    pdf.set_font("Helvetica", size=10)
+    pdf.set_font("DejaVu", size=10)
     recipient_lines = [
         recipient_name,
         recipient_street,
@@ -169,7 +174,7 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.multi_cell(85, 5, _sanitize_pdf_text("\n".join(line for line in recipient_lines if line)))
 
     pdf.set_xy(125, 65)
-    pdf.set_font("Helvetica", size=9)
+    pdf.set_font("DejaVu", size=9)
     info_lines = [
         _sanitize_pdf_text(f"Datum: {invoice.date}"),
         _sanitize_pdf_text(f"Rechnung Nr: {invoice.nr or ''}"),
@@ -179,23 +184,23 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.multi_cell(60, 4.5, _sanitize_pdf_text("\n".join(info_lines)))
 
     pdf.set_xy(20, 105)
-    pdf.set_font("Helvetica", size=14, style="B")
+    pdf.set_font("DejaVu", size=14, style="B")
     pdf.cell(0, 8, _sanitize_pdf_text(invoice.title or "Rechnung"), ln=1)
-    pdf.set_font("Helvetica", size=10)
+    pdf.set_font("DejaVu", size=10)
     pdf.multi_cell(0, 5, _sanitize_pdf_text("Vielen Dank für Ihren Auftrag. Nachfolgend finden Sie die Rechnung."))
 
     pdf.ln(3)
     table_start_x = 20
     table_widths = [80, 20, 35, 35]
     pdf.set_x(table_start_x)
-    pdf.set_font("Helvetica", size=9, style="B")
+    pdf.set_font("DejaVu", size=9, style="B")
     pdf.set_fill_color(230, 230, 230)
     pdf.cell(table_widths[0], 7, "Beschreibung", fill=True)
     pdf.cell(table_widths[1], 7, "Menge", align="R", fill=True)
     pdf.cell(table_widths[2], 7, "Einzelpreis", align="R", fill=True)
     pdf.cell(table_widths[3], 7, "Gesamt", align="R", fill=True, ln=1)
 
-    pdf.set_font("Helvetica", size=9)
+    pdf.set_font("DejaVu", size=9)
     for item in line_items:
         pdf.set_x(table_start_x)
         pdf.cell(table_widths[0], 6, _sanitize_pdf_text(item['description']))
@@ -206,7 +211,7 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.ln(4)
     totals_label_x = 120
     totals_value_x = 170
-    pdf.set_font("Helvetica", size=10)
+    pdf.set_font("DejaVu", size=10)
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 5, "Zwischensumme", align="R")
     pdf.set_xy(totals_value_x, pdf.get_y())
@@ -217,7 +222,7 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.set_xy(totals_value_x, pdf.get_y())
     pdf.cell(30, 5, _sanitize_pdf_text(f"{totals['tax_amount']:.2f} EUR"), align="R", ln=1)
 
-    pdf.set_font("Helvetica", size=10, style="B")
+    pdf.set_font("DejaVu", size=10, style="B")
     pdf.set_xy(totals_label_x, pdf.get_y())
     pdf.cell(40, 6, "Gesamt", align="R")
     pdf.set_xy(totals_value_x, pdf.get_y())
