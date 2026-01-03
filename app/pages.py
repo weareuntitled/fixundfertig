@@ -1,5 +1,5 @@
 from nicegui import ui, app, events
-from sqlmodel import Session, select
+from sqlmodel import select
 from datetime import datetime
 import os
 import base64
@@ -9,8 +9,8 @@ from urllib.parse import urlencode
 # Imports
 from data import (
     Company, Customer, Invoice, InvoiceItem, InvoiceItemTemplate, Expense, 
-    engine, process_customer_import, process_expense_import, 
-    log_audit_action, InvoiceStatus
+    process_customer_import, process_expense_import, 
+    log_audit_action, InvoiceStatus, get_session
 )
 from renderer import render_invoice_to_pdf_bytes
 from actions import create_correction
@@ -20,7 +20,7 @@ from logic import finalize_invoice_logic
 
 # Helper
 def log_invoice_action(action, invoice_id):
-    with Session(engine) as s:
+    with get_session() as s:
         log_audit_action(s, action, invoice_id=invoice_id)
         s.commit()
 
@@ -28,6 +28,8 @@ def download_invoice_file(invoice):
     if invoice and invoice.id: log_invoice_action("PRINT", invoice.id)
     if not invoice.pdf_filename:
         pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+        if isinstance(pdf_bytes, bytearray): pdf_bytes = bytes(pdf_bytes)
+        if not isinstance(pdf_bytes, bytes): raise TypeError("PDF output must be bytes")
         filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
         ui.download(pdf_bytes, filename=filename)
         return
@@ -35,7 +37,10 @@ def download_invoice_file(invoice):
     if not os.path.isabs(pdf_path) and not pdf_path.startswith("storage/"):
         pdf_path = f"storage/invoices/{pdf_path}"
     if os.path.exists(pdf_path): ui.download(pdf_path)
-    else: ui.notify(f"PDF Datei fehlt: {pdf_path}", color="red")
+    else:
+        pdf_bytes = render_invoice_to_pdf_bytes(invoice)
+        filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
+        ui.download(pdf_bytes, filename=filename)
 
 def build_invoice_mailto(comp, customer, invoice):
     subject = f"Rechnung {invoice.nr or ''}".strip()
@@ -132,8 +137,9 @@ def render_invoice_create(session, comp):
         cust_id = state['customer_id']
         rec_n, rec_s, rec_z, rec_c = "", "", "", ""
         if cust_id:
-            c = session.get(Customer, int(cust_id))
-            if c: rec_n, rec_s, rec_z, rec_c = c.display_name, c.strasse, c.plz, c.ort
+            with get_session() as s:
+                c = s.get(Customer, int(cust_id))
+                if c: rec_n, rec_s, rec_z, rec_c = c.display_name, c.strasse, c.plz, c.ort
         
         final_n = rec_name.value if rec_name.value else rec_n
         final_s = rec_street.value if rec_street.value else rec_s
@@ -149,6 +155,8 @@ def render_invoice_create(session, comp):
         
         try:
             pdf = render_invoice_to_pdf_bytes(inv)
+            if isinstance(pdf, bytearray): pdf = bytes(pdf)
+            if not isinstance(pdf, bytes): raise TypeError("PDF output must be bytes")
             b64 = base64.b64encode(pdf).decode('utf-8')
             # Iframe 100% height fix
             if preview_html:
@@ -157,7 +165,7 @@ def render_invoice_create(session, comp):
 
     def on_finalize():
         if not state['customer_id']: return ui.notify('Kunde fehlt', color='red')
-        with Session(engine) as inner:
+        with get_session() as inner:
             with inner.begin():
                 finalize_invoice_logic(
                     inner, comp.id, int(state['customer_id']),
@@ -170,7 +178,7 @@ def render_invoice_create(session, comp):
         ui.navigate.to('/')
 
     def on_save_draft():
-        with Session(engine) as inner:
+        with get_session() as inner:
             if draft_id: inv = inner.get(Invoice, draft_id)
             else: inv = Invoice(status=InvoiceStatus.DRAFT)
             
@@ -203,8 +211,9 @@ def render_invoice_create(session, comp):
                         def on_cust(e):
                             state['customer_id'] = e.value
                             if e.value:
-                                c = session.get(Customer, int(e.value))
-                                if c: rec_name.value = c.display_name; rec_street.value = c.strasse; rec_zip.value = c.plz; rec_city.value = c.ort
+                                with get_session() as s:
+                                    c = s.get(Customer, int(e.value))
+                                    if c: rec_name.value = c.display_name; rec_street.value = c.strasse; rec_zip.value = c.plz; rec_city.value = c.ort
                             update_preview()
                         cust_select.on('update:model-value', on_cust)
                         
@@ -254,8 +263,8 @@ def render_invoice_create(session, comp):
 
             # RECHTS
             with splitter.after:
-                with ui.column().classes('w-full h-full bg-slate-200 p-0 m-0 overflow-hidden'):
-                    preview_html = ui.html('', sanitize=False).classes('w-full h-full bg-slate-300')
+                with ui.column().classes('w-full h-full min-h-[70vh] bg-slate-200 p-0 m-0 overflow-hidden'):
+                    preview_html = ui.html('', sanitize=False).classes('w-full h-full min-h-[70vh] bg-slate-300')
     update_preview()
 
 # --- OTHER PAGES (Settings, Customers, Expenses) ---
@@ -293,11 +302,11 @@ def render_invoices(session, comp):
 
                                  with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500') as action_button:
                                      with ui.menu().props('auto-close no-parent-event'):
-                                         def on_download(p=f):
+                                         def on_download(x=i):
                                              ui.notify('Wird vorbereitet…')
                                              set_loading(True)
                                              try:
-                                                 download_invoice(p)
+                                                 download_invoice_file(x)
                                              except Exception as e:
                                                  ui.notify(f"Fehler: {e}", color='red')
                                              set_loading(False)
@@ -306,7 +315,9 @@ def render_invoices(session, comp):
                                              ui.notify('Wird vorbereitet…')
                                              set_loading(True)
                                              try:
-                                                 send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x)
+                                                 with get_session() as s:
+                                                     c = s.get(Customer, x.customer_id) if x.customer_id else None
+                                                 send_invoice_email(comp, c, x)
                                              except Exception as e:
                                                  ui.notify(f"Fehler: {e}", color='red')
                                              set_loading(False)
@@ -330,37 +341,51 @@ def render_ledger(session, comp):
         c = session.get(Customer, i.customer_id) if i.customer_id else None
         status = "Paid" if i.status == InvoiceStatus.FINALIZED else "Draft" if i.status == InvoiceStatus.DRAFT else "Overdue"
         items.append({
-            'id': i.id,
+            'id': f"inv-{i.id}",
             'date': i.date,
-            'amount': i.total_brutto,
             'type': 'INCOME',
+            'type_label': 'Income',
+            'type_class': C_BADGE_GREEN + " w-20",
+            'amount': i.total_brutto,
+            'amount_label': amount_label,
+            'amount_class': 'w-24 text-right text-sm text-emerald-600',
             'status': status,
             'party': c.display_name if c else "?",
-            'invoice': i,
-            'expense': None,
+            'row_type': 'INVOICE',
+            'invoice_id': i.id,
+            'invoice_status': i.status,
+            'customer_id': i.customer_id,
+            'pdf_filename': i.pdf_filename,
+            'nr': i.nr,
             'sort_date': parse_date(i.date),
         })
     for e in exps:
         vendor = e.source or e.category or e.description or "-"
+        amount_label = f"-{e.amount:,.2f} €"
         items.append({
-            'id': e.id,
+            'id': f"exp-{e.id}",
             'date': e.date,
-            'amount': e.amount,
             'type': 'EXPENSE',
+            'type_label': 'Expense',
+            'type_class': "bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center w-20",
+            'amount': e.amount,
+            'amount_label': amount_label,
+            'amount_class': 'w-24 text-right text-sm text-rose-600',
             'status': 'Paid',
             'party': vendor,
-            'invoice': None,
-            'expense': e,
+            'row_type': 'EXPENSE',
+            'expense_id': e.id,
             'sort_date': parse_date(e.date),
         })
     items.sort(key=lambda x: x['sort_date'], reverse=True)
 
-    state = {
-        'type': 'ALL',
-        'status': 'ALL',
-        'date_from': '',
-        'date_to': '',
-    }
+    def on_edit(e):
+        row = e.args[0]
+        invoice_id = row.get('invoice_id')
+        if not invoice_id: return
+        app.storage.user['invoice_draft_id'] = invoice_id
+        app.storage.user['page'] = 'invoice_create'
+        ui.navigate.to('/')
 
     def apply_filters(data):
         filtered = []
@@ -433,8 +458,12 @@ def render_ledger(session, comp):
                                 with ui.element('div'):
                                     with ui.button(icon='more_vert').props('no-parent-event').classes('flat round dense text-slate-500'):
                                         with ui.menu().props('auto-close no-parent-event'):
+                                            def on_send(x=i):
+                                                with get_session() as s:
+                                                    c = s.get(Customer, x.customer_id) if x.customer_id else None
+                                                send_invoice_email(comp, c, x)
                                             ui.menu_item('Download', on_click=lambda p=f: download_invoice(p))
-                                            ui.menu_item('Senden', on_click=lambda x=i: send_invoice_email(comp, session.get(Customer, x.customer_id) if x.customer_id else None, x))
+                                            ui.menu_item('Senden', on_click=on_send)
                         else:
                             ui.label('-').classes('text-xs text-slate-400')
 
@@ -458,7 +487,7 @@ def render_customer_new(session, comp):
         street = ui.input('Straße').classes(C_INPUT); plz = ui.input('PLZ').classes(C_INPUT); city = ui.input('Ort').classes(C_INPUT)
         email = ui.input('Email').classes(C_INPUT)
         def save():
-            with Session(engine) as s:
+            with get_session() as s:
                 c = Customer(company_id=comp.id, kdnr=0, name=name.value, vorname=first.value, nachname=last.value, email=email.value, strasse=street.value, plz=plz.value, ort=city.value)
                 s.add(c); s.commit()
             ui.navigate.to('/')
@@ -487,7 +516,7 @@ def render_settings(session, comp):
         vat = ui.input('USt-ID', value=comp.vat_id).classes(C_INPUT)
         
         def save():
-            with Session(engine) as s:
+            with get_session() as s:
                 c = s.get(Company, comp.id)
                 c.name = name.value; c.first_name = first_name.value; c.last_name = last_name.value
                 c.street = street.value; c.postal_code = plz.value; c.city = city.value

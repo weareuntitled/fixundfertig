@@ -226,8 +226,4 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     pdf.cell(30, 6, _sanitize_pdf_text(f"{totals['brutto']:.2f} EUR"), align="R", ln=1)
 
     output = pdf.output(dest="S")
-    if isinstance(output, bytearray):
-        return bytes(output)
-    if isinstance(output, str):
-        return output.encode("latin-1")
-    return output
+    return bytes(output)
