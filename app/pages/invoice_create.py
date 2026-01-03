@@ -31,6 +31,17 @@ def render_invoice_create(session, comp: Company) -> None:
         "title": draft.title if draft and draft.title else "Rechnung",
         "ust": True,
     }
+    recipient_defaults = {"name": "", "street": "", "zip": "", "city": ""}
+    if state["customer_id"]:
+        with get_session() as s:
+            c = s.get(Customer, int(state["customer_id"]))
+            if c:
+                recipient_defaults = {
+                    "name": c.recipient_name or c.display_name or "",
+                    "street": c.recipient_street or c.strasse or "",
+                    "zip": c.recipient_postal_code or c.plz or "",
+                    "city": c.recipient_city or c.ort or "",
+                }
 
     blocked_statuses = {InvoiceStatus.FINALIZED, InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID}
     if draft and draft.status in blocked_statuses:
@@ -298,11 +309,27 @@ def render_invoice_create(session, comp: Company) -> None:
 
                 with ui.expansion("Anschrift anpassen").classes("w-full border border-slate-200 rounded bg-white text-sm"):
                     with ui.column().classes("p-3 gap-2 w-full"):
-                        rec_name = ui.input("Name", on_change=lambda e: (mark_dirty(), request_preview_update())).classes(C_INPUT + " dense")
-                        rec_street = ui.input("Straße", on_change=lambda e: (mark_dirty(), request_preview_update())).classes(C_INPUT + " dense")
+                        rec_name = ui.input(
+                            "Name",
+                            value=recipient_defaults["name"],
+                            on_change=lambda e: (mark_dirty(), request_preview_update()),
+                        ).classes(C_INPUT + " dense")
+                        rec_street = ui.input(
+                            "Straße",
+                            value=recipient_defaults["street"],
+                            on_change=lambda e: (mark_dirty(), request_preview_update()),
+                        ).classes(C_INPUT + " dense")
                         with ui.row().classes("w-full gap-2"):
-                            rec_zip = ui.input("PLZ", on_change=lambda e: (mark_dirty(), request_preview_update())).classes(C_INPUT + " w-20 dense")
-                            rec_city = ui.input("Ort", on_change=lambda e: (mark_dirty(), request_preview_update())).classes(C_INPUT + " flex-1 dense")
+                            rec_zip = ui.input(
+                                "PLZ",
+                                value=recipient_defaults["zip"],
+                                on_change=lambda e: (mark_dirty(), request_preview_update()),
+                            ).classes(C_INPUT + " w-20 dense")
+                            rec_city = ui.input(
+                                "Ort",
+                                value=recipient_defaults["city"],
+                                on_change=lambda e: (mark_dirty(), request_preview_update()),
+                            ).classes(C_INPUT + " flex-1 dense")
 
                 with ui.card().classes(C_CARD + " p-4 w-full"):
                     with ui.row().classes("justify-between w-full"):
