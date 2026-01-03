@@ -82,6 +82,6 @@ def cancel_invoice(invoice_id):
 
         inv.status = InvoiceStatus.CANCELLED
         session.add(inv)
-        log_audit_action(session, "CANCELLED", invoice_id=inv.id)
+        log_audit_action(session, "INVOICE_CANCELLED", invoice_id=inv.id)
         session.commit()
     return True, ""

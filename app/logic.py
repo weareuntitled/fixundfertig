@@ -6,7 +6,7 @@ from datetime import datetime
 import requests
 from nicegui import ui
 from sqlmodel import Session, select
-from data import Invoice, InvoiceItem, Company, Customer, InvoiceStatus, AuditLog
+from data import Invoice, InvoiceItem, Company, Customer, InvoiceStatus, AuditLog, log_audit_action
 from renderer import render_invoice_to_pdf_bytes
 
 def calculate_totals(items, ust_enabled):
@@ -87,7 +87,7 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     # 6. Increment Number & Audit
     company.next_invoice_nr += 1
     session.add(company)
-    session.add(AuditLog(action="OPEN", invoice_id=inv.id, timestamp=datetime.now().isoformat()))
+    log_audit_action(session, "INVOICE_FINALIZED", invoice_id=inv.id)
     
     return inv
 
