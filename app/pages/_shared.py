@@ -214,6 +214,77 @@ def use_address_autocomplete(
     ui.timer(0.1, debounce_tick)
 
 
+def customer_contact_card(
+    *,
+    name_value: str = "",
+    first_value: str = "",
+    last_value: str = "",
+    email_value: str = "",
+    title: str = "Kontakt",
+) -> dict[str, ui.input]:
+    with settings_card(title):
+        with settings_grid():
+            name = ui.input("Firma", value=name_value).classes(C_INPUT)
+            first = ui.input("Vorname", value=first_value).classes(C_INPUT)
+            last = ui.input("Nachname", value=last_value).classes(C_INPUT)
+            email = ui.input("Email", value=email_value).classes(C_INPUT)
+
+    return {
+        "name": name,
+        "first": first,
+        "last": last,
+        "email": email,
+    }
+
+
+def customer_address_card(
+    *,
+    street_value: str = "",
+    plz_value: str = "",
+    city_value: str = "",
+    country_value: str = "",
+    country_fallback: str = "DE",
+    title: str = "Adresse",
+) -> dict[str, ui.input]:
+    with settings_card(title):
+        with settings_grid():
+            with ui.element("div").classes("relative w-full"):
+                street = ui.input("Straße", value=street_value).classes(C_INPUT)
+                street_dropdown = ui.element("div").classes(
+                    "absolute left-0 right-0 mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-sm"
+                )
+            plz = ui.input("PLZ", value=plz_value).classes(C_INPUT)
+            city = ui.input("Ort", value=city_value).classes(C_INPUT)
+            country = ui.input("Land", value=country_value or country_fallback).classes(C_INPUT)
+
+    use_address_autocomplete(
+        street,
+        plz,
+        city,
+        country,
+        street_dropdown,
+    )
+
+    return {
+        "street": street,
+        "plz": plz,
+        "city": city,
+        "country": country,
+    }
+
+
+def customer_business_meta_card(
+    *,
+    vat_value: str = "",
+    title: str = "Business",
+) -> dict[str, ui.input]:
+    with settings_card(title):
+        with settings_grid():
+            vat = ui.input("USt-ID", value=vat_value).classes(C_INPUT)
+
+    return {"vat": vat}
+
+
 # -------------------------
 # PDF Download and Mail
 # -------------------------
@@ -500,4 +571,3 @@ def _render_status_stepper(invoice: Invoice) -> None:
 # -------------------------
 # Expenses
 # -------------------------
-
