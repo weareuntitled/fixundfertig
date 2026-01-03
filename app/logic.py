@@ -38,7 +38,7 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
         recipient_street=recipient_data.get('street'),
         recipient_postal_code=recipient_data.get('zip'),
         recipient_city=recipient_data.get('city'),
-        status=InvoiceStatus.FINALIZED
+        status=InvoiceStatus.OPEN
     )
     
     # 3. Calculate Totals
@@ -84,7 +84,7 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     # 6. Increment Number & Audit
     company.next_invoice_nr += 1
     session.add(company)
-    session.add(AuditLog(action="FINALIZED", invoice_id=inv.id, timestamp=datetime.now().isoformat()))
+    session.add(AuditLog(action="OPEN", invoice_id=inv.id, timestamp=datetime.now().isoformat()))
     
     return inv
 

@@ -17,14 +17,14 @@ def layout_wrapper(content_func):
         # RECHTER BEREICH: Navigation
         with ui.row().classes('gap-1'):
             def nav_item(label, target, icon):
-                active = app.storage.user.get('page', 'dashboard') == target
+                active = app.storage.user.get('page', 'invoices') == target
                 color = C_NAV_ITEM_ACTIVE if active else C_NAV_ITEM
                 with ui.button(on_click=lambda: set_page(target)).classes(f"flat {color} no-shadow"):
                     with ui.row().classes('items-center gap-2'):
                         ui.icon(icon, size='xs')
                         ui.label(label).classes('text-sm font-semibold normal-case hidden sm:block')
 
-            nav_item("Dashboard", "dashboard", "dashboard")
+            nav_item("Rechnungen", "invoices", "receipt_long")
             nav_item("Kunden", "customers", "group")
             nav_item("Finanzen", "ledger", "account_balance")
             nav_item("Automationen", "automations", "sync")
@@ -45,7 +45,7 @@ def index():
             session.add(Company())
             session.commit()
     
-    page = app.storage.user.get('page', 'dashboard')
+    page = app.storage.user.get('page', 'invoices')
     
     def content():
         with get_session() as session:
@@ -54,8 +54,7 @@ def index():
                 render_invoice_create(session, comp)
             else:
                 with ui.column().classes(C_CONTAINER):
-                    if page == 'dashboard': render_dashboard(session, comp)
-                    elif page == 'customers': render_customers(session, comp)
+                    if page == 'customers': render_customers(session, comp)
                     elif page == 'customer_new': render_customer_new(session, comp)
                     elif page == 'invoices': render_invoices(session, comp)
                     elif page == 'expenses': render_expenses(session, comp)
