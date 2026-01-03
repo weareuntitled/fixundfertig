@@ -69,7 +69,7 @@ class Invoice(SQLModel, table=True):
     recipient_postal_code: str = ""
     recipient_city: str = ""
     total_brutto: float
-    status: str = "Entwurf"
+    status: InvoiceStatus = InvoiceStatus.DRAFT
     pdf_bytes: Optional[bytes] = Field(default=None)
     pdf_storage: str = ""
     pdf_filename: str = ""
@@ -192,6 +192,9 @@ def ensure_invoice_schema():
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_storage TEXT DEFAULT ''")
         if "pdf_filename" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_filename TEXT DEFAULT ''")
+        conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Entwurf'")
+        conn.exec_driver_sql("UPDATE invoice SET status = 'FINALIZED' WHERE status = 'Bezahlt'")
+        conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Offen'")
 
 ensure_invoice_schema()
 
@@ -333,10 +336,10 @@ def process_invoice_import(content, session, comp_id, filename=""):
             if kdnr:
                 cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
             if not cust: continue
-            status = "Offen"
+            status = InvoiceStatus.DRAFT
             is_storniert = str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']
-            if is_storniert: status = "Entwurf"
-            if str(row.get('Zahldatum', '')).strip(): status = "Bezahlt"
+            if is_storniert: status = InvoiceStatus.CANCELLED
+            if str(row.get('Zahldatum', '')).strip(): status = InvoiceStatus.FINALIZED
             inv = Invoice(
                 customer_id=cust.id,
                 nr=int(nr),

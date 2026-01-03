@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlmodel import Session, select
 
-from data import Invoice, InvoiceItem, engine
+from data import Invoice, InvoiceItem, InvoiceStatus, engine
 
 def create_correction(original_invoice_id, use_negative_items=True):
     with Session(engine) as session:
@@ -17,7 +17,7 @@ def create_correction(original_invoice_id, use_negative_items=True):
             nr=None,
             date=datetime.now().strftime('%Y-%m-%d'),
             total_brutto=-float(original.total_brutto or 0),
-            status='Entwurf',
+            status=InvoiceStatus.DRAFT,
             related_invoice_id=original.id
         )
         session.add(correction)
