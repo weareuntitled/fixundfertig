@@ -373,8 +373,8 @@ def render_ledger(session, comp):
         literal('INCOME').label('type'),
         case(
             (Invoice.status == InvoiceStatus.DRAFT, 'Draft'),
-            (Invoice.status == 'Entwurf', 'Draft'),
-            (Invoice.status == 'Bezahlt', 'Paid'),
+            (Invoice.status == InvoiceStatus.FINALIZED, 'Paid'),
+            (Invoice.status == InvoiceStatus.CANCELLED, 'Cancelled'),
             else_='Overdue',
         ).label('status'),
         func.coalesce(customer_name, literal('?')).label('party'),
@@ -504,7 +504,7 @@ def render_ledger(session, comp):
                     with ui.row().classes('justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition'):
                         if item['invoice_id']:
                             i = session.get(Invoice, item['invoice_id'])
-                            if i and (i.status == InvoiceStatus.DRAFT or i.status == "Entwurf"):
+                            if i and i.status == InvoiceStatus.DRAFT:
                                 def edit(x=i):
                                     app.storage.user['invoice_draft_id'] = x.id
                                     app.storage.user['page'] = 'invoice_create'
