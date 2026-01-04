@@ -14,6 +14,7 @@ def render_customer_new(session, comp: Company) -> None:
     first = contact_fields["first"]
     last = contact_fields["last"]
     email = contact_fields["email"]
+    short_code = contact_fields["short_code"]
     street = address_fields["street"]
     plz = address_fields["plz"]
     city = address_fields["city"]
@@ -28,6 +29,7 @@ def render_customer_new(session, comp: Company) -> None:
                 vorname=first.value or "",
                 nachname=last.value or "",
                 email=email.value or "",
+                short_code=short_code.value or "",
                 strasse=street.value or "",
                 plz=plz.value or "",
                 ort=city.value or "",

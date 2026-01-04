@@ -44,6 +44,8 @@ class Company(SQLModel, table=True):
     n8n_enabled: bool = False
     google_drive_folder_id: str = ""
     next_invoice_nr: int = 10000
+    invoice_number_template: str = "{seq}"
+    invoice_filename_template: str = "rechnung_{nr}"
 
 class Customer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -64,6 +66,7 @@ class Customer(SQLModel, table=True):
     recipient_city: str = ""
     offen_eur: float = 0.0
     archived: bool = False
+    short_code: str = ""
     
     @property
     def display_name(self):
@@ -73,7 +76,7 @@ class Customer(SQLModel, table=True):
 class Invoice(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_id: int = Field(foreign_key="customer.id")
-    nr: Optional[int] = None 
+    nr: Optional[str] = None
     title: str = "Rechnung"
     date: str
     delivery_date: str = ""
@@ -210,6 +213,10 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN google_drive_folder_id TEXT DEFAULT ''")
         if "next_invoice_nr" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
+        if "invoice_number_template" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN invoice_number_template TEXT DEFAULT '{seq}'")
+        if "invoice_filename_template" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN invoice_filename_template TEXT DEFAULT 'rechnung_{nr}'")
 
 ensure_company_schema()
 
@@ -232,6 +239,8 @@ def ensure_customer_schema():
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
         if "archived" not in columns:
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN archived INTEGER DEFAULT 0")
+        if "short_code" not in columns:
+            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN short_code TEXT DEFAULT ''")
 
 ensure_customer_schema()
 
@@ -422,7 +431,7 @@ def process_invoice_import(content, session, comp_id, filename=""):
             if str(row.get('Zahldatum', '')).strip(): status = InvoiceStatus.PAID
             inv = Invoice(
                 customer_id=cust.id,
-                nr=int(nr),
+                nr=str(nr),
                 date=str(row.get('Datum', '')),
                 total_brutto=parse_import_amount(row.get('Betrag brutto', 0)),
                 status=status

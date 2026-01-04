@@ -32,6 +32,7 @@ from data import (
 
 from renderer import render_invoice_to_pdf_bytes
 from actions import cancel_invoice, create_correction, delete_draft, update_status_logic
+from invoice_numbering import build_invoice_filename
 
 from styles import (
     C_CARD,
@@ -221,6 +222,7 @@ def customer_contact_card(
     first_value: str = "",
     last_value: str = "",
     email_value: str = "",
+    short_code_value: str = "",
     title: str = "Kontakt",
 ) -> dict[str, ui.input]:
     with settings_card(title):
@@ -229,12 +231,14 @@ def customer_contact_card(
             first = ui.input("Vorname", value=first_value).classes(C_INPUT)
             last = ui.input("Nachname", value=last_value).classes(C_INPUT)
             email = ui.input("Email", value=email_value).classes(C_INPUT)
+            short_code = ui.input("Kürzel (optional)", value=short_code_value).classes(C_INPUT)
 
     return {
         "name": name,
         "first": first,
         "last": last,
         "email": email,
+        "short_code": short_code,
     }
 
 
@@ -298,13 +302,16 @@ def download_invoice_file(invoice: Invoice) -> None:
 
     # If we have no file yet, create one
     if not pdf_path:
+        with get_session() as s:
+            customer = s.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+            company = s.exec(select(Company)).first() or Company()
         pdf_bytes = render_invoice_to_pdf_bytes(invoice)
         if isinstance(pdf_bytes, bytearray):
             pdf_bytes = bytes(pdf_bytes)
         if not isinstance(pdf_bytes, bytes):
             raise TypeError("PDF output must be bytes")
 
-        filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf"
+        filename = build_invoice_filename(company, invoice, customer) if invoice.nr else "rechnung.pdf"
         pdf_path = f"storage/invoices/{filename}"
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
         with open(pdf_path, "wb") as f:
@@ -334,13 +341,16 @@ def download_invoice_file(invoice: Invoice) -> None:
         return
 
     # File missing but invoice exists, regenerate
+    with get_session() as s:
+        customer = s.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+        company = s.exec(select(Company)).first() or Company()
     pdf_bytes = render_invoice_to_pdf_bytes(invoice)
     if isinstance(pdf_bytes, bytearray):
         pdf_bytes = bytes(pdf_bytes)
     if not isinstance(pdf_bytes, bytes):
         raise TypeError("PDF output must be bytes")
 
-    filename = os.path.basename(invoice.pdf_filename) if invoice.pdf_filename else (f"rechnung_{invoice.nr}.pdf" if invoice.nr else "rechnung.pdf")
+    filename = os.path.basename(invoice.pdf_filename) if invoice.pdf_filename else (build_invoice_filename(company, invoice, customer) if invoice.nr else "rechnung.pdf")
     pdf_path = f"storage/invoices/{filename}"
     os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
     with open(pdf_path, "wb") as f:

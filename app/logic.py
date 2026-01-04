@@ -8,6 +8,7 @@ from nicegui import ui
 from sqlmodel import Session, select
 from data import Invoice, InvoiceItem, Company, Customer, InvoiceStatus, AuditLog, log_audit_action
 from renderer import render_invoice_to_pdf_bytes
+from invoice_numbering import build_invoice_filename, build_invoice_number
 
 def calculate_totals(items, ust_enabled):
     netto = 0.0
@@ -29,11 +30,13 @@ def calculate_totals(items, ust_enabled):
 def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_str, recipient_data, items, ust_enabled):
     # 1. Lock Company & Get Number
     company = session.exec(select(Company).where(Company.id == comp_id).with_for_update()).first()
+    customer = session.get(Customer, int(cust_id)) if cust_id else None
+    invoice_nr = build_invoice_number(company, customer, company.next_invoice_nr, date_str)
     
     # 2. Create Invoice
     inv = Invoice(
         customer_id=cust_id,
-        nr=company.next_invoice_nr,
+        nr=invoice_nr,
         title=title,
         date=date_str,
         delivery_date=delivery_str,
@@ -54,11 +57,12 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     inv.__dict__['tax_rate'] = tax_rate
     pdf_bytes = render_invoice_to_pdf_bytes(inv)
     
-    filename = f"rechnung_{inv.nr}.pdf"
+    filename = build_invoice_filename(company, inv, customer)
     path = f"storage/invoices/{filename}"
     if os.path.exists(path):
         suffix = datetime.now().strftime("%Y%m%d%H%M%S%f")
-        filename = f"rechnung_{inv.nr}_{suffix}.pdf"
+        name, ext = os.path.splitext(filename)
+        filename = f"{name}_{suffix}{ext or '.pdf'}"
         path = f"storage/invoices/{filename}"
     os.makedirs(os.path.dirname(path), exist_ok=True)
     temp_path = f"{path}.tmp"
@@ -121,14 +125,20 @@ def _ensure_invoice_pdf_path(session, invoice):
             pdf_path = f"storage/invoices/{pdf_path}"
         if os.path.exists(pdf_path):
             return pdf_path
+    customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+    company = session.exec(select(Company)).first() or Company()
     pdf_bytes = render_invoice_to_pdf_bytes(invoice)
     if isinstance(pdf_bytes, bytearray): pdf_bytes = bytes(pdf_bytes)
     if not isinstance(pdf_bytes, bytes): raise TypeError("PDF output must be bytes")
-    filename = f"rechnung_{invoice.nr}.pdf" if invoice.nr else f"rechnung_{invoice.id}.pdf"
+    filename = build_invoice_filename(company, invoice, customer) if invoice.nr else f"rechnung_{invoice.id}.pdf"
     pdf_path = f"storage/invoices/{filename}"
     if os.path.exists(pdf_path):
         suffix = datetime.now().strftime("%Y%m%d%H%M%S%f")
-        filename = f"rechnung_{invoice.nr}_{suffix}.pdf" if invoice.nr else f"rechnung_{invoice.id}_{suffix}.pdf"
+        if invoice.nr:
+            name, ext = os.path.splitext(filename)
+            filename = f"{name}_{suffix}{ext or '.pdf'}"
+        else:
+            filename = f"rechnung_{invoice.id}_{suffix}.pdf"
         pdf_path = f"storage/invoices/{filename}"
     os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
     temp_path = f"{pdf_path}.tmp"

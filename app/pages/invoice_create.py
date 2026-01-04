@@ -1,5 +1,6 @@
 from __future__ import annotations
 from ._shared import *
+from invoice_numbering import build_invoice_number
 
 # Auto generated page renderer
 
@@ -106,11 +107,13 @@ def render_invoice_create(session, comp: Company) -> None:
     def update_preview():
         cust_id = state["customer_id"]
         rec_n, rec_s, rec_z, rec_c = "", "", "", ""
+        customer = None
 
         if cust_id:
             with get_session() as s:
                 c = s.get(Customer, int(cust_id))
                 if c:
+                    customer = c
                     rec_n = c.recipient_name or c.display_name
                     rec_s = c.recipient_street or c.strasse
                     rec_z = c.recipient_postal_code or c.plz
@@ -122,7 +125,7 @@ def render_invoice_create(session, comp: Company) -> None:
         final_c = recipient_defaults["city"] or rec_c
 
         inv = Invoice(
-            nr=comp.next_invoice_nr,
+            nr=build_invoice_number(comp, customer, comp.next_invoice_nr, state["date"]),
             title=state["title"],
             date=state["date"],
             delivery_date=state["delivery_date"],
