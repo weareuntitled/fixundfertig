@@ -4,3 +4,4 @@ sqlmodel
 fpdf2
 python-multipart
 requests
+httpx

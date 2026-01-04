@@ -1,5 +1,9 @@
 from __future__ import annotations
+
+import secrets
+
 from ._shared import *
+from integrations.n8n_client import post_to_n8n
 
 # Auto generated page renderer
 
@@ -102,12 +106,36 @@ def render_settings(session, comp: Company) -> None:
         )
         with settings_grid():
             n8n_webhook_url = ui.input("n8n Webhook URL", value=comp.n8n_webhook_url).classes(C_INPUT)
-            n8n_secret = ui.input("n8n Secret", value=comp.n8n_secret).classes(C_INPUT)
+            n8n_secret = ui.input("n8n Secret", value=comp.n8n_secret).classes(C_INPUT).props("type=password")
             n8n_enabled = ui.switch("n8n aktivieren", value=comp.n8n_enabled).props("dense color=grey-8")
             google_drive_folder_id = ui.input(
                 "Google Drive Ordner-ID",
                 value=comp.google_drive_folder_id,
             ).classes(C_INPUT)
+        with ui.row().classes("w-full gap-2 flex-wrap"):
+            ui.button(
+                "Secret generieren",
+                on_click=lambda: (
+                    n8n_secret.set_value(secrets.token_urlsafe(32)),
+                    ui.notify("Secret generiert", color="green"),
+                ),
+            ).classes(C_BTN_SEC)
+
+            def test_n8n_webhook() -> None:
+                try:
+                    resp = post_to_n8n(
+                        webhook_url=(n8n_webhook_url.value or "").strip(),
+                        secret=(n8n_secret.value or "").strip(),
+                        event="ping",
+                        company_id=comp.id,
+                        data={"name": name.value, "email": email.value},
+                    )
+                except Exception as exc:
+                    ui.notify(f"n8n Fehler: {exc}", color="red")
+                    return
+                ui.notify(f"n8n OK. HTTP {resp.status_code}", color="green")
+
+            ui.button("Webhook testen", on_click=test_n8n_webhook).classes(C_BTN_SEC)
 
     def save():
         with get_session() as s:
