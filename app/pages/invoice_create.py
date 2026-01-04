@@ -153,6 +153,8 @@ def render_invoice_create(session, comp: Company) -> None:
 
     def save_draft() -> int | None:
         nonlocal draft_id
+        if not state["customer_id"] and not draft_id:
+            return None
         with get_session() as s:
             if draft_id:
                 inv = s.get(Invoice, int(draft_id))
@@ -163,6 +165,8 @@ def render_invoice_create(session, comp: Company) -> None:
 
             if state["customer_id"]:
                 inv.customer_id = int(state["customer_id"])
+            elif not inv.customer_id:
+                return None
 
             inv.title = state["title"]
             inv.date = state["date"]
@@ -231,6 +235,9 @@ def render_invoice_create(session, comp: Company) -> None:
         ui.navigate.to("/")
 
     def on_save_draft():
+        if not state["customer_id"]:
+            ui.notify("Kunde fehlt", color="red")
+            return
         save_draft()
         ui.notify("Gespeichert", color="green")
         app.storage.user["page"] = "invoices"
