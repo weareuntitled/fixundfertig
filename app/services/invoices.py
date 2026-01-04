@@ -1,6 +1,7 @@
 from sqlmodel import Session, select
 
 from data import Company, Customer, Invoice, InvoiceItem, InvoiceStatus, engine
+from invoice_numbering import build_invoice_number
 
 
 # Deprecated: This service is currently unused; keep for backward compatibility.
@@ -16,7 +17,7 @@ def finalize_invoice_transaction(company_id, customer_id, invoice_date, total_br
 
             invoice = Invoice(
                 customer_id=customer.id,
-                nr=company.next_invoice_nr,
+                nr=build_invoice_number(company, customer, company.next_invoice_nr, invoice_date),
                 date=invoice_date,
                 total_brutto=total_brutto,
                 status=InvoiceStatus.OPEN

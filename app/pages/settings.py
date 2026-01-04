@@ -59,6 +59,27 @@ def render_settings(session, comp: Company) -> None:
             iban = ui.input("IBAN", value=comp.iban).classes(C_INPUT)
             tax = ui.input("Steuernummer", value=comp.tax_id).classes(C_INPUT)
             vat = ui.input("USt-ID", value=comp.vat_id).classes(C_INPUT)
+    with settings_card("Rechnungsnummern", classes="mb-4"):
+        with settings_grid():
+            next_invoice_nr = ui.number(
+                "Nächste Rechnungsnummer",
+                value=comp.next_invoice_nr,
+                min=1,
+                step=1,
+            ).classes(C_INPUT)
+            invoice_number_template = ui.input(
+                "Rechnungsnummer-Regel",
+                value=comp.invoice_number_template or "{seq}",
+                placeholder="{seq}",
+            ).classes(C_INPUT)
+            invoice_filename_template = ui.input(
+                "Dateiname-Regel (PDF)",
+                value=comp.invoice_filename_template or "rechnung_{nr}",
+                placeholder="rechnung_{nr}",
+            ).classes(C_INPUT)
+        ui.label(
+            "Platzhalter: {seq} (laufende Nummer), {date}, {customer_code}, {customer_kdnr}, {nr} (fertige Nummer)."
+        ).classes("text-sm text-slate-500")
     with settings_card("Integrationen", classes="mb-4"):
         ui.label("Email Connection").classes("text-sm font-semibold text-slate-700")
         ui.label("Gmail, Outlook und IMAP folgen in einem späteren Release.").classes("text-sm text-slate-500")
@@ -105,6 +126,9 @@ def render_settings(session, comp: Company) -> None:
             c.vat_id = vat.value or ""
             c.business_type = business_type.value or "Einzelunternehmen"
             c.is_small_business = bool(is_small_business.value)
+            c.next_invoice_nr = int(next_invoice_nr.value or 0) or 1
+            c.invoice_number_template = invoice_number_template.value or "{seq}"
+            c.invoice_filename_template = invoice_filename_template.value or "rechnung_{nr}"
             c.default_sender_email = default_sender_email.value or ""
             c.n8n_webhook_url = n8n_webhook_url.value or ""
             c.n8n_secret = n8n_secret.value or ""

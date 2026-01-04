@@ -33,6 +33,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
             first_value=customer.vorname,
             last_value=customer.nachname,
             email_value=customer.email,
+            short_code_value=customer.short_code,
         )
         address_fields = customer_address_card(
             street_value=customer.strasse,
@@ -53,6 +54,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
     first = contact_fields["first"]
     last = contact_fields["last"]
     email = contact_fields["email"]
+    short_code = contact_fields["short_code"]
     street = address_fields["street"]
     plz = address_fields["plz"]
     city = address_fields["city"]
@@ -64,6 +66,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         first,
         last,
         email,
+        short_code,
         street,
         plz,
         city,
@@ -94,6 +97,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
             c.vorname = first.value or ""
             c.nachname = last.value or ""
             c.email = email.value or ""
+            c.short_code = short_code.value or ""
             c.strasse = street.value or ""
             c.plz = plz.value or ""
             c.ort = city.value or ""
@@ -116,6 +120,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         first.value = customer.vorname
         last.value = customer.nachname
         email.value = customer.email
+        short_code.value = customer.short_code
         street.value = customer.strasse
         plz.value = customer.plz
         city.value = customer.ort
