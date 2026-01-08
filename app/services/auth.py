@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import os
 import uuid
 from datetime import datetime, timedelta
 
@@ -11,6 +13,7 @@ from services.email import send_email
 
 VERIFY_TOKEN_TTL = timedelta(hours=24)
 RESET_TOKEN_TTL = timedelta(hours=2)
+logger = logging.getLogger(__name__)
 
 
 def _hash_password(password: str) -> str:
@@ -39,23 +42,52 @@ def _create_token(user: User, purpose: TokenPurpose, expires_in: timedelta) -> T
     return token
 
 
-def create_user_pending(email: str, username: str, password: str) -> tuple[int, str, str]:
+def _mask_token(token: str | None, visible: int = 4) -> str:
+    if not token:
+        return ""
+    token_str = str(token)
+    if len(token_str) <= visible * 2:
+        return "***"
+    return f"{token_str[:visible]}...{token_str[-visible:]}"
+
+
+def create_user_pending(email: str, username: str, password: str) -> tuple[User, str]:
     email_normalized = (email or "").strip().lower()
     username_clean = (username or "").strip() or None
     if not email_normalized:
+        logger.warning(
+            "create_user_pending.invalid_email",
+            extra={"email": email_normalized, "username": username_clean},
+        )
         raise ValueError("Email is required")
     if not password:
+        logger.warning(
+            "create_user_pending.missing_password",
+            extra={"email": email_normalized, "username": username_clean},
+        )
         raise ValueError("Password is required")
 
+    logger.info(
+        "create_user_pending.start",
+        extra={"email": email_normalized, "username": username_clean},
+    )
     with get_session() as session:
         existing = session.exec(select(User).where(User.email == email_normalized)).first()
         if existing:
+            logger.warning(
+                "create_user_pending.email_exists",
+                extra={"email": email_normalized, "username": username_clean},
+            )
             raise ValueError("User already exists")
         if username_clean:
             existing_username = session.exec(
                 select(User).where(User.username == username_clean)
             ).first()
             if existing_username:
+                logger.warning(
+                    "create_user_pending.username_exists",
+                    extra={"email": email_normalized, "username": username_clean},
+                )
                 raise ValueError("Username already exists")
 
         user = User(
@@ -75,10 +107,45 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[int, 
         token_str = token.token
         session.commit()
 
-    send_email(
-        email_value,
-        "Verify your email",
-        f"Use this token to verify your email: {token_str}",
+    masked_token = _mask_token(token.token)
+    try:
+        send_email(
+            email_normalized,
+            "Verify your email",
+            f"Use this token to verify your email: {token.token}",
+        )
+        logger.info(
+            "create_user_pending.verify_email_sent",
+            extra={"email": email_normalized, "token": masked_token},
+        )
+    except Exception as exc:
+        logger.error(
+            "create_user_pending.verify_email_failed",
+            exc_info=exc,
+            extra={"email": email_normalized, "token": masked_token},
+        )
+
+    if os.getenv("SEND_WELCOME_EMAIL") == "1":
+        try:
+            send_email(
+                email_normalized,
+                "Welcome!",
+                "Welcome to Fix & Fertig! Your account has been created.",
+            )
+            logger.info(
+                "create_user_pending.welcome_email_sent",
+                extra={"email": email_normalized},
+            )
+        except Exception as exc:
+            logger.error(
+                "create_user_pending.welcome_email_failed",
+                exc_info=exc,
+                extra={"email": email_normalized},
+            )
+
+    logger.info(
+        "create_user_pending.success",
+        extra={"email": email_normalized, "token": masked_token},
     )
     return user_id, email_value, token_str
 
