@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from nicegui import ui, app
 from sqlmodel import select
 
+from auth_guard import clear_auth_session, require_auth
 from data import Company, get_session
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from pages import (
@@ -130,10 +131,31 @@ def layout_wrapper(content_func):
 
             # Main content
             with ui.column().classes("flex-1 w-full"):
+                with ui.row().classes("w-full justify-end px-6 py-4"):
+                    def handle_logout() -> None:
+                        clear_auth_session()
+                        ui.navigate.to("/login")
+
+                    ui.button("Logout", on_click=handle_logout).props("flat").classes("text-slate-500 hover:text-slate-900")
                 content_func()
+
+@ui.page("/login")
+def login_page():
+    with ui.column().classes("min-h-screen items-center justify-center gap-4"):
+        ui.label("FixundFertig Login").classes("text-2xl font-bold text-slate-900")
+        email_input = ui.input("Email").classes("w-80")
+
+        def handle_login() -> None:
+            if email_input.value:
+                app.storage.user["auth_user"] = email_input.value
+                ui.navigate.to("/")
+
+        ui.button("Login", on_click=handle_login).classes("w-80")
 
 @ui.page("/")
 def index():
+    if not require_auth():
+        return
     app.add_static_files("/storage", "storage")
 
     # Ensure company exists
