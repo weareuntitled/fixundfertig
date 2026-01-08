@@ -5,6 +5,7 @@ from enum import Enum  # <--- WICHTIG: Das hat gefehlt!
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
 from contextlib import contextmanager
 from datetime import datetime
+from pydantic import validator
 import pandas as pd
 import io
 import os
@@ -17,6 +18,10 @@ class InvoiceStatus(str, Enum):
     PAID = "PAID"
     FINALIZED = "FINALIZED"
     CANCELLED = "CANCELLED"
+
+class TokenPurpose(str, Enum):
+    VERIFY_EMAIL = "verify_email"
+    RESET_PASSWORD = "reset_password"
 
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -46,6 +51,35 @@ class Company(SQLModel, table=True):
     next_invoice_nr: int = 10000
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
+
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True, unique=True)
+    username: Optional[str] = Field(default=None, index=True, unique=True)
+    first_name: str = ""
+    last_name: str = ""
+    phone: str = ""
+    password_hash: str
+    is_active: bool = False
+    is_email_verified: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    tokens: List["Token"] = Relationship(back_populates="user")
+
+    @validator("email", pre=True)
+    def normalize_email(cls, value):
+        if value is None:
+            return value
+        return value.strip().lower()
+
+class Token(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    token: str = Field(index=True, unique=True)
+    purpose: TokenPurpose
+    expires_at: datetime
+    used_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    user: Optional[User] = Relationship(back_populates="tokens")
 
 class Customer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -322,6 +356,17 @@ def log_audit_action(session, action, invoice_id=None, user_id=None, ip_address=
         ip_address=ip_address or ""
     )
     session.add(entry)
+
+def get_valid_token(session: Session, token_str: str, purpose: TokenPurpose) -> Optional[Token]:
+    now = datetime.utcnow()
+    statement = (
+        select(Token)
+        .where(Token.token == token_str)
+        .where(Token.purpose == purpose)
+        .where(Token.used_at.is_(None))
+        .where(Token.expires_at > now)
+    )
+    return session.exec(statement).first()
 
 # --- IMPORT LOGIC ---
 def load_customer_import_dataframe(content, filename=""):
