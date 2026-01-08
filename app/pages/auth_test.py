@@ -21,12 +21,11 @@ def test_signup_page():
 
     def handle_signup() -> None:
         try:
-            user = create_user_pending(
+            user, token = create_user_pending(
                 email_input.value,
                 username_input.value,
                 password_input.value,
             )
-            token = create_verify_email_token(user["id"])
             result.text = f"Verification token: {token}"
         except Exception as exc:
             result.text = f"Error: {exc}"
@@ -75,11 +74,8 @@ def test_reset_request_page():
     result = ui.label("")
 
     def handle_request() -> None:
-        token = request_password_reset(email_input.value)
-        if token:
-            result.text = f"Reset token: {token}"
-        else:
-            result.text = "If the user exists, a reset token was created"
+        request_password_reset(email_input.value)
+        result.text = "If the user exists, a reset token was created"
 
     ui.button("Request reset", on_click=handle_request)
 
