@@ -7,7 +7,7 @@ from nicegui import ui
 
 from renderer import render_invoice_to_pdf_base64
 
-from .invoice_utils import build_invoice_preview_html
+from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
 
 
 def _get(obj: Any, *names: str, default: Any = "") -> Any:
