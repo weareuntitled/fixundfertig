@@ -1,127 +1,167 @@
 from __future__ import annotations
 
 import hashlib
-import json
-import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
-DATA_PATH = "storage/auth_test.json"
+from sqlmodel import select
 
+from data import Token, TokenPurpose, User, get_session, get_valid_token
+from services.email import send_email
 
-def _load_store() -> dict:
-    if not os.path.exists(DATA_PATH):
-        return {"users": {}, "verify_tokens": {}, "reset_tokens": {}, "sessions": {}}
-    with open(DATA_PATH, "r", encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-def _save_store(store: dict) -> None:
-    os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
-    tmp_path = f"{DATA_PATH}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(store, handle, indent=2, sort_keys=True)
-    os.replace(tmp_path, DATA_PATH)
+VERIFY_TOKEN_TTL = timedelta(hours=24)
+RESET_TOKEN_TTL = timedelta(hours=2)
 
 
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
-def create_user_pending(email: str, username: str, password: str) -> dict:
+def _get_user_by_identifier(session, identifier: str | None) -> User | None:
+    lookup = (identifier or "").strip().lower()
+    if not lookup:
+        return None
+    statement = select(User).where(User.email == lookup)
+    user = session.exec(statement).first()
+    if user:
+        return user
+    statement = select(User).where(User.username == lookup)
+    return session.exec(statement).first()
+
+
+def _create_token(user: User, purpose: TokenPurpose, expires_in: timedelta) -> Token:
+    token = Token(
+        user_id=user.id,
+        token=uuid.uuid4().hex,
+        purpose=purpose,
+        expires_at=datetime.utcnow() + expires_in,
+    )
+    return token
+
+
+def create_user_pending(email: str, username: str, password: str) -> tuple[User, str]:
     email_normalized = (email or "").strip().lower()
-    username_clean = (username or "").strip()
+    username_clean = (username or "").strip() or None
     if not email_normalized:
         raise ValueError("Email is required")
     if not password:
         raise ValueError("Password is required")
 
-    store = _load_store()
-    if email_normalized in store["users"]:
-        raise ValueError("User already exists")
+    with get_session() as session:
+        existing = session.exec(select(User).where(User.email == email_normalized)).first()
+        if existing:
+            raise ValueError("User already exists")
+        if username_clean:
+            existing_username = session.exec(
+                select(User).where(User.username == username_clean)
+            ).first()
+            if existing_username:
+                raise ValueError("Username already exists")
 
-    user_id = uuid.uuid4().hex
-    store["users"][email_normalized] = {
-        "id": user_id,
-        "email": email_normalized,
-        "username": username_clean,
-        "password_hash": _hash_password(password),
-        "verified": False,
-    }
-    _save_store(store)
-    return store["users"][email_normalized]
+        user = User(
+            email=email_normalized,
+            username=username_clean,
+            password_hash=_hash_password(password),
+            is_active=False,
+            is_email_verified=False,
+        )
+        session.add(user)
+        session.flush()
+
+        token = _create_token(user, TokenPurpose.VERIFY_EMAIL, VERIFY_TOKEN_TTL)
+        session.add(token)
+        session.commit()
+
+    send_email(
+        email_normalized,
+        "Verify your email",
+        f"Use this token to verify your email: {token.token}",
+    )
+    return user, token.token
 
 
-def create_verify_email_token(user_id: str) -> str:
-    store = _load_store()
-    target_email = None
-    for email, user in store["users"].items():
-        if user.get("id") == user_id:
-            target_email = email
-            break
-    if not target_email:
-        raise ValueError("User not found")
+def create_verify_email_token(user_id: int) -> str:
+    with get_session() as session:
+        user = session.exec(select(User).where(User.id == user_id)).first()
+        if not user:
+            raise ValueError("User not found")
+        token = _create_token(user, TokenPurpose.VERIFY_EMAIL, VERIFY_TOKEN_TTL)
+        session.add(token)
+        session.commit()
 
-    token = uuid.uuid4().hex
-    store["verify_tokens"][token] = target_email
-    _save_store(store)
-    return token
+    send_email(
+        user.email,
+        "Verify your email",
+        f"Use this token to verify your email: {token.token}",
+    )
+    return token.token
 
 
-def verify_email(token: str) -> bool:
-    store = _load_store()
-    email = store["verify_tokens"].pop(token, None)
-    if not email:
-        return False
-    user = store["users"].get(email)
-    if not user:
-        return False
-    user["verified"] = True
-    store["users"][email] = user
-    _save_store(store)
+def verify_email(token_str: str) -> bool:
+    with get_session() as session:
+        token = get_valid_token(session, token_str, TokenPurpose.VERIFY_EMAIL)
+        if not token:
+            return False
+        user = session.exec(select(User).where(User.id == token.user_id)).first()
+        if not user:
+            return False
+        user.is_email_verified = True
+        token.used_at = datetime.utcnow()
+        session.add(user)
+        session.add(token)
+        session.commit()
+        return True
+
+
+def verify_password(identifier: str, password: str) -> bool:
+    with get_session() as session:
+        user = _get_user_by_identifier(session, identifier)
+        if not user:
+            return False
+        return user.password_hash == _hash_password(password or "")
+
+
+def login_user(identifier: str) -> bool:
+    with get_session() as session:
+        user = _get_user_by_identifier(session, identifier)
+        if not user:
+            return False
+        if not user.is_email_verified:
+            return False
+        user.is_active = True
+        session.add(user)
+        session.commit()
+        return True
+
+
+def request_password_reset(identifier: str) -> bool:
+    with get_session() as session:
+        user = _get_user_by_identifier(session, identifier)
+        if user:
+            token = _create_token(user, TokenPurpose.RESET_PASSWORD, RESET_TOKEN_TTL)
+            session.add(token)
+            session.commit()
+            send_email(
+                user.email,
+                "Reset your password",
+                f"Use this token to reset your password: {token.token}",
+            )
     return True
 
 
-def verify_password(email: str, password: str) -> bool:
-    store = _load_store()
-    email_normalized = (email or "").strip().lower()
-    user = store["users"].get(email_normalized)
-    if not user:
+def reset_password(token_str: str, new_password: str) -> bool:
+    if not new_password:
         return False
-    return user.get("password_hash") == _hash_password(password or "")
-
-
-def login_user(email: str) -> bool:
-    store = _load_store()
-    email_normalized = (email or "").strip().lower()
-    if email_normalized not in store["users"]:
-        return False
-    store.setdefault("sessions", {})
-    store["sessions"][email_normalized] = {"last_login": datetime.now().isoformat()}
-    _save_store(store)
-    return True
-
-
-def request_password_reset(email: str) -> str | None:
-    store = _load_store()
-    email_normalized = (email or "").strip().lower()
-    if email_normalized not in store["users"]:
-        return None
-    token = uuid.uuid4().hex
-    store["reset_tokens"][token] = email_normalized
-    _save_store(store)
-    return token
-
-
-def reset_password(token: str, new_password: str) -> bool:
-    store = _load_store()
-    email = store["reset_tokens"].pop(token, None)
-    if not email:
-        return False
-    user = store["users"].get(email)
-    if not user:
-        return False
-    user["password_hash"] = _hash_password(new_password or "")
-    store["users"][email] = user
-    _save_store(store)
-    return True
+    with get_session() as session:
+        token = get_valid_token(session, token_str, TokenPurpose.RESET_PASSWORD)
+        if not token:
+            return False
+        user = session.exec(select(User).where(User.id == token.user_id)).first()
+        if not user:
+            return False
+        user.password_hash = _hash_password(new_password)
+        token.used_at = datetime.utcnow()
+        session.add(user)
+        session.add(token)
+        session.commit()
+        return True
