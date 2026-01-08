@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from nicegui import ui
+from nicegui import app, ui
 
 from services.auth import (
     create_user_pending,
-    create_verify_email_token,
     login_user,
     request_password_reset,
     reset_password,
@@ -78,6 +77,7 @@ def login_page():
                 _set_error(status_error, "Invalid credentials")
                 return
             if login_user(identifier):
+                app.storage.user["auth_user"] = identifier
                 _show_success(card, "Logged in successfully.", "Go to dashboard", "/")
             else:
                 _set_error(status_error, "Login failed")
@@ -124,8 +124,7 @@ def signup_page():
             if not email or not password or (password and confirm != password):
                 return
             try:
-                user = create_user_pending(email, username, password)
-                create_verify_email_token(user["id"])
+                create_user_pending(email, username, password)
             except Exception as exc:
                 _set_error(status_error, str(exc))
                 return
