@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from nicegui import ui, app
+from env import load_env
 from auth_guard import clear_auth_session, require_auth
 from data import get_session
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
@@ -25,6 +26,9 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
+
+
+load_env()
 
 
 def _format_nominatim_result(item: dict) -> dict:

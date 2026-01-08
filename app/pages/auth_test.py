@@ -26,7 +26,10 @@ def test_signup_page():
                 username_input.value,
                 password_input.value,
             )
-            result.text = f"Verification token for {email_value} (id {user_id}): {token_str}"
+            if token_str:
+                result.text = f"Verification token for {email_value} (id {user_id}): {token_str}"
+            else:
+                result.text = f"User {email_value} (id {user_id}) created without email verification"
         except Exception as exc:
             result.text = f"Error: {exc}"
 
