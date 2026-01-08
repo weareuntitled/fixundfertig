@@ -216,8 +216,10 @@ def login_user(identifier: str) -> bool:
         user = _get_user_by_identifier(session, identifier)
         if not user:
             return False
-        if not user.is_email_verified:
+        if not user.is_email_verified and _email_verification_required():
             return False
+        if not user.is_email_verified:
+            user.is_email_verified = True
         user.is_active = True
         session.add(user)
         session.commit()
