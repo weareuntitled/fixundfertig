@@ -7,6 +7,8 @@ from nicegui import ui
 
 from renderer import render_invoice_to_pdf_base64
 
+from app.pages.invoice_utils import build_invoice_preview_html
+
 
 def _get(obj: Any, *names: str, default: Any = "") -> Any:
     if obj is None:
@@ -182,9 +184,11 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             "customer": _current_customer_obj(),
             "items": items,
             "show_tax": False,  # kleinunternehmer
+            "vat_rate": 0,
             "kleinunternehmer_note": "Als Kleinunternehmer im Sinne von § 19 UStG wird keine Umsatzsteuer berechnet.",
         }
 
+        preview_html = build_invoice_preview_html(invoice)
         try:
             pdf_b64 = render_invoice_to_pdf_base64(invoice, comp)
             preview.content = (
@@ -194,7 +198,9 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 "></iframe>"
             )
         except Exception as ex:
-            preview.content = f"<div class='text-red-600'>PDF Fehler: {ex}</div>"
+            preview.content = (
+                f"{preview_html}<div class='text-red-600 mt-4'>PDF Fehler: {ex}</div>"
+            )
 
     customer_select.on("update:modelValue", lambda e: update_preview())
     title_input.on("update:value", lambda e: update_preview())
