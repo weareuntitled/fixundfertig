@@ -98,7 +98,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 service_picker.on("update:modelValue", _service_changed)
 
                 # FIX: use switch (boolean), NOT ui.toggle (choice)
-                vat_switch = ui.switch("USt berechnen", value=False).props("disable").classes("mt-2")
+                vat_switch = ui.switch("USt berechnen", value=False).classes("mt-2")
                 ui.label("Kleinunternehmer: USt wird automatisch nicht ausgewiesen.").classes("text-sm text-gray-500")
 
             with ui.card().classes("w-full p-4"):
@@ -173,6 +173,11 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             return None
 
     def update_preview() -> None:
+        show_tax = bool(vat_switch.value)
+        preview_items = items
+        if not show_tax:
+            preview_items = [{**it, "tax_rate": 0} for it in items]
+
         invoice = {
             "title": title_input.value or "Rechnung",
             "invoice_date": invoice_date_input.value,
@@ -180,8 +185,8 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             "service_to": service_to,
             "intro_text": intro_input.value or "",
             "customer": _current_customer_obj(),
-            "items": items,
-            "show_tax": False,  # kleinunternehmer
+            "items": preview_items,
+            "show_tax": show_tax,
             "kleinunternehmer_note": "Als Kleinunternehmer im Sinne von § 19 UStG wird keine Umsatzsteuer berechnet.",
         }
 
@@ -199,5 +204,6 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     customer_select.on("update:modelValue", lambda e: update_preview())
     title_input.on("update:value", lambda e: update_preview())
     intro_input.on("update:value", lambda e: update_preview())
+    vat_switch.on("update:modelValue", lambda e: update_preview())
 
     update_preview()
