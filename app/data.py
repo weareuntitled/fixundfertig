@@ -26,6 +26,7 @@ class TokenPurpose(str, Enum):
 
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="user.id")
     name: str = "DanEP"
     first_name: str = ""
     last_name: str = ""
@@ -211,6 +212,8 @@ def prevent_finalized_invoice_updates(session, flush_context, instances):
 def ensure_company_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
+        if "user_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN user_id INTEGER")
         if "first_name" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN first_name TEXT DEFAULT ''")
         if "last_name" not in columns:

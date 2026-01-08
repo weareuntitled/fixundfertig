@@ -28,6 +28,7 @@ from data import (
     log_audit_action,
     InvoiceStatus,
     get_session,
+    User,
 )
 
 from renderer import render_invoice_to_pdf_bytes
@@ -71,6 +72,35 @@ from logic import (
 # -------------------------
 # Helpers
 # -------------------------
+
+def get_current_user_id(session) -> int | None:
+    identifier = app.storage.user.get("auth_user")
+    if not identifier:
+        return None
+    statement = select(User).where((User.email == identifier) | (User.username == identifier))
+    user = session.exec(statement).first()
+    return user.id if user else None
+
+
+def list_companies(session, user_id: int) -> list[Company]:
+    statement = select(Company).where(Company.user_id == user_id).order_by(Company.id)
+    return list(session.exec(statement))
+
+
+def get_primary_company(session, user_id: int) -> Company:
+    companies = list_companies(session, user_id)
+    if companies:
+        return companies[0]
+    unassigned = session.exec(select(Company).where(Company.user_id.is_(None))).first()
+    if unassigned:
+        unassigned.user_id = user_id
+        session.add(unassigned)
+        session.commit()
+        return unassigned
+    company = Company(user_id=user_id)
+    session.add(company)
+    session.commit()
+    return company
 
 def log_invoice_action(action: str, invoice_id: int | None = None) -> None:
     with get_session() as s:
