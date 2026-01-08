@@ -178,8 +178,16 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[int, 
             send_email(
                 email_normalized,
                 "Verify your email",
-                f"Verify your email: {verify_link}",
-                f"<p>Verify your email: <a href=\"{verify_link}\">{verify_link}</a></p>",
+                (
+                    "Verify your email using this link:\n"
+                    f"{verify_link}\n\n"
+                    f"If the link does not work, use this token: {token_str}"
+                ),
+                (
+                    "<p>Verify your email using this link:</p>"
+                    f"<p><a href=\"{verify_link}\">{verify_link}</a></p>"
+                    f"<p>If the link does not work, use this token: <code>{token_str}</code></p>"
+                ),
             )
             logger.info(
                 "create_user_pending.verify_email_sent",
@@ -212,13 +220,19 @@ def create_verify_email_token(user_id: int) -> str:
         token_str = token.token
         session.commit()
 
+    verify_link = _build_verify_link(token_str)
     send_email(
         email_value,
         "Verify your email",
-        f"Verify your email: {_build_verify_link(token_str)}",
         (
-            f"<p>Verify your email: "
-            f"<a href=\"{_build_verify_link(token_str)}\">{_build_verify_link(token_str)}</a></p>"
+            "Verify your email using this link:\n"
+            f"{verify_link}\n\n"
+            f"If the link does not work, use this token: {token_str}"
+        ),
+        (
+            "<p>Verify your email using this link:</p>"
+            f"<p><a href=\"{verify_link}\">{verify_link}</a></p>"
+            f"<p>If the link does not work, use this token: <code>{token_str}</code></p>"
         ),
     )
     return token_str
@@ -272,13 +286,19 @@ def request_password_reset(identifier: str) -> bool:
             token_str = token.token
             email_value = user.email
             session.commit()
+            reset_link = _build_reset_link(token_str)
             send_email(
                 email_value,
                 "Reset your password",
-                f"Reset your password: {_build_reset_link(token_str)}",
                 (
-                    f"<p>Reset your password: "
-                    f"<a href=\"{_build_reset_link(token_str)}\">{_build_reset_link(token_str)}</a></p>"
+                    "Reset your password using this link:\n"
+                    f"{reset_link}\n\n"
+                    f"If the link does not work, use this token: {token_str}"
+                ),
+                (
+                    "<p>Reset your password using this link:</p>"
+                    f"<p><a href=\"{reset_link}\">{reset_link}</a></p>"
+                    f"<p>If the link does not work, use this token: <code>{token_str}</code></p>"
                 ),
             )
     return True
