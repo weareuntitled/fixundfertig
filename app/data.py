@@ -26,6 +26,7 @@ class TokenPurpose(str, Enum):
 
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="user.id")
     name: str = "DanEP"
     first_name: str = ""
     last_name: str = ""
