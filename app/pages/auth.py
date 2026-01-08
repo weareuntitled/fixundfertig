@@ -91,7 +91,7 @@ def login_page():
                 app.storage.user["auth_user"] = identifier
                 _show_success(card, "Logged in successfully.", "Go to dashboard", "/")
             else:
-                _set_error(status_error, "Login failed")
+                _set_error(status_error, "Please verify your email before logging in.")
 
         ui.button("Log in", on_click=handle_login).classes(C_BTN_PRIM + " w-full")
         with ui.row().classes("w-full justify-between"):

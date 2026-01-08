@@ -62,7 +62,7 @@ def test_login_page():
         if login_user(email_input.value):
             result.text = "Logged in"
         else:
-            result.text = "Login failed"
+            result.text = "Email verification required"
 
     ui.button("Login", on_click=handle_login)
 

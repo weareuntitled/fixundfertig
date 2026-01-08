@@ -51,6 +51,14 @@ def _mask_token(token: str | None, visible: int = 4) -> str:
     return f"{token_str[:visible]}...{token_str[-visible:]}"
 
 
+def _email_verification_required() -> bool:
+    override = os.getenv("REQUIRE_EMAIL_VERIFICATION")
+    if override is not None:
+        return override == "1"
+    required_envs = ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS")
+    return all(os.getenv(value) for value in required_envs)
+
+
 def create_user_pending(email: str, username: str, password: str) -> tuple[int, str, str]:
     email_normalized = (email or "").strip().lower()
     username_clean = (username or "").strip() or None
@@ -198,8 +206,10 @@ def login_user(identifier: str) -> bool:
         user = _get_user_by_identifier(session, identifier)
         if not user:
             return False
-        if not user.is_email_verified:
+        if not user.is_email_verified and _email_verification_required():
             return False
+        if not user.is_email_verified:
+            user.is_email_verified = True
         user.is_active = True
         session.add(user)
         session.commit()
