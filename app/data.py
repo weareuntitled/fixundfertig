@@ -183,6 +183,18 @@ def get_session():
     with SessionLocal() as session:
         yield session
 
+@contextmanager
+def session_scope():
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
 @event.listens_for(Session, "before_flush")
 def prevent_finalized_invoice_updates(session, flush_context, instances):
     for obj in session.dirty:
