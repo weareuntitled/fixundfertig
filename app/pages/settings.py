@@ -9,6 +9,10 @@ from services.storage import company_logo_path, ensure_company_dirs
 # Auto generated page renderer
 
 def render_settings(session, comp: Company) -> None:
+    user_id = get_current_user_id(session)
+    if user_id is None or comp.user_id != user_id:
+        ui.notify("Kein Zugriff auf Unternehmen.", color="red")
+        return
     ui.label("Einstellungen").classes(C_PAGE_TITLE + " mb-6")
 
     with settings_two_column_layout(max_width_class="max-w-5xl"):
@@ -140,7 +144,18 @@ def render_settings(session, comp: Company) -> None:
 
     def save():
         with get_session() as s:
-            c = s.get(Company, int(comp.id))
+            current_user_id = get_current_user_id(s)
+            if current_user_id is None:
+                ui.notify("Kein Zugriff auf Unternehmen.", color="red")
+                return
+            statement = select(Company).where(
+                Company.id == int(comp.id),
+                Company.user_id == current_user_id,
+            )
+            c = s.exec(statement).first()
+            if not c:
+                ui.notify("Kein Zugriff auf Unternehmen.", color="red")
+                return
             c.name = name.value or ""
             c.first_name = first_name.value or ""
             c.last_name = last_name.value or ""

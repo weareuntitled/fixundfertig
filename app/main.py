@@ -8,10 +8,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from nicegui import ui, app
-from sqlmodel import select
-
 from auth_guard import clear_auth_session, require_auth
-from data import Company, get_session
+from data import get_session
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from pages import (
     render_dashboard,
@@ -26,6 +24,7 @@ from pages import (
     render_ledger,
     render_exports,
 )
+from pages._shared import get_current_user_id, get_primary_company, list_companies
 
 
 def _format_nominatim_result(item: dict) -> dict:
@@ -146,15 +145,26 @@ def index():
 
     # Ensure company exists
     with get_session() as session:
-        if not session.exec(select(Company)).first():
-            session.add(Company())
-            session.commit()
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            clear_auth_session()
+            ui.navigate.to("/login")
+            return
+        companies = list_companies(session, user_id)
+        if not companies:
+            get_primary_company(session, user_id)
 
     page = app.storage.user.get("page", "invoices")
 
     def content():
         with get_session() as session:
-            comp = session.exec(select(Company)).first()
+            user_id = get_current_user_id(session)
+            if user_id is None:
+                clear_auth_session()
+                ui.navigate.to("/login")
+                return
+            companies = list_companies(session, user_id)
+            comp = companies[0] if companies else get_primary_company(session, user_id)
 
             # Full-width flows (editor / detail)
             if page == "invoice_create":
