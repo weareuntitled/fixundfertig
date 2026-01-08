@@ -5,6 +5,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta
+from threading import Thread
 
 from sqlmodel import select
 
@@ -51,15 +52,40 @@ def _mask_token(token: str | None, visible: int = 4) -> str:
     return f"{token_str[:visible]}...{token_str[-visible:]}"
 
 
-def _email_verification_required() -> bool:
-    override = os.getenv("REQUIRE_EMAIL_VERIFICATION")
-    if override is not None:
-        return override == "1"
-    required_envs = ("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS")
-    return all(os.getenv(value) for value in required_envs)
+def _send_welcome_email(email_normalized: str) -> None:
+    try:
+        send_email(
+            email_normalized,
+            "Welcome!",
+            "Welcome to Fix & Fertig! Your account has been created.",
+        )
+        logger.info(
+            "create_user_pending.welcome_email_sent",
+            extra={"email": email_normalized},
+        )
+    except Exception as exc:
+        logger.error(
+            "create_user_pending.welcome_email_failed",
+            exc_info=exc,
+            extra={"email": email_normalized},
+        )
 
 
-def create_user_pending(email: str, username: str, password: str) -> tuple[int, str, str]:
+def _dispatch_welcome_email(email_normalized: str) -> None:
+    if os.getenv("SEND_WELCOME_EMAIL") != "1":
+        return
+    Thread(
+        target=_send_welcome_email,
+        args=(email_normalized,),
+        daemon=True,
+    ).start()
+    logger.info(
+        "create_user_pending.welcome_email_queued",
+        extra={"email": email_normalized},
+    )
+
+
+def create_user_pending(email: str, username: str, password: str) -> tuple[User, str]:
     email_normalized = (email or "").strip().lower()
     username_clean = (username or "").strip() or None
     if not email_normalized:
@@ -133,23 +159,7 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[int, 
             extra={"email": email_normalized, "token": masked_token},
         )
 
-    if os.getenv("SEND_WELCOME_EMAIL") == "1":
-        try:
-            send_email(
-                email_normalized,
-                "Welcome!",
-                "Welcome to Fix & Fertig! Your account has been created.",
-            )
-            logger.info(
-                "create_user_pending.welcome_email_sent",
-                extra={"email": email_normalized},
-            )
-        except Exception as exc:
-            logger.error(
-                "create_user_pending.welcome_email_failed",
-                exc_info=exc,
-                extra={"email": email_normalized},
-            )
+    _dispatch_welcome_email(email_normalized)
 
     logger.info(
         "create_user_pending.success",
