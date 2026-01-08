@@ -1,255 +1,333 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Dict, List
+
 from fpdf import FPDF
-import os
-from pathlib import Path
-from sqlmodel import select
-from data import Company, Customer, Invoice, InvoiceItem, get_session
-from services.storage import company_logo_path
 
 
-def _sanitize_pdf_text(value: str) -> str:
-    return value.replace("€", "EUR")
+def _sanitize_text(s: Any) -> str:
+    """Make text safe for core PDF fonts by replacing unsupported characters."""
+    if s is None:
+        return ""
+    txt = str(s)
+    txt = txt.replace("\u00a0", " ")  # nbsp
+    txt = txt.replace("€", "EUR")
+    txt = txt.replace("–", "-").replace("—", "-")
+    return txt.encode("latin-1", "replace").decode("latin-1")
 
 
-class PDFInvoice(FPDF):
-    def __init__(self, company):
-        super().__init__(format="A4", unit="mm")
-        self.company = company
-        font_path = Path(__file__).resolve().parent / "assets" / "fonts" / "DejaVuSans.ttf"
-        if not font_path.exists():
-            raise FileNotFoundError(f"Missing font file: {font_path}")
-        self.add_font("DejaVu", "", str(font_path), uni=True)
-        self.add_font("DejaVu", "B", str(font_path), uni=True)
-        self.set_auto_page_break(auto=True, margin=35)
-        self.set_margins(20, 20, 20)
-        self.alias_nb_pages()
+def _wrap_lines(pdf: FPDF, text: str, max_width: float) -> List[str]:
+    """Simple word wrap based on current font metrics."""
+    text = _sanitize_text(text).strip()
+    if not text:
+        return [""]
 
-    def header(self):
-        # Logo Check
-        logo_candidates = []
-        if self.company and getattr(self.company, "id", None):
-            logo_candidates.append(company_logo_path(self.company.id))
-        logo_candidates.append("./storage/logo.png")
-        for logo_path in logo_candidates:
-            if os.path.exists(logo_path):
-                try:
-                    # x=20 (links), y=15, w=35mm
-                    self.image(logo_path, x=20, y=15, w=35)
-                    return
-                except:
-                    pass # Falls Bild defekt, ignorieren
-        # Fallback: Firmenname groß
-        if self.company:
-            self.set_font("DejaVu", size=14, style="B")
-            self.set_xy(20, 20)
-            self.multi_cell(80, 8, self.company.name, align="L")
+    words = text.split()
+    lines: List[str] = []
+    cur = ""
 
-    def footer(self):
-        if not self.company: return
-        self.set_y(-35)
-        self.set_font("DejaVu", size=8)
+    for w in words:
+        trial = (cur + " " + w).strip()
+        if pdf.get_string_width(trial) <= max_width:
+            cur = trial
+            continue
 
-        bank_details = []
-        if self.company and self.company.iban:
-            bank_details.append(_sanitize_pdf_text(f"IBAN: {self.company.iban}"))
-        if self.company and self.company.tax_id:
-            bank_details.append(_sanitize_pdf_text(f"St-Nr: {self.company.tax_id}"))
-        if self.company and self.company.vat_id:
-            bank_details.append(_sanitize_pdf_text(f"USt-IdNr: {self.company.vat_id}"))
-        if bank_details:
-            self.multi_cell(0, 4, _sanitize_pdf_text(" | ".join(bank_details)), align="L")
-        self.cell(0, 4, _sanitize_pdf_text(f"Seite {self.page_no()}"), align="R")
+        if cur:
+            lines.append(cur)
 
-
-def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
-    # Daten laden
-    with get_session() as session:
-        company = session.exec(select(Company)).first() or Company()
-        customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
-    return company, customer
-
-
-def _load_company_customer(invoice: Invoice):
-    # Daten laden
-    with get_session() as session:
-        company = session.exec(select(Company)).first() or Company()
-        customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
-    return company, customer
-
-
-def _collect_line_items(invoice: Invoice):
-    preview_items = invoice.__dict__.get('line_items')
-    if preview_items is not None:
-        return preview_items
-    if not invoice.id:
-        return []
-    with get_session() as session:
-        return session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)).all()
-
-
-def _derive_tax_rate(invoice: Invoice, line_items):
-    stored_tax_rate = invoice.__dict__.get('tax_rate')
-    if stored_tax_rate is not None:
-        return float(stored_tax_rate)
-    return 0.19
-
-
-def _prepare_items(invoice: Invoice, company: Company | None = None):
-    raw_items = _collect_line_items(invoice)
-    tax_rate = _derive_tax_rate(invoice, raw_items)
-    if company and company.is_small_business:
-        tax_rate = 0.0
-    prepared = []
-    net_total = 0.0
-    for item in raw_items:
-        if isinstance(item, dict):
-            desc = item.get('desc') or item.get('description') or ''
-            qty = float(item.get('qty') or item.get('quantity') or 0)
-            price = float(item.get('price') or item.get('unit_price') or 0)
-            is_brutto = bool(item.get('is_brutto') or False)
+        # If a single word is longer than max width, hard-split it
+        if pdf.get_string_width(w) <= max_width:
+            cur = w
         else:
-            desc = item.description or ''
-            qty = float(item.quantity or 0)
-            price = float(item.unit_price or 0)
-            is_brutto = False
+            chunk = ""
+            for ch in w:
+                trial2 = chunk + ch
+                if pdf.get_string_width(trial2) <= max_width:
+                    chunk = trial2
+                else:
+                    if chunk:
+                        lines.append(chunk)
+                    chunk = ch
+            cur = chunk
 
-        unit_netto = price
-        if tax_rate > 0 and is_brutto:
-            unit_netto = price / (1 + tax_rate)
+    if cur:
+        lines.append(cur)
 
-        total = qty * unit_netto
-        net_total += total
-        prepared.append({
-            'description': desc,
-            'quantity': qty,
-            'unit_price': unit_netto,
-            'total': total,
-        })
-
-    if tax_rate == 0:
-        brutto = net_total
-        tax_amount = 0.0
-    else:
-        brutto = float(invoice.total_brutto or 0) or (net_total * (1 + tax_rate))
-        tax_amount = brutto - net_total
-    return prepared, {'netto': net_total, 'brutto': brutto, 'tax_rate': tax_rate, 'tax_amount': tax_amount}
+    return lines
 
 
-def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
-    layout = {
-        "totals_label_x": 95,
-        "totals_value_x": 145,
-    }
-    company, customer = _load_company_customer(invoice)
-    line_items, totals = _prepare_items(invoice, company)
-    is_small_business = bool(company and company.is_small_business)
+def _fmt_date_de(date_str: str) -> str:
+    """Accepts YYYY-MM-DD or DD.MM.YYYY and returns DD.MM.YYYY when possible."""
+    s = (date_str or "").strip()
+    if not s:
+        return ""
+    if "." in s and len(s) >= 8:
+        return s
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt.strftime("%d.%m.%Y")
+    except Exception:
+        return s
 
-    recipient_name = _sanitize_pdf_text(invoice.recipient_name or (customer.display_name if customer else ''))
-    recipient_street = _sanitize_pdf_text(invoice.recipient_street or (customer.strasse if customer else ''))
-    recipient_postal = _sanitize_pdf_text(invoice.recipient_postal_code or (customer.plz if customer else ''))
-    recipient_city = _sanitize_pdf_text(invoice.recipient_city or (customer.ort if customer else ''))
 
-    pdf = PDFInvoice(company)
+def _fmt_money_eur(amount: float) -> str:
+    s = f"{amount:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{s} EUR"
+
+
+class InvoicePDF(FPDF):
+    def __init__(self, *, company: Any, invoice: Any) -> None:
+        super().__init__(orientation="P", unit="mm", format="A4")
+        self.company = company
+        self.invoice = invoice
+        self.set_auto_page_break(auto=True, margin=20)
+        self.set_margins(left=20, top=20, right=20)
+
+    @property
+    def usable_w(self) -> float:
+        return self.w - self.l_margin - self.r_margin
+
+    def header(self) -> None:
+        comp = self.company
+
+        self.set_font("Helvetica", "B", 12)
+        self.cell(0, 6, _sanitize_text(getattr(comp, "name", "")), ln=1)
+
+        self.set_font("Helvetica", "", 9)
+        addr_parts = [
+            getattr(comp, "street", ""),
+            f"{getattr(comp, 'zip', '')} {getattr(comp, 'city', '')}".strip(),
+            getattr(comp, "country", ""),
+        ]
+        addr = ", ".join([str(p).strip() for p in addr_parts if str(p).strip()])
+        if addr:
+            self.multi_cell(0, 4.5, _sanitize_text(addr))
+        if getattr(comp, "email", ""):
+            self.cell(0, 4.5, _sanitize_text(getattr(comp, "email", "")), ln=1)
+
+        self.ln(2)
+        self.set_draw_color(220, 220, 220)
+        self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+        self.ln(6)
+
+    def footer(self) -> None:
+        comp = self.company
+
+        self.set_y(-18)
+        self.set_draw_color(220, 220, 220)
+        self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+        self.ln(2)
+
+        self.set_font("Helvetica", "", 8)
+
+        bank_name = getattr(comp, "bank_name", "") or ""
+        iban = getattr(comp, "iban", "") or ""
+        bic = getattr(comp, "bic", "") or ""
+        tax_id = getattr(comp, "tax_id", "") or ""
+        vat_id = getattr(comp, "vat_id", "") or ""
+
+        left = []
+        if bank_name:
+            left.append(f"Bank: {bank_name}")
+        if iban:
+            left.append(f"IBAN: {iban}")
+        if bic:
+            left.append(f"BIC: {bic}")
+
+        right = []
+        if tax_id:
+            right.append(f"Steuernr.: {tax_id}")
+        if vat_id:
+            right.append(f"USt-IdNr.: {vat_id}")
+
+        self.set_x(self.l_margin)
+        self.cell(self.usable_w * 0.64, 4, _sanitize_text(" | ".join(left)), border=0)
+        self.cell(self.usable_w * 0.36, 4, _sanitize_text(" | ".join(right)), border=0, ln=1)
+
+
+def render_invoice_to_pdf_bytes(invoice: Any) -> bytes:
+    """Render an invoice PDF. Requires invoice.company and invoice.customer."""
+    company = getattr(invoice, "company", None)
+    customer = getattr(invoice, "customer", None)
+    if company is None or customer is None:
+        raise ValueError("Invoice must have .company and .customer set for rendering")
+
+    pdf = InvoicePDF(company=company, invoice=invoice)
     pdf.add_page()
 
-    pdf.set_xy(120, 18)
-    pdf.set_font("DejaVu", size=18, style="B")
-    pdf.cell(70, 8, _sanitize_pdf_text(invoice.title or "Rechnung"), align="R")
+    # Recipient block (left)
+    pdf.set_font("Helvetica", "", 10)
 
-    pdf.set_xy(120, 30)
-    pdf.set_font("DejaVu", size=9)
-    info_lines = [
-        _sanitize_pdf_text(f"Rechnung Nr: {invoice.nr or ''}"),
-        _sanitize_pdf_text(f"Datum: {invoice.date}"),
-    ]
-    if invoice.delivery_date:
-        info_lines.append(_sanitize_pdf_text(f"Lieferdatum: {invoice.delivery_date}"))
-    if customer and customer.kdnr:
-        info_lines.append(_sanitize_pdf_text(f"Kundennr: {customer.kdnr}"))
-    pdf.multi_cell(70, 4.5, _sanitize_pdf_text("\n".join(info_lines)), align="R")
-
-    pdf.set_xy(20, 50)
-    pdf.set_font("DejaVu", size=9, style="B")
-    pdf.cell(0, 5, _sanitize_pdf_text("Von"))
-    company_lines = []
-    if company:
-        company_lines = [
-            _sanitize_pdf_text(company.name),
-            _sanitize_pdf_text(f"{company.first_name} {company.last_name}".strip()),
-            _sanitize_pdf_text(company.street),
-            _sanitize_pdf_text(f"{company.postal_code} {company.city}".strip()),
-        ]
-        if company.email:
-            company_lines.append(_sanitize_pdf_text(company.email))
-        if company.phone:
-            company_lines.append(_sanitize_pdf_text(company.phone))
-    pdf.set_xy(20, 56)
-    pdf.set_font("DejaVu", size=9)
-    pdf.multi_cell(80, 4.5, _sanitize_pdf_text("\n".join(line for line in company_lines if line)))
-
-    pdf.set_xy(120, 50)
-    pdf.set_font("DejaVu", size=9, style="B")
-    pdf.cell(0, 5, _sanitize_pdf_text("Rechnung an"))
     recipient_lines = [
-        recipient_name,
-        recipient_street,
-        f"{recipient_postal} {recipient_city}".strip(),
+        getattr(invoice, "address_name", "") or getattr(customer, "name", ""),
+        getattr(invoice, "address_street", "") or getattr(customer, "street", ""),
+        f"{getattr(invoice, 'address_zip', '') or getattr(customer, 'zip', '')} "
+        f"{getattr(invoice, 'address_city', '') or getattr(customer, 'city', '')}".strip(),
+        getattr(invoice, "address_country", "") or getattr(customer, "country", ""),
     ]
-    pdf.set_xy(120, 56)
-    pdf.set_font("DejaVu", size=9)
-    pdf.multi_cell(70, 4.5, _sanitize_pdf_text("\n".join(line for line in recipient_lines if line)))
+    recipient_lines = [str(x).strip() for x in recipient_lines if str(x).strip()]
 
-    pdf.set_xy(20, 95)
-    pdf.set_font("DejaVu", size=10)
-    pdf.multi_cell(0, 5, _sanitize_pdf_text("Vielen Dank für Ihren Auftrag. Nachfolgend finden Sie die Rechnung."))
+    start_y = pdf.get_y()
+    pdf.set_xy(pdf.l_margin, start_y)
+    pdf.multi_cell(pdf.usable_w * 0.55, 5, _sanitize_text("\n".join(recipient_lines)))
+    recipient_end_y = pdf.get_y()
 
-    pdf.ln(2)
-    table_start_x = 20
-    table_widths = [80, 20, 35, 35]
-    pdf.set_x(table_start_x)
-    pdf.set_font("DejaVu", size=9, style="B")
-    pdf.set_fill_color(230, 230, 230)
-    pdf.cell(table_widths[0], 7, "Beschreibung", fill=True)
-    pdf.cell(table_widths[1], 7, "Menge", align="R", fill=True)
-    pdf.cell(table_widths[2], 7, "Einzelpreis", align="R", fill=True)
-    pdf.cell(table_widths[3], 7, "Gesamt", align="R", fill=True, ln=1)
+    # Invoice info (right)
+    right_x = pdf.l_margin + pdf.usable_w * 0.60
+    pdf.set_xy(right_x, start_y)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 6, _sanitize_text(getattr(invoice, "title", "Rechnung")), ln=1)
+    pdf.set_font("Helvetica", "", 10)
 
-    pdf.set_font("DejaVu", size=9)
-    for item in line_items:
-        pdf.set_x(table_start_x)
-        pdf.cell(table_widths[0], 6, _sanitize_pdf_text(item['description']))
-        pdf.cell(table_widths[1], 6, f"{item['quantity']:.2f}", align="R")
-        pdf.cell(table_widths[2], 6, _sanitize_pdf_text(f"{item['unit_price']:.2f} EUR"), align="R")
-        pdf.cell(table_widths[3], 6, _sanitize_pdf_text(f"{item['total']:.2f} EUR"), align="R", ln=1)
+    inv_no = getattr(invoice, "invoice_number", "") or ""
+    inv_date = _fmt_date_de(getattr(invoice, "date", "") or "")
+    delivery = (getattr(invoice, "delivery_date", "") or "").strip()
+
+    pdf.set_x(right_x)
+    if inv_no:
+        pdf.cell(0, 5, _sanitize_text(f"Rechnungsnummer: {inv_no}"), ln=1)
+    if inv_date:
+        pdf.set_x(right_x)
+        pdf.cell(0, 5, _sanitize_text(f"Rechnungsdatum: {inv_date}"), ln=1)
+    if delivery:
+        pdf.set_x(right_x)
+        delivery_out = delivery if "bis" in delivery else _fmt_date_de(delivery)
+        pdf.multi_cell(0, 5, _sanitize_text(f"Leistungszeitraum: {delivery_out}"))
+
+    # Continue below the lower of both blocks
+    pdf.set_y(max(recipient_end_y, pdf.get_y()) + 6)
+
+    # Intro text (editable)
+    intro_text = ""
+    if hasattr(invoice, "intro_text") and getattr(invoice, "intro_text"):
+        intro_text = str(getattr(invoice, "intro_text"))
+    else:
+        intro_text = str(invoice.__dict__.get("intro_text", "") or "")
+    intro_text = intro_text.strip()
+    if intro_text:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _sanitize_text(intro_text))
+        pdf.ln(2)
+
+    # Items
+    items: List[Dict[str, Any]] = []
+    if invoice.__dict__.get("line_items"):
+        items = list(invoice.__dict__["line_items"])
+    elif hasattr(invoice, "items") and getattr(invoice, "items"):
+        items = [i.__dict__ for i in getattr(invoice, "items")]
+    else:
+        items = []
+
+    # Table columns (sum == usable width)
+    col_desc = pdf.usable_w * 0.56
+    col_qty = pdf.usable_w * 0.12
+    col_unit = pdf.usable_w * 0.14
+    col_tax = pdf.usable_w * 0.08
+    col_total = pdf.usable_w - (col_desc + col_qty + col_unit + col_tax)
+
+    def table_header() -> None:
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(245, 245, 245)
+        pdf.set_draw_color(220, 220, 220)
+        pdf.cell(col_desc, 7, _sanitize_text("Beschreibung"), border=1, fill=True)
+        pdf.cell(col_qty, 7, _sanitize_text("Menge"), border=1, fill=True, align="R")
+        pdf.cell(col_unit, 7, _sanitize_text("Preis"), border=1, fill=True, align="R")
+        pdf.cell(col_tax, 7, _sanitize_text("USt"), border=1, fill=True, align="R")
+        pdf.cell(col_total, 7, _sanitize_text("Summe"), border=1, fill=True, align="R", ln=1)
+        pdf.set_font("Helvetica", "", 9)
+
+    table_header()
+
+    line_h = 5.0
+    for it in items:
+        desc = str(it.get("description", "") or "")
+        qty = float(it.get("quantity", 0) or 0)
+        unit_price = float(it.get("unit_price", 0) or 0)
+        tax_rate = float(it.get("tax_rate", 0) or 0)
+        total = qty * unit_price
+
+        # Wrap description, compute row height
+        lines = _wrap_lines(pdf, desc, col_desc - 2.0)
+        row_h = max(line_h * len(lines) + 2.0, 8.0)
+
+        # Manual page break handling (because we draw rectangles)
+        if pdf.get_y() + row_h > pdf.page_break_trigger:
+            pdf.add_page()
+            table_header()
+
+        x0 = pdf.get_x()
+        y0 = pdf.get_y()
+
+        # Draw borders
+        pdf.set_draw_color(220, 220, 220)
+        pdf.rect(x0, y0, col_desc, row_h)
+        pdf.rect(x0 + col_desc, y0, col_qty, row_h)
+        pdf.rect(x0 + col_desc + col_qty, y0, col_unit, row_h)
+        pdf.rect(x0 + col_desc + col_qty + col_unit, y0, col_tax, row_h)
+        pdf.rect(x0 + col_desc + col_qty + col_unit + col_tax, y0, col_total, row_h)
+
+        # Description text (top padding)
+        pdf.set_xy(x0 + 1.0, y0 + 1.5)
+        for ln in lines:
+            pdf.cell(col_desc - 2.0, line_h, _sanitize_text(ln), ln=1)
+            pdf.set_x(x0 + 1.0)
+
+        # Numeric columns (top padding)
+        top_y = y0 + 1.5
+        pdf.set_xy(x0 + col_desc, top_y)
+        pdf.cell(col_qty - 1.5, line_h, _sanitize_text(f"{qty:g}"), align="R")
+
+        pdf.set_xy(x0 + col_desc + col_qty, top_y)
+        pdf.cell(col_unit - 1.5, line_h, _sanitize_text(_fmt_money_eur(unit_price)), align="R")
+
+        pdf.set_xy(x0 + col_desc + col_qty + col_unit, top_y)
+        pdf.cell(col_tax - 1.5, line_h, _sanitize_text(f"{tax_rate:.0f}%"), align="R")
+
+        pdf.set_xy(x0 + col_desc + col_qty + col_unit + col_tax, top_y)
+        pdf.cell(col_total - 1.5, line_h, _sanitize_text(_fmt_money_eur(total)), align="R")
+
+        pdf.set_xy(x0, y0 + row_h)
 
     pdf.ln(4)
-    totals_label_x = layout["totals_label_x"]
-    totals_value_x = layout["totals_value_x"]
-    pdf.set_font("DejaVu", size=10)
-    pdf.set_xy(totals_label_x, pdf.get_y())
-    pdf.cell(40, 5, "Zwischensumme", align="R")
-    pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 5, _sanitize_pdf_text(f"{totals['netto']:.2f} EUR"), align="R", ln=1)
 
-    if not is_small_business:
-        pdf.set_xy(totals_label_x, pdf.get_y())
-        pdf.cell(40, 5, f"USt. ({totals['tax_rate'] * 100:.0f}%)", align="R")
-        pdf.set_xy(totals_value_x, pdf.get_y())
-        pdf.cell(30, 5, _sanitize_pdf_text(f"{totals['tax_amount']:.2f} EUR"), align="R", ln=1)
+    # Totals
+    totals = invoice.__dict__.get("totals")
+    if not totals:
+        net = sum(float(i.get("quantity", 0) or 0) * float(i.get("unit_price", 0) or 0) for i in items)
+        tax = sum(
+            (float(i.get("quantity", 0) or 0) * float(i.get("unit_price", 0) or 0)) * (float(i.get("tax_rate", 0) or 0) / 100.0)
+            for i in items
+        )
+        gross = net + tax
+        totals = {"net": net, "tax": tax, "gross": gross}
 
-    pdf.set_font("DejaVu", size=10, style="B")
-    pdf.set_xy(totals_label_x, pdf.get_y())
-    pdf.cell(40, 6, "Gesamt", align="R")
-    pdf.set_xy(totals_value_x, pdf.get_y())
-    pdf.cell(30, 6, _sanitize_pdf_text(f"{totals['brutto']:.2f} EUR"), align="R", ln=1)
+    is_small = bool(getattr(company, "is_small_business", False))
 
-    if is_small_business:
-        pdf.ln(2)
-        pdf.set_font("DejaVu", size=9)
-        pdf.multi_cell(0, 4, _sanitize_pdf_text("Kleinunternehmerregelung gemäß § 19 UStG."))
+    label_w = pdf.usable_w * 0.70
+    value_w = pdf.usable_w * 0.30
 
-    output = pdf.output(dest="S")
-    if isinstance(output, str):
-        output = output.encode("latin-1")
-    elif isinstance(output, bytearray):
-        output = bytes(output)
-    return output
+    if is_small:
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, _sanitize_text("Gemäß § 19 UStG wird keine Umsatzsteuer berechnet."))
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(label_w, 6, _sanitize_text("Gesamt"), align="R")
+        pdf.cell(value_w, 6, _sanitize_text(_fmt_money_eur(float(totals["net"]))), align="R", ln=1)
+    else:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(label_w, 6, _sanitize_text("Zwischensumme"), align="R")
+        pdf.cell(value_w, 6, _sanitize_text(_fmt_money_eur(float(totals["net"]))), align="R", ln=1)
+        pdf.cell(label_w, 6, _sanitize_text("Umsatzsteuer"), align="R")
+        pdf.cell(value_w, 6, _sanitize_text(_fmt_money_eur(float(totals["tax"]))), align="R", ln=1)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(label_w, 7, _sanitize_text("Gesamt"), align="R")
+        pdf.cell(value_w, 7, _sanitize_text(_fmt_money_eur(float(totals["gross"]))), align="R", ln=1)
+
+    payment_terms = str(getattr(invoice, "payment_terms", "") or "").strip()
+    if payment_terms:
+        pdf.ln(6)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, _sanitize_text(payment_terms))
+
+    return bytes(pdf.output(dest="S"))

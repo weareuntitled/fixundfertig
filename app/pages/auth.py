@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import logging
 
 from nicegui import app, ui
+from starlette.requests import Request
 
 from services.auth import (
     create_user_pending,
@@ -168,8 +169,8 @@ def signup_page():
 
 
 @ui.page("/verify")
-def verify_page(request):
-    token_prefill = (request.query.get("token") or "").strip()
+def verify_page(request: Request):
+    token_prefill = (request.query_params.get("token") or "").strip()
     with auth_shell("Verify your email", "Enter the verification token") as card:
         with ui.column().classes("w-full gap-1"):
             token_input = ui.input("Verification token", value=token_prefill).classes(C_INPUT)
@@ -218,8 +219,8 @@ def forgot_page():
 
 
 @ui.page("/reset")
-def reset_page(request):
-    token_prefill = (request.query.get("token") or "").strip()
+def reset_page(request: Request):
+    token_prefill = (request.query_params.get("token") or "").strip()
     with auth_shell("Reset password", "Enter your token and choose a new password") as card:
         with ui.column().classes("w-full gap-1"):
             token_input = ui.input("Reset token", value=token_prefill).classes(C_INPUT)

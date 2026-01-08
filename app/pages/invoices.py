@@ -11,7 +11,14 @@ def render_invoices(session, comp: Company) -> None:
     with ui.row().classes("w-full justify-between items-center mb-4"):
         ui.button("Neue Rechnung", on_click=lambda: _open_invoice_editor(None)).classes(C_BTN_PRIM)
 
-    invs = session.exec(select(Invoice).order_by(Invoice.id.desc())).all()
+    # Nur Rechnungen der aktiven Company (via Customer.company_id)
+    invs = session.exec(
+        select(Invoice)
+        .join(Customer, Invoice.customer_id == Customer.id)
+        .where(Customer.company_id == comp.id)
+        .order_by(Invoice.id.desc())
+    ).all()
+
     drafts = [i for i in invs if i.status == InvoiceStatus.DRAFT]
     finals = [i for i in invs if i.status != InvoiceStatus.DRAFT]
 
@@ -90,7 +97,9 @@ def render_invoices(session, comp: Company) -> None:
                 else:
                     for inv in finals:
                         with ui.row().classes(C_TABLE_ROW + " group"):
-                            with ui.row().classes("flex-1 items-center gap-4 cursor-pointer").on("click", lambda _, x=inv: _open_invoice_detail(int(x.id))):
+                            with ui.row().classes("flex-1 items-center gap-4 cursor-pointer").on(
+                                "click", lambda _, x=inv: _open_invoice_detail(int(x.id))
+                            ):
                                 ui.label(f"#{inv.nr}" if inv.nr else "-").classes("w-24 text-xs font-mono text-slate-700")
                                 ui.label(cust_name(inv)).classes("flex-1 text-sm text-slate-900")
                                 ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes("w-28 text-right text-sm font-mono text-slate-800")
@@ -124,7 +133,9 @@ def render_invoices(session, comp: Company) -> None:
                 else:
                     for d in drafts[:12]:
                         with ui.row().classes("px-4 py-3 border-b border-slate-100 items-center justify-between"):
-                            with ui.row().classes("gap-2 items-center cursor-pointer").on("click", lambda _, x=d: _open_invoice_editor(int(x.id))):
+                            with ui.row().classes("gap-2 items-center cursor-pointer").on(
+                                "click", lambda _, x=d: _open_invoice_editor(int(x.id))
+                            ):
                                 ui.label("Entwurf").classes(invoice_status_badge(InvoiceStatus.DRAFT))
                                 ui.label(cust_name(d)).classes("text-sm text-slate-900")
                             with ui.row().classes("gap-2"):
@@ -143,7 +154,9 @@ def render_invoices(session, comp: Company) -> None:
                 else:
                     for r in reminders[:12]:
                         with ui.row().classes("px-4 py-3 border-b border-slate-100 items-center justify-between"):
-                            with ui.row().classes("gap-2 items-center cursor-pointer").on("click", lambda _, x=r: _open_invoice_detail(int(x.id))):
+                            with ui.row().classes("gap-2 items-center cursor-pointer").on(
+                                "click", lambda _, x=r: _open_invoice_detail(int(x.id))
+                            ):
                                 ui.label("Overdue").classes("bg-amber-50 text-amber-800 border border-amber-100 px-2 py-0.5 rounded-full text-xs font-medium")
                                 ui.label(f"#{r.nr}" if r.nr else "Rechnung").classes("text-xs font-mono text-slate-700")
                                 ui.label(cust_name(r)).classes("text-sm text-slate-900")

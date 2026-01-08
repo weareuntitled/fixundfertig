@@ -1,0 +1,16 @@
+﻿{
+    "version":  1,
+    "root":  "C:\\Users\\hi\\fixundfertig",
+    "cursor":  {
+                   "file_index":  47,
+                   "file_offset":  1496,
+                   "wrote_tree":  true
+               },
+    "completed":  false,
+    "last_part":  1,
+    "filters":  {
+                    "only_file":  "",
+                    "only_file_regex":  "",
+                    "sort_small_first":  true
+                }
+}

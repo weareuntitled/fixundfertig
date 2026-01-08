@@ -18,6 +18,8 @@ ALLOWED_COMPANY_FIELDS = {
     "email",
     "phone",
     "iban",
+    "bic",          
+    "bank_name",    
     "tax_id",
     "vat_id",
     "smtp_server",

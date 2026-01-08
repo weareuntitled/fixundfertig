@@ -1,394 +1,304 @@
 from __future__ import annotations
-from ._shared import *
-from invoice_numbering import build_invoice_number
 
-# Auto generated page renderer
+import base64
+from datetime import date
+from types import SimpleNamespace
+from typing import Any, Dict, List, Optional, Tuple
 
-def render_invoice_create(session, comp: Company) -> None:
-    draft_id = app.storage.user.get("invoice_draft_id")
-    draft = session.get(Invoice, draft_id) if draft_id else None
+from nicegui import app, ui
+from sqlmodel import Session, select
 
-    customers = session.exec(select(Customer)).all()
-    cust_opts = {str(c.id): c.display_name for c in customers}
+from data import Company, Customer, Invoice
+from logic import finalize_invoice_logic
+from renderer import render_invoice_to_pdf_bytes
 
-    template_items = session.exec(
-        select(InvoiceItemTemplate).where(InvoiceItemTemplate.company_id == comp.id)
-    ).all()
 
-    init_items: list[dict] = []
-    if draft:
-        db_items = session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == draft.id)).all()
-        for it in db_items:
-            init_items.append({"desc": it.description, "qty": float(it.quantity or 0), "price": float(it.unit_price or 0), "is_brutto": False})
+DEFAULT_INTRO_TEXT = (
+    "Vielen Dank für Ihren Auftrag. "
+    "Hiermit berechne ich die folgenden Leistungen."
+)
 
-    if not init_items:
-        init_items.append({"desc": "", "qty": 1.0, "price": 0.0, "is_brutto": False})
 
-    state = {
-        "items": init_items,
-        "customer_id": str(draft.customer_id) if draft and draft.customer_id else None,
-        "date": draft.date if draft and draft.date else datetime.now().strftime("%Y-%m-%d"),
-        "delivery_date": draft.delivery_date if draft and draft.delivery_date else datetime.now().strftime("%Y-%m-%d"),
-        "title": draft.title if draft and draft.title else "Rechnung",
-        "ust": True,
-    }
-    recipient_defaults = {"name": "", "street": "", "zip": "", "city": ""}
-    if state["customer_id"]:
-        with get_session() as s:
-            c = s.get(Customer, int(state["customer_id"]))
-            if c:
-                recipient_defaults = {
-                    "name": c.recipient_name or c.display_name or "",
-                    "street": c.recipient_street or c.strasse or "",
-                    "zip": c.recipient_postal_code or c.plz or "",
-                    "city": c.recipient_city or c.ort or "",
-                }
+def _period_from_value(v: Any) -> Tuple[Optional[str], Optional[str]]:
+    if v is None:
+        return None, None
+    if isinstance(v, str):
+        s = v.strip()
+        return (s or None), (s or None)
+    if isinstance(v, dict):
+        f = (v.get("from") or "").strip()
+        t = (v.get("to") or "").strip()
+        if f and not t:
+            t = f
+        if t and not f:
+            f = t
+        return (f or None), (t or None)
+    return None, None
 
-    blocked_statuses = {InvoiceStatus.FINALIZED, InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID}
-    if draft and draft.status in blocked_statuses:
-        sticky_header("Rechnungs-Editor", on_cancel=lambda: ui.navigate.to("/"))
 
-        with ui.column().classes("w-full h-[calc(100vh-64px)] p-0 m-0"):
-            with ui.column().classes("w-full p-4 gap-4"):
-                with ui.card().classes(C_CARD + " p-4 w-full"):
-                    ui.label("Ändern auf Risiko").classes(C_SECTION_TITLE)
-                    ui.label("Diese Rechnung ist nicht mehr direkt editierbar.").classes("text-sm text-slate-600")
+def _period_display(v: Any) -> str:
+    f, t = _period_from_value(v)
+    if not f and not t:
+        return ""
+    if f and t and f != t:
+        return f"{f} bis {t}"
+    return f or t or ""
 
-                    with ui.dialog() as risk_dialog:
-                        with ui.card().classes(C_CARD + " p-4 w-full"):
-                            ui.label("Ändern auf Risiko").classes(C_SECTION_TITLE)
-                            reason_input = ui.textarea("Grund", placeholder="Grund der Änderung").classes(C_INPUT)
-                            risk_checkbox = ui.checkbox("Ich verstehe das Risiko und möchte eine Revision erstellen.")
-                            with ui.row().classes("justify-end w-full"):
-                                action_button = ui.button(
-                                    "Revision erstellen und ändern",
-                                    on_click=lambda: on_risk_confirm()
-                                ).classes(C_BTN_PRIM)
-                                action_button.disable()
 
-                            def validate_risk():
-                                if risk_checkbox.value and (reason_input.value or "").strip():
-                                    action_button.enable()
-                                else:
-                                    action_button.disable()
+def _date_input_with_picker(label: str, storage_key: str, *, default_value: str, range_mode: bool = False) -> ui.input:
+    store = app.storage.user
+    if storage_key not in store:
+        store[storage_key] = default_value if not range_mode else {"from": default_value, "to": default_value}
 
-                            reason_input.on("update:model-value", lambda e: validate_risk())
-                            risk_checkbox.on("update:model-value", lambda e: validate_risk())
+    inp = ui.input(label).props("readonly").classes("w-full")
+    inp.value = _period_display(store.get(storage_key)) if range_mode else str(store.get(storage_key) or "")
 
-                    def on_risk_confirm():
-                        if not risk_checkbox.value or not (reason_input.value or "").strip():
-                            return
-                        new_id = create_invoice_revision_and_edit(int(draft.id), reason_input.value.strip())
-                        if not new_id:
-                            ui.notify("Revision konnte nicht erstellt werden", color="red")
-                            return
-                        app.storage.user["invoice_draft_id"] = new_id
-                        app.storage.user["page"] = "invoice_create"
-                        risk_dialog.close()
-                        ui.navigate.to("/")
+    with ui.menu().props("no-parent-event") as menu:
+        picker = ui.date().props('mask="YYYY-MM-DD"' + (" range" if range_mode else ""))
+        picker.value = store[storage_key]
 
-                    ui.button("Revision erstellen", on_click=lambda: risk_dialog.open()).classes(C_BTN_PRIM)
-        return
+        def _sync(e: Any) -> None:
+            store[storage_key] = picker.value
+            inp.value = _period_display(picker.value) if range_mode else str(picker.value or "")
+            inp.update()
 
-    preview_html = None
-    autosave_state = {"dirty": False, "last_change": 0.0, "saving": False}
-    preview_state = {"pending": False, "last_change": 0.0}
+        picker.on_value_change(_sync)
+        ui.button("OK", on_click=menu.close).props("flat")
 
-    def mark_dirty():
-        autosave_state["dirty"] = True
-        autosave_state["last_change"] = time.monotonic()
+    inp.on("click", menu.open)
+    return inp
 
-    def request_preview_update():
-        preview_state["pending"] = True
-        preview_state["last_change"] = time.monotonic()
 
-    ust_switch = None
+def _build_preview_invoice(
+    comp: Company,
+    customer: Optional[Customer],
+    title: str,
+    invoice_date: str,
+    service_period_value: Any,
+    intro_text: str,
+    items: List[Dict[str, Any]],
+    ust_enabled: bool,
+) -> Optional[bytes]:
+    if not customer:
+        return None
 
-    def update_preview():
-        cust_id = state["customer_id"]
-        rec_n, rec_s, rec_z, rec_c = "", "", "", ""
-        customer = None
+    inv = SimpleNamespace()
+    inv.company = comp
+    inv.customer = customer
+    inv.title = title or "Rechnung"
+    inv.invoice_number = "VORSCHAU"
+    inv.date = invoice_date
+    inv.delivery_date = _period_display(service_period_value)
+    inv.payment_terms = getattr(comp, "default_payment_terms", "") or ""
+    inv.address_name = customer.name
+    inv.address_street = getattr(customer, "street", "") or ""
+    inv.address_zip = getattr(customer, "zip", "") or ""
+    inv.address_city = getattr(customer, "city", "") or ""
+    inv.address_country = getattr(customer, "country", "") or ""
+    inv.ust_enabled = bool(ust_enabled) and (not bool(getattr(comp, "is_small_business", False)))
+    inv.__dict__["intro_text"] = intro_text or ""
+    inv.__dict__["line_items"] = items
+    return render_invoice_to_pdf_bytes(inv)
 
-        if cust_id:
-            with get_session() as s:
-                c = s.get(Customer, int(cust_id))
-                if c:
-                    customer = c
-                    rec_n = c.recipient_name or c.display_name
-                    rec_s = c.recipient_street or c.strasse
-                    rec_z = c.recipient_postal_code or c.plz
-                    rec_c = c.recipient_city or c.ort
 
-        final_n = recipient_defaults["name"] or rec_n
-        final_s = recipient_defaults["street"] or rec_s
-        final_z = recipient_defaults["zip"] or rec_z
-        final_c = recipient_defaults["city"] or rec_c
+def render_invoice_create(session: Session, comp: Company) -> None:
+    store = app.storage.user.setdefault("invoice_create_state", {})
+    today = date.today().isoformat()
 
-        inv = Invoice(
-            nr=build_invoice_number(comp, customer, comp.next_invoice_nr, state["date"]),
-            title=state["title"],
-            date=state["date"],
-            delivery_date=state["delivery_date"],
-            recipient_name=final_n,
-            recipient_street=final_s,
-            recipient_postal_code=final_z,
-            recipient_city=final_c,
+    store.setdefault("customer_id", None)
+    store.setdefault("title", "Rechnung")
+    store.setdefault("intro_text", DEFAULT_INTRO_TEXT)
+    store.setdefault("ust_enabled", not bool(getattr(comp, "is_small_business", False)))
+    store.setdefault("items", [])
+
+    app.storage.user.setdefault("invoice_date", today)
+    app.storage.user.setdefault("service_period", {"from": today, "to": today})
+
+    customers = session.exec(select(Customer).where(Customer.company_id == comp.id).order_by(Customer.name)).all()
+    customer_map = {c.id: c for c in customers}
+
+    def selected_customer() -> Optional[Customer]:
+        cid = store.get("customer_id")
+        return customer_map.get(cid) if cid else None
+
+    ui.label("Rechnung erstellen").classes("text-2xl font-semibold mb-4")
+
+    preview_holder = {"el": None}
+
+    def refresh_preview() -> None:
+        el = preview_holder.get("el")
+        if el is None:
+            return
+
+        cust = selected_customer()
+        if not cust:
+            el.set_content("<div class='text-sm text-gray-500'>Bitte Kunde wählen.</div>")
+            return
+
+        pdf_bytes = _build_preview_invoice(
+            comp=comp,
+            customer=cust,
+            title=str(store.get("title") or "Rechnung"),
+            invoice_date=str(app.storage.user.get("invoice_date") or today),
+            service_period_value=app.storage.user.get("service_period"),
+            intro_text=str(store.get("intro_text") or ""),
+            items=list(store.get("items") or []),
+            ust_enabled=bool(store.get("ust_enabled", True)),
         )
-        inv.__dict__["line_items"] = state["items"]
-        inv.__dict__["tax_rate"] = 0.19 if (ust_switch and ust_switch.value) else 0.0
-
-        try:
-            pdf = render_invoice_to_pdf_bytes(inv)
-            if isinstance(pdf, bytearray):
-                pdf = bytes(pdf)
-            if not isinstance(pdf, bytes):
-                raise TypeError("PDF output must be bytes")
-            b64 = base64.b64encode(pdf).decode("utf-8")
-            if preview_html:
-                preview_html.content = f'<iframe src="data:application/pdf;base64,{b64}" style="width:100%; height:100%; border:none;"></iframe>'
-        except Exception as e:
-            print(e)
-
-    def debounce_preview():
-        if preview_state["pending"] and (time.monotonic() - preview_state["last_change"] >= 0.3):
-            preview_state["pending"] = False
-            update_preview()
-
-    def save_draft() -> int | None:
-        nonlocal draft_id
-        if not state["customer_id"] and not draft_id:
-            return None
-        with get_session() as s:
-            if draft_id:
-                inv = s.get(Invoice, int(draft_id))
-                if not inv:
-                    draft_id = None
-            if not draft_id:
-                inv = Invoice(status=InvoiceStatus.DRAFT)
-
-            if state["customer_id"]:
-                inv.customer_id = int(state["customer_id"])
-            elif not inv.customer_id:
-                return None
-
-            inv.title = state["title"]
-            inv.date = state["date"]
-            inv.delivery_date = state["delivery_date"]
-            inv.total_brutto = 0
-
-            s.add(inv)
-            s.commit()
-            s.refresh(inv)
-
-            exist = s.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == inv.id)).all()
-            for x in exist:
-                s.delete(x)
-
-            for it in state["items"]:
-                s.add(InvoiceItem(
-                    invoice_id=inv.id,
-                    description=(it.get("desc") or ""),
-                    quantity=float(it.get("qty") or 0),
-                    unit_price=float(it.get("price") or 0),
-                ))
-
-            action = "INVOICE_UPDATED_DRAFT" if draft_id else "INVOICE_CREATED_DRAFT"
-            log_audit_action(s, action, invoice_id=inv.id)
-            s.commit()
-
-            if not draft_id:
-                draft_id = int(inv.id)
-                app.storage.user["invoice_draft_id"] = int(inv.id)
-
-        return int(draft_id) if draft_id else None
-
-    def on_autosave():
-        save_draft()
-
-    def autosave_tick():
-        if autosave_state["dirty"] and not autosave_state["saving"]:
-            if time.monotonic() - autosave_state["last_change"] >= 3.0:
-                autosave_state["saving"] = True
-                on_autosave()
-                autosave_state["dirty"] = False
-                autosave_state["saving"] = False
-
-    def on_finalize():
-        if not state["customer_id"]:
-            ui.notify("Kunde fehlt", color="red")
+        if not pdf_bytes:
+            el.set_content("<div class='text-sm text-gray-500'>Keine Vorschau verfügbar.</div>")
             return
 
-        with get_session() as s:
-            with s.begin():
-                finalize_invoice_logic(
-                    s,
-                    comp.id,
-                    int(state["customer_id"]),
-                    state["title"],
-                    state["date"],
-                    state["delivery_date"],
-                    recipient_defaults,
-                    state["items"],
-                    ust_switch.value if ust_switch else True,
-                )
+        b64 = base64.b64encode(pdf_bytes).decode("ascii")
+        el.set_content(
+            f"<iframe src='data:application/pdf;base64,{b64}' "
+            f"style='width:100%;height:78vh;border:0;'></iframe>"
+        )
 
-        ui.notify("Erstellt", color="green")
-        app.storage.user["invoice_draft_id"] = None
-        app.storage.user["page"] = "invoices"
-        ui.navigate.to("/")
+    with ui.row().classes("w-full gap-6"):
+        with ui.column().classes("w-full md:w-1/2 gap-4"):
+            with ui.card().classes("w-full p-4"):
+                ui.label("Stammdaten").classes("text-lg font-semibold mb-2")
 
-    def on_save_draft():
-        if not state["customer_id"]:
-            ui.notify("Kunde fehlt", color="red")
-            return
-        save_draft()
-        ui.notify("Gespeichert", color="green")
-        app.storage.user["page"] = "invoices"
-        ui.navigate.to("/")
+                sel = ui.select({c.id: c.name for c in customers}, label="Kunde", value=store.get("customer_id")).classes("w-full")
 
-    ui.timer(0.1, debounce_preview)
-    ui.timer(3.0, autosave_tick)
+                def on_customer_change(e: Any) -> None:
+                    store["customer_id"] = sel.value
+                    refresh_preview()
 
-    sticky_header(
-        "Rechnungs-Editor",
-        on_cancel=lambda: (app.storage.user.__setitem__("page", "invoices"), ui.navigate.to("/")),
-        on_save=on_save_draft,
-        on_finalize=on_finalize,
-    )
+                sel.on_value_change(on_customer_change)
 
-    with ui.column().classes("w-full h-[calc(100vh-64px)] p-0 m-0"):
-        with ui.grid().classes("w-full flex-grow grid-cols-1 md:grid-cols-2"):
-            # Left side
-            with ui.column().classes("w-full p-4 gap-4 h-full overflow-y-auto"):
-                with ui.card().classes(C_CARD + " p-4 w-full"):
-                    ui.label("Kopfdaten").classes(C_SECTION_TITLE)
+                title_in = ui.input("Titel", value=store.get("title", "Rechnung")).classes("w-full")
 
-                    cust_select = ui.select(
-                        cust_opts,
-                        label="Kunde",
-                        value=state["customer_id"],
-                        with_input=True,
-                    ).classes(C_INPUT)
+                def on_title_change(e: Any) -> None:
+                    store["title"] = title_in.value
+                    refresh_preview()
 
-                    def on_cust(value):
-                        state["customer_id"] = value
-                        mark_dirty()
-                        if value:
-                            with get_session() as s:
-                                c = s.get(Customer, int(value))
-                                if c:
-                                    recipient_defaults.update(
-                                        {
-                                            "name": c.recipient_name or c.display_name or "",
-                                            "street": c.recipient_street or c.strasse or "",
-                                            "zip": c.recipient_postal_code or c.plz or "",
-                                            "city": c.recipient_city or c.ort or "",
-                                        }
-                                    )
-                                else:
-                                    recipient_defaults.update({"name": "", "street": "", "zip": "", "city": ""})
-                        else:
-                            recipient_defaults.update({"name": "", "street": "", "zip": "", "city": ""})
-                        request_preview_update()
+                title_in.on_value_change(on_title_change)
 
-                    def on_cust_event(e):
-                        value = None
-                        if hasattr(e, "args") and isinstance(e.args, dict):
-                            value = e.args.get("value")
-                        elif hasattr(e, "value"):
-                            value = e.value
-                        on_cust(value)
+                _date_input_with_picker("Rechnungsdatum", "invoice_date", default_value=today, range_mode=False)
+                _date_input_with_picker("Leistungszeitraum", "service_period", default_value=today, range_mode=True)
 
-                    cust_select.on("update:model-value", on_cust_event)
+                ust_toggle = ui.switch("USt berechnen", value=bool(store.get("ust_enabled", True))).classes("mt-2")
 
-                    with ui.grid(columns=2).classes("w-full gap-2"):
-                        ui.input(
-                            "Titel",
-                            value=state["title"],
-                            on_change=lambda e: (state.update({"title": e.value}), mark_dirty(), request_preview_update()),
-                        ).classes(C_INPUT)
-                        ui.input(
-                            "Rechnung",
-                            value=state["date"],
-                            on_change=lambda e: (state.update({"date": e.value}), mark_dirty(), request_preview_update()),
-                        ).classes(C_INPUT)
-                        ui.input(
-                            "Lieferung",
-                            value=state["delivery_date"],
-                            on_change=lambda e: (state.update({"delivery_date": e.value}), mark_dirty(), request_preview_update()),
-                        ).classes(C_INPUT)
+                def on_ust_change(e: Any) -> None:
+                    store["ust_enabled"] = bool(ust_toggle.value)
+                    refresh_preview()
 
-                with ui.card().classes(C_CARD + " p-4 w-full"):
-                    with ui.row().classes("justify-between w-full"):
-                        ui.label("Posten").classes(C_SECTION_TITLE)
-                        ust_switch = ui.switch(
-                            "19% MwSt",
-                            value=state["ust"],
-                            on_change=lambda e: (state.update({"ust": e.value}), mark_dirty(), request_preview_update()),
-                        ).props("dense color=grey-8")
+                ust_toggle.on_value_change(on_ust_change)
 
-                    if template_items:
-                        item_template_select = ui.select(
-                            {str(t.id): t.title for t in template_items},
-                            label="Vorlage",
-                            with_input=True,
-                        ).classes(C_INPUT + " mb-2 dense")
+                if bool(getattr(comp, "is_small_business", False)):
+                    ust_toggle.disable()
+                    ui.label("Kleinunternehmer: USt wird automatisch nicht ausgewiesen.").classes("text-sm text-gray-500")
+
+            with ui.card().classes("w-full p-4"):
+                ui.label("Einleitungstext").classes("text-lg font-semibold mb-2")
+                intro_in = ui.textarea(value=str(store.get("intro_text") or DEFAULT_INTRO_TEXT)).props("autogrow").classes("w-full")
+
+                def on_intro_change(e: Any) -> None:
+                    store["intro_text"] = intro_in.value
+                    refresh_preview()
+
+                intro_in.on_value_change(on_intro_change)
+
+            with ui.card().classes("w-full p-4"):
+                with ui.row().classes("w-full items-center justify-between"):
+                    ui.label("Positionen").classes("text-lg font-semibold")
+                    add_btn = ui.button("Position hinzufügen").props("outline")
+
+                columns = [
+                    {"name": "description", "label": "Beschreibung", "field": "description", "align": "left"},
+                    {"name": "quantity", "label": "Menge", "field": "quantity", "align": "right"},
+                    {"name": "unit_price", "label": "Preis", "field": "unit_price", "align": "right"},
+                    {"name": "tax_rate", "label": "USt", "field": "tax_rate", "align": "right"},
+                ]
+                table = ui.table(columns=columns, rows=list(store.get("items") or [])).classes("w-full mt-3")
+
+                with ui.dialog() as add_item_dialog:
+                    with ui.card().classes("w-[min(680px,95vw)] p-4"):
+                        ui.label("Position").classes("text-lg font-semibold mb-2")
+                        desc_in = ui.textarea("Beschreibung").props("autogrow").classes("w-full")
+                        qty_in = ui.number("Menge", value=1, min=0, step=1).classes("w-full")
+                        price_in = ui.number("Einzelpreis", value=0, min=0, step=0.01).classes("w-full")
+
+                        default_tax = 0 if bool(getattr(comp, "is_small_business", False)) or not bool(store.get("ust_enabled", True)) else 19
+                        tax_in = ui.number("USt in %", value=default_tax, min=0, step=1).classes("w-full")
+
+                        with ui.row().classes("w-full justify-end gap-2 mt-4"):
+                            ui.button("Abbrechen", on_click=add_item_dialog.close).props("flat")
+
+                            def add_item() -> None:
+                                item = {
+                                    "description": desc_in.value or "",
+                                    "quantity": float(qty_in.value or 0),
+                                    "unit_price": float(price_in.value or 0),
+                                    "tax_rate": float(tax_in.value or 0),
+                                }
+                                store["items"] = [*list(store.get("items") or []), item]
+                                table.rows = list(store["items"])
+                                table.update()
+                                add_item_dialog.close()
+                                refresh_preview()
+
+                            ui.button("Hinzufügen", on_click=add_item).props("unelevated color=primary")
+
+                add_btn.on_click(add_item_dialog.open)
+
+                def finalize() -> None:
+                    cust = selected_customer()
+                    if not cust:
+                        ui.notify("Bitte einen Kunden wählen.", type="warning")
+                        return
+                    items = list(store.get("items") or [])
+                    if not items:
+                        ui.notify("Bitte mindestens eine Position hinzufügen.", type="warning")
+                        return
+
+                    inv_date = str(app.storage.user.get("invoice_date") or today)
+                    period_val = app.storage.user.get("service_period")
+                    period_display = _period_display(period_val)
+                    df, dt = _period_from_value(period_val)
+
+                    recipient = {
+                        "address_name": cust.name,
+                        "address_street": getattr(cust, "street", "") or "",
+                        "address_zip": getattr(cust, "zip", "") or "",
+                        "address_city": getattr(cust, "city", "") or "",
+                        "address_country": getattr(cust, "country", "") or "",
+                    }
+
+                    invoice_id = finalize_invoice_logic(
+                        session=session,
+                        comp_id=comp.id,
+                        cust_id=cust.id,
+                        title=str(store.get("title") or "Rechnung"),
+                        date_str=inv_date,
+                        delivery_str=period_display,
+                        recipient_data=recipient,
+                        items=items,
+                        ust_enabled=bool(store.get("ust_enabled", True)),
+                        intro_text=str(store.get("intro_text") or ""),
+                        service_from=df,
+                        service_to=dt,
+                    )
+
+                    inv = session.get(Invoice, invoice_id)
+                    if inv and getattr(inv, "pdf_bytes", None):
+                        ui.notify("Rechnung erstellt.", type="positive")
+                        ui.download(inv.pdf_bytes, filename=(getattr(inv, "invoice_number", "rechnung") + ".pdf"))
                     else:
-                        item_template_select = None
+                        ui.notify("Rechnung erstellt, PDF konnte nicht geladen werden.", type="warning")
 
-                    items_col = ui.column().classes("w-full gap-2")
+                    store["items"] = []
+                    table.rows = []
+                    table.update()
+                    refresh_preview()
 
-                    def render_list():
-                        items_col.clear()
-                        with items_col:
-                            for item in list(state["items"]):
-                                with ui.row().classes("w-full gap-1 items-start bg-slate-50 p-2 rounded border"):
-                                    ui.textarea(
-                                        value=item.get("desc", ""),
-                                        on_change=lambda e, i=item: (i.update({"desc": e.value}), mark_dirty(), request_preview_update()),
-                                    ).classes("flex-1 dense text-sm").props('rows=1 placeholder="Text" auto-grow')
+                ui.button("Rechnung finalisieren", on_click=finalize).props("unelevated color=primary").classes("mt-4")
 
-                                    with ui.column().classes("gap-1"):
-                                        ui.number(
-                                            value=item.get("qty", 0),
-                                            on_change=lambda e, i=item: (i.update({"qty": float(e.value or 0)}), mark_dirty(), request_preview_update()),
-                                        ).classes("w-16 dense")
-                                        ui.number(
-                                            value=item.get("price", 0),
-                                            on_change=lambda e, i=item: (i.update({"price": float(e.value or 0)}), mark_dirty(), request_preview_update()),
-                                        ).classes("w-20 dense")
-
-                                    ui.button(
-                                        icon="close",
-                                        on_click=lambda i=item: (state["items"].remove(i), mark_dirty(), render_list(), request_preview_update()),
-                                    ).classes("flat dense text-red")
-
-                    def add_new():
-                        state["items"].append({"desc": "", "qty": 1.0, "price": 0.0, "is_brutto": False})
-                        mark_dirty()
-                        render_list()
-                        request_preview_update()
-
-                    def add_tmpl():
-                        if not item_template_select or not item_template_select.value:
-                            return
-                        t = next((x for x in template_items if str(x.id) == str(item_template_select.value)), None)
-                        if t:
-                            state["items"].append({"desc": t.description, "qty": float(t.quantity or 0), "price": float(t.unit_price or 0), "is_brutto": False})
-                            mark_dirty()
-                            render_list()
-                            request_preview_update()
-                            item_template_select.value = None
-
-                    render_list()
-
-                    with ui.row().classes("gap-2 mt-2"):
-                        ui.button("Posten", icon="add", on_click=add_new).props("flat dense").classes("text-slate-600")
-                        if template_items:
-                            ui.button("Vorlage", icon="playlist_add", on_click=add_tmpl).props("flat dense").classes("text-slate-600")
-
-            # Right side (Preview)
-            with ui.column().classes("w-full h-full min-h-[70vh] bg-slate-200 p-0 m-0 overflow-hidden"):
-                preview_html = ui.html("", sanitize=False).classes("w-full h-full min-h-[70vh] bg-slate-300")
-
-    update_preview()
+        with ui.column().classes("w-full md:w-1/2"):
+            with ui.card().classes("w-full p-4"):
+                ui.label("Vorschau").classes("text-lg font-semibold mb-2")
+                preview = ui.html("<div class='text-sm text-gray-500'>Bitte Kunde wählen.</div>")
+                preview_holder["el"] = preview
+                refresh_preview()

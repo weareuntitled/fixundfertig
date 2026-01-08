@@ -6,8 +6,15 @@ from ._shared import *
 def render_dashboard(session, comp: Company) -> None:
     ui.label("Dashboard").classes(C_PAGE_TITLE + " mb-4")
 
-    invs = session.exec(select(Invoice)).all()
-    exps = session.exec(select(Expense)).all()
+    invs = session.exec(
+        select(Invoice)
+        .join(Customer, Invoice.customer_id == Customer.id)
+        .where(Customer.company_id == comp.id)
+    ).all()
+
+    exps = session.exec(
+        select(Expense).where(Expense.company_id == comp.id)
+    ).all()
 
     umsatz = sum(float(i.total_brutto or 0) for i in invs if i.status in (InvoiceStatus.PAID, InvoiceStatus.FINALIZED))
     kosten = sum(float(e.amount or 0) for e in exps)

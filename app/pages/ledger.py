@@ -15,56 +15,66 @@ def render_ledger(session, comp: Company) -> None:
         func.trim(func.coalesce(Customer.vorname, "") + literal(" ") + func.coalesce(Customer.nachname, "")),
     )
 
-    invoice_query = select(
-        Invoice.id.label("id"),
-        Invoice.date.label("date"),
-        Invoice.total_brutto.label("amount"),
-        literal("INCOME").label("type"),
-        case(
-            (Invoice.status == InvoiceStatus.DRAFT, "Draft"),
-            (Invoice.status == InvoiceStatus.OPEN, "Open"),
-            (Invoice.status == InvoiceStatus.SENT, "Sent"),
-            (Invoice.status == InvoiceStatus.PAID, "Paid"),
-            (Invoice.status == InvoiceStatus.FINALIZED, "Open"),
-            (Invoice.status == InvoiceStatus.CANCELLED, "Cancelled"),
-            else_="Overdue",
-        ).label("status"),
-        func.coalesce(customer_name, literal("?")).label("party"),
-        Invoice.title.label("description"),
-        Invoice.status.label("invoice_status"),
-        Invoice.id.label("invoice_id"),
-        literal(None).label("expense_id"),
-    ).select_from(Invoice).outerjoin(Customer, Invoice.customer_id == Customer.id)
+    invoice_query = (
+        select(
+            Invoice.id.label("id"),
+            Invoice.date.label("date"),
+            Invoice.total_brutto.label("amount"),
+            literal("INCOME").label("type"),
+            case(
+                (Invoice.status == InvoiceStatus.DRAFT, "Draft"),
+                (Invoice.status == InvoiceStatus.OPEN, "Open"),
+                (Invoice.status == InvoiceStatus.SENT, "Sent"),
+                (Invoice.status == InvoiceStatus.PAID, "Paid"),
+                (Invoice.status == InvoiceStatus.FINALIZED, "Open"),
+                (Invoice.status == InvoiceStatus.CANCELLED, "Cancelled"),
+                else_="Overdue",
+            ).label("status"),
+            func.coalesce(customer_name, literal("?")).label("party"),
+            Invoice.title.label("description"),
+            Invoice.status.label("invoice_status"),
+            Invoice.id.label("invoice_id"),
+            literal(None).label("expense_id"),
+        )
+        .select_from(Invoice)
+        .outerjoin(Customer, Invoice.customer_id == Customer.id)
+        .where(Customer.company_id == comp.id)
+    )
 
-    expense_query = select(
-        Expense.id.label("id"),
-        Expense.date.label("date"),
-        Expense.amount.label("amount"),
-        literal("EXPENSE").label("type"),
-        literal("Paid").label("status"),
-        func.coalesce(Expense.source, Expense.category, Expense.description, literal("-")).label("party"),
-        Expense.description.label("description"),
-        literal(None).label("invoice_status"),
-        literal(None).label("invoice_id"),
-        Expense.id.label("expense_id"),
+    expense_query = (
+        select(
+            Expense.id.label("id"),
+            Expense.date.label("date"),
+            Expense.amount.label("amount"),
+            literal("EXPENSE").label("type"),
+            literal("Paid").label("status"),
+            func.coalesce(Expense.source, Expense.category, Expense.description, literal("-")).label("party"),
+            Expense.description.label("description"),
+            literal(None).label("invoice_status"),
+            literal(None).label("invoice_id"),
+            Expense.id.label("expense_id"),
+        )
+        .where(Expense.company_id == comp.id)
     )
 
     rows = session.exec(union_all(invoice_query, expense_query)).all()
     items = []
     for row in rows:
         data = row._mapping if hasattr(row, "_mapping") else row
-        items.append({
-            "id": data["id"],
-            "date": data["date"],
-            "amount": float(data["amount"] or 0),
-            "type": data["type"],
-            "status": data["status"],
-            "party": data["party"],
-            "description": data["description"] or "",
-            "invoice_id": data["invoice_id"],
-            "expense_id": data["expense_id"],
-            "sort_date": parse_date(data["date"]),
-        })
+        items.append(
+            {
+                "id": data["id"],
+                "date": data["date"],
+                "amount": float(data["amount"] or 0),
+                "type": data["type"],
+                "status": data["status"],
+                "party": data["party"],
+                "description": data["description"] or "",
+                "invoice_id": data["invoice_id"],
+                "expense_id": data["expense_id"],
+                "sort_date": parse_date(data["date"]),
+            }
+        )
     items.sort(key=lambda x: x["sort_date"], reverse=True)
 
     state = {"type": "ALL", "status": "ALL", "date_from": "", "date_to": "", "search": ""}
