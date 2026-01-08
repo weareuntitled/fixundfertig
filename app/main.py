@@ -25,6 +25,7 @@ from pages import (
     render_ledger,
     render_exports,
 )
+import pages.auth_test
 
 
 def _format_nominatim_result(item: dict) -> dict:
