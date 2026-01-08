@@ -51,7 +51,7 @@ def _mask_token(token: str | None, visible: int = 4) -> str:
     return f"{token_str[:visible]}...{token_str[-visible:]}"
 
 
-def create_user_pending(email: str, username: str, password: str) -> tuple[User, str]:
+def create_user_pending(email: str, username: str, password: str) -> tuple[int, str, str]:
     email_normalized = (email or "").strip().lower()
     username_clean = (username or "").strip() or None
     if not email_normalized:
@@ -107,12 +107,12 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[User,
         token_str = token.token
         session.commit()
 
-    masked_token = _mask_token(token.token)
+    masked_token = _mask_token(token_str)
     try:
         send_email(
             email_normalized,
             "Verify your email",
-            f"Use this token to verify your email: {token.token}",
+            f"Use this token to verify your email: {token_str}",
         )
         logger.info(
             "create_user_pending.verify_email_sent",
@@ -212,11 +212,13 @@ def request_password_reset(identifier: str) -> bool:
         if user:
             token = _create_token(user, TokenPurpose.RESET_PASSWORD, RESET_TOKEN_TTL)
             session.add(token)
+            token_str = token.token
+            email_value = user.email
             session.commit()
             send_email(
-                user.email,
+                email_value,
                 "Reset your password",
-                f"Use this token to reset your password: {token.token}",
+                f"Use this token to reset your password: {token_str}",
             )
     return True
 
