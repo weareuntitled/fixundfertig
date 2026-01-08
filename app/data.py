@@ -214,7 +214,7 @@ def prevent_finalized_invoice_updates(session, flush_context, instances):
                 obj.status = InvoiceStatus.DRAFT
 
 def ensure_company_schema():
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
         if "user_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN user_id INTEGER")
@@ -300,7 +300,7 @@ def ensure_company_schema():
 ensure_company_schema()
 
 def ensure_customer_schema():
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(customer)").fetchall()}
         if "vat_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN vat_id TEXT DEFAULT ''")
@@ -324,7 +324,7 @@ def ensure_customer_schema():
 ensure_customer_schema()
 
 def ensure_invoice_schema():
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
         if "pdf_bytes" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_bytes BLOB")
@@ -351,7 +351,7 @@ def ensure_invoice_schema():
 ensure_invoice_schema()
 
 def ensure_invoice_revision_schema():
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.exec_driver_sql(
             "CREATE TABLE IF NOT EXISTS invoice_revision ("
             "invoice_id INTEGER NOT NULL,"
@@ -367,7 +367,7 @@ def ensure_invoice_revision_schema():
 ensure_invoice_revision_schema()
 
 def ensure_expense_schema():
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(expense)").fetchall()}
         if "source" not in columns:
             conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN source TEXT DEFAULT ''")
@@ -379,7 +379,7 @@ def ensure_expense_schema():
 ensure_expense_schema()
 
 def ensure_audit_log_schema():
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.exec_driver_sql(
             "CREATE TRIGGER IF NOT EXISTS auditlog_no_update "
             "BEFORE UPDATE ON auditlog "
