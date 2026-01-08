@@ -102,6 +102,9 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[User,
 
         token = _create_token(user, TokenPurpose.VERIFY_EMAIL, VERIFY_TOKEN_TTL)
         session.add(token)
+        user_id = user.id
+        email_value = user.email
+        token_str = token.token
         session.commit()
 
     masked_token = _mask_token(token.token)
@@ -144,7 +147,7 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[User,
         "create_user_pending.success",
         extra={"email": email_normalized, "token": masked_token},
     )
-    return user, token.token
+    return user_id, email_value, token_str
 
 
 def create_verify_email_token(user_id: int) -> str:
@@ -154,14 +157,16 @@ def create_verify_email_token(user_id: int) -> str:
             raise ValueError("User not found")
         token = _create_token(user, TokenPurpose.VERIFY_EMAIL, VERIFY_TOKEN_TTL)
         session.add(token)
+        email_value = user.email
+        token_str = token.token
         session.commit()
 
     send_email(
-        user.email,
+        email_value,
         "Verify your email",
-        f"Use this token to verify your email: {token.token}",
+        f"Use this token to verify your email: {token_str}",
     )
-    return token.token
+    return token_str
 
 
 def verify_email(token_str: str) -> bool:

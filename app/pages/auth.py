@@ -124,7 +124,7 @@ def signup_page():
             if not email or not password or (password and confirm != password):
                 return
             try:
-                create_user_pending(email, username, password)
+                _, _, _ = create_user_pending(email, username, password)
             except Exception as exc:
                 _set_error(status_error, str(exc))
                 return
