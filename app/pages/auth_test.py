@@ -21,12 +21,12 @@ def test_signup_page():
 
     def handle_signup() -> None:
         try:
-            user, token = create_user_pending(
+            user_id, email_value, token_str = create_user_pending(
                 email_input.value,
                 username_input.value,
                 password_input.value,
             )
-            result.text = f"Verification token: {token}"
+            result.text = f"Verification token for {email_value} (id {user_id}): {token_str}"
         except Exception as exc:
             result.text = f"Error: {exc}"
 
