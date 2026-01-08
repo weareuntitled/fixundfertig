@@ -1,9 +1,14 @@
+import hashlib
+import json
+import os
+import uuid
+import base64
+import secrets
+from datetime import datetime
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-import base64
-import hashlib
-import secrets
+
 from typing import Optional
 from passlib.context import CryptContext
 
@@ -12,6 +17,10 @@ from sqlmodel import Field, Session, SQLModel, select
 from data import engine
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+SQLModel.metadata.create_all(engine)
+
+DATA_PATH = "storage/auth_test.json"
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -33,7 +42,125 @@ class Token(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-SQLModel.metadata.create_all(engine)
+
+
+def _load_store() -> dict:
+    if not os.path.exists(DATA_PATH):
+        return {"users": {}, "verify_tokens": {}, "reset_tokens": {}, "sessions": {}}
+    with open(DATA_PATH, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _save_store(store: dict) -> None:
+    os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
+    tmp_path = f"{DATA_PATH}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(store, handle, indent=2, sort_keys=True)
+    os.replace(tmp_path, DATA_PATH)
+
+
+def _hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def create_user_pending(email: str, username: str, password: str) -> dict:
+    email_normalized = (email or "").strip().lower()
+    username_clean = (username or "").strip()
+    if not email_normalized:
+        raise ValueError("Email is required")
+    if not password:
+        raise ValueError("Password is required")
+
+    store = _load_store()
+    if email_normalized in store["users"]:
+        raise ValueError("User already exists")
+
+    user_id = uuid.uuid4().hex
+    store["users"][email_normalized] = {
+        "id": user_id,
+        "email": email_normalized,
+        "username": username_clean,
+        "password_hash": _hash_password(password),
+        "verified": False,
+    }
+    _save_store(store)
+    return store["users"][email_normalized]
+
+
+def create_verify_email_token(user_id: str) -> str:
+    store = _load_store()
+    target_email = None
+    for email, user in store["users"].items():
+        if user.get("id") == user_id:
+            target_email = email
+            break
+    if not target_email:
+        raise ValueError("User not found")
+
+    token = uuid.uuid4().hex
+    store["verify_tokens"][token] = target_email
+    _save_store(store)
+    return token
+
+
+def verify_email(token: str) -> bool:
+    store = _load_store()
+    email = store["verify_tokens"].pop(token, None)
+    if not email:
+        return False
+    user = store["users"].get(email)
+    if not user:
+        return False
+    user["verified"] = True
+    store["users"][email] = user
+    _save_store(store)
+    return True
+
+
+def verify_password(email: str, password: str) -> bool:
+    store = _load_store()
+    email_normalized = (email or "").strip().lower()
+    user = store["users"].get(email_normalized)
+    if not user:
+        return False
+    return user.get("password_hash") == _hash_password(password or "")
+
+
+def login_user(email: str) -> bool:
+    store = _load_store()
+    email_normalized = (email or "").strip().lower()
+    if email_normalized not in store["users"]:
+        return False
+    store.setdefault("sessions", {})
+    store["sessions"][email_normalized] = {"last_login": datetime.now().isoformat()}
+    _save_store(store)
+    return True
+
+
+def request_password_reset(email: str) -> str | None:
+    store = _load_store()
+    email_normalized = (email or "").strip().lower()
+    if email_normalized not in store["users"]:
+        return None
+    token = uuid.uuid4().hex
+    store["reset_tokens"][token] = email_normalized
+    _save_store(store)
+    return token
+
+
+def reset_password(token: str, new_password: str) -> bool:
+    store = _load_store()
+    email = store["reset_tokens"].pop(token, None)
+    if not email:
+        return False
+    user = store["users"].get(email)
+    if not user:
+        return False
+    user["password_hash"] = _hash_password(new_password or "")
+    store["users"][email] = user
+    _save_store(store)
+    return True
+
 
 
 def _utcnow() -> datetime:
