@@ -4,6 +4,7 @@ import secrets
 
 from ._shared import *
 from integrations.n8n_client import post_to_n8n
+from services.storage import company_logo_path, ensure_company_dirs
 
 # Auto generated page renderer
 
@@ -37,8 +38,8 @@ def render_settings(session, comp: Company) -> None:
         with settings_card("Logo Upload"):
 
             def on_up(e):
-                os.makedirs("./storage", exist_ok=True)
-                with open("./storage/logo.png", "wb") as f:
+                ensure_company_dirs(comp.id)
+                with open(company_logo_path(comp.id), "wb") as f:
                     f.write(e.content.read())
                 ui.notify("Hochgeladen", color="green")
 
