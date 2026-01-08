@@ -47,6 +47,11 @@ class Company(SQLModel, table=True):
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
 
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = ""
+    email: str = ""
+
 class Customer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     company_id: int = Field(foreign_key="company.id")
