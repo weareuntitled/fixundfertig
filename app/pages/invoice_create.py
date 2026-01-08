@@ -201,6 +201,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             "totals": {"net": net, "vat": vat, "gross": gross},
         }
 
+        preview_html = build_invoice_preview_html(invoice)
         try:
             pdf_b64 = render_invoice_to_pdf_base64(invoice, comp)
             preview_frame.props(f"src='data:application/pdf;base64,{pdf_b64}'")
