@@ -5,11 +5,13 @@ import base64
 import hashlib
 import secrets
 from typing import Optional
+from passlib.context import CryptContext
 
 from sqlmodel import Field, Session, SQLModel, select
 
 from data import engine
 
+_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -166,3 +168,17 @@ def reset_password(token_str: str, new_password: str) -> None:
         session.add(user)
         session.add(token)
         session.commit()
+
+
+
+
+
+def _ensure_min_length(plain: str) -> None:
+    if len(plain) < 10:
+        raise ValueError("Password must be at least 10 characters long.")
+
+
+
+def verify_password(plain: str, hash: str) -> bool:
+    _ensure_min_length(plain)
+    return _pwd_context.verify(plain, hash)
