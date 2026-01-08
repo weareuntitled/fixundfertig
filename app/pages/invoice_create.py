@@ -165,7 +165,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         with ui.column().classes("w-full md:flex-1"):
             with ui.card().classes("w-full p-4 md:sticky md:top-4"):
                 ui.label("Vorschau").classes("text-lg font-semibold mb-2")
-                preview_summary = ui.html("").classes("w-full mb-3")
+                preview_summary = ui.html("", sanitize=False).classes("w-full mb-3")
                 preview_frame = (
                     ui.element("iframe")
                     .props("style='width:100%;height:78vh;border:0;'")
