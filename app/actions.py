@@ -1,7 +1,7 @@
 from datetime import datetime
-from sqlmodel import Session, select
+from sqlmodel import select
 
-from data import Invoice, InvoiceItem, InvoiceStatus, engine, log_audit_action
+from data import Invoice, InvoiceItem, InvoiceStatus, get_session, log_audit_action
 
 STATUS_AUDIT_ACTIONS = {
     InvoiceStatus.SENT: "INVOICE_SENT",
@@ -31,7 +31,7 @@ def update_status_logic(session, invoice_id, target_status):
     return invoice, ""
 
 def create_correction(original_invoice_id, use_negative_items=True):
-    with Session(engine) as session:
+    with get_session() as session:
         original = session.get(Invoice, int(original_invoice_id))
         if not original:
             return None, "Rechnung nicht gefunden"
@@ -83,7 +83,7 @@ def create_correction(original_invoice_id, use_negative_items=True):
     return correction, ""
 
 def delete_draft(invoice_id):
-    with Session(engine) as session:
+    with get_session() as session:
         inv = session.get(Invoice, int(invoice_id))
         if not inv:
             return False, "Rechnung nicht gefunden"
@@ -98,7 +98,7 @@ def delete_draft(invoice_id):
     return True, ""
 
 def cancel_invoice(invoice_id):
-    with Session(engine) as session:
+    with get_session() as session:
         inv = session.get(Invoice, int(invoice_id))
         if not inv:
             return False, "Rechnung nicht gefunden"

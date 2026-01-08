@@ -1,5 +1,6 @@
 
 from sqlalchemy import event, inspect
+from sqlalchemy.orm import sessionmaker
 from typing import Optional, List
 from enum import Enum  # <--- WICHTIG: Das hat gefehlt!
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
@@ -172,13 +173,14 @@ class Expense(SQLModel, table=True):
 os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
+SessionLocal = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
 # TODO: Replace SQLModel.metadata.create_all with Alembic migrations when schema evolves.
 # For now this guarantees new tables (e.g., future auth_* tables) exist in SQLite.
 SQLModel.metadata.create_all(engine)
 
 @contextmanager
 def get_session():
-    with Session(engine) as session:
+    with SessionLocal() as session:
         yield session
 
 @event.listens_for(Session, "before_flush")

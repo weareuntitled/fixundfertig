@@ -1,12 +1,12 @@
-from sqlmodel import Session, select
+from sqlmodel import select
 
-from data import Company, Customer, Invoice, InvoiceItem, InvoiceStatus, engine
+from data import Company, Customer, Invoice, InvoiceItem, InvoiceStatus, get_session
 from invoice_numbering import build_invoice_number
 
 
 # Deprecated: This service is currently unused; keep for backward compatibility.
 def finalize_invoice_transaction(company_id, customer_id, invoice_date, total_brutto, items, apply_ustg19, pdf_generator, template_name='', intro_text=''):
-    with Session(engine) as inner:
+    with get_session() as inner:
         with inner.begin():
             company = inner.exec(
                 select(Company).where(Company.id == company_id).with_for_update()
