@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import logging
 
 from nicegui import app, ui
 
@@ -16,6 +17,7 @@ from styles import C_BG, C_BTN_PRIM, C_CARD, C_CONTAINER, C_INPUT, C_PAGE_TITLE
 
 ERROR_TEXT = "text-sm text-rose-600"
 LINK_TEXT = "text-sm text-blue-600 hover:text-blue-700"
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -48,6 +50,15 @@ def _show_success(card: ui.column, message: str, link_text: str | None = None, l
         ui.label(message).classes("text-sm text-slate-600")
         if link_text and link_href:
             ui.link(link_text, link_href).classes(LINK_TEXT)
+
+
+def _mask_token_prefix(token: str | None, visible: int = 6) -> str:
+    if not token:
+        return ""
+    token_str = str(token)
+    if len(token_str) <= visible:
+        return "***"
+    return f"{token_str[:visible]}..."
 
 
 @ui.page("/login")
@@ -124,10 +135,27 @@ def signup_page():
             if not email or not password or (password and confirm != password):
                 return
             try:
-                _, _, _ = create_user_pending(email, username, password)
+                _, _, token = create_user_pending(email, username, password)
             except Exception as exc:
+                logger.warning(
+                    "signup.failed",
+                    exc_info=exc,
+                    extra={
+                        "email": email,
+                        "username": username or None,
+                        "token": _mask_token_prefix(None),
+                    },
+                )
                 _set_error(status_error, str(exc))
                 return
+            logger.info(
+                "signup.success",
+                extra={
+                    "email": email,
+                    "username": username or None,
+                    "token": _mask_token_prefix(token),
+                },
+            )
             _show_success(card, "Account created. Please check your email to verify your account.", "Go to login", "/login")
 
         ui.button("Create account", on_click=handle_signup).classes(C_BTN_PRIM + " w-full")
