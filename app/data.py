@@ -172,6 +172,8 @@ class Expense(SQLModel, table=True):
 os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
+# TODO: Replace SQLModel.metadata.create_all with Alembic migrations when schema evolves.
+# For now this guarantees new tables (e.g., future auth_* tables) exist in SQLite.
 SQLModel.metadata.create_all(engine)
 
 @contextmanager
