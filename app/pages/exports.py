@@ -10,7 +10,7 @@ def render_exports(session, comp: Company) -> None:
         ui.notify("Wird vorbereitet…")
         try:
             with get_session() as s:
-                path = action(s)
+                path = action(s, comp.id)
             if path and os.path.exists(path):
                 ui.download(path)
                 ui.notify(f"{label} bereit", color="green")
