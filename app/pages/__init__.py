@@ -14,4 +14,4 @@ from .ledger import render_ledger
 from .settings import render_settings
 
 # Import routes for side effects. Registers @ui.page decorators
-
+from . import auth
