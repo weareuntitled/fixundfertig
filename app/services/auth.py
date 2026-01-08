@@ -67,6 +67,18 @@ def _mask_token(token: str | None, visible: int = 4) -> str:
     return f"{token_str[:visible]}...{token_str[-visible:]}"
 
 
+def _app_base_url() -> str:
+    return os.getenv("APP_BASE_URL", "http://localhost:8080").rstrip("/")
+
+
+def _build_verify_link(token: str) -> str:
+    return f"{_app_base_url()}/verify?token={token}"
+
+
+def _build_reset_link(token: str) -> str:
+    return f"{_app_base_url()}/reset?token={token}"
+
+
 def _send_welcome_email(email_normalized: str) -> None:
     try:
         send_email(
@@ -161,11 +173,21 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[int, 
 
     masked_token = _mask_token(token_str)
     if verification_required and token_str:
+        verify_link = _build_verify_link(token_str)
         try:
             send_email(
                 email_normalized,
                 "Verify your email",
-                f"Use this token to verify your email: {token_str}",
+                (
+                    "Verify your email using this link:\n"
+                    f"{verify_link}\n\n"
+                    f"If the link does not work, use this token: {token_str}"
+                ),
+                (
+                    "<p>Verify your email using this link:</p>"
+                    f"<p><a href=\"{verify_link}\">{verify_link}</a></p>"
+                    f"<p>If the link does not work, use this token: <code>{token_str}</code></p>"
+                ),
             )
             logger.info(
                 "create_user_pending.verify_email_sent",
@@ -198,10 +220,20 @@ def create_verify_email_token(user_id: int) -> str:
         token_str = token.token
         session.commit()
 
+    verify_link = _build_verify_link(token_str)
     send_email(
         email_value,
         "Verify your email",
-        f"Use this token to verify your email: {token_str}",
+        (
+            "Verify your email using this link:\n"
+            f"{verify_link}\n\n"
+            f"If the link does not work, use this token: {token_str}"
+        ),
+        (
+            "<p>Verify your email using this link:</p>"
+            f"<p><a href=\"{verify_link}\">{verify_link}</a></p>"
+            f"<p>If the link does not work, use this token: <code>{token_str}</code></p>"
+        ),
     )
     return token_str
 
@@ -254,10 +286,20 @@ def request_password_reset(identifier: str) -> bool:
             token_str = token.token
             email_value = user.email
             session.commit()
+            reset_link = _build_reset_link(token_str)
             send_email(
                 email_value,
                 "Reset your password",
-                f"Use this token to reset your password: {token_str}",
+                (
+                    "Reset your password using this link:\n"
+                    f"{reset_link}\n\n"
+                    f"If the link does not work, use this token: {token_str}"
+                ),
+                (
+                    "<p>Reset your password using this link:</p>"
+                    f"<p><a href=\"{reset_link}\">{reset_link}</a></p>"
+                    f"<p>If the link does not work, use this token: <code>{token_str}</code></p>"
+                ),
             )
     return True
 
