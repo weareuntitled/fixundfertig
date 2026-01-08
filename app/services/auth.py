@@ -39,7 +39,7 @@ def _create_token(user: User, purpose: TokenPurpose, expires_in: timedelta) -> T
     return token
 
 
-def create_user_pending(email: str, username: str, password: str) -> tuple[User, str]:
+def create_user_pending(email: str, username: str, password: str) -> tuple[int, str, str]:
     email_normalized = (email or "").strip().lower()
     username_clean = (username or "").strip() or None
     if not email_normalized:
@@ -70,14 +70,17 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[User,
 
         token = _create_token(user, TokenPurpose.VERIFY_EMAIL, VERIFY_TOKEN_TTL)
         session.add(token)
+        user_id = user.id
+        email_value = user.email
+        token_str = token.token
         session.commit()
 
     send_email(
-        email_normalized,
+        email_value,
         "Verify your email",
-        f"Use this token to verify your email: {token.token}",
+        f"Use this token to verify your email: {token_str}",
     )
-    return user, token.token
+    return user_id, email_value, token_str
 
 
 def create_verify_email_token(user_id: int) -> str:
@@ -87,14 +90,16 @@ def create_verify_email_token(user_id: int) -> str:
             raise ValueError("User not found")
         token = _create_token(user, TokenPurpose.VERIFY_EMAIL, VERIFY_TOKEN_TTL)
         session.add(token)
+        email_value = user.email
+        token_str = token.token
         session.commit()
 
     send_email(
-        user.email,
+        email_value,
         "Verify your email",
-        f"Use this token to verify your email: {token.token}",
+        f"Use this token to verify your email: {token_str}",
     )
-    return token.token
+    return token_str
 
 
 def verify_email(token_str: str) -> bool:
