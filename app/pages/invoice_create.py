@@ -7,6 +7,8 @@ from nicegui import ui
 
 from renderer import render_invoice_to_pdf_base64
 
+from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
+
 
 def _get(obj: Any, *names: str, default: Any = "") -> Any:
     if obj is None:
@@ -98,7 +100,9 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 service_picker.on("update:modelValue", _service_changed)
 
                 # FIX: use switch (boolean), NOT ui.toggle (choice)
-                vat_switch = ui.switch("USt berechnen", value=False).props("disable").classes("mt-2")
+                vat_switch = ui.switch("USt berechnen", value=False).classes("mt-2")
+                if getattr(comp, "is_small_business", False):
+                    vat_switch.props("disable")
                 ui.label("Kleinunternehmer: USt wird automatisch nicht ausgewiesen.").classes("text-sm text-gray-500")
 
             with ui.card().classes("w-full p-4"):
@@ -161,7 +165,12 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         with ui.column().classes("w-full md:flex-1"):
             with ui.card().classes("w-full p-4 md:sticky md:top-4"):
                 ui.label("Vorschau").classes("text-lg font-semibold mb-2")
-                preview = ui.html("", sanitize=False).classes("w-full")
+                preview_summary = ui.html("", sanitize=True).classes("w-full mb-3")
+                preview_frame = (
+                    ui.element("iframe")
+                    .props("style='width:100%;height:78vh;border:0;'")
+                    .classes("w-full")
+                )
 
     def _current_customer_obj() -> Any:
         idx = customer_select.value
@@ -173,31 +182,39 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             return None
 
     def update_preview() -> None:
+        vat_enabled = bool(vat_switch.value)
+        vat_rate = max((float(_get(it, "tax_rate", default=0) or 0) for it in items), default=0.0)
+        net, vat, gross = compute_invoice_totals(items, vat_enabled, vat_rate)
+
         invoice = {
             "title": title_input.value or "Rechnung",
+            "invoice_number": f"INV-{invoice_date_input.value}",
             "invoice_date": invoice_date_input.value,
             "service_from": service_from,
             "service_to": service_to,
             "intro_text": intro_input.value or "",
             "customer": _current_customer_obj(),
             "items": items,
-            "show_tax": False,  # kleinunternehmer
+            "show_tax": vat_enabled,
+            "tax_rate": vat_rate,
             "kleinunternehmer_note": "Als Kleinunternehmer im Sinne von § 19 UStG wird keine Umsatzsteuer berechnet.",
+            "totals": {"net": net, "vat": vat, "gross": gross},
         }
 
         try:
             pdf_b64 = render_invoice_to_pdf_base64(invoice, comp)
-            preview.content = (
-                "<iframe "
-                f"src='data:application/pdf;base64,{pdf_b64}' "
-                "style='width:100%;height:78vh;border:0;'"
-                "></iframe>"
-            )
+            preview_frame.props(f"src='data:application/pdf;base64,{pdf_b64}'")
+            preview_summary.content = build_invoice_preview_html(invoice)
         except Exception as ex:
-            preview.content = f"<div class='text-red-600'>PDF Fehler: {ex}</div>"
+            preview_frame.props("src=''")
+            preview_summary.content = (
+                "<div class='text-red-600'>PDF Fehler: "
+                f"{ex}</div>{build_invoice_preview_html(invoice)}"
+            )
 
     customer_select.on("update:modelValue", lambda e: update_preview())
     title_input.on("update:value", lambda e: update_preview())
     intro_input.on("update:value", lambda e: update_preview())
+    vat_switch.on("update:modelValue", lambda e: update_preview())
 
     update_preview()
