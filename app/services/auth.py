@@ -5,6 +5,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta
+from threading import Thread
 
 from sqlmodel import select
 
@@ -49,6 +50,39 @@ def _mask_token(token: str | None, visible: int = 4) -> str:
     if len(token_str) <= visible * 2:
         return "***"
     return f"{token_str[:visible]}...{token_str[-visible:]}"
+
+
+def _send_welcome_email(email_normalized: str) -> None:
+    try:
+        send_email(
+            email_normalized,
+            "Welcome!",
+            "Welcome to Fix & Fertig! Your account has been created.",
+        )
+        logger.info(
+            "create_user_pending.welcome_email_sent",
+            extra={"email": email_normalized},
+        )
+    except Exception as exc:
+        logger.error(
+            "create_user_pending.welcome_email_failed",
+            exc_info=exc,
+            extra={"email": email_normalized},
+        )
+
+
+def _dispatch_welcome_email(email_normalized: str) -> None:
+    if os.getenv("SEND_WELCOME_EMAIL") != "1":
+        return
+    Thread(
+        target=_send_welcome_email,
+        args=(email_normalized,),
+        daemon=True,
+    ).start()
+    logger.info(
+        "create_user_pending.welcome_email_queued",
+        extra={"email": email_normalized},
+    )
 
 
 def create_user_pending(email: str, username: str, password: str) -> tuple[User, str]:
@@ -125,23 +159,7 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[User,
             extra={"email": email_normalized, "token": masked_token},
         )
 
-    if os.getenv("SEND_WELCOME_EMAIL") == "1":
-        try:
-            send_email(
-                email_normalized,
-                "Welcome!",
-                "Welcome to Fix & Fertig! Your account has been created.",
-            )
-            logger.info(
-                "create_user_pending.welcome_email_sent",
-                extra={"email": email_normalized},
-            )
-        except Exception as exc:
-            logger.error(
-                "create_user_pending.welcome_email_failed",
-                exc_info=exc,
-                extra={"email": email_normalized},
-            )
+    _dispatch_welcome_email(email_normalized)
 
     logger.info(
         "create_user_pending.success",
