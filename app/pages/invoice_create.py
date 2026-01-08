@@ -161,7 +161,12 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         with ui.column().classes("w-full md:flex-1"):
             with ui.card().classes("w-full p-4 md:sticky md:top-4"):
                 ui.label("Vorschau").classes("text-lg font-semibold mb-2")
-                preview = ui.html("", sanitize=False).classes("w-full")
+                preview = (
+                    ui.element("iframe")
+                    .classes("w-full")
+                    .props('style="width:100%;height:78vh;border:0;" src="about:blank"')
+                )
+                preview_error = ui.label("").classes("text-red-600 mt-2")
 
     def _current_customer_obj() -> Any:
         idx = customer_select.value
@@ -187,14 +192,11 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
         try:
             pdf_b64 = render_invoice_to_pdf_base64(invoice, comp)
-            preview.content = (
-                "<iframe "
-                f"src='data:application/pdf;base64,{pdf_b64}' "
-                "style='width:100%;height:78vh;border:0;'"
-                "></iframe>"
-            )
+            preview.props(f'src="data:application/pdf;base64,{pdf_b64}"')
+            preview_error.text = ""
         except Exception as ex:
-            preview.content = f"<div class='text-red-600'>PDF Fehler: {ex}</div>"
+            preview.props('src="about:blank"')
+            preview_error.text = f"PDF Fehler: {ex}"
 
     customer_select.on("update:modelValue", lambda e: update_preview())
     title_input.on("update:value", lambda e: update_preview())
