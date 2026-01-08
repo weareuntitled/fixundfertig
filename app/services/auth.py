@@ -39,6 +39,10 @@ def create_user_pending(email: str, username: str, password: str) -> dict:
     store = _load_store()
     if email_normalized in store["users"]:
         raise ValueError("User already exists")
+    if username_clean:
+        for user in store["users"].values():
+            if (user.get("username") or "").strip().lower() == username_clean.lower():
+                raise ValueError("Username already exists")
 
     user_id = uuid.uuid4().hex
     store["users"][email_normalized] = {
@@ -84,8 +88,7 @@ def verify_email(token: str) -> bool:
 
 def verify_password(email: str, password: str) -> bool:
     store = _load_store()
-    email_normalized = (email or "").strip().lower()
-    user = store["users"].get(email_normalized)
+    user, _ = _find_user_by_identifier(store, email)
     if not user:
         return False
     return user.get("password_hash") == _hash_password(password or "")
@@ -93,8 +96,8 @@ def verify_password(email: str, password: str) -> bool:
 
 def login_user(email: str) -> bool:
     store = _load_store()
-    email_normalized = (email or "").strip().lower()
-    if email_normalized not in store["users"]:
+    user, email_normalized = _find_user_by_identifier(store, email)
+    if not user or not email_normalized:
         return False
     store.setdefault("sessions", {})
     store["sessions"][email_normalized] = {"last_login": datetime.now().isoformat()}
@@ -125,3 +128,15 @@ def reset_password(token: str, new_password: str) -> bool:
     store["users"][email] = user
     _save_store(store)
     return True
+
+
+def _find_user_by_identifier(store: dict, identifier: str) -> tuple[dict | None, str | None]:
+    identifier_clean = (identifier or "").strip().lower()
+    if not identifier_clean:
+        return None, None
+    if identifier_clean in store["users"]:
+        return store["users"][identifier_clean], identifier_clean
+    for email, user in store["users"].items():
+        if (user.get("username") or "").strip().lower() == identifier_clean:
+            return user, email
+    return None, None
