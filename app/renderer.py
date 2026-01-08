@@ -1,8 +1,8 @@
 from fpdf import FPDF
 import os
 from pathlib import Path
-from sqlmodel import Session, select
-from data import Company, Customer, Invoice, InvoiceItem, engine
+from sqlmodel import select
+from data import Company, Customer, Invoice, InvoiceItem, get_session
 
 
 def _sanitize_pdf_text(value: str) -> str:
@@ -57,7 +57,7 @@ class PDFInvoice(FPDF):
 
 def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
     # Daten laden
-    with Session(engine) as session:
+    with get_session() as session:
         company = session.exec(select(Company)).first() or Company()
         customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
     return company, customer
@@ -65,7 +65,7 @@ def render_invoice_to_pdf_bytes(invoice: Invoice) -> bytes:
 
 def _load_company_customer(invoice: Invoice):
     # Daten laden
-    with Session(engine) as session:
+    with get_session() as session:
         company = session.exec(select(Company)).first() or Company()
         customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
     return company, customer
@@ -77,7 +77,7 @@ def _collect_line_items(invoice: Invoice):
         return preview_items
     if not invoice.id:
         return []
-    with Session(engine) as session:
+    with get_session() as session:
         return session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)).all()
 
 
