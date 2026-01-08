@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from sqlmodel import select
 from data import Company, Customer, Invoice, InvoiceItem, get_session
+from services.storage import company_logo_path
 
 
 def _sanitize_pdf_text(value: str) -> str:
@@ -24,19 +25,23 @@ class PDFInvoice(FPDF):
 
     def header(self):
         # Logo Check
-        logo_path = "./storage/logo.png"
-        if os.path.exists(logo_path):
-            try:
-                # x=20 (links), y=15, w=35mm
-                self.image(logo_path, x=20, y=15, w=35)
-            except:
-                pass # Falls Bild defekt, ignorieren
-        else:
-            # Fallback: Firmenname groß
-            if self.company:
-                self.set_font("DejaVu", size=14, style="B")
-                self.set_xy(20, 20)
-                self.multi_cell(80, 8, self.company.name, align="L")
+        logo_candidates = []
+        if self.company and getattr(self.company, "id", None):
+            logo_candidates.append(company_logo_path(self.company.id))
+        logo_candidates.append("./storage/logo.png")
+        for logo_path in logo_candidates:
+            if os.path.exists(logo_path):
+                try:
+                    # x=20 (links), y=15, w=35mm
+                    self.image(logo_path, x=20, y=15, w=35)
+                    return
+                except:
+                    pass # Falls Bild defekt, ignorieren
+        # Fallback: Firmenname groß
+        if self.company:
+            self.set_font("DejaVu", size=14, style="B")
+            self.set_xy(20, 20)
+            self.multi_cell(80, 8, self.company.name, align="L")
 
     def footer(self):
         if not self.company: return

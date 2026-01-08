@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 from data import Invoice, InvoiceItem, Company, Customer, InvoiceStatus, AuditLog, log_audit_action
 from renderer import render_invoice_to_pdf_bytes
 from invoice_numbering import build_invoice_filename, build_invoice_number
+from services.storage import company_dir
 
 def calculate_totals(items, ust_enabled):
     netto = 0.0
@@ -95,8 +96,11 @@ def finalize_invoice_logic(session, comp_id, cust_id, title, date_str, delivery_
     
     return inv
 
-def _build_export_path(filename):
-    base_dir = "storage/exports"
+def _build_export_path(filename, company_id=None):
+    if company_id is None:
+        base_dir = "storage/exports"
+    else:
+        base_dir = os.path.join(company_dir(company_id), "exports")
     os.makedirs(base_dir, exist_ok=True)
     path = os.path.join(base_dir, filename)
     if os.path.exists(path):
@@ -154,19 +158,19 @@ def _ensure_invoice_pdf_path(session, invoice):
 def _log_export_created(session):
     session.add(AuditLog(action="EXPORT_CREATED", timestamp=datetime.now().isoformat()))
 
-def export_invoices_pdf_zip(session):
+def export_invoices_pdf_zip(session, company_id=None):
     invoices = session.exec(select(Invoice)).all()
     entries = []
     for inv in invoices:
         path = _ensure_invoice_pdf_path(session, inv)
         entries.append((path, os.path.basename(path)))
-    zip_path = _build_export_path("rechnungen_pdf.zip")
+    zip_path = _build_export_path("rechnungen_pdf.zip", company_id=company_id)
     _create_zip(zip_path, entries)
     _log_export_created(session)
     session.commit()
     return zip_path
 
-def export_invoices_csv(session):
+def export_invoices_csv(session, company_id=None):
     invoices = session.exec(select(Invoice)).all()
     headers = [
         "id", "nr", "titel", "datum", "lieferdatum",
@@ -179,26 +183,26 @@ def export_invoices_csv(session):
         ]
         for inv in invoices
     ]
-    csv_path = _build_export_path("rechnungen.csv")
+    csv_path = _build_export_path("rechnungen.csv", company_id=company_id)
     _write_csv(csv_path, headers, rows)
     _log_export_created(session)
     session.commit()
     return csv_path
 
-def export_invoice_items_csv(session):
+def export_invoice_items_csv(session, company_id=None):
     items = session.exec(select(InvoiceItem)).all()
     headers = ["id", "rechnung_id", "beschreibung", "menge", "preis"]
     rows = [
         [item.id, item.invoice_id, item.description, item.quantity, item.unit_price]
         for item in items
     ]
-    csv_path = _build_export_path("positionen.csv")
+    csv_path = _build_export_path("positionen.csv", company_id=company_id)
     _write_csv(csv_path, headers, rows)
     _log_export_created(session)
     session.commit()
     return csv_path
 
-def export_customers_csv(session):
+def export_customers_csv(session, company_id=None):
     customers = session.exec(select(Customer)).all()
     headers = [
         "id", "kdnr", "name", "vorname", "nachname", "email",
@@ -211,15 +215,15 @@ def export_customers_csv(session):
         ]
         for c in customers
     ]
-    csv_path = _build_export_path("kunden.csv")
+    csv_path = _build_export_path("kunden.csv", company_id=company_id)
     _write_csv(csv_path, headers, rows)
     _log_export_created(session)
     session.commit()
     return csv_path
 
-def export_database_backup(session):
+def export_database_backup(session, company_id=None):
     db_path = "storage/database.db"
-    backup_path = _build_export_path("database_backup.db")
+    backup_path = _build_export_path("database_backup.db", company_id=company_id)
     if os.path.exists(db_path):
         shutil.copy2(db_path, backup_path)
     else:

@@ -28,6 +28,7 @@ from data import (
 
 from renderer import render_invoice_to_pdf_bytes
 from actions import cancel_invoice, create_correction, delete_draft, update_status_logic
+from services.storage import company_logo_path, ensure_company_dirs
 
 from styles import (
     C_CARD,
@@ -1277,7 +1278,7 @@ def render_exports(session, comp: Company) -> None:
         ui.notify("Wird vorbereitet…")
         try:
             with get_session() as s:
-                path = action(s)
+                path = action(s, comp.id)
             if path and os.path.exists(path):
                 ui.download(path)
                 ui.notify(f"{label} bereit", color="green")
@@ -1314,8 +1315,8 @@ def render_settings(session, comp: Company) -> None:
         ui.label("Logo").classes(C_SECTION_TITLE)
 
         def on_up(e):
-            os.makedirs("./storage", exist_ok=True)
-            with open("./storage/logo.png", "wb") as f:
+            ensure_company_dirs(comp.id)
+            with open(company_logo_path(comp.id), "wb") as f:
                 f.write(e.content.read())
             ui.notify("Hochgeladen", color="green")
 
@@ -1747,4 +1748,3 @@ def render_expenses(session, comp: Company) -> None:
                         ui.button(icon="delete", on_click=lambda _, x=it: open_delete(x)).props("flat dense").classes("text-rose-600")
 
     render_list()
-
