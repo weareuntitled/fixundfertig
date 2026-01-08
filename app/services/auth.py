@@ -21,6 +21,21 @@ def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
+def _email_verification_required() -> bool:
+    explicit_setting = os.getenv("REQUIRE_EMAIL_VERIFICATION")
+    if explicit_setting is not None:
+        return explicit_setting == "1"
+    return all(
+        os.getenv(name)
+        for name in (
+            "SMTP_HOST",
+            "SMTP_PORT",
+            "SMTP_USER",
+            "SMTP_PASS",
+        )
+    )
+
+
 def _get_user_by_identifier(session, identifier: str | None) -> User | None:
     lookup = (identifier or "").strip().lower()
     if not lookup:
@@ -85,7 +100,7 @@ def _dispatch_welcome_email(email_normalized: str) -> None:
     )
 
 
-def create_user_pending(email: str, username: str, password: str) -> tuple[User, str]:
+def create_user_pending(email: str, username: str, password: str) -> tuple[int, str, str | None]:
     email_normalized = (email or "").strip().lower()
     username_clean = (username or "").strip() or None
     if not email_normalized:
@@ -105,6 +120,7 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[User,
         "create_user_pending.start",
         extra={"email": email_normalized, "username": username_clean},
     )
+    verification_required = _email_verification_required()
     with get_session() as session:
         existing = session.exec(select(User).where(User.email == email_normalized)).first()
         if existing:
@@ -129,35 +145,38 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[User,
             username=username_clean,
             password_hash=_hash_password(password),
             is_active=False,
-            is_email_verified=False,
+            is_email_verified=not verification_required,
         )
         session.add(user)
         session.flush()
 
-        token = _create_token(user, TokenPurpose.VERIFY_EMAIL, VERIFY_TOKEN_TTL)
-        session.add(token)
         user_id = user.id
         email_value = user.email
-        token_str = token.token
+        token_str = None
+        if verification_required:
+            token = _create_token(user, TokenPurpose.VERIFY_EMAIL, VERIFY_TOKEN_TTL)
+            session.add(token)
+            token_str = token.token
         session.commit()
 
     masked_token = _mask_token(token_str)
-    try:
-        send_email(
-            email_normalized,
-            "Verify your email",
-            f"Use this token to verify your email: {token_str}",
-        )
-        logger.info(
-            "create_user_pending.verify_email_sent",
-            extra={"email": email_normalized, "token": masked_token},
-        )
-    except Exception as exc:
-        logger.error(
-            "create_user_pending.verify_email_failed",
-            exc_info=exc,
-            extra={"email": email_normalized, "token": masked_token},
-        )
+    if verification_required and token_str:
+        try:
+            send_email(
+                email_normalized,
+                "Verify your email",
+                f"Use this token to verify your email: {token_str}",
+            )
+            logger.info(
+                "create_user_pending.verify_email_sent",
+                extra={"email": email_normalized, "token": masked_token},
+            )
+        except Exception as exc:
+            logger.error(
+                "create_user_pending.verify_email_failed",
+                exc_info=exc,
+                extra={"email": email_normalized, "token": masked_token},
+            )
 
     _dispatch_welcome_email(email_normalized)
 

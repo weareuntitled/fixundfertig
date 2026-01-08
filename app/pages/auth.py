@@ -156,7 +156,11 @@ def signup_page():
                     "token": _mask_token_prefix(token),
                 },
             )
-            _show_success(card, "Account created. Please check your email to verify your account.", "Go to login", "/login")
+            if token:
+                message = "Account created. Please check your email to verify your account."
+            else:
+                message = "Account created. You can now log in."
+            _show_success(card, message, "Go to login", "/login")
 
         ui.button("Create account", on_click=handle_signup).classes(C_BTN_PRIM + " w-full")
         with ui.row().classes("w-full justify-between"):

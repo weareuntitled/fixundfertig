@@ -7,7 +7,7 @@ from email.message import EmailMessage
 logger = logging.getLogger(__name__)
 
 
-def _load_smtp_config() -> dict:
+def _load_smtp_config() -> dict | None:
     host = os.getenv("SMTP_HOST")
     port = os.getenv("SMTP_PORT")
     user = os.getenv("SMTP_USER")
@@ -24,7 +24,7 @@ def _load_smtp_config() -> dict:
         if not value
     ]
     if missing:
-        raise ValueError(f"Missing SMTP configuration: {', '.join(missing)}")
+        return None
     try:
         port_value = int(port)
     except ValueError as exc:
@@ -42,6 +42,13 @@ def _load_smtp_config() -> dict:
 
 def send_email(to, subject, text, html=None) -> bool:
     config = _load_smtp_config()
+    if not config:
+        logger.warning(
+            "SMTP configuration is missing; skipping email to=%s subject=%s",
+            to,
+            subject,
+        )
+        return False
 
     if not to:
         raise ValueError("Recipient address is required")
