@@ -138,19 +138,6 @@ def layout_wrapper(content_func):
                     ui.button("Logout", on_click=handle_logout).props("flat").classes("text-slate-500 hover:text-slate-900")
                 content_func()
 
-@ui.page("/login")
-def login_page():
-    with ui.column().classes("min-h-screen items-center justify-center gap-4"):
-        ui.label("FixundFertig Login").classes("text-2xl font-bold text-slate-900")
-        email_input = ui.input("Email").classes("w-80")
-
-        def handle_login() -> None:
-            if email_input.value:
-                app.storage.user["auth_user"] = email_input.value
-                ui.navigate.to("/")
-
-        ui.button("Login", on_click=handle_login).classes("w-80")
-
 @ui.page("/")
 def index():
     if not require_auth():
