@@ -26,6 +26,7 @@ class TokenPurpose(str, Enum):
 
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
     name: str = "DanEP"
     first_name: str = ""
     last_name: str = ""
@@ -38,6 +39,8 @@ class Company(SQLModel, table=True):
     email: str = ""
     phone: str = ""
     iban: str = ""
+    bic: str = ""
+    bank_name: str = ""
     tax_id: str = ""
     vat_id: str = ""
     smtp_server: str = ""
@@ -52,6 +55,7 @@ class Company(SQLModel, table=True):
     next_invoice_nr: int = 10000
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
+    user: Optional["User"] = Relationship(back_populates="companies")
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -65,6 +69,7 @@ class User(SQLModel, table=True):
     is_email_verified: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
     tokens: List["Token"] = Relationship(back_populates="user")
+    companies: List[Company] = Relationship(back_populates="user")
 
     @validator("email", pre=True)
     def normalize_email(cls, value):
@@ -211,6 +216,8 @@ def prevent_finalized_invoice_updates(session, flush_context, instances):
 def ensure_company_schema():
     with engine.connect() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
+        if "user_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN user_id INTEGER")
         if "first_name" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN first_name TEXT DEFAULT ''")
         if "last_name" not in columns:
@@ -241,6 +248,10 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN phone TEXT DEFAULT ''")
         if "tax_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN tax_id TEXT DEFAULT ''")
+        if "bic" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN bic TEXT DEFAULT ''")
+        if "bank_name" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN bank_name TEXT DEFAULT ''")
         if "vat_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN vat_id TEXT DEFAULT ''")
         if "smtp_server" not in columns:
@@ -267,6 +278,24 @@ def ensure_company_schema():
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN invoice_number_template TEXT DEFAULT '{seq}'")
         if "invoice_filename_template" not in columns:
             conn.exec_driver_sql("ALTER TABLE company ADD COLUMN invoice_filename_template TEXT DEFAULT 'rechnung_{nr}'")
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
+        if "user_id" in columns:
+            single_user_id = conn.exec_driver_sql("SELECT id FROM user ORDER BY id LIMIT 2").fetchall()
+            if len(single_user_id) == 1:
+                conn.exec_driver_sql(
+                    "UPDATE company SET user_id = ? WHERE user_id IS NULL OR user_id = 0",
+                    (single_user_id[0][0],)
+                )
+        if "bic" in columns:
+            conn.exec_driver_sql(
+                "UPDATE company SET bic = '' "
+                "WHERE bic IS NULL"
+            )
+        if "bank_name" in columns:
+            conn.exec_driver_sql(
+                "UPDATE company SET bank_name = '' "
+                "WHERE bank_name IS NULL"
+            )
 
 ensure_company_schema()
 
