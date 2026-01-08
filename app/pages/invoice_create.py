@@ -100,7 +100,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 service_picker.on("update:modelValue", _service_changed)
 
                 # FIX: use switch (boolean), NOT ui.toggle (choice)
-                vat_switch = ui.switch("USt berechnen", value=False).props("disable").classes("mt-2")
+                vat_switch = ui.switch("USt berechnen", value=False).classes("mt-2")
                 ui.label("Kleinunternehmer: USt wird automatisch nicht ausgewiesen.").classes("text-sm text-gray-500")
 
             with ui.card().classes("w-full p-4"):
@@ -163,7 +163,12 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         with ui.column().classes("w-full md:flex-1"):
             with ui.card().classes("w-full p-4 md:sticky md:top-4"):
                 ui.label("Vorschau").classes("text-lg font-semibold mb-2")
-                preview = ui.html("", sanitize=False).classes("w-full")
+                preview = (
+                    ui.element("iframe")
+                    .classes("w-full")
+                    .props('style="width:100%;height:78vh;border:0;" src="about:blank"')
+                )
+                preview_error = ui.label("").classes("text-red-600 mt-2")
 
     def _current_customer_obj() -> Any:
         idx = customer_select.value
@@ -175,6 +180,11 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             return None
 
     def update_preview() -> None:
+        show_tax = bool(vat_switch.value)
+        preview_items = items
+        if not show_tax:
+            preview_items = [{**it, "tax_rate": 0} for it in items]
+
         invoice = {
             "title": title_input.value or "Rechnung",
             "invoice_date": invoice_date_input.value,
@@ -191,12 +201,8 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         preview_html = build_invoice_preview_html(invoice)
         try:
             pdf_b64 = render_invoice_to_pdf_base64(invoice, comp)
-            preview.content = (
-                "<iframe "
-                f"src='data:application/pdf;base64,{pdf_b64}' "
-                "style='width:100%;height:78vh;border:0;'"
-                "></iframe>"
-            )
+            preview.props(f'src="data:application/pdf;base64,{pdf_b64}"')
+            preview_error.text = ""
         except Exception as ex:
             preview.content = (
                 f"{preview_html}<div class='text-red-600 mt-4'>PDF Fehler: {ex}</div>"
@@ -205,5 +211,6 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     customer_select.on("update:modelValue", lambda e: update_preview())
     title_input.on("update:value", lambda e: update_preview())
     intro_input.on("update:value", lambda e: update_preview())
+    vat_switch.on("update:modelValue", lambda e: update_preview())
 
     update_preview()
