@@ -3,14 +3,19 @@
 # =========================
 
 import json
+from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from nicegui import ui, app
+from fastapi import HTTPException
+from fastapi.responses import HTMLResponse, Response
+from sqlmodel import select
 
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
-from data import get_session
+from data import Company, Customer, Invoice, get_session
+from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from pages import (
     render_dashboard,
@@ -28,6 +33,20 @@ from pages import (
 from pages._shared import get_current_user_id, get_primary_company, list_companies
 
 load_env()
+app.add_static_files("/static", "app/static")
+
+
+def _require_api_auth() -> None:
+    if not app.storage.user.get("auth_user"):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+def _resolve_invoice_pdf_path(filename: str | None) -> Path | None:
+    if not filename:
+        return None
+    if Path(filename).is_absolute() or str(filename).startswith("storage/"):
+        return Path(filename)
+    return Path("storage/invoices") / filename
 
 
 def _format_nominatim_result(item: dict) -> dict:
@@ -91,6 +110,196 @@ def address_autocomplete(q: str = "", country: str = "DE"):
     if not isinstance(payload, list):
         return []
     return [_format_nominatim_result(item) for item in payload]
+
+
+@app.get("/api/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int, rev: str | None = None) -> Response:
+    _require_api_auth()
+    with get_session() as session:
+        invoice = session.get(Invoice, invoice_id)
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+        customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
+        company = None
+        if customer and customer.company_id:
+            company = session.get(Company, customer.company_id)
+        if not company:
+            company = session.exec(select(Company)).first() or Company()
+
+        pdf_path = _resolve_invoice_pdf_path(invoice.pdf_filename)
+        if pdf_path and pdf_path.exists():
+            return Response(pdf_path.read_bytes(), media_type="application/pdf")
+
+        if invoice.pdf_bytes:
+            pdf_bytes = invoice.pdf_bytes
+        else:
+            pdf_bytes = render_invoice_to_pdf_bytes(invoice, company)
+        if isinstance(pdf_bytes, bytearray):
+            pdf_bytes = bytes(pdf_bytes)
+        return Response(pdf_bytes, media_type="application/pdf")
+
+
+@app.get("/viewer/invoice/{invoice_id}", response_class=HTMLResponse)
+def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
+    if not app.storage.user.get("auth_user"):
+        return HTMLResponse(status_code=302, headers={"Location": "/login"})
+    rev_query = f"?rev={rev}" if rev else ""
+    pdf_url = f"/api/invoices/{invoice_id}/pdf{rev_query}"
+    html = f"""
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Invoice {invoice_id}</title>
+        <style>
+          :root {{
+            color-scheme: light;
+          }}
+          body {{
+            margin: 0;
+            font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+            background: #f8fafc;
+          }}
+          .viewer-shell {{
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+          }}
+          .viewer-header {{
+            font-size: 14px;
+            color: #475569;
+          }}
+          #viewer {{
+            width: 100%;
+            height: 80vh;
+            min-height: 70vh;
+            max-height: 85vh;
+            overflow: auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            padding: 12px;
+          }}
+          .page {{
+            margin: 0 auto 16px auto;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+            border-radius: 8px;
+            background: white;
+          }}
+          .status {{
+            font-size: 13px;
+            color: #64748b;
+          }}
+          @media (max-width: 640px) {{
+            .viewer-shell {{
+              padding: 12px;
+            }}
+            #viewer {{
+              height: 75vh;
+              min-height: 70vh;
+            }}
+          }}
+        </style>
+        <script src="/static/pdfjs/pdf.min.js"></script>
+      </head>
+      <body>
+        <div class="viewer-shell">
+          <div class="viewer-header">Invoice PDF preview</div>
+          <div id="viewer"></div>
+          <div id="status" class="status">Loading PDF…</div>
+        </div>
+        <script>
+          const pdfUrl = {json.dumps(pdf_url)};
+          const viewer = document.getElementById("viewer");
+          const status = document.getElementById("status");
+
+          function waitForPdfJs() {{
+            return new Promise((resolve, reject) => {{
+              if (window.pdfjsLib) {{
+                return resolve();
+              }}
+              if (window.__pdfjsLoadPromise) {{
+                return window.__pdfjsLoadPromise.then(resolve).catch(reject);
+              }}
+              const start = Date.now();
+              const timer = setInterval(() => {{
+                if (window.pdfjsLib) {{
+                  clearInterval(timer);
+                  resolve();
+                }} else if (Date.now() - start > 8000) {{
+                  clearInterval(timer);
+                  reject(new Error("PDF.js failed to load"));
+                }}
+              }}, 100);
+            }});
+          }}
+
+          function clearViewer() {{
+            viewer.innerHTML = "";
+          }}
+
+          function renderPage(page, scale) {{
+            const viewport = page.getViewport({{ scale }});
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            const outputScale = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(viewport.width * outputScale);
+            canvas.height = Math.floor(viewport.height * outputScale);
+            canvas.style.width = Math.floor(viewport.width) + "px";
+            canvas.style.height = Math.floor(viewport.height) + "px";
+            canvas.className = "page";
+            const renderContext = {{
+              canvasContext: context,
+              viewport: viewport,
+              transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null,
+            }};
+            return page.render(renderContext).promise.then(() => {{
+              viewer.appendChild(canvas);
+            }});
+          }}
+
+          function renderDocument(pdf) {{
+            clearViewer();
+            status.textContent = "Loaded " + pdf.numPages + " page" + (pdf.numPages === 1 ? "" : "s");
+            const containerWidth = viewer.clientWidth - 24;
+            const pagePromises = [];
+            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {{
+              pagePromises.push(
+                pdf.getPage(pageNumber).then((page) => {{
+                  const viewport = page.getViewport({{ scale: 1 }});
+                  const scale = containerWidth / viewport.width;
+                  return renderPage(page, scale);
+                }})
+              );
+            }}
+            return Promise.all(pagePromises);
+          }}
+
+          waitForPdfJs()
+            .then(() => {{
+              window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/pdfjs/pdf.worker.min.js";
+              return window.pdfjsLib.getDocument(pdfUrl).promise;
+            }})
+            .then((pdf) => renderDocument(pdf))
+            .catch((error) => {{
+              console.error(error);
+              status.textContent = "Failed to load PDF.";
+            }});
+
+          window.addEventListener("resize", () => {{
+            if (!window.pdfjsLib || !viewer.firstChild) {{
+              return;
+            }}
+            window.pdfjsLib.getDocument(pdfUrl).promise.then((pdf) => renderDocument(pdf));
+          }});
+        </script>
+      </body>
+    </html>
+    """
+    return HTMLResponse(html)
 
 
 def set_page(name: str):

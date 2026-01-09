@@ -30,6 +30,11 @@ def render_invoice_detail(session, comp: Company) -> None:
         with ui.row().classes("gap-2 items-center"):
             ui.button("Zurück", on_click=lambda: (app.storage.user.__setitem__("page", "invoices"), ui.navigate.to("/"))).classes(C_BTN_SEC)
 
+            ui.button(
+                "PDF Vorschau",
+                on_click=lambda: ui.navigate.to(f"/viewer/invoice/{invoice.id}"),
+            ).classes(C_BTN_SEC)
+
             def on_download():
                 try:
                     download_invoice_file(invoice)
