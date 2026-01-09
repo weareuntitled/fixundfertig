@@ -2,22 +2,23 @@
 # APP/MAIN.PY (REPLACE FULL FILE)
 # =========================
 
+import importlib.util
 import json
-from pathlib import Path
+import os
+import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from fastapi import HTTPException, Response
 from nicegui import ui, app
-from fastapi import HTTPException
-from fastapi.responses import HTMLResponse, Response
-from sqlmodel import select
+from fastapi import HTTPException, Response
 
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Invoice, get_session
 from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
+from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
     render_customers,
@@ -32,6 +33,38 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
+from data import Company, Customer, Invoice
+from renderer import render_invoice_to_pdf_bytes
+
+_CACHE_TTL_SECONDS = 300
+_CACHE_MAXSIZE = 256
+_CACHE_KEY_TYPE = tuple[int, int]
+_cachetools_spec = importlib.util.find_spec("cachetools")
+if _cachetools_spec is not None:
+    from cachetools import TTLCache
+    _invoice_pdf_cache = TTLCache(maxsize=_CACHE_MAXSIZE, ttl=_CACHE_TTL_SECONDS)
+else:
+    _invoice_pdf_cache: dict[_CACHE_KEY_TYPE, tuple[float, bytes]] = {}
+
+
+def _get_cached_pdf(cache_key: _CACHE_KEY_TYPE) -> bytes | None:
+    if _cachetools_spec is not None:
+        return _invoice_pdf_cache.get(cache_key)
+    entry = _invoice_pdf_cache.get(cache_key)
+    if not entry:
+        return None
+    expires_at, payload = entry
+    if time.monotonic() >= expires_at:
+        _invoice_pdf_cache.pop(cache_key, None)
+        return None
+    return payload
+
+
+def _store_cached_pdf(cache_key: _CACHE_KEY_TYPE, payload: bytes) -> None:
+    if _cachetools_spec is not None:
+        _invoice_pdf_cache[cache_key] = payload
+        return
+    _invoice_pdf_cache[cache_key] = (time.monotonic() + _CACHE_TTL_SECONDS, payload)
 
 load_env()
 app.add_static_files("/static", "app/static")
@@ -306,6 +339,67 @@ def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
 def set_page(name: str):
     app.storage.user["page"] = name
     ui.navigate.to("/")
+
+
+@app.get("/api/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int):
+    if not require_auth():
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        invoice = session.get(Invoice, int(invoice_id))
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+        customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        company = session.get(Company, int(customer.company_id)) if customer.company_id else None
+        if not company or company.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        revision = int(invoice.revision_nr or 0)
+        cache_key: _CACHE_KEY_TYPE = (int(invoice.id), revision)
+        cached = _get_cached_pdf(cache_key)
+        if cached is not None:
+            return Response(content=cached, media_type="application/pdf")
+
+        pdf_bytes: bytes | None = None
+        if invoice.pdf_filename:
+            pdf_path = invoice.pdf_filename
+            if not os.path.isabs(pdf_path) and not str(pdf_path).startswith("storage/"):
+                pdf_path = f"storage/invoices/{pdf_path}"
+            if os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as handle:
+                    pdf_bytes = handle.read()
+        if pdf_bytes is None:
+            pdf_bytes = render_invoice_to_pdf_bytes(invoice, company=company, customer=customer)
+            if isinstance(pdf_bytes, bytearray):
+                pdf_bytes = bytes(pdf_bytes)
+            if not isinstance(pdf_bytes, bytes):
+                raise HTTPException(status_code=500, detail="Invalid PDF output")
+            filename = (
+                os.path.basename(invoice.pdf_filename)
+                if invoice.pdf_filename
+                else (build_invoice_filename(company, invoice, customer) if invoice.nr else "rechnung.pdf")
+            )
+            pdf_path = f"storage/invoices/{filename}"
+            os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+            with open(pdf_path, "wb") as handle:
+                handle.write(pdf_bytes)
+
+            invoice.pdf_filename = filename
+            invoice.pdf_storage = "local"
+            session.add(invoice)
+            session.commit()
+
+        _store_cached_pdf(cache_key, pdf_bytes)
+        return Response(content=pdf_bytes, media_type="application/pdf")
 
 
 def layout_wrapper(content_func):
