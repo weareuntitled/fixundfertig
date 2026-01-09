@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from nicegui import ui
+from nicegui import app, ui
+from sqlmodel import select
 
 from renderer import render_invoice_to_pdf_base64
 
+from data import Customer
 from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
 
 
@@ -31,17 +33,25 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
     today = date.today().isoformat()
 
-    customers = _get(comp, "customers", default=[])
-    if not isinstance(customers, list):
-        customers = []
+    customer_stmt = (
+        select(Customer)
+        .where(Customer.company_id == int(comp.id), Customer.archived == False)
+        .order_by(Customer.name)
+        .limit(5)
+    )
+    customers = session.exec(customer_stmt).all()
+    customers_by_id = {int(c.id): c for c in customers if getattr(c, "id", None) is not None}
+    new_customer_value = "__new_customer__"
 
     # NiceGUI ui.select supports dict (label->value) reliably
-    if customers:
-        customer_options = {str(_get(c, "name", default=f"Kunde {i+1}")): i for i, c in enumerate(customers)}
-        customer_default = 0
-    else:
-        customer_options = {"Keine Kunden gefunden": None}
-        customer_default = None
+    customer_options: dict[str, Any] = {}
+    for i, c in enumerate(customers):
+        label = str(_get(c, "display_name", "name", default=f"Kunde {i+1}"))
+        customer_options[label] = int(c.id) if getattr(c, "id", None) is not None else None
+    if not customer_options:
+        customer_options["Keine Kunden gefunden"] = None
+    customer_options["Neuen Kunden hinzufügen"] = new_customer_value
+    customer_default = next(iter(customers_by_id.keys()), None)
 
     items: list[dict] = []
     service_from = today
@@ -57,7 +67,8 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     options=customer_options,
                     value=customer_default,
                     label="Kunde",
-                ).classes("w-full")
+                    with_input=True,
+                ).props("use-input").classes("w-full")
 
                 title_input = ui.input("Titel", value="Rechnung").classes("w-full")
 
@@ -173,12 +184,12 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 )
 
     def _current_customer_obj() -> Any:
-        idx = customer_select.value
-        if idx is None:
+        selected = customer_select.value
+        if selected in (None, new_customer_value):
             return None
         try:
-            return customers[int(idx)]
-        except Exception:
+            return customers_by_id.get(int(selected))
+        except (TypeError, ValueError):
             return None
 
     def update_preview() -> None:
@@ -213,7 +224,14 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 f"{ex}</div>{build_invoice_preview_html(invoice)}"
             )
 
-    customer_select.on("update:modelValue", lambda e: update_preview())
+    def _on_customer_change(e) -> None:
+        if e.value == new_customer_value:
+            app.storage.user["page"] = "customer_new"
+            ui.navigate.to("/")
+            return
+        update_preview()
+
+    customer_select.on("update:modelValue", _on_customer_change)
     title_input.on("update:value", lambda e: update_preview())
     intro_input.on("update:value", lambda e: update_preview())
     vat_switch.on("update:modelValue", lambda e: update_preview())
