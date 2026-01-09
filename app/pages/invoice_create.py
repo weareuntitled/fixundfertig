@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import time
 from datetime import date
 from typing import Any
 
@@ -44,15 +45,15 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     customers_by_id = {int(c.id): c for c in customers if getattr(c, "id", None) is not None}
     new_customer_value = "__new_customer__"
 
-    # NiceGUI ui.select supports dict (label->value) reliably
-    customer_options: dict[str, Any] = {}
+    # NiceGUI ui.select expects dict[value, label] when using dict options
+    customer_options: dict[Any, str] = {}
     for i, c in enumerate(customers):
+        if getattr(c, "id", None) is None:
+            continue
         label = str(_get(c, "display_name", "name", default=f"Kunde {i+1}"))
-        customer_options[label] = int(c.id) if getattr(c, "id", None) is not None else None
-    if not customer_options:
-        customer_options["Keine Kunden gefunden"] = None
-    customer_options["Neuen Kunden hinzufügen"] = new_customer_value
-    customer_default = next(iter(customers_by_id.keys()), None)
+        customer_options[int(c.id)] = label
+    customer_options[new_customer_value] = "Neuen Kunden hinzufügen"
+    customer_default = next(iter(customer_options.keys()), new_customer_value)
 
     items: list[dict] = []
     service_from = today
@@ -190,6 +191,13 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     .classes("w-full")
                 )
 
+    preview_state = {"dirty": True, "pending": False, "last_change": 0.0}
+
+    def mark_preview_dirty() -> None:
+        preview_state["dirty"] = True
+        preview_state["pending"] = True
+        preview_state["last_change"] = time.monotonic()
+
     def _current_customer_obj() -> Any:
         selected = customer_select.value
         if selected in (None, new_customer_value):
@@ -201,7 +209,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
     renderer = PDFInvoiceRenderer()
 
-    def update_preview() -> None:
+    def update_preview(force_pdf: bool = False) -> None:
         vat_enabled = bool(vat_switch.value)
         vat_rate = max((float(_get(it, "tax_rate", default=0) or 0) for it in items), default=0.0)
         net, vat, gross = compute_invoice_totals(items, vat_enabled, vat_rate)
