@@ -237,11 +237,14 @@ class InvoicePDF(FPDF):
         service_to = _date_str(_get(self.invoice, "service_to", default=""))
 
         self.set_font("Helvetica", size=10)
+        date_label_width = 40
+        date_value_width = max(_usable_page_width(self) - date_label_width, 10)
+
         if inv_date:
             self.set_font("Helvetica", style="B", size=10)
-            self.cell(40, 5.5, "Rechnungsdatum:")
+            self.cell(date_label_width, 5.5, "Rechnungsdatum:")
             self.set_font("Helvetica", size=10)
-            self.multi_cell(0, 5.5, _sanitize_text(inv_date))
+            self.multi_cell(date_value_width, 5.5, _wrap_pdf_text(inv_date))
 
         if service_from and service_to:
             service_s = f"{service_from} bis {service_to}"
@@ -249,9 +252,9 @@ class InvoicePDF(FPDF):
             service_s = service_from or ""
         if service_s:
             self.set_font("Helvetica", style="B", size=10)
-            self.cell(40, 5.5, "Leistungszeitraum:")
+            self.cell(date_label_width, 5.5, "Leistungszeitraum:")
             self.set_font("Helvetica", size=10)
-            self.multi_cell(0, 5.5, _sanitize_text(service_s))
+            self.multi_cell(date_value_width, 5.5, _wrap_pdf_text(service_s))
 
         self.ln(4)
 
