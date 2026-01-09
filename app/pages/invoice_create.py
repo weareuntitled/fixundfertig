@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import time
+import base64
 from datetime import date
 from typing import Any
 
 from nicegui import app, ui
 from sqlmodel import select
 
-from renderer import render_invoice_to_pdf_base64
+from renderer import PDFInvoiceRenderer
 
 from data import Customer
 from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
@@ -199,18 +199,9 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         except (TypeError, ValueError):
             return None
 
-    preview_state = {
-        "dirty": True,
-        "pending": False,
-        "last_change": 0.0,
-    }
+    renderer = PDFInvoiceRenderer()
 
-    def mark_preview_dirty() -> None:
-        preview_state["dirty"] = True
-        preview_state["pending"] = True
-        preview_state["last_change"] = time.monotonic()
-
-    def update_preview(*, force_pdf: bool = False) -> None:
+    def update_preview() -> None:
         vat_enabled = bool(vat_switch.value)
         vat_rate = max((float(_get(it, "tax_rate", default=0) or 0) for it in items), default=0.0)
         net, vat, gross = compute_invoice_totals(items, vat_enabled, vat_rate)
@@ -222,6 +213,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             "service_from": service_from,
             "service_to": service_to,
             "intro_text": intro_input.value or "",
+            "company": comp,
             "customer": _current_customer_obj(),
             "items": items,
             "show_tax": vat_enabled,
@@ -236,7 +228,8 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             return
         preview_state["dirty"] = False
         try:
-            pdf_b64 = render_invoice_to_pdf_base64(invoice, comp)
+            pdf_bytes = renderer.render(invoice, template_id=None)
+            pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
             preview_frame.set_attribute("src", f"data:application/pdf;base64,{pdf_b64}")
         except Exception as ex:
             preview_frame.set_attribute("src", "")

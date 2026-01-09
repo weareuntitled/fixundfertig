@@ -6,6 +6,8 @@ from datetime import date
 import re
 from typing import Any
 
+from renderer_interface import InvoiceRenderer
+
 from fpdf import FPDF
 
 
@@ -359,6 +361,20 @@ class InvoicePDF(FPDF):
         if isinstance(out, (bytes, bytearray)):
             return bytes(out)
         return out.encode("latin-1")
+
+
+class PDFInvoiceRenderer(InvoiceRenderer):
+    def render(self, invoice: Any, template_id: str | None = None) -> bytes:
+        company = None
+        if isinstance(invoice, dict):
+            company = invoice.get("company")
+        else:
+            company = getattr(invoice, "company", None)
+
+        if company is None:
+            return render_invoice_to_pdf_bytes(invoice)
+
+        return render_invoice_pdf_bytes(invoice, company)
 
 
 def render_invoice_pdf_bytes(invoice: Any, company: Any) -> bytes:

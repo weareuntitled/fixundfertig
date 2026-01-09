@@ -26,7 +26,7 @@ from data import (
     get_session,
 )
 
-from renderer import render_invoice_to_pdf_bytes
+from renderer import PDFInvoiceRenderer
 from actions import cancel_invoice, create_correction, delete_draft, update_status_logic
 from services.storage import company_logo_path, ensure_company_dirs
 
@@ -424,6 +424,7 @@ def render_invoice_create(session, comp: Company) -> None:
     # Recipient inputs declared later, but referenced in update_preview
     rec_name = rec_street = rec_zip = rec_city = None
     ust_switch = None
+    renderer = PDFInvoiceRenderer()
 
     def update_preview():
         cust_id = state["customer_id"]
@@ -453,11 +454,12 @@ def render_invoice_create(session, comp: Company) -> None:
             recipient_postal_code=final_z,
             recipient_city=final_c,
         )
+        inv.company = comp
         inv.__dict__["line_items"] = state["items"]
         inv.__dict__["tax_rate"] = 0.19 if (ust_switch and ust_switch.value) else 0.0
 
         try:
-            pdf = render_invoice_to_pdf_bytes(inv)
+            pdf = renderer.render(inv, template_id=None)
             if isinstance(pdf, bytearray):
                 pdf = bytes(pdf)
             if not isinstance(pdf, bytes):
