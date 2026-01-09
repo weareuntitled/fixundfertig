@@ -2,16 +2,23 @@
 # APP/MAIN.PY (REPLACE FULL FILE)
 # =========================
 
+import importlib.util
 import json
+import os
+import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from fastapi import HTTPException, Response
 from nicegui import ui, app
+from fastapi import HTTPException, Response
 
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
-from data import get_session
+from data import Company, Customer, Invoice, get_session
+from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
+from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
     render_customers,
@@ -26,8 +33,54 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
+from data import Company, Customer, Invoice
+from renderer import render_invoice_to_pdf_bytes
+
+_CACHE_TTL_SECONDS = 300
+_CACHE_MAXSIZE = 256
+_CACHE_KEY_TYPE = tuple[int, int]
+_cachetools_spec = importlib.util.find_spec("cachetools")
+if _cachetools_spec is not None:
+    from cachetools import TTLCache
+    _invoice_pdf_cache = TTLCache(maxsize=_CACHE_MAXSIZE, ttl=_CACHE_TTL_SECONDS)
+else:
+    _invoice_pdf_cache: dict[_CACHE_KEY_TYPE, tuple[float, bytes]] = {}
+
+
+def _get_cached_pdf(cache_key: _CACHE_KEY_TYPE) -> bytes | None:
+    if _cachetools_spec is not None:
+        return _invoice_pdf_cache.get(cache_key)
+    entry = _invoice_pdf_cache.get(cache_key)
+    if not entry:
+        return None
+    expires_at, payload = entry
+    if time.monotonic() >= expires_at:
+        _invoice_pdf_cache.pop(cache_key, None)
+        return None
+    return payload
+
+
+def _store_cached_pdf(cache_key: _CACHE_KEY_TYPE, payload: bytes) -> None:
+    if _cachetools_spec is not None:
+        _invoice_pdf_cache[cache_key] = payload
+        return
+    _invoice_pdf_cache[cache_key] = (time.monotonic() + _CACHE_TTL_SECONDS, payload)
 
 load_env()
+app.add_static_files("/static", "app/static")
+
+
+def _require_api_auth() -> None:
+    if not app.storage.user.get("auth_user"):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+def _resolve_invoice_pdf_path(filename: str | None) -> Path | None:
+    if not filename:
+        return None
+    if Path(filename).is_absolute() or str(filename).startswith("storage/"):
+        return Path(filename)
+    return Path("storage/invoices") / filename
 
 
 def _format_nominatim_result(item: dict) -> dict:
@@ -93,9 +146,260 @@ def address_autocomplete(q: str = "", country: str = "DE"):
     return [_format_nominatim_result(item) for item in payload]
 
 
+@app.get("/api/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int, rev: str | None = None) -> Response:
+    _require_api_auth()
+    with get_session() as session:
+        invoice = session.get(Invoice, invoice_id)
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+        customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
+        company = None
+        if customer and customer.company_id:
+            company = session.get(Company, customer.company_id)
+        if not company:
+            company = session.exec(select(Company)).first() or Company()
+
+        pdf_path = _resolve_invoice_pdf_path(invoice.pdf_filename)
+        if pdf_path and pdf_path.exists():
+            return Response(pdf_path.read_bytes(), media_type="application/pdf")
+
+        if invoice.pdf_bytes:
+            pdf_bytes = invoice.pdf_bytes
+        else:
+            pdf_bytes = render_invoice_to_pdf_bytes(invoice, company)
+        if isinstance(pdf_bytes, bytearray):
+            pdf_bytes = bytes(pdf_bytes)
+        return Response(pdf_bytes, media_type="application/pdf")
+
+
+@app.get("/viewer/invoice/{invoice_id}", response_class=HTMLResponse)
+def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
+    if not app.storage.user.get("auth_user"):
+        return HTMLResponse(status_code=302, headers={"Location": "/login"})
+    rev_query = f"?rev={rev}" if rev else ""
+    pdf_url = f"/api/invoices/{invoice_id}/pdf{rev_query}"
+    html = f"""
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Invoice {invoice_id}</title>
+        <style>
+          :root {{
+            color-scheme: light;
+          }}
+          body {{
+            margin: 0;
+            font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+            background: #f8fafc;
+          }}
+          .viewer-shell {{
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+          }}
+          .viewer-header {{
+            font-size: 14px;
+            color: #475569;
+          }}
+          #viewer {{
+            width: 100%;
+            height: 80vh;
+            min-height: 70vh;
+            max-height: 85vh;
+            overflow: auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            padding: 12px;
+          }}
+          .page {{
+            margin: 0 auto 16px auto;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+            border-radius: 8px;
+            background: white;
+          }}
+          .status {{
+            font-size: 13px;
+            color: #64748b;
+          }}
+          @media (max-width: 640px) {{
+            .viewer-shell {{
+              padding: 12px;
+            }}
+            #viewer {{
+              height: 75vh;
+              min-height: 70vh;
+            }}
+          }}
+        </style>
+        <script src="/static/pdfjs/pdf.min.js"></script>
+      </head>
+      <body>
+        <div class="viewer-shell">
+          <div class="viewer-header">Invoice PDF preview</div>
+          <div id="viewer"></div>
+          <div id="status" class="status">Loading PDF…</div>
+        </div>
+        <script>
+          const pdfUrl = {json.dumps(pdf_url)};
+          const viewer = document.getElementById("viewer");
+          const status = document.getElementById("status");
+
+          function waitForPdfJs() {{
+            return new Promise((resolve, reject) => {{
+              if (window.pdfjsLib) {{
+                return resolve();
+              }}
+              if (window.__pdfjsLoadPromise) {{
+                return window.__pdfjsLoadPromise.then(resolve).catch(reject);
+              }}
+              const start = Date.now();
+              const timer = setInterval(() => {{
+                if (window.pdfjsLib) {{
+                  clearInterval(timer);
+                  resolve();
+                }} else if (Date.now() - start > 8000) {{
+                  clearInterval(timer);
+                  reject(new Error("PDF.js failed to load"));
+                }}
+              }}, 100);
+            }});
+          }}
+
+          function clearViewer() {{
+            viewer.innerHTML = "";
+          }}
+
+          function renderPage(page, scale) {{
+            const viewport = page.getViewport({{ scale }});
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            const outputScale = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(viewport.width * outputScale);
+            canvas.height = Math.floor(viewport.height * outputScale);
+            canvas.style.width = Math.floor(viewport.width) + "px";
+            canvas.style.height = Math.floor(viewport.height) + "px";
+            canvas.className = "page";
+            const renderContext = {{
+              canvasContext: context,
+              viewport: viewport,
+              transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null,
+            }};
+            return page.render(renderContext).promise.then(() => {{
+              viewer.appendChild(canvas);
+            }});
+          }}
+
+          function renderDocument(pdf) {{
+            clearViewer();
+            status.textContent = "Loaded " + pdf.numPages + " page" + (pdf.numPages === 1 ? "" : "s");
+            const containerWidth = viewer.clientWidth - 24;
+            const pagePromises = [];
+            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {{
+              pagePromises.push(
+                pdf.getPage(pageNumber).then((page) => {{
+                  const viewport = page.getViewport({{ scale: 1 }});
+                  const scale = containerWidth / viewport.width;
+                  return renderPage(page, scale);
+                }})
+              );
+            }}
+            return Promise.all(pagePromises);
+          }}
+
+          waitForPdfJs()
+            .then(() => {{
+              window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/pdfjs/pdf.worker.min.js";
+              return window.pdfjsLib.getDocument(pdfUrl).promise;
+            }})
+            .then((pdf) => renderDocument(pdf))
+            .catch((error) => {{
+              console.error(error);
+              status.textContent = "Failed to load PDF.";
+            }});
+
+          window.addEventListener("resize", () => {{
+            if (!window.pdfjsLib || !viewer.firstChild) {{
+              return;
+            }}
+            window.pdfjsLib.getDocument(pdfUrl).promise.then((pdf) => renderDocument(pdf));
+          }});
+        </script>
+      </body>
+    </html>
+    """
+    return HTMLResponse(html)
+
+
 def set_page(name: str):
     app.storage.user["page"] = name
     ui.navigate.to("/")
+
+
+@app.get("/api/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int):
+    if not require_auth():
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        invoice = session.get(Invoice, int(invoice_id))
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+        customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        company = session.get(Company, int(customer.company_id)) if customer.company_id else None
+        if not company or company.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        revision = int(invoice.revision_nr or 0)
+        cache_key: _CACHE_KEY_TYPE = (int(invoice.id), revision)
+        cached = _get_cached_pdf(cache_key)
+        if cached is not None:
+            return Response(content=cached, media_type="application/pdf")
+
+        pdf_bytes: bytes | None = None
+        if invoice.pdf_filename:
+            pdf_path = invoice.pdf_filename
+            if not os.path.isabs(pdf_path) and not str(pdf_path).startswith("storage/"):
+                pdf_path = f"storage/invoices/{pdf_path}"
+            if os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as handle:
+                    pdf_bytes = handle.read()
+        if pdf_bytes is None:
+            pdf_bytes = render_invoice_to_pdf_bytes(invoice, company=company, customer=customer)
+            if isinstance(pdf_bytes, bytearray):
+                pdf_bytes = bytes(pdf_bytes)
+            if not isinstance(pdf_bytes, bytes):
+                raise HTTPException(status_code=500, detail="Invalid PDF output")
+            filename = (
+                os.path.basename(invoice.pdf_filename)
+                if invoice.pdf_filename
+                else (build_invoice_filename(company, invoice, customer) if invoice.nr else "rechnung.pdf")
+            )
+            pdf_path = f"storage/invoices/{filename}"
+            os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+            with open(pdf_path, "wb") as handle:
+                handle.write(pdf_bytes)
+
+            invoice.pdf_filename = filename
+            invoice.pdf_storage = "local"
+            session.add(invoice)
+            session.commit()
+
+        _store_cached_pdf(cache_key, pdf_bytes)
+        return Response(content=pdf_bytes, media_type="application/pdf")
 
 
 def layout_wrapper(content_func):
