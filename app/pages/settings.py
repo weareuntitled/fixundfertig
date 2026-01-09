@@ -1,11 +1,15 @@
 # app/pages/settings.py
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
+import os
 import secrets
-import tempfile
 import time
-from pathlib import Path
 
+import httpx
 from nicegui import app, ui
 from sqlmodel import select
 
@@ -497,6 +501,56 @@ def render_settings(session, comp: Company) -> None:
                     ui.notify(f"n8n OK. HTTP {resp.status_code}", color="green")
 
                 ui.button("Webhook testen", on_click=test_n8n_webhook).classes(C_BTN_SEC)
+
+                def test_n8n_ingest() -> None:
+                    secret_value = (n8n_secret.value or "").strip()
+                    if not secret_value:
+                        ui.notify("n8n Secret fehlt.", color="orange")
+                        return
+                    if not bool(n8n_enabled.value):
+                        ui.notify("n8n ist deaktiviert.", color="orange")
+                        return
+
+                    base_url = os.environ.get("APP_BASE_URL", "http://localhost:8080").rstrip("/")
+                    event_id = secrets.token_urlsafe(12)
+                    payload = {
+                        "event_id": event_id,
+                        "company_id": int(comp.id or 0),
+                        "file_name": "n8n-test.txt",
+                        "file_base64": base64.b64encode(b"FixundFertig n8n Test").decode("utf-8"),
+                        "extracted": {
+                            "suggested_title": "n8n Testdokument",
+                            "summary": "Test fuer den n8n Webhook Import.",
+                            "vendor": "n8n",
+                            "keywords": ["test", "n8n", "ingest"],
+                        },
+                    }
+                    raw_body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                    timestamp = str(int(time.time()))
+                    signed_payload = f"{timestamp}.".encode("utf-8") + raw_body
+                    signature = hmac.new(secret_value.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
+                    headers = {
+                        "Content-Type": "application/json",
+                        "X-Timestamp": timestamp,
+                        "X-Signature": signature,
+                    }
+                    try:
+                        resp = httpx.post(
+                            f"{base_url}/api/webhooks/n8n/ingest",
+                            content=raw_body,
+                            headers=headers,
+                            timeout=8.0,
+                        )
+                    except Exception as exc:
+                        ui.notify(f"Ingest fehlgeschlagen: {exc}", color="red")
+                        return
+
+                    if resp.status_code >= 400:
+                        ui.notify(f"Ingest Fehler: HTTP {resp.status_code}", color="red")
+                        return
+                    ui.notify("Ingest OK. Dokument angelegt.", color="green")
+
+                ui.button("Ingest testen", on_click=test_n8n_ingest).classes(C_BTN_SEC)
 
         with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
             ui.label("Dokumente").classes("text-sm font-semibold text-slate-700")

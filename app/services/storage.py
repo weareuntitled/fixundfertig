@@ -19,9 +19,13 @@ def company_logo_path(company_id: int | str) -> str:
 def company_upload_dir(company_id: int | str) -> str:
     return os.path.join(company_dir(company_id), "uploads")
 
+def company_documents_dir(company_id: int | str) -> str:
+    return os.path.join(company_dir(company_id), "documents")
+
 
 def ensure_company_dirs(company_id: int | str) -> None:
     os.makedirs(company_upload_dir(company_id), exist_ok=True)
+    os.makedirs(company_documents_dir(company_id), exist_ok=True)
 
 
 def delete_company_dirs(company_id: int | str) -> None:

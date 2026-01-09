@@ -176,6 +176,24 @@ class Expense(SQLModel, table=True):
     external_id: str = ""
     webhook_url: str = ""
 
+class Document(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id")
+    title: str = ""
+    description: str = ""
+    vendor: str = ""
+    keywords: str = ""
+    source: str = ""
+    file_path: str = ""
+    file_name: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class WebhookEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_id: str = Field(index=True, unique=True)
+    source: str = ""
+    received_at: datetime = Field(default_factory=datetime.utcnow)
+
 os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
