@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import secrets
+import tempfile
+import time
+from pathlib import Path
 
 from nicegui import app, ui
 from sqlmodel import select
@@ -22,6 +25,7 @@ from integrations.n8n_client import post_to_n8n
 from services.companies import create_company, delete_company, list_companies, update_company
 from services.email import send_email
 from services.iban import lookup_bank_from_iban
+from services.blob_storage import blob_storage, build_document_key
 from services.storage import company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
@@ -249,6 +253,88 @@ def render_settings(session, comp: Company) -> None:
                     ui.notify("Hochgeladen", color="green")
 
                 ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").props("flat dense").classes("w-full")
+
+            with ui.card().classes(C_CARD + " p-6 w-full"):
+                ui.label("Dokument-Storage (Test)").classes("text-sm font-semibold text-slate-700")
+                doc_id_input = ui.input("Dokument-ID", placeholder="z.B. 12345").classes(C_INPUT)
+                key_output = ui.input("Letzter Key", value="").props("readonly").classes(C_INPUT)
+
+                def _read_upload_bytes(upload_file) -> bytes:
+                    temp_file = tempfile.NamedTemporaryFile(delete=False)
+                    temp_path = Path(temp_file.name)
+                    temp_file.close()
+                    try:
+                        upload_file.save(str(temp_path))
+                        return temp_path.read_bytes()
+                    finally:
+                        if temp_path.exists():
+                            temp_path.unlink()
+
+                def _resolve_key() -> str | None:
+                    key = (key_output.value or "").strip()
+                    if not key:
+                        ui.notify("Kein Key vorhanden.", color="red")
+                        return None
+                    return key
+
+                def on_doc_upload(e) -> None:
+                    if not comp.id:
+                        ui.notify("Kein aktives Unternehmen.", color="red")
+                        return
+                    cid = int(comp.id)
+                    doc_id = (doc_id_input.value or "").strip() or str(int(time.time()))
+                    key = build_document_key(cid, doc_id, e.file.name)
+                    mime = getattr(e.file, "content_type", None) or "application/octet-stream"
+                    try:
+                        data = _read_upload_bytes(e.file)
+                        blob_storage().put_bytes(key, data, mime)
+                    except Exception as exc:
+                        ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
+                        return
+                    doc_id_input.set_value(doc_id)
+                    key_output.set_value(key)
+                    ui.notify("Dokument gespeichert", color="green")
+
+                def on_doc_exists() -> None:
+                    key = _resolve_key()
+                    if not key:
+                        return
+                    try:
+                        exists = blob_storage().exists(key)
+                    except Exception as exc:
+                        ui.notify(f"Prüfung fehlgeschlagen: {exc}", color="red")
+                        return
+                    ui.notify("Dokument vorhanden" if exists else "Dokument nicht gefunden", color="green")
+
+                def on_doc_load() -> None:
+                    key = _resolve_key()
+                    if not key:
+                        return
+                    try:
+                        data = blob_storage().get_bytes(key)
+                    except Exception as exc:
+                        ui.notify(f"Laden fehlgeschlagen: {exc}", color="red")
+                        return
+                    ui.notify(f"Bytes geladen: {len(data)}", color="green")
+
+                def on_doc_delete() -> None:
+                    key = _resolve_key()
+                    if not key:
+                        return
+                    try:
+                        blob_storage().delete(key)
+                    except Exception as exc:
+                        ui.notify(f"Löschen fehlgeschlagen: {exc}", color="red")
+                        return
+                    ui.notify("Dokument gelöscht", color="green")
+
+                ui.upload(on_upload=on_doc_upload, auto_upload=True, label="Datei wählen").props("flat dense").classes(
+                    "w-full"
+                )
+                with ui.row().classes("w-full gap-2 flex-wrap"):
+                    ui.button("Vorhanden?", on_click=on_doc_exists).classes(C_BTN_SEC)
+                    ui.button("Bytes prüfen", on_click=on_doc_load).classes(C_BTN_SEC)
+                    ui.button("Löschen", on_click=on_doc_delete).classes(C_BTN_SEC)
 
             with ui.card().classes(C_CARD + " p-6 w-full"):
                 ui.label("Business Meta").classes("text-sm font-semibold text-slate-700")
