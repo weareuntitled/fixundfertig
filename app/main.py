@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import time
+from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -67,7 +68,7 @@ def _store_cached_pdf(cache_key: _CACHE_KEY_TYPE, payload: bytes) -> None:
     _invoice_pdf_cache[cache_key] = (time.monotonic() + _CACHE_TTL_SECONDS, payload)
 
 load_env()
-app.add_static_files("/static", "app/static")
+app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
 
 
 def _require_api_auth() -> None:
