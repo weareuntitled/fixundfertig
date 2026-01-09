@@ -10,6 +10,7 @@ from data import (
     AuditLog,
     Company,
     Customer,
+    Document,
     Expense,
     Invoice,
     InvoiceItem,
@@ -20,6 +21,7 @@ from data import (
     get_session,
 )
 from services.auth import _hash_password
+from services.storage import delete_company_dirs
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +161,11 @@ def delete_account(user_id: int) -> None:
             if company_ids
             else []
         )
+        documents = (
+            session.exec(select(Document).where(Document.company_id.in_(company_ids))).all()
+            if company_ids
+            else []
+        )
 
         invoice_paths = [
             _resolve_invoice_pdf_path(inv.pdf_filename) for inv in invoices if inv.pdf_filename
@@ -182,6 +189,8 @@ def delete_account(user_id: int) -> None:
             session.delete(template)
         for expense in expenses:
             session.delete(expense)
+        for document in documents:
+            session.delete(document)
         for company in companies:
             session.delete(company)
         for token in tokens:
@@ -201,3 +210,7 @@ def delete_account(user_id: int) -> None:
 
     for company_id in company_ids:
         _cleanup_company_storage(company_id, invoice_paths)
+        try:
+            delete_company_dirs(company_id)
+        except Exception:
+            pass

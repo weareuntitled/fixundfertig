@@ -1,76 +1,249 @@
 from __future__ import annotations
 
+import mimetypes
 import os
 from datetime import datetime
 
+from fastapi import HTTPException
+
 from ._shared import *
+from data import Document
+from services.documents import (
+    MAX_DOCUMENT_SIZE_BYTES,
+    build_document_record,
+    document_matches_filters,
+    ensure_document_dir,
+    resolve_document_path,
+    serialize_document,
+    set_document_storage_path,
+    validate_document_upload,
+)
 
 
 def render_documents(session, comp: Company) -> None:
     ui.label("Dokumente").classes(C_PAGE_TITLE)
-    ui.label("Importierte Dokumente aus Automationen.").classes("text-sm text-slate-500 mb-4")
+    ui.label("Uploads verwalten und durchsuchen.").classes("text-sm text-slate-500 mb-4")
 
-    def _format_date(value: datetime | None) -> str:
-        if not value:
-            return "-"
-        try:
-            return value.strftime("%Y-%m-%d %H:%M")
-        except Exception:
-            return "-"
+    state = {
+        "search": "",
+        "source": "",
+        "doc_type": "",
+        "date_from": "",
+        "date_to": "",
+    }
 
-    def _load_documents() -> list[dict]:
-        rows = session.exec(
-            select(Document)
-            .where(Document.company_id == comp.id)
-            .order_by(Document.id.desc())
+    def _load_documents() -> list[Document]:
+        session.expire_all()
+        return session.exec(
+            select(Document).where(Document.company_id == int(comp.id or 0))
         ).all()
-        items: list[dict] = []
-        for doc in rows:
-            items.append(
-                {
-                    "id": int(doc.id),
-                    "title": (doc.title or "").strip(),
-                    "description": (doc.description or "").strip(),
-                    "vendor": (doc.vendor or "").strip(),
-                    "keywords": (doc.keywords or "").strip(),
-                    "source": (doc.source or "").strip(),
-                    "file_path": (doc.file_path or "").strip(),
-                    "file_name": (doc.file_name or "").strip(),
-                    "created_at": doc.created_at,
-                }
+
+    def _filter_documents(items: list[Document]) -> list[Document]:
+        return [
+            doc
+            for doc in items
+            if document_matches_filters(
+                doc,
+                query=state["search"],
+                source=state["source"],
+                doc_type=state["doc_type"],
+                date_from=state["date_from"],
+                date_to=state["date_to"],
             )
-        return items
+        ]
 
-    items = _load_documents()
+    def _sort_documents(items: list[Document]) -> list[Document]:
+        def sort_key(doc: Document):
+            created_at = doc.created_at
+            if isinstance(created_at, datetime):
+                return created_at
+            try:
+                return datetime.fromisoformat(str(created_at))
+            except Exception:
+                return datetime.min
 
-    if not items:
-        with ui.card().classes(C_CARD + " p-4"):
-            ui.label("Keine Dokumente vorhanden.").classes("text-sm text-slate-500")
-        return
+        return sorted(items, key=sort_key, reverse=True)
 
-    with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
-        with ui.row().classes(C_TABLE_HEADER):
-            ui.label("Datum").classes("w-36 font-bold text-xs text-slate-500")
-            ui.label("Titel").classes("w-56 font-bold text-xs text-slate-500")
-            ui.label("Lieferant").classes("w-40 font-bold text-xs text-slate-500")
-            ui.label("Keywords").classes("w-56 font-bold text-xs text-slate-500")
-            ui.label("Quelle").classes("w-20 font-bold text-xs text-slate-500")
-            ui.label("Datei").classes("w-20 font-bold text-xs text-slate-500")
+    def _doc_type_options(items: list[Document]) -> dict[str, str]:
+        types = sorted({(doc.doc_type or "").strip() for doc in items if (doc.doc_type or "").strip()})
+        options = {"": "Alle"}
+        for entry in types:
+            options[entry] = entry
+        return options
 
-        for doc in items:
-            with ui.row().classes(C_TABLE_ROW):
-                ui.label(_format_date(doc["created_at"])).classes("w-36 text-xs font-mono text-slate-600")
-                ui.label(doc["title"] or "-").classes("w-56 text-sm")
-                ui.label(doc["vendor"] or "-").classes("w-40 text-sm text-slate-600")
-                ui.label(doc["keywords"] or "-").classes("w-56 text-xs text-slate-500")
-                ui.label(doc["source"] or "-").classes("w-20 text-xs text-slate-500")
+    def _source_options(items: list[Document]) -> dict[str, str]:
+        sources = sorted({(doc.source or "").strip() for doc in items if (doc.source or "").strip()})
+        options = {"": "Alle"}
+        for entry in sources:
+            options[entry] = entry
+        return options
 
-                def _download(path=doc["file_path"], label=doc["file_name"]):
-                    if not path or not os.path.exists(path):
-                        ui.notify("Datei nicht gefunden.", color="red")
+    def _handle_upload(event) -> None:
+        if not comp.id:
+            ui.notify("Kein aktives Unternehmen.", color="red")
+            return
+        filename = getattr(event, "name", "") or getattr(event.file, "name", "") or "upload"
+        size_hint = getattr(event, "size", None)
+
+        try:
+            validate_document_upload(filename, size_hint or 0)
+        except HTTPException as exc:
+            ui.notify(str(exc.detail), color="red")
+            return
+
+        ext = os.path.splitext(filename)[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
+
+        mime_type = getattr(event, "type", "") or mimetypes.guess_type(filename)[0] or ""
+
+        with get_session() as s:
+            document = build_document_record(
+                int(comp.id),
+                filename,
+                mime_type=mime_type,
+                size_bytes=int(size_hint or 0),
+                source="manual",
+                doc_type=ext,
+                original_filename=filename,
+            )
+            s.add(document)
+            s.commit()
+            s.refresh(document)
+
+            set_document_storage_path(document)
+            ensure_document_dir(int(comp.id), int(document.id))
+            storage_path = resolve_document_path(document.storage_path)
+            os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+
+            try:
+                event.file.save(storage_path)
+            except Exception as exc:
+                s.delete(document)
+                s.commit()
+                ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
+                return
+
+            size_bytes = os.path.getsize(storage_path)
+            if size_bytes > MAX_DOCUMENT_SIZE_BYTES:
+                try:
+                    os.remove(storage_path)
+                except OSError:
+                    pass
+                s.delete(document)
+                s.commit()
+                ui.notify("Datei zu groß (max 15 MB).", color="red")
+                return
+
+            document.size_bytes = int(size_bytes)
+            s.add(document)
+            s.commit()
+
+        ui.notify("Dokument hochgeladen", color="green")
+        render_list.refresh()
+
+    with ui.card().classes(C_CARD + " p-5 mb-4"):
+        ui.label("Upload").classes("text-sm font-semibold text-slate-700")
+        ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500 mb-2")
+        ui.upload(on_upload=_handle_upload, auto_upload=True, label="Datei wählen").props("flat dense").classes("w-full")
+
+    with ui.row().classes("w-full justify-between items-end mb-3 gap-3 flex-wrap"):
+        ui.input(
+            "Suche",
+            placeholder="Dateiname",
+            on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
+        ).classes(C_INPUT + " min-w-[240px]")
+
+        with ui.row().classes("gap-2 items-end flex-wrap"):
+            ui.select(
+                _source_options(_load_documents()),
+                label="Quelle",
+                value=state["source"],
+                on_change=lambda e: (state.__setitem__("source", e.value or ""), render_list.refresh()),
+            ).classes(C_INPUT)
+            ui.select(
+                _doc_type_options(_load_documents()),
+                label="Typ",
+                value=state["doc_type"],
+                on_change=lambda e: (state.__setitem__("doc_type", e.value or ""), render_list.refresh()),
+            ).classes(C_INPUT)
+            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
+            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
+
+    delete_id = {"value": None}
+
+    with ui.dialog() as delete_dialog:
+        with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
+            ui.label("Dokument löschen").classes(C_SECTION_TITLE)
+            ui.label("Willst du dieses Dokument wirklich löschen?").classes("text-sm text-slate-600")
+            with ui.row().classes("justify-end gap-2 mt-3 w-full"):
+                ui.button("Abbrechen", on_click=delete_dialog.close).classes(C_BTN_SEC)
+
+                def _confirm_delete():
+                    if not delete_id["value"]:
+                        delete_dialog.close()
                         return
-                    ui.download(path, filename=label or None)
+                    with get_session() as s:
+                        document = s.get(Document, int(delete_id["value"]))
+                        if document:
+                            storage_path = resolve_document_path(document.storage_path)
+                            if storage_path and os.path.exists(storage_path):
+                                try:
+                                    os.remove(storage_path)
+                                except OSError:
+                                    pass
+                            if storage_path:
+                                try:
+                                    os.rmdir(os.path.dirname(storage_path))
+                                except OSError:
+                                    pass
+                            s.delete(document)
+                            s.commit()
+                    ui.notify("Gelöscht", color="green")
+                    delete_dialog.close()
+                    render_list.refresh()
 
-                ui.button("Download", on_click=_download).props("flat dense").classes(
-                    "w-20 text-xs text-blue-600 hover:text-blue-700"
-                )
+                ui.button("Löschen", on_click=_confirm_delete).classes("bg-rose-600 text-white hover:bg-rose-700")
+
+    def _open_delete(doc_id: int) -> None:
+        delete_id["value"] = doc_id
+        delete_dialog.open()
+
+    @ui.refreshable
+    def render_list():
+        items = _sort_documents(_filter_documents(_load_documents()))
+
+        if not items:
+            with ui.card().classes(C_CARD + " p-4"):
+                ui.label("Keine Dokumente gefunden").classes("text-sm text-slate-500")
+            return
+
+        with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+            with ui.row().classes(C_TABLE_HEADER):
+                ui.label("Datum").classes("w-32 font-bold text-xs text-slate-500")
+                ui.label("Datei").classes("flex-1 font-bold text-xs text-slate-500")
+                ui.label("Typ").classes("w-24 font-bold text-xs text-slate-500")
+                ui.label("Quelle").classes("w-24 font-bold text-xs text-slate-500")
+                ui.label("").classes("w-32 font-bold text-xs text-slate-500")
+
+            for doc in items:
+                row = serialize_document(doc)
+                created_at = row.get("created_at", "")
+                with ui.row().classes("w-full items-center border-t border-slate-100 px-4 py-3"):
+                    ui.label(created_at[:10]).classes("w-32 text-sm text-slate-600")
+                    ui.label(row.get("original_filename") or row.get("filename")).classes("flex-1 text-sm text-slate-700 truncate")
+                    ui.label(row.get("type") or "-").classes("w-24 text-sm text-slate-600")
+                    ui.label(row.get("source") or "-").classes("w-24 text-sm text-slate-600")
+                    with ui.row().classes("w-32 justify-end gap-2"):
+                        ui.link(
+                            "Öffnen",
+                            f"/api/documents/{row.get('id')}/file",
+                            new_tab=True,
+                        ).classes("text-sm text-sky-600")
+                        ui.button(
+                            "",
+                            icon="delete",
+                            on_click=lambda doc_id=row.get("id"): _open_delete(int(doc_id)),
+                        ).props("flat dense").classes("text-rose-600")
+
+    render_list()

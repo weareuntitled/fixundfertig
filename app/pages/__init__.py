@@ -7,6 +7,7 @@ from .customers import render_customers
 from .dashboard import render_dashboard
 from .documents import render_documents
 from .expenses import render_expenses
+from .documents import render_documents
 from .exports import render_exports
 from .invoice_create import render_invoice_create
 from .invoice_detail import render_invoice_detail

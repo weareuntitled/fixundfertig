@@ -10,18 +10,19 @@ import json
 import os
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from fastapi import HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi import HTTPException, Response, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, FileResponse
 from nicegui import ui, app
 from sqlmodel import select
 
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
-from data import Company, Customer, Document, Invoice, WebhookEvent, get_session
+from data import Company, Customer, Document, Invoice, get_session
 from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from invoice_numbering import build_invoice_filename
@@ -40,7 +41,15 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
-from services.storage import company_documents_dir, ensure_company_dirs
+from services.documents import (
+    build_document_record,
+    document_matches_filters,
+    ensure_document_dir,
+    resolve_document_path,
+    serialize_document,
+    set_document_storage_path,
+    validate_document_upload,
+)
 
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAXSIZE = 256
@@ -79,6 +88,23 @@ app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
 def _require_api_auth() -> None:
     if not app.storage.user.get("auth_user"):
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+def _resolve_active_company(session, user_id: int) -> Company:
+    companies = list_companies(session, user_id)
+    active_id = app.storage.user.get("active_company_id")
+    try:
+        active_id = int(active_id) if active_id is not None else None
+    except Exception:
+        active_id = None
+    if active_id:
+        company = next((c for c in companies if int(c.id or 0) == active_id), None)
+        if company:
+            return company
+    company = companies[0] if companies else get_primary_company(session, user_id)
+    if company and company.id:
+        app.storage.user["active_company_id"] = int(company.id)
+    return company
 
 
 def _resolve_invoice_pdf_path(filename: str | None) -> Path | None:
@@ -335,6 +361,177 @@ def invoice_pdf(invoice_id: int, rev: str | None = None) -> Response:
         if isinstance(pdf_bytes, bytearray):
             pdf_bytes = bytes(pdf_bytes)
         return Response(pdf_bytes, media_type="application/pdf")
+
+
+@app.post("/api/documents/upload")
+async def document_upload(
+    company_id: int = Form(...),
+    file: UploadFile = File(...),
+) -> dict:
+    _require_api_auth()
+    filename = file.filename or ""
+    contents = await file.read()
+    validate_document_upload(filename, len(contents))
+
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        company = session.get(Company, int(company_id))
+        if not company or company.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        ext = os.path.splitext(filename)[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
+        mime_type = file.content_type or {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "png": "image/png",
+        }.get(ext, "")
+
+        document = build_document_record(
+            int(company.id),
+            filename,
+            mime_type=mime_type,
+            size_bytes=len(contents),
+            source="manual",
+            doc_type=ext,
+            original_filename=filename,
+        )
+        session.add(document)
+        session.commit()
+        session.refresh(document)
+
+        set_document_storage_path(document)
+        ensure_document_dir(int(company.id), int(document.id))
+        storage_path = resolve_document_path(document.storage_path)
+        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+        with open(storage_path, "wb") as handle:
+            handle.write(contents)
+
+        session.add(document)
+        session.commit()
+        session.refresh(document)
+
+        return serialize_document(document)
+
+
+@app.get("/api/documents")
+def list_documents(
+    q: str = "",
+    source: str = "",
+    type: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> list[dict]:
+    _require_api_auth()
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        company = _resolve_active_company(session, user_id)
+        if not company or not company.id:
+            return []
+
+        documents = session.exec(
+            select(Document).where(Document.company_id == int(company.id))
+        ).all()
+        filtered = [
+            doc
+            for doc in documents
+            if document_matches_filters(
+                doc,
+                query=(q or "").strip(),
+                source=(source or "").strip(),
+                doc_type=(type or "").strip(),
+                date_from=(date_from or "").strip(),
+                date_to=(date_to or "").strip(),
+            )
+        ]
+        def _sort_key(doc: Document):
+            created_at = doc.created_at
+            if isinstance(created_at, datetime):
+                return created_at
+            try:
+                return datetime.fromisoformat(str(created_at))
+            except Exception:
+                return datetime.min
+
+        filtered.sort(key=_sort_key, reverse=True)
+        return [serialize_document(doc) for doc in filtered]
+
+
+@app.get("/api/documents/{document_id}/file")
+def document_file(document_id: int) -> Response:
+    _require_api_auth()
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        document = session.get(Document, int(document_id))
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        company = session.get(Company, int(document.company_id))
+        if not company or company.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        storage_path = resolve_document_path(document.storage_path)
+        if not storage_path or not os.path.exists(storage_path):
+            raise HTTPException(status_code=404, detail="File not found")
+
+        ext = os.path.splitext(document.filename or "")[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
+        content_type = document.mime_type or {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "png": "image/png",
+        }.get(ext, "application/octet-stream")
+        if ext == "pdf":
+            disposition = "inline"
+        else:
+            disposition = "attachment"
+        headers = {
+            "Content-Disposition": f'{disposition}; filename=\"{document.filename or "document"}\"'
+        }
+        return FileResponse(storage_path, media_type=content_type, headers=headers)
+
+
+@app.delete("/api/documents/{document_id}")
+def delete_document(document_id: int) -> dict:
+    _require_api_auth()
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        document = session.get(Document, int(document_id))
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        company = session.get(Company, int(document.company_id))
+        if not company or company.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        storage_path = resolve_document_path(document.storage_path)
+        if storage_path and os.path.exists(storage_path):
+            try:
+                os.remove(storage_path)
+            except OSError:
+                pass
+        if storage_path:
+            try:
+                os.rmdir(os.path.dirname(storage_path))
+            except OSError:
+                pass
+
+        session.delete(document)
+        session.commit()
+        return {"status": "deleted"}
 
 
 @app.get("/viewer/invoice/{invoice_id}", response_class=HTMLResponse)

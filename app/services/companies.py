@@ -2,7 +2,17 @@ from typing import Any
 
 from sqlmodel import select
 
-from data import Company, Customer, Expense, Invoice, InvoiceItem, InvoiceItemTemplate, InvoiceRevision, get_session
+from data import (
+    Company,
+    Customer,
+    Document,
+    Expense,
+    Invoice,
+    InvoiceItem,
+    InvoiceItemTemplate,
+    InvoiceRevision,
+    get_session,
+)
 
 
 ALLOWED_COMPANY_FIELDS = {
@@ -123,6 +133,11 @@ def delete_company(user_id: int, company_id: int) -> None:
             select(Expense).where(Expense.company_id == company_id)
         ).all():
             session.delete(expense)
+
+        for document in session.exec(
+            select(Document).where(Document.company_id == company_id)
+        ).all():
+            session.delete(document)
 
         session.delete(company)
         session.commit()
