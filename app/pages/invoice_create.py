@@ -76,10 +76,13 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 with invoice_date_input.add_slot("append"):
                     ui.icon("event").classes("cursor-pointer")
 
-                invoice_date_menu = ui.menu().props("no-parent-event")
-                with invoice_date_menu:
-                    invoice_date_picker = ui.date(value=today).props('mask="YYYY-MM-DD"')
-                    ui.button("OK", on_click=invoice_date_menu.close).props("flat color=primary")
+                with invoice_date_input:
+                    invoice_date_menu = ui.menu().props(
+                        "no-parent-event anchor='bottom left' self='top left'"
+                    )
+                    with invoice_date_menu:
+                        invoice_date_picker = ui.date(value=today).props('mask="YYYY-MM-DD"')
+                        ui.button("OK", on_click=invoice_date_menu.close).props("flat color=primary")
 
                 invoice_date_input.on("click", lambda: invoice_date_menu.open())
 
@@ -93,10 +96,13 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 with service_input.add_slot("append"):
                     ui.icon("event").classes("cursor-pointer")
 
-                service_menu = ui.menu().props("no-parent-event")
-                with service_menu:
-                    service_picker = ui.date(value={"from": today, "to": today}).props('mask="YYYY-MM-DD" range')
-                    ui.button("OK", on_click=service_menu.close).props("flat color=primary")
+                with service_input:
+                    service_menu = ui.menu().props(
+                        "no-parent-event anchor='bottom left' self='top left'"
+                    )
+                    with service_menu:
+                        service_picker = ui.date(value={"from": today, "to": today}).props('mask="YYYY-MM-DD" range')
+                        ui.button("OK", on_click=service_menu.close).props("flat color=primary")
 
                 service_input.on("click", lambda: service_menu.open())
 
