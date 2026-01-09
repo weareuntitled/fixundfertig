@@ -185,11 +185,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             with ui.card().classes("w-full p-4 md:sticky md:top-4"):
                 ui.label("Vorschau").classes("text-lg font-semibold mb-2")
                 preview_summary = ui.html("", sanitize=False).classes("w-full mb-3")
-                preview_frame = (
-                    ui.element("iframe")
-                    .props("style='width:100%;height:78vh;border:0;'")
-                    .classes("w-full")
-                )
+                preview_frame = ui.html("", sanitize=False).classes("w-full")
 
     preview_state = {"dirty": True, "pending": False, "last_change": 0.0}
 
@@ -238,9 +234,13 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         try:
             pdf_bytes = renderer.render(invoice, template_id=None)
             pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
-            preview_frame.set_attribute("src", f"data:application/pdf;base64,{pdf_b64}")
+            preview_frame.content = (
+                "<iframe "
+                f"src=\"data:application/pdf;base64,{pdf_b64}\" "
+                "style=\"width:100%;height:78vh;border:0;\"></iframe>"
+            )
         except Exception as ex:
-            preview_frame.set_attribute("src", "")
+            preview_frame.content = ""
             preview_summary.content = (
                 "<div class='text-red-600'>PDF Fehler: "
                 f"{ex}</div>{preview_html}"
