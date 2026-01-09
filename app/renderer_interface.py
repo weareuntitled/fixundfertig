@@ -4,5 +4,5 @@ from typing import Any, Protocol
 
 
 class InvoiceRenderer(Protocol):
-    def render(self, invoice: Any, template_id: str | None) -> bytes:
+    def render(self, invoice: Any, template_id: str | None = None) -> bytes:
         ...
