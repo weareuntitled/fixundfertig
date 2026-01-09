@@ -19,6 +19,9 @@ def company_logo_path(company_id: int | str) -> str:
 def company_upload_dir(company_id: int | str) -> str:
     return os.path.join(company_dir(company_id), "uploads")
 
+def company_documents_dir(company_id: int | str) -> str:
+    return os.path.join(company_dir(company_id), "documents")
+
 
 def company_documents_dir(company_id: int | str) -> str:
     return os.path.join(company_dir(company_id), "documents")

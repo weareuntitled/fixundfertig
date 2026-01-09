@@ -2,9 +2,13 @@
 # APP/MAIN.PY (REPLACE FULL FILE)
 # =========================
 
+import base64
+import hashlib
+import hmac
 import importlib.util
 import json
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -111,6 +115,51 @@ def _resolve_invoice_pdf_path(filename: str | None) -> Path | None:
     return Path("storage/invoices") / filename
 
 
+def _safe_filename(name: str) -> str:
+    name = (name or "").strip() or "document"
+    name = re.sub(r"\s+", " ", name)
+    name = re.sub(r"[^a-zA-Z0-9äöüÄÖÜß _\.\(\)\[\]\-]+", "_", name)
+    name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    return name[:120] if len(name) > 120 else name
+
+
+def _normalize_keywords(raw: object, *, max_items: int = 4) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        items = re.split(r"[,\n;]+", raw)
+    elif isinstance(raw, (list, tuple, set)):
+        items = list(raw)
+    else:
+        items = [raw]
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _build_display_title(payload: dict) -> str:
+    for key in ("title", "file_name", "filename", "original_filename", "name"):
+        value = (payload.get(key) or "").strip()
+        if value:
+            return value
+    extracted = payload.get("extracted") or {}
+    vendor = (extracted.get("vendor") or "").strip()
+    if vendor:
+        return f"Dokument von {vendor}"
+    return "Dokument"
+
+
 def _format_nominatim_result(item: dict) -> dict:
     address = item.get("address") or {}
     road = address.get("road") or address.get("pedestrian") or address.get("path") or ""
@@ -172,6 +221,118 @@ def address_autocomplete(q: str = "", country: str = "DE"):
     if not isinstance(payload, list):
         return []
     return [_format_nominatim_result(item) for item in payload]
+
+
+@app.post("/api/webhooks/n8n/ingest")
+async def n8n_ingest(request: Request):
+    raw_body = await request.body()
+    timestamp_header = (request.headers.get("X-Timestamp") or "").strip()
+    signature = (request.headers.get("X-Signature") or "").strip()
+
+    if not timestamp_header or not signature:
+        raise HTTPException(status_code=401, detail="Missing signature headers")
+
+    try:
+        timestamp = int(timestamp_header)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid timestamp")
+
+    drift = abs(int(time.time()) - timestamp)
+    if drift > 300:
+        raise HTTPException(status_code=401, detail="Timestamp drift too large")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid payload structure")
+
+    event_id = str(payload.get("event_id") or "").strip()
+    company_id_raw = payload.get("company_id")
+    file_base64 = payload.get("file_base64")
+    extracted = payload.get("extracted") or {}
+
+    if not event_id or not company_id_raw or not file_base64:
+        raise HTTPException(status_code=400, detail="Missing required payload fields")
+
+    try:
+        company_id = int(company_id_raw)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid company_id")
+
+    with get_session() as session:
+        company = session.get(Company, company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        if not bool(getattr(company, "n8n_enabled", False)):
+            raise HTTPException(status_code=403, detail="n8n is disabled")
+        secret = (getattr(company, "n8n_secret", "") or "").strip()
+        if not secret:
+            raise HTTPException(status_code=403, detail="Missing n8n secret")
+
+        signed_payload = f"{timestamp_header}.".encode("utf-8") + raw_body
+        expected_signature = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected_signature, signature):
+            raise HTTPException(status_code=401, detail="Invalid signature")
+
+        existing_event = session.exec(
+            select(WebhookEvent).where(WebhookEvent.event_id == event_id)
+        ).first()
+        if existing_event:
+            raise HTTPException(status_code=409, detail="Duplicate event")
+
+        file_payload = str(file_base64)
+        if "," in file_payload and "base64" in file_payload.split(",", 1)[0]:
+            file_payload = file_payload.split(",", 1)[1]
+        try:
+            file_bytes = base64.b64decode(file_payload, validate=True)
+        except Exception:
+            try:
+                file_bytes = base64.b64decode(file_payload)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid file_base64")
+
+        file_name = (payload.get("file_name") or payload.get("filename") or "").strip()
+        if not file_name:
+            file_name = f"document_{event_id}.bin"
+        file_name = _safe_filename(file_name)
+
+        ensure_company_dirs(company_id)
+        doc_dir = company_documents_dir(company_id)
+        file_path = os.path.join(doc_dir, file_name)
+        if os.path.exists(file_path):
+            file_path = os.path.join(doc_dir, f"{event_id}_{file_name}")
+
+        with open(file_path, "wb") as handle:
+            handle.write(file_bytes)
+
+        title = (extracted.get("suggested_title") or "").strip()
+        if not title:
+            title = _build_display_title(payload)
+        description = (extracted.get("summary") or "").strip()
+        if len(description) > 200:
+            description = description[:200]
+        vendor = (extracted.get("vendor") or "").strip()
+        keywords_list = _normalize_keywords(extracted.get("keywords"), max_items=4)
+        keywords = ", ".join(keywords_list)
+
+        document = Document(
+            company_id=company_id,
+            title=title,
+            description=description,
+            vendor=vendor,
+            keywords=keywords,
+            source="n8n",
+            file_path=file_path,
+            file_name=file_name,
+        )
+        session.add(document)
+        session.add(WebhookEvent(event_id=event_id, source="n8n"))
+        session.commit()
+        session.refresh(document)
+        return {"status": "ok", "document_id": int(document.id or 0)}
 
 
 @app.get("/api/invoices/{invoice_id}/pdf")

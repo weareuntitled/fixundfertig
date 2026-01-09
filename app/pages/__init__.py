@@ -5,6 +5,7 @@ from .customer_detail import render_customer_detail
 from .customer_new import render_customer_new
 from .customers import render_customers
 from .dashboard import render_dashboard
+from .documents import render_documents
 from .expenses import render_expenses
 from .documents import render_documents
 from .exports import render_exports

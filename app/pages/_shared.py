@@ -25,6 +25,7 @@ from data import (
     InvoiceItemTemplate,
     Expense,
     InvoiceRevision,
+    Document,
     log_audit_action,
     InvoiceStatus,
     get_session,
