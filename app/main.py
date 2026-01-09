@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from fastapi import HTTPException, Response
 from nicegui import ui, app
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, Response
