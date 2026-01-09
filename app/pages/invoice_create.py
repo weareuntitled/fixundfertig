@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import base64
 from datetime import date
 from typing import Any
 
 from nicegui import app, ui
 from sqlmodel import select
 
-from renderer import render_invoice_to_pdf_base64
+from renderer import PDFInvoiceRenderer
 
 from data import Customer
 from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
@@ -198,6 +199,8 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         except (TypeError, ValueError):
             return None
 
+    renderer = PDFInvoiceRenderer()
+
     def update_preview() -> None:
         vat_enabled = bool(vat_switch.value)
         vat_rate = max((float(_get(it, "tax_rate", default=0) or 0) for it in items), default=0.0)
@@ -210,6 +213,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             "service_from": service_from,
             "service_to": service_to,
             "intro_text": intro_input.value or "",
+            "company": comp,
             "customer": _current_customer_obj(),
             "items": items,
             "show_tax": vat_enabled,
@@ -220,7 +224,8 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
         preview_html = build_invoice_preview_html(invoice)
         try:
-            pdf_b64 = render_invoice_to_pdf_base64(invoice, comp)
+            pdf_bytes = renderer.render(invoice, template_id=None)
+            pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
             preview_frame.set_attribute("src", f"data:application/pdf;base64,{pdf_b64}")
             preview_summary.content = build_invoice_preview_html(invoice)
         except Exception as ex:
