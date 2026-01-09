@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from datetime import date
+import re
 from typing import Any
 
 from fpdf import FPDF
@@ -40,6 +41,24 @@ def _sanitize_text(text: Any) -> str:
         return s
     except UnicodeEncodeError:
         return s.encode("latin-1", "ignore").decode("latin-1")
+
+
+def _wrap_pdf_text(text: Any, max_word_len: int = 30) -> str:
+    s = _sanitize_text(text)
+    if not s:
+        return s
+    tokens = re.split(r"(\s+)", s)
+    out: list[str] = []
+    for tok in tokens:
+        if not tok or tok.isspace():
+            out.append(tok)
+            continue
+        if len(tok) <= max_word_len:
+            out.append(tok)
+            continue
+        chunks = [tok[i : i + max_word_len] for i in range(0, len(tok), max_word_len)]
+        out.append(" ".join(chunks))
+    return "".join(out)
 
 
 def _get(obj: Any, *names: str, default: Any = "") -> Any:
@@ -188,7 +207,7 @@ class InvoicePDF(FPDF):
 
         for ln in self._header_lines:
             self.set_x(self.l_margin)  # critical
-            self.multi_cell(usable_w, 4.5, _sanitize_text(ln))
+            self.multi_cell(usable_w, 4.5, _wrap_pdf_text(ln))
 
         self.ln(2)
         self.set_text_color(0, 0, 0)
@@ -242,14 +261,14 @@ class InvoicePDF(FPDF):
         self.set_font("Helvetica", size=10)
         for ln in cust_lines:
             self.set_x(self.l_margin)
-            self.multi_cell(_usable_page_width(self), 5.0, _sanitize_text(ln))
+            self.multi_cell(_usable_page_width(self), 5.0, _wrap_pdf_text(ln))
 
         self.ln(4)
 
         intro = _sanitize_text(_get(self.invoice, "intro_text", "intro", default=""))
         if intro:
             self.set_font("Helvetica", size=10)
-            self.multi_cell(_usable_page_width(self), 5.2, intro)
+            self.multi_cell(_usable_page_width(self), 5.2, _wrap_pdf_text(intro))
             self.ln(3)
 
         # Items
@@ -294,7 +313,7 @@ class InvoicePDF(FPDF):
             y0 = self.get_y()
             x0 = self.get_x()
 
-            self.multi_cell(w_desc, 6, _sanitize_text(it.description), border=1)
+            self.multi_cell(w_desc, 6, _wrap_pdf_text(it.description), border=1)
             y1 = self.get_y()
             row_h = y1 - y0
 
@@ -333,7 +352,7 @@ class InvoicePDF(FPDF):
                 self.ln(3)
                 self.set_font("Helvetica", size=9)
                 self.set_text_color(90, 90, 90)
-                self.multi_cell(_usable_page_width(self), 4.5, note)
+                self.multi_cell(_usable_page_width(self), 4.5, _wrap_pdf_text(note))
                 self.set_text_color(0, 0, 0)
 
         out = self.output(dest="S")
