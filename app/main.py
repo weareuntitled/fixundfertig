@@ -6,11 +6,14 @@ import json
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from fastapi import HTTPException, Response
 from nicegui import ui, app
+from sqlmodel import select
 
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
-from data import get_session
+from data import Company, Customer, Invoice, get_session
+from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from pages import (
     render_dashboard,
@@ -91,6 +94,34 @@ def address_autocomplete(q: str = "", country: str = "DE"):
     if not isinstance(payload, list):
         return []
     return [_format_nominatim_result(item) for item in payload]
+
+
+@app.get("/api/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int, rev: str | None = None):
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        statement = (
+            select(Invoice, Company)
+            .join(Customer, Customer.id == Invoice.customer_id)
+            .join(Company, Company.id == Customer.company_id)
+            .where(Invoice.id == invoice_id, Company.user_id == user_id)
+        )
+        result = session.exec(statement).first()
+        if not result:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+        invoice, company = result
+        pdf_bytes = render_invoice_to_pdf_bytes(invoice, company)
+        if isinstance(pdf_bytes, bytearray):
+            pdf_bytes = bytes(pdf_bytes)
+        if not isinstance(pdf_bytes, bytes):
+            raise HTTPException(status_code=500, detail="Failed to render PDF")
+
+    headers = {"Cache-Control": "no-store"}
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
 def set_page(name: str):
