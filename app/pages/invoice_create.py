@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import time
 from datetime import date
 from typing import Any
 
@@ -190,6 +191,13 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     .classes("w-full")
                 )
 
+    preview_state = {"dirty": True, "pending": False, "last_change": 0.0}
+
+    def mark_preview_dirty() -> None:
+        preview_state["dirty"] = True
+        preview_state["pending"] = True
+        preview_state["last_change"] = time.monotonic()
+
     def _current_customer_obj() -> Any:
         selected = customer_select.value
         if selected in (None, new_customer_value):
@@ -201,7 +209,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
     renderer = PDFInvoiceRenderer()
 
-    def update_preview() -> None:
+    def update_preview(force_pdf: bool = False) -> None:
         vat_enabled = bool(vat_switch.value)
         vat_rate = max((float(_get(it, "tax_rate", default=0) or 0) for it in items), default=0.0)
         net, vat, gross = compute_invoice_totals(items, vat_enabled, vat_rate)
