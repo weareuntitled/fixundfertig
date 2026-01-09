@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import date
 from typing import Any
 
@@ -88,7 +89,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
                 def _invoice_date_changed(e) -> None:
                     invoice_date_input.value = e.value
-                    update_preview()
+                    mark_preview_dirty()
 
                 invoice_date_picker.on("update:modelValue", _invoice_date_changed)
 
@@ -112,7 +113,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     service_from = v.get("from", today)
                     service_to = v.get("to", today)
                     service_input.value = f"{service_from} bis {service_to}"
-                    update_preview()
+                    mark_preview_dirty()
 
                 service_picker.on("update:modelValue", _service_changed)
 
@@ -167,7 +168,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                                 items.append(new_item)
                                 table.rows = items
                                 dialog.close()
-                                update_preview()
+                                mark_preview_dirty()
 
                             ui.button("Hinzufügen", on_click=_add_item).props("unelevated color=primary")
 
@@ -198,7 +199,18 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         except (TypeError, ValueError):
             return None
 
-    def update_preview() -> None:
+    preview_state = {
+        "dirty": True,
+        "pending": False,
+        "last_change": 0.0,
+    }
+
+    def mark_preview_dirty() -> None:
+        preview_state["dirty"] = True
+        preview_state["pending"] = True
+        preview_state["last_change"] = time.monotonic()
+
+    def update_preview(*, force_pdf: bool = False) -> None:
         vat_enabled = bool(vat_switch.value)
         vat_rate = max((float(_get(it, "tax_rate", default=0) or 0) for it in items), default=0.0)
         net, vat, gross = compute_invoice_totals(items, vat_enabled, vat_rate)
@@ -219,15 +231,18 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         }
 
         preview_html = build_invoice_preview_html(invoice)
+        preview_summary.content = preview_html
+        if not (force_pdf or preview_state["dirty"]):
+            return
+        preview_state["dirty"] = False
         try:
             pdf_b64 = render_invoice_to_pdf_base64(invoice, comp)
             preview_frame.set_attribute("src", f"data:application/pdf;base64,{pdf_b64}")
-            preview_summary.content = build_invoice_preview_html(invoice)
         except Exception as ex:
             preview_frame.set_attribute("src", "")
             preview_summary.content = (
                 "<div class='text-red-600'>PDF Fehler: "
-                f"{ex}</div>{build_invoice_preview_html(invoice)}"
+                f"{ex}</div>{preview_html}"
             )
 
     def _on_customer_change(e) -> None:
@@ -235,11 +250,20 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             app.storage.user["page"] = "customer_new"
             ui.navigate.to("/")
             return
+        mark_preview_dirty()
+
+    def debounce_tick() -> None:
+        if not preview_state["pending"]:
+            return
+        if time.monotonic() - preview_state["last_change"] < 0.6:
+            return
+        preview_state["pending"] = False
         update_preview()
 
     customer_select.on("update:modelValue", _on_customer_change)
-    title_input.on("update:value", lambda e: update_preview())
-    intro_input.on("update:value", lambda e: update_preview())
-    vat_switch.on("update:modelValue", lambda e: update_preview())
+    title_input.on("update:value", lambda e: mark_preview_dirty())
+    intro_input.on("update:value", lambda e: mark_preview_dirty())
+    vat_switch.on("update:modelValue", lambda e: mark_preview_dirty())
+    ui.timer(0.1, debounce_tick)
 
-    update_preview()
+    update_preview(force_pdf=True)
