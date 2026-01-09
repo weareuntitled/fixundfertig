@@ -10,7 +10,10 @@ def render_customer_new(session, comp: Company) -> None:
         contact_fields = customer_contact_card()
         address_fields = customer_address_card(country_value=comp.country or "DE")
         with settings_card("Rechnungsempfänger"):
-            same_recipient_checkbox = ui.checkbox("Rechnungsempfänger = Kontaktadresse").classes("mb-2")
+            same_recipient_checkbox = ui.checkbox(
+                "Rechnungsempfänger = Kontaktadresse",
+                value=True,
+            ).classes("mb-2")
             with settings_grid():
                 recipient_name = ui.input("Rechnungsempfänger", value="").classes(C_INPUT)
                 recipient_street = ui.input("Rechnungsstraße", value="").classes(C_INPUT)
@@ -44,8 +47,7 @@ def render_customer_new(session, comp: Company) -> None:
             _sync_recipient_with_contact()
 
     same_recipient_checkbox.on("update:model-value", lambda _: _maybe_sync_recipient())
-    for source in (name, first, last, street, plz, city):
-        source.on("update:model-value", lambda _: _maybe_sync_recipient())
+    _maybe_sync_recipient()
 
     def save():
         with get_session() as s:
