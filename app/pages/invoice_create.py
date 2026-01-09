@@ -44,15 +44,15 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     customers_by_id = {int(c.id): c for c in customers if getattr(c, "id", None) is not None}
     new_customer_value = "__new_customer__"
 
-    # NiceGUI ui.select supports dict (label->value) reliably
-    customer_options: dict[str, Any] = {}
+    # NiceGUI ui.select expects dict[value, label] when using dict options
+    customer_options: dict[Any, str] = {}
     for i, c in enumerate(customers):
+        if getattr(c, "id", None) is None:
+            continue
         label = str(_get(c, "display_name", "name", default=f"Kunde {i+1}"))
-        customer_options[label] = int(c.id) if getattr(c, "id", None) is not None else None
-    if not customer_options:
-        customer_options["Keine Kunden gefunden"] = None
-    customer_options["Neuen Kunden hinzufügen"] = new_customer_value
-    customer_default = next(iter(customers_by_id.keys()), None)
+        customer_options[int(c.id)] = label
+    customer_options[new_customer_value] = "Neuen Kunden hinzufügen"
+    customer_default = next(iter(customer_options.keys()), new_customer_value)
 
     items: list[dict] = []
     service_from = today
