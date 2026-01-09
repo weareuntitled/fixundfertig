@@ -6,6 +6,14 @@ import secrets
 from nicegui import app, ui
 from sqlmodel import select
 
+from models.document import (
+    Document,
+    DocumentSource,
+    build_display_title,
+    build_download_filename,
+    normalize_keywords,
+    safe_filename,
+)
 from ._shared import (
     C_BTN_PRIM,
     C_BTN_SEC,
@@ -403,6 +411,82 @@ def render_settings(session, comp: Company) -> None:
                     ui.notify(f"n8n OK. HTTP {resp.status_code}", color="green")
 
                 ui.button("Webhook testen", on_click=test_n8n_webhook).classes(C_BTN_SEC)
+
+        with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
+            ui.label("Dokumente").classes("text-sm font-semibold text-slate-700")
+            ui.label("Test-Hook für Metadaten").classes("text-sm text-slate-500")
+
+            with ui.grid(columns=2).classes("w-full gap-4"):
+                doc_vendor = ui.input("Lieferant", placeholder="z.B. ACME GmbH").classes(C_INPUT)
+                doc_date = ui.input("Belegdatum", placeholder="YYYY-MM-DD").classes(C_INPUT)
+                doc_amount = ui.number("Betrag", step=0.01).classes(C_INPUT)
+                doc_currency = ui.input("Währung", value="EUR").classes(C_INPUT)
+                doc_filename = ui.input("Originaldatei", placeholder="scan.pdf").classes(C_INPUT)
+                doc_keywords = ui.input("Keywords (kommagetrennt)", placeholder="steuer, hardware").classes(C_INPUT)
+
+            preview = ui.label("").classes("text-sm text-slate-500 mt-2")
+            count_label = ui.label("").classes("text-sm text-slate-500")
+
+            def _refresh_document_status() -> None:
+                cid = int(comp.id or 0)
+                if not cid:
+                    count_label.text = "Kein aktives Unternehmen."
+                    preview.text = ""
+                    return
+                with get_session() as s:
+                    docs = list(
+                        s.exec(select(Document).where(Document.company_id == cid).order_by(Document.created_at.desc()))
+                    )
+                count_label.text = f"{len(docs)} Dokument(e) gespeichert."
+                if docs:
+                    latest = docs[0]
+                    preview.text = f"Letztes: {latest.title or 'Dokument'}"
+                else:
+                    preview.text = "Noch keine Dokumente."
+
+            def _create_document() -> None:
+                cid = int(comp.id or 0)
+                if not cid:
+                    ui.notify("Kein aktives Unternehmen.", color="red")
+                    return
+                amount_value = doc_amount.value
+                amount = float(amount_value) if amount_value not in (None, "") else None
+                title = build_display_title(
+                    doc_vendor.value or "",
+                    doc_date.value or "",
+                    amount,
+                    doc_currency.value or "",
+                    doc_filename.value or "",
+                )
+                storage_key = f"{safe_filename(doc_filename.value or title)}-{secrets.token_hex(4)}"
+                keywords_json = normalize_keywords(doc_keywords.value or "")
+                document = Document(
+                    company_id=cid,
+                    storage_key=storage_key,
+                    original_filename=doc_filename.value or "",
+                    mime="application/pdf",
+                    size=0,
+                    sha256="",
+                    source=DocumentSource.MANUAL,
+                    title=title,
+                    description="",
+                    vendor=doc_vendor.value or "",
+                    doc_date=(doc_date.value or "").strip() or None,
+                    amount_total=amount,
+                    currency=(doc_currency.value or "").strip() or None,
+                    keywords_json=keywords_json,
+                )
+                with get_session() as s:
+                    s.add(document)
+                    s.commit()
+                download_name = build_download_filename(title, document.mime)
+                ui.notify(f"Dokument gespeichert: {download_name}", color="green")
+                _refresh_document_status()
+
+            with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
+                ui.button("Beispieldokument speichern", on_click=_create_document).classes(C_BTN_SEC)
+
+            _refresh_document_status()
 
         with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
             ui.label("Account").classes("text-sm font-semibold text-slate-700")
