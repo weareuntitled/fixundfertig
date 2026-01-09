@@ -13,6 +13,14 @@ import httpx
 from nicegui import app, ui
 from sqlmodel import select
 
+from models.document import (
+    Document,
+    DocumentSource,
+    build_display_title,
+    build_download_filename,
+    normalize_keywords,
+    safe_filename,
+)
 from ._shared import (
     C_BTN_PRIM,
     C_BTN_SEC,
@@ -29,6 +37,7 @@ from integrations.n8n_client import post_to_n8n
 from services.companies import create_company, delete_company, list_companies, update_company
 from services.email import send_email
 from services.iban import lookup_bank_from_iban
+from services.blob_storage import blob_storage, build_document_key
 from services.storage import company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
@@ -258,6 +267,88 @@ def render_settings(session, comp: Company) -> None:
                 ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").props("flat dense").classes("w-full")
 
             with ui.card().classes(C_CARD + " p-6 w-full"):
+                ui.label("Dokument-Storage (Test)").classes("text-sm font-semibold text-slate-700")
+                doc_id_input = ui.input("Dokument-ID", placeholder="z.B. 12345").classes(C_INPUT)
+                key_output = ui.input("Letzter Key", value="").props("readonly").classes(C_INPUT)
+
+                def _read_upload_bytes(upload_file) -> bytes:
+                    temp_file = tempfile.NamedTemporaryFile(delete=False)
+                    temp_path = Path(temp_file.name)
+                    temp_file.close()
+                    try:
+                        upload_file.save(str(temp_path))
+                        return temp_path.read_bytes()
+                    finally:
+                        if temp_path.exists():
+                            temp_path.unlink()
+
+                def _resolve_key() -> str | None:
+                    key = (key_output.value or "").strip()
+                    if not key:
+                        ui.notify("Kein Key vorhanden.", color="red")
+                        return None
+                    return key
+
+                def on_doc_upload(e) -> None:
+                    if not comp.id:
+                        ui.notify("Kein aktives Unternehmen.", color="red")
+                        return
+                    cid = int(comp.id)
+                    doc_id = (doc_id_input.value or "").strip() or str(int(time.time()))
+                    key = build_document_key(cid, doc_id, e.file.name)
+                    mime = getattr(e.file, "content_type", None) or "application/octet-stream"
+                    try:
+                        data = _read_upload_bytes(e.file)
+                        blob_storage().put_bytes(key, data, mime)
+                    except Exception as exc:
+                        ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
+                        return
+                    doc_id_input.set_value(doc_id)
+                    key_output.set_value(key)
+                    ui.notify("Dokument gespeichert", color="green")
+
+                def on_doc_exists() -> None:
+                    key = _resolve_key()
+                    if not key:
+                        return
+                    try:
+                        exists = blob_storage().exists(key)
+                    except Exception as exc:
+                        ui.notify(f"Prüfung fehlgeschlagen: {exc}", color="red")
+                        return
+                    ui.notify("Dokument vorhanden" if exists else "Dokument nicht gefunden", color="green")
+
+                def on_doc_load() -> None:
+                    key = _resolve_key()
+                    if not key:
+                        return
+                    try:
+                        data = blob_storage().get_bytes(key)
+                    except Exception as exc:
+                        ui.notify(f"Laden fehlgeschlagen: {exc}", color="red")
+                        return
+                    ui.notify(f"Bytes geladen: {len(data)}", color="green")
+
+                def on_doc_delete() -> None:
+                    key = _resolve_key()
+                    if not key:
+                        return
+                    try:
+                        blob_storage().delete(key)
+                    except Exception as exc:
+                        ui.notify(f"Löschen fehlgeschlagen: {exc}", color="red")
+                        return
+                    ui.notify("Dokument gelöscht", color="green")
+
+                ui.upload(on_upload=on_doc_upload, auto_upload=True, label="Datei wählen").props("flat dense").classes(
+                    "w-full"
+                )
+                with ui.row().classes("w-full gap-2 flex-wrap"):
+                    ui.button("Vorhanden?", on_click=on_doc_exists).classes(C_BTN_SEC)
+                    ui.button("Bytes prüfen", on_click=on_doc_load).classes(C_BTN_SEC)
+                    ui.button("Löschen", on_click=on_doc_delete).classes(C_BTN_SEC)
+
+            with ui.card().classes(C_CARD + " p-6 w-full"):
                 ui.label("Business Meta").classes("text-sm font-semibold text-slate-700")
 
                 business_type_options = [
@@ -460,6 +551,82 @@ def render_settings(session, comp: Company) -> None:
                     ui.notify("Ingest OK. Dokument angelegt.", color="green")
 
                 ui.button("Ingest testen", on_click=test_n8n_ingest).classes(C_BTN_SEC)
+
+        with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
+            ui.label("Dokumente").classes("text-sm font-semibold text-slate-700")
+            ui.label("Test-Hook für Metadaten").classes("text-sm text-slate-500")
+
+            with ui.grid(columns=2).classes("w-full gap-4"):
+                doc_vendor = ui.input("Lieferant", placeholder="z.B. ACME GmbH").classes(C_INPUT)
+                doc_date = ui.input("Belegdatum", placeholder="YYYY-MM-DD").classes(C_INPUT)
+                doc_amount = ui.number("Betrag", step=0.01).classes(C_INPUT)
+                doc_currency = ui.input("Währung", value="EUR").classes(C_INPUT)
+                doc_filename = ui.input("Originaldatei", placeholder="scan.pdf").classes(C_INPUT)
+                doc_keywords = ui.input("Keywords (kommagetrennt)", placeholder="steuer, hardware").classes(C_INPUT)
+
+            preview = ui.label("").classes("text-sm text-slate-500 mt-2")
+            count_label = ui.label("").classes("text-sm text-slate-500")
+
+            def _refresh_document_status() -> None:
+                cid = int(comp.id or 0)
+                if not cid:
+                    count_label.text = "Kein aktives Unternehmen."
+                    preview.text = ""
+                    return
+                with get_session() as s:
+                    docs = list(
+                        s.exec(select(Document).where(Document.company_id == cid).order_by(Document.created_at.desc()))
+                    )
+                count_label.text = f"{len(docs)} Dokument(e) gespeichert."
+                if docs:
+                    latest = docs[0]
+                    preview.text = f"Letztes: {latest.title or 'Dokument'}"
+                else:
+                    preview.text = "Noch keine Dokumente."
+
+            def _create_document() -> None:
+                cid = int(comp.id or 0)
+                if not cid:
+                    ui.notify("Kein aktives Unternehmen.", color="red")
+                    return
+                amount_value = doc_amount.value
+                amount = float(amount_value) if amount_value not in (None, "") else None
+                title = build_display_title(
+                    doc_vendor.value or "",
+                    doc_date.value or "",
+                    amount,
+                    doc_currency.value or "",
+                    doc_filename.value or "",
+                )
+                storage_key = f"{safe_filename(doc_filename.value or title)}-{secrets.token_hex(4)}"
+                keywords_json = normalize_keywords(doc_keywords.value or "")
+                document = Document(
+                    company_id=cid,
+                    storage_key=storage_key,
+                    original_filename=doc_filename.value or "",
+                    mime="application/pdf",
+                    size=0,
+                    sha256="",
+                    source=DocumentSource.MANUAL,
+                    title=title,
+                    description="",
+                    vendor=doc_vendor.value or "",
+                    doc_date=(doc_date.value or "").strip() or None,
+                    amount_total=amount,
+                    currency=(doc_currency.value or "").strip() or None,
+                    keywords_json=keywords_json,
+                )
+                with get_session() as s:
+                    s.add(document)
+                    s.commit()
+                download_name = build_download_filename(title, document.mime)
+                ui.notify(f"Dokument gespeichert: {download_name}", color="green")
+                _refresh_document_status()
+
+            with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
+                ui.button("Beispieldokument speichern", on_click=_create_document).classes(C_BTN_SEC)
+
+            _refresh_document_status()
 
         with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
             ui.label("Account").classes("text-sm font-semibold text-slate-700")
