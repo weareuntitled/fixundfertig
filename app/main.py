@@ -11,8 +11,9 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from fastapi import HTTPException, Response
+from fastapi.responses import HTMLResponse
 from nicegui import ui, app
-from fastapi import HTTPException, Response
+from sqlmodel import select
 
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
