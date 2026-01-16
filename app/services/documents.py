@@ -72,6 +72,8 @@ def set_document_storage_path(document: Document) -> None:
         document.id,
         document.filename,
     )
+    if hasattr(document, "storage_key"):
+        document.storage_key = document.storage_path
 
 
 def resolve_document_path(storage_path: str) -> str:
