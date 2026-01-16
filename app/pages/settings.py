@@ -8,14 +8,13 @@ import json
 import os
 import secrets
 import time
+from datetime import datetime
 
 import httpx
 from nicegui import app, ui
 from sqlmodel import select
 
-from models.document import (
-    Document,
-    DocumentSource,
+from services.documents import (
     build_display_title,
     build_download_filename,
     normalize_keywords,
@@ -552,6 +551,56 @@ def render_settings(session, comp: Company) -> None:
 
                 ui.button("Ingest testen", on_click=test_n8n_ingest).classes(C_BTN_SEC)
 
+                def test_n8n_upload() -> None:
+                    secret_value = (n8n_secret.value or "").strip()
+                    if not secret_value:
+                        ui.notify("n8n Secret fehlt.", color="orange")
+                        return
+                    if not bool(n8n_enabled.value):
+                        ui.notify("n8n ist deaktiviert.", color="orange")
+                        return
+
+                    base_url = os.environ.get("APP_BASE_URL", "http://localhost:8080").rstrip("/")
+                    payload = {
+                        "title": "n8n Upload Test",
+                        "extracted": {
+                            "vendor": "n8n",
+                            "doc_date": datetime.now().date().isoformat(),
+                            "amount_total": 12.34,
+                            "currency": "EUR",
+                        },
+                    }
+                    data = {"payload_json": json.dumps(payload, ensure_ascii=False)}
+                    files = {
+                        "file": (
+                            "n8n-upload-test.txt",
+                            b"FixundFertig n8n Upload Test",
+                            "text/plain",
+                        )
+                    }
+                    headers = {
+                        "X-Company-Id": str(int(comp.id or 0)),
+                        "X-N8N-Secret": secret_value,
+                    }
+                    try:
+                        resp = httpx.post(
+                            f"{base_url}/api/webhooks/n8n/upload",
+                            data=data,
+                            files=files,
+                            headers=headers,
+                            timeout=8.0,
+                        )
+                    except Exception as exc:
+                        ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
+                        return
+
+                    if resp.status_code >= 400:
+                        ui.notify(f"Upload Fehler: HTTP {resp.status_code}", color="red")
+                        return
+                    ui.notify("Upload OK. Dokument gespeichert.", color="green")
+
+                ui.button("Upload testen", on_click=test_n8n_upload).classes(C_BTN_SEC)
+
         with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
             ui.label("Dokumente").classes("text-sm font-semibold text-slate-700")
             ui.label("Test-Hook für Metadaten").classes("text-sm text-slate-500")
@@ -600,14 +649,21 @@ def render_settings(session, comp: Company) -> None:
                 )
                 storage_key = f"{safe_filename(doc_filename.value or title)}-{secrets.token_hex(4)}"
                 keywords_json = normalize_keywords(doc_keywords.value or "")
+                original_name = doc_filename.value or title
+                safe_name = safe_filename(original_name)
                 document = Document(
                     company_id=cid,
+                    filename=safe_name,
+                    original_filename=original_name,
+                    mime_type="application/pdf",
+                    size_bytes=0,
+                    source="manual",
+                    doc_type="pdf",
                     storage_key=storage_key,
-                    original_filename=doc_filename.value or "",
+                    storage_path="",
                     mime="application/pdf",
                     size=0,
                     sha256="",
-                    source=DocumentSource.MANUAL,
                     title=title,
                     description="",
                     vendor=doc_vendor.value or "",

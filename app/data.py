@@ -7,7 +7,6 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationsh
 from contextlib import contextmanager
 from datetime import datetime
 from pydantic import validator
-from models.document import Document
 import pandas as pd
 import io
 import os
@@ -186,6 +185,17 @@ class Document(SQLModel, table=True):
     source: str = ""
     doc_type: str = ""
     storage_path: str = ""
+    storage_key: str = ""
+    mime: str = ""
+    size: int = 0
+    sha256: str = ""
+    title: str = ""
+    description: str = ""
+    vendor: str = ""
+    doc_date: Optional[str] = None
+    amount_total: Optional[float] = None
+    currency: Optional[str] = None
+    keywords_json: str = "[]"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 os.makedirs('./storage', exist_ok=True)
@@ -392,6 +402,28 @@ def ensure_document_schema():
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_type TEXT DEFAULT ''")
         if "storage_path" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN storage_path TEXT DEFAULT ''")
+        if "storage_key" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN storage_key TEXT DEFAULT ''")
+        if "mime" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime TEXT DEFAULT ''")
+        if "size" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size INTEGER DEFAULT 0")
+        if "sha256" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN sha256 TEXT DEFAULT ''")
+        if "title" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN title TEXT DEFAULT ''")
+        if "description" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN description TEXT DEFAULT ''")
+        if "vendor" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN vendor TEXT DEFAULT ''")
+        if "doc_date" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_date TEXT")
+        if "amount_total" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_total REAL")
+        if "currency" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN currency TEXT DEFAULT ''")
+        if "keywords_json" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN keywords_json TEXT DEFAULT '[]'")
         if "created_at" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN created_at TEXT DEFAULT (datetime('now'))")
 
