@@ -1,8 +1,11 @@
+# APP/DATA.PY
+# ===========
+from __future__ import annotations
 
 from sqlalchemy import Column, Text, event, inspect
 from sqlalchemy.orm import sessionmaker
 from typing import Optional, List
-from enum import Enum  # <--- WICHTIG: Das hat gefehlt!
+from enum import Enum
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
 from contextlib import contextmanager
 from datetime import datetime
@@ -11,7 +14,8 @@ import pandas as pd
 import io
 import os
 
-# --- DB MODELLE ---
+# --- ENUMS ---
+
 class InvoiceStatus(str, Enum):
     DRAFT = "DRAFT"
     OPEN = "OPEN"
@@ -24,6 +28,51 @@ class TokenPurpose(str, Enum):
     VERIFY_EMAIL = "verify_email"
     RESET_PASSWORD = "reset_password"
 
+class DocumentSource(str, Enum):
+    MANUAL = "MANUAL"
+    EMAIL = "EMAIL"
+    N8N = "N8N"
+    API = "API"
+
+# --- DB MODELS ---
+
+# 1. Define User FIRST so others can reference it directly
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True, unique=True)
+    username: Optional[str] = Field(default=None, index=True, unique=True)
+    first_name: str = ""
+    last_name: str = ""
+    phone: str = ""
+    password_hash: str
+    is_active: bool = False
+    is_email_verified: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Forward references using lowercase 'list' to avoid SQLModel parser issues with 'List'
+    tokens: list["Token"] = Relationship(back_populates="user")
+    companies: list["Company"] = Relationship(back_populates="user")
+
+    @validator("email", pre=True)
+    def normalize_email(cls, value):
+        if value is None:
+            return value
+        return value.strip().lower()
+
+# 2. Define Token SECOND
+class Token(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    token: str = Field(index=True, unique=True)
+    purpose: TokenPurpose
+    expires_at: datetime
+    used_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Direct class reference (User is defined above)
+    user: Optional[User] = Relationship(back_populates="tokens")
+
+# 3. Define Company THIRD
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: Optional[int] = Field(default=None, foreign_key="user.id")
@@ -55,37 +104,9 @@ class Company(SQLModel, table=True):
     next_invoice_nr: int = 10000
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
-    user: Optional["User"] = Relationship(back_populates="companies")
-
-class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    email: str = Field(index=True, unique=True)
-    username: Optional[str] = Field(default=None, index=True, unique=True)
-    first_name: str = ""
-    last_name: str = ""
-    phone: str = ""
-    password_hash: str
-    is_active: bool = False
-    is_email_verified: bool = False
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    tokens: List["Token"] = Relationship(back_populates="user")
-    companies: List[Company] = Relationship(back_populates="user")
-
-    @validator("email", pre=True)
-    def normalize_email(cls, value):
-        if value is None:
-            return value
-        return value.strip().lower()
-
-class Token(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="user.id")
-    token: str = Field(index=True, unique=True)
-    purpose: TokenPurpose
-    expires_at: datetime
-    used_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    user: Optional[User] = Relationship(back_populates="tokens")
+    
+    # Direct class reference
+    user: Optional[User] = Relationship(back_populates="companies")
 
 class Customer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -178,21 +199,25 @@ class Expense(SQLModel, table=True):
 class Document(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     company_id: int = Field(foreign_key="company.id")
+    
+    # File Info
     filename: str = ""
-    storage_key: str = ""
     original_filename: str = ""
+    storage_key: str = ""
+    storage_path: str = ""
+    
+    # Technical
     mime: str = ""
     mime_type: str = ""
     size: int = 0
     size_bytes: int = 0
     sha256: str = ""
-    source: str = ""
+    
+    # Metadata
+    source: str = "MANUAL"
     doc_type: str = ""
-    storage_path: str = ""
-    storage_key: str = ""
-    mime: str = ""
-    size: int = 0
-    sha256: str = ""
+    
+    # Extracted Content
     title: str = ""
     description: str = ""
     vendor: str = ""
@@ -200,6 +225,7 @@ class Document(SQLModel, table=True):
     amount_total: Optional[float] = None
     currency: Optional[str] = None
     keywords_json: str = "[]"
+    
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class DocumentMeta(SQLModel, table=True):
@@ -215,12 +241,14 @@ class WebhookEvent(SQLModel, table=True):
     source: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+# --- DATABASE SETUP ---
 os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
+
 engine = create_engine("sqlite:///storage/database.db")
 SessionLocal = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
-# TODO: Replace SQLModel.metadata.create_all with Alembic migrations when schema evolves.
-# For now this guarantees new tables (e.g., future auth_* tables) exist in SQLite.
+
+# Create Tables
 SQLModel.metadata.create_all(engine)
 
 @contextmanager
@@ -253,246 +281,77 @@ def prevent_finalized_invoice_updates(session, flush_context, instances):
             if old_status == InvoiceStatus.FINALIZED and new_status not in (InvoiceStatus.CANCELLED, InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID):
                 obj.status = InvoiceStatus.DRAFT
 
+# --- SCHEMA MIGRATIONS (ENSURE COLUMNS EXIST) ---
+
 def ensure_company_schema():
     with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
-        if "user_id" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN user_id INTEGER")
-        if "first_name" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN first_name TEXT DEFAULT ''")
-        if "last_name" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN last_name TEXT DEFAULT ''")
-        if "business_type" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN business_type TEXT DEFAULT 'Einzelunternehmen'")
-        if "is_small_business" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN is_small_business INTEGER DEFAULT 0")
-        conn.exec_driver_sql(
-            "UPDATE company SET business_type = 'Einzelunternehmen' "
-            "WHERE business_type IS NULL OR business_type = ''"
-        )
-        conn.exec_driver_sql(
-            "UPDATE company SET is_small_business = 0 "
-            "WHERE is_small_business IS NULL"
-        )
-        if "street" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN street TEXT DEFAULT ''")
-        if "postal_code" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN postal_code TEXT DEFAULT ''")
-        if "city" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN city TEXT DEFAULT ''")
-        if "country" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN country TEXT DEFAULT ''")
-        if "email" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN email TEXT DEFAULT ''")
-        if "phone" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN phone TEXT DEFAULT ''")
-        if "tax_id" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN tax_id TEXT DEFAULT ''")
-        if "bic" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN bic TEXT DEFAULT ''")
-        if "bank_name" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN bank_name TEXT DEFAULT ''")
-        if "vat_id" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN vat_id TEXT DEFAULT ''")
-        if "smtp_server" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_server TEXT DEFAULT ''")
-        if "smtp_port" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_port INTEGER DEFAULT 587")
-        if "smtp_user" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_user TEXT DEFAULT ''")
-        if "smtp_password" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_password TEXT DEFAULT ''")
-        if "default_sender_email" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN default_sender_email TEXT DEFAULT ''")
-        if "n8n_webhook_url" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_webhook_url TEXT DEFAULT ''")
-        if "n8n_secret" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_secret TEXT DEFAULT ''")
-        if "n8n_enabled" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_enabled INTEGER DEFAULT 0")
-        if "google_drive_folder_id" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN google_drive_folder_id TEXT DEFAULT ''")
-        if "next_invoice_nr" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
-        if "invoice_number_template" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN invoice_number_template TEXT DEFAULT '{seq}'")
-        if "invoice_filename_template" not in columns:
-            conn.exec_driver_sql("ALTER TABLE company ADD COLUMN invoice_filename_template TEXT DEFAULT 'rechnung_{nr}'")
-        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
-        if "user_id" in columns:
-            single_user_id = conn.exec_driver_sql("SELECT id FROM user ORDER BY id LIMIT 2").fetchall()
-            if len(single_user_id) == 1:
-                conn.exec_driver_sql(
-                    "UPDATE company SET user_id = ? WHERE user_id IS NULL OR user_id = 0",
-                    (single_user_id[0][0],)
-                )
-        if "bic" in columns:
-            conn.exec_driver_sql(
-                "UPDATE company SET bic = '' "
-                "WHERE bic IS NULL"
-            )
-        if "bank_name" in columns:
-            conn.exec_driver_sql(
-                "UPDATE company SET bank_name = '' "
-                "WHERE bank_name IS NULL"
-            )
+        if "user_id" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN user_id INTEGER")
+        if "n8n_enabled" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_enabled INTEGER DEFAULT 0")
+        if "n8n_secret" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_secret TEXT DEFAULT ''")
+        if "n8n_webhook_url" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_webhook_url TEXT DEFAULT ''")
+        if "business_type" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN business_type TEXT DEFAULT 'Einzelunternehmen'")
+        if "is_small_business" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN is_small_business INTEGER DEFAULT 0")
+        if "smtp_server" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_server TEXT DEFAULT ''")
+        if "smtp_port" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_port INTEGER DEFAULT 587")
+        if "smtp_user" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_user TEXT DEFAULT ''")
+        if "smtp_password" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_password TEXT DEFAULT ''")
+        if "default_sender_email" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN default_sender_email TEXT DEFAULT ''")
+        if "google_drive_folder_id" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN google_drive_folder_id TEXT DEFAULT ''")
+        if "invoice_number_template" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN invoice_number_template TEXT DEFAULT '{seq}'")
+        if "invoice_filename_template" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN invoice_filename_template TEXT DEFAULT 'rechnung_{nr}'")
+        if "first_name" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN first_name TEXT DEFAULT ''")
+        if "last_name" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN last_name TEXT DEFAULT ''")
+        if "street" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN street TEXT DEFAULT ''")
+        if "postal_code" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN postal_code TEXT DEFAULT ''")
+        if "city" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN city TEXT DEFAULT ''")
+        if "country" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN country TEXT DEFAULT ''")
+        if "email" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN email TEXT DEFAULT ''")
+        if "phone" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN phone TEXT DEFAULT ''")
+        if "tax_id" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN tax_id TEXT DEFAULT ''")
+        if "vat_id" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN vat_id TEXT DEFAULT ''")
+        if "bic" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN bic TEXT DEFAULT ''")
+        if "bank_name" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN bank_name TEXT DEFAULT ''")
+        if "iban" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN iban TEXT DEFAULT ''")
+        if "next_invoice_nr" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
 
 ensure_company_schema()
 
 def ensure_customer_schema():
     with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(customer)").fetchall()}
-        if "vat_id" not in columns:
-            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN vat_id TEXT DEFAULT ''")
-        if "recipient_name" not in columns:
-            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_name TEXT DEFAULT ''")
-        if "recipient_street" not in columns:
-            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_street TEXT DEFAULT ''")
-        if "recipient_postal_code" not in columns:
-            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
-        if "recipient_city" not in columns:
-            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_city TEXT DEFAULT ''")
-        if "country" not in columns:
-            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN country TEXT DEFAULT ''")
-        if "offen_eur" not in columns:
-            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
-        if "archived" not in columns:
-            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN archived INTEGER DEFAULT 0")
-        if "short_code" not in columns:
-            conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN short_code TEXT DEFAULT ''")
+        if "vat_id" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN vat_id TEXT DEFAULT ''")
+        if "recipient_name" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_name TEXT DEFAULT ''")
+        if "recipient_street" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_street TEXT DEFAULT ''")
+        if "recipient_postal_code" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
+        if "recipient_city" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN recipient_city TEXT DEFAULT ''")
+        if "country" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN country TEXT DEFAULT ''")
+        if "offen_eur" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN offen_eur REAL DEFAULT 0")
+        if "archived" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN archived INTEGER DEFAULT 0")
+        if "short_code" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN short_code TEXT DEFAULT ''")
+        if "vorname" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN vorname TEXT DEFAULT ''")
+        if "nachname" not in columns: conn.exec_driver_sql("ALTER TABLE customer ADD COLUMN nachname TEXT DEFAULT ''")
 
 ensure_customer_schema()
 
 def ensure_invoice_schema():
     with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
-        if "pdf_bytes" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_bytes BLOB")
-        if "pdf_storage" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_storage TEXT DEFAULT ''")
-        if "pdf_filename" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_filename TEXT DEFAULT ''")
-        if "revision_nr" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN revision_nr INTEGER DEFAULT 0")
-        if "updated_at" not in columns:
+        if "pdf_bytes" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_bytes BLOB")
+        if "pdf_storage" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_storage TEXT DEFAULT ''")
+        if "pdf_filename" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN pdf_filename TEXT DEFAULT ''")
+        if "revision_nr" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN revision_nr INTEGER DEFAULT 0")
+        if "updated_at" not in columns: 
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN updated_at TEXT DEFAULT ''")
             conn.exec_driver_sql("UPDATE invoice SET updated_at = datetime('now') WHERE updated_at IS NULL OR updated_at = ''")
-        if "related_invoice_id" not in columns:
-            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN related_invoice_id INTEGER")
-        old_status_count = conn.exec_driver_sql(
-            "SELECT COUNT(*) FROM invoice WHERE status IN ('Entwurf','Bezahlt','Offen','FINALIZED')"
-        ).fetchone()[0]
-        if old_status_count > 0:
-            conn.exec_driver_sql("UPDATE invoice SET status = 'DRAFT' WHERE status = 'Entwurf'")
-            conn.exec_driver_sql("UPDATE invoice SET status = 'PAID' WHERE status = 'Bezahlt'")
-            conn.exec_driver_sql("UPDATE invoice SET status = 'OPEN' WHERE status = 'Offen'")
-            conn.exec_driver_sql("UPDATE invoice SET status = 'OPEN' WHERE status = 'FINALIZED'")
+        if "related_invoice_id" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN related_invoice_id INTEGER")
+        if "delivery_date" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN delivery_date TEXT DEFAULT ''")
+        if "recipient_name" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_name TEXT DEFAULT ''")
+        if "recipient_street" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_street TEXT DEFAULT ''")
+        if "recipient_postal_code" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_postal_code TEXT DEFAULT ''")
+        if "recipient_city" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN recipient_city TEXT DEFAULT ''")
 
 ensure_invoice_schema()
-
-def ensure_document_schema():
-    with engine.begin() as conn:
-        conn.exec_driver_sql(
-            "CREATE TABLE IF NOT EXISTS document ("
-            "id INTEGER PRIMARY KEY,"
-            "company_id INTEGER NOT NULL,"
-            "filename TEXT DEFAULT '',"
-            "storage_key TEXT DEFAULT '',"
-            "original_filename TEXT DEFAULT '',"
-            "mime TEXT DEFAULT '',"
-            "mime_type TEXT DEFAULT '',"
-            "size INTEGER DEFAULT 0,"
-            "size_bytes INTEGER DEFAULT 0,"
-            "sha256 TEXT DEFAULT '',"
-            "source TEXT DEFAULT '',"
-            "doc_type TEXT DEFAULT '',"
-            "storage_path TEXT DEFAULT '',"
-            "created_at TEXT DEFAULT (datetime('now'))"
-            ")"
-        )
-        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(document)").fetchall()}
-        if "storage_key" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN storage_key TEXT DEFAULT ''")
-        if "original_filename" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN original_filename TEXT DEFAULT ''")
-        if "mime" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime TEXT DEFAULT ''")
-        if "mime_type" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime_type TEXT DEFAULT ''")
-        if "size" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size INTEGER DEFAULT 0")
-        if "size_bytes" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size_bytes INTEGER DEFAULT 0")
-        if "sha256" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN sha256 TEXT DEFAULT ''")
-        if "source" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN source TEXT DEFAULT ''")
-        if "doc_type" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_type TEXT DEFAULT ''")
-        if "storage_path" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN storage_path TEXT DEFAULT ''")
-        if "storage_key" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN storage_key TEXT DEFAULT ''")
-        if "mime" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime TEXT DEFAULT ''")
-        if "size" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size INTEGER DEFAULT 0")
-        if "sha256" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN sha256 TEXT DEFAULT ''")
-        if "title" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN title TEXT DEFAULT ''")
-        if "description" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN description TEXT DEFAULT ''")
-        if "vendor" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN vendor TEXT DEFAULT ''")
-        if "doc_date" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_date TEXT")
-        if "amount_total" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_total REAL")
-        if "currency" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN currency TEXT DEFAULT ''")
-        if "keywords_json" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN keywords_json TEXT DEFAULT '[]'")
-        if "created_at" not in columns:
-            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN created_at TEXT DEFAULT (datetime('now'))")
-        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(document)").fetchall()}
-        if "storage_key" in columns and "storage_path" in columns:
-            conn.exec_driver_sql(
-                "UPDATE document SET storage_key = storage_path "
-                "WHERE (storage_key IS NULL OR storage_key = '') "
-                "AND storage_path IS NOT NULL AND storage_path != ''"
-            )
-        if "storage_key" in columns and "filename" in columns:
-            conn.exec_driver_sql(
-                "UPDATE document SET storage_key = filename "
-                "WHERE (storage_key IS NULL OR storage_key = '') "
-                "AND filename IS NOT NULL AND filename != ''"
-            )
-        if "storage_key" in columns:
-            conn.exec_driver_sql(
-                "UPDATE document SET storage_key = 'document-' || id "
-                "WHERE storage_key IS NULL OR storage_key = ''"
-            )
-        if "original_filename" in columns and "filename" in columns:
-            conn.exec_driver_sql(
-                "UPDATE document SET original_filename = filename "
-                "WHERE (original_filename IS NULL OR original_filename = '') "
-                "AND filename IS NOT NULL AND filename != ''"
-            )
-        if "mime" in columns and "mime_type" in columns:
-            conn.exec_driver_sql(
-                "UPDATE document SET mime = mime_type "
-                "WHERE (mime IS NULL OR mime = '') "
-                "AND mime_type IS NOT NULL AND mime_type != ''"
-            )
-        if "size" in columns and "size_bytes" in columns:
-            conn.exec_driver_sql(
-                "UPDATE document SET size = size_bytes "
-                "WHERE (size IS NULL OR size = 0) "
-                "AND size_bytes IS NOT NULL AND size_bytes != 0"
-            )
-
-ensure_document_schema()
 
 def ensure_invoice_revision_schema():
     with engine.begin() as conn:
@@ -507,35 +366,57 @@ def ensure_invoice_revision_schema():
             "PRIMARY KEY (invoice_id, revision_nr)"
             ")"
         )
-
 ensure_invoice_revision_schema()
 
 def ensure_expense_schema():
     with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(expense)").fetchall()}
-        if "source" not in columns:
-            conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN source TEXT DEFAULT ''")
-        if "external_id" not in columns:
-            conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN external_id TEXT DEFAULT ''")
-        if "webhook_url" not in columns:
-            conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN webhook_url TEXT DEFAULT ''")
+        if "source" not in columns: conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN source TEXT DEFAULT ''")
+        if "external_id" not in columns: conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN external_id TEXT DEFAULT ''")
+        if "webhook_url" not in columns: conn.exec_driver_sql("ALTER TABLE expense ADD COLUMN webhook_url TEXT DEFAULT ''")
 
 ensure_expense_schema()
 
 def ensure_audit_log_schema():
     with engine.begin() as conn:
         conn.exec_driver_sql(
-            "CREATE TRIGGER IF NOT EXISTS auditlog_no_update "
-            "BEFORE UPDATE ON auditlog "
-            "BEGIN SELECT RAISE(ABORT, 'Audit log is append-only'); END;"
+            "CREATE TABLE IF NOT EXISTS auditlog ("
+            "id INTEGER PRIMARY KEY,"
+            "timestamp TEXT,"
+            "user_id INTEGER,"
+            "action TEXT,"
+            "invoice_id INTEGER,"
+            "ip_address TEXT"
+            ")"
         )
-        conn.exec_driver_sql(
-            "CREATE TRIGGER IF NOT EXISTS auditlog_no_delete "
-            "BEFORE DELETE ON auditlog "
-            "BEGIN SELECT RAISE(ABORT, 'Audit log is append-only'); END;"
-        )
-
 ensure_audit_log_schema()
+
+def ensure_document_schema():
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS document ("
+            "id INTEGER PRIMARY KEY,"
+            "company_id INTEGER NOT NULL,"
+            "filename TEXT DEFAULT '',"
+            "storage_key TEXT DEFAULT '',"
+            "created_at TEXT DEFAULT (datetime('now'))"
+            ")"
+        )
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(document)").fetchall()}
+        
+        for col in ["original_filename", "mime", "mime_type", "sha256", "source", "doc_type", "storage_path", "title", "description", "vendor", "currency", "keywords_json"]:
+            if col not in columns:
+                conn.exec_driver_sql(f"ALTER TABLE document ADD COLUMN {col} TEXT DEFAULT ''")
+        
+        if "size" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size INTEGER DEFAULT 0")
+        if "size_bytes" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size_bytes INTEGER DEFAULT 0")
+        if "amount_total" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_total REAL")
+        if "doc_date" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_date TEXT")
+        
+        if "storage_key" in columns and "storage_path" in columns:
+            conn.exec_driver_sql("UPDATE document SET storage_key = storage_path WHERE (storage_key IS NULL OR storage_key = '') AND storage_path IS NOT NULL AND storage_path != ''")
+
+ensure_document_schema()
 
 def log_audit_action(session, action, invoice_id=None, user_id=None, ip_address=""):
     entry = AuditLog(
@@ -558,34 +439,18 @@ def get_valid_token(session: Session, token_str: str, purpose: TokenPurpose) -> 
     return session.exec(statement).first()
 
 # --- IMPORT LOGIC ---
+
 def load_customer_import_dataframe(content, filename=""):
     file_name = str(filename or '').lower()
     if file_name.endswith('.csv'):
-        file_type = 'csv'
-    elif file_name.endswith('.xls') or file_name.endswith('.xlsx'):
-        file_type = 'excel'
-    elif content[:4] == b'PK\x03\x04' or content[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
-        file_type = 'excel'
-    else:
-        file_type = 'csv'
-
-    if file_type == 'csv':
         try: return pd.read_csv(io.BytesIO(content)), ""
         except: return None, "Format Error"
-
-    missing_engine = False
+    
     for engine in (None, 'openpyxl', 'xlrd'):
         try:
-            if engine:
-                return pd.read_excel(io.BytesIO(content), engine=engine), ""
-            return pd.read_excel(io.BytesIO(content)), ""
-        except ImportError:
-            missing_engine = True
-            continue
-        except:
-            continue
-    if missing_engine: return None, "Excel-Import benötigt openpyxl oder xlrd."
-    return None, "Format Error"
+            return pd.read_excel(io.BytesIO(content), engine=engine), ""
+        except: continue
+    return None, "Format Error (Excel/CSV)"
 
 def load_expense_import_dataframe(content, filename=""):
     return load_customer_import_dataframe(content, filename)
@@ -603,22 +468,21 @@ def process_customer_import(content, session, comp_id, filename=""):
     count = 0
     for _, row in df.iterrows():
         try:
-            kdnr = row.get('Kundennummer') or row.get('Nr') or 0
+            kdnr = row.get('Kundennummer') or row.get('Nr') or row.get('KdNr') or 0
             if not kdnr: continue
-            firma = str(row.get('Firmenname', ''))
-            if str(firma) == 'nan': firma = ""
             
             exists = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
             if not exists:
                 c = Customer(
-                    company_id=comp_id, kdnr=int(kdnr), 
-                    name=firma,
+                    company_id=comp_id, 
+                    kdnr=int(kdnr), 
+                    name=str(row.get('Firmenname', '') or row.get('Firma', '')).replace('nan',''),
                     vorname=str(row.get('Vorname', '')).replace('nan',''),
                     nachname=str(row.get('Nachname', '')).replace('nan',''),
-                    email=str(row.get('E-Mail', '')).replace('nan',''),
-                    strasse=str(row.get('1. Adresszeile', '')).replace('nan',''),
-                    plz=str(row.get('Postleitzahl', '')).replace('nan',''),
-                    ort=str(row.get('Ort', '')).replace('nan',''),
+                    email=str(row.get('E-Mail', '') or row.get('Email', '')).replace('nan',''),
+                    strasse=str(row.get('Strasse', '') or row.get('Straße', '') or row.get('1. Adresszeile', '')).replace('nan',''),
+                    plz=str(row.get('PLZ', '') or row.get('Postleitzahl', '')).replace('nan',''),
+                    ort=str(row.get('Ort', '') or row.get('Stadt', '')).replace('nan',''),
                     offen_eur=0.0
                 )
                 session.add(c)
@@ -633,12 +497,14 @@ def process_expense_import(content, session, comp_id, filename=""):
     count = 0
     for _, row in df.iterrows():
         try:
-            desc = f"{row.get('Lieferant', '')} {row.get('Bemerkung', '')}".replace('nan','').strip()
+            desc = f"{str(row.get('Lieferant', '') or row.get('Empfänger', '')).replace('nan','')} {str(row.get('Bemerkung', '') or row.get('Beschreibung', '')).replace('nan','')}".strip()
             exp = Expense(
-                company_id=comp_id, date=str(row.get('Datum', '')),
-                category=str(row.get('Kategorie', 'Import')),
+                company_id=comp_id, 
+                date=str(row.get('Datum', '')).replace('nan',''),
+                category=str(row.get('Kategorie', 'Import')).replace('nan',''),
                 description=desc, 
-                amount=parse_import_amount(row.get('Betrag brutto', 0))
+                amount=parse_import_amount(row.get('Betrag brutto', 0) or row.get('Betrag', 0)),
+                source="IMPORT"
             )
             session.add(exp)
             count += 1
@@ -654,26 +520,22 @@ def process_invoice_import(content, session, comp_id, filename=""):
         try:
             nr = row.get('Rechnungsnummer') or row.get('Nr') or row.get('Rechnungs-Nr') or 0
             if not nr: continue
-            kdnr = row.get('Kundennummer') or 0
-            cust = None
+            
+            kdnr = row.get('Kundennummer') or row.get('KdNr') or 0
+            cust_id = 0
             if kdnr:
                 cust = session.exec(select(Customer).where(Customer.kdnr == int(kdnr))).first()
-            if not cust: continue
-            status = InvoiceStatus.OPEN
-            is_storniert = str(row.get('Storniert?', '')).strip().lower() in ['ja', 'true', '1']
-            if is_storniert: status = InvoiceStatus.CANCELLED
-            if str(row.get('Zahldatum', '')).strip(): status = InvoiceStatus.PAID
+                if cust: cust_id = cust.id
+            
             inv = Invoice(
-                customer_id=cust.id,
+                company_id=comp_id,
+                customer_id=cust_id,
                 nr=str(nr),
-                date=str(row.get('Datum', '')),
-                total_brutto=parse_import_amount(row.get('Betrag brutto', 0)),
-                status=status
+                date=str(row.get('Datum', '') or row.get('Rechnungsdatum', '')).replace('nan',''),
+                total_brutto=parse_import_amount(row.get('Betrag brutto', 0) or row.get('Gesamtbetrag', 0)),
+                status=InvoiceStatus.OPEN
             )
             session.add(inv)
-            session.flush()
-            if is_storniert:
-                log_audit_action(session, "INVOICE_CANCELLED", invoice_id=inv.id)
             count += 1
         except: continue
     session.commit()
