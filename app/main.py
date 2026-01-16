@@ -13,10 +13,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import Request as UrlRequest, urlopen
 
-from fastapi import HTTPException, Request, Response, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Request
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from nicegui import ui, app
 from sqlmodel import select
 
@@ -45,9 +45,12 @@ from pages._shared import get_current_user_id, get_primary_company, list_compani
 from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
-    compute_sha256_bytes,
+    build_display_title,
     document_matches_filters,
+    ensure_document_dir,
+    normalize_keywords,
     resolve_document_path,
+    safe_filename,
     serialize_document,
     validate_document_upload,
 )
@@ -162,7 +165,7 @@ def address_autocomplete(q: str = "", country: str = "DE"):
     if country:
         params["countrycodes"] = country.lower()
     url = f"https://nominatim.openstreetmap.org/search?{urlencode(params)}"
-    request = Request(
+    request = UrlRequest(
         url,
         headers={
             "User-Agent": "FixundFertig/1.0 (autocomplete)",
@@ -280,6 +283,164 @@ async def n8n_ingest(request: Request):
         session.commit()
         session.refresh(document)
         return {"status": "ok", "document_id": int(document.id or 0)}
+
+
+def _parse_optional_float(value: object) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.post("/api/webhooks/n8n/upload")
+async def n8n_upload(
+    file: UploadFile = File(...),
+    payload_json: str = Form(...),
+    x_company_id: str | None = Header(None, alias="X-Company-Id"),
+    x_n8n_secret: str | None = Header(None, alias="X-N8N-Secret"),
+    file_name: str | None = Form(None),
+    title: str | None = Form(None),
+    description: str | None = Form(None),
+    vendor: str | None = Form(None),
+    doc_date: str | None = Form(None),
+    amount_total: str | None = Form(None),
+    currency: str | None = Form(None),
+    keywords: str | None = Form(None),
+) -> Response:
+    if not x_company_id or not x_n8n_secret:
+        raise HTTPException(status_code=401, detail="Missing auth headers")
+    try:
+        company_id = int(x_company_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid company id")
+
+    try:
+        payload = json.loads(payload_json)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid payload_json")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid payload_json")
+    extracted = payload.get("extracted") or {}
+    if not isinstance(extracted, dict):
+        extracted = {}
+
+    raw_filename = (
+        file_name
+        or payload.get("file_name")
+        or payload.get("filename")
+        or payload.get("name")
+        or file.filename
+        or "document"
+    )
+    safe_name = safe_filename(str(raw_filename))
+    is_bnh = str(raw_filename).lower().endswith(".bnh") or (file.filename or "").lower().endswith(".bnh")
+    if safe_name.lower().endswith(".bnh"):
+        is_bnh = True
+    if is_bnh and not safe_name.lower().endswith(".bnh"):
+        safe_name = f"{safe_name}.bnh"
+
+    file_bytes = await file.read()
+    sha256 = hashlib.sha256(file_bytes).hexdigest()
+    mime = (file.content_type or "").strip()
+    if is_bnh:
+        mime = "application/octet-stream"
+    if not mime:
+        ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
+        mime = {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+        }.get(ext, "application/octet-stream")
+
+    vendor_value = (vendor or extracted.get("vendor") or payload.get("vendor") or "").strip()
+    doc_date_value = (doc_date or extracted.get("doc_date") or payload.get("doc_date") or "").strip() or None
+    amount_value = _parse_optional_float(
+        amount_total if amount_total is not None else extracted.get("amount_total") or payload.get("amount_total")
+    )
+    currency_value = (currency or extracted.get("currency") or payload.get("currency") or "").strip() or None
+    keywords_value = keywords or extracted.get("keywords") or payload.get("keywords")
+    title_value = (title or extracted.get("title") or payload.get("title") or "").strip()
+    if not title_value:
+        title_value = build_display_title(
+            vendor_value,
+            doc_date_value,
+            amount_value,
+            currency_value,
+            safe_name,
+        )
+    description_value = (description or extracted.get("summary") or payload.get("summary") or "").strip()
+
+    with get_session() as session:
+        company = session.get(Company, company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        if not bool(getattr(company, "n8n_enabled", False)):
+            raise HTTPException(status_code=403, detail="n8n is disabled")
+        secret = (getattr(company, "n8n_secret", "") or "").strip()
+        if not secret or not hmac.compare_digest(secret, x_n8n_secret):
+            raise HTTPException(status_code=401, detail="Invalid secret")
+
+        existing = session.exec(
+            select(Document).where(
+                Document.company_id == company_id,
+                Document.sha256 == sha256,
+                Document.source == "N8N",
+            )
+        ).first()
+        if existing:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "ok": True,
+                    "duplicate": True,
+                    "document_id": int(existing.id or 0),
+                },
+            )
+
+        ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
+        document = Document(
+            company_id=company_id,
+            filename=safe_name,
+            storage_key="pending",
+            original_filename=str(raw_filename),
+            mime_type=mime,
+            size_bytes=len(file_bytes),
+            source="N8N",
+            doc_type=ext,
+            storage_path="",
+            mime=mime,
+            size=len(file_bytes),
+            sha256=sha256,
+            title=title_value,
+            description=description_value,
+            vendor=vendor_value,
+            doc_date=doc_date_value,
+            amount_total=amount_value,
+            currency=currency_value,
+            keywords_json=normalize_keywords(keywords_value),
+        )
+        session.add(document)
+        session.commit()
+        session.refresh(document)
+
+        storage_key = build_document_key(company_id, int(document.id or 0), safe_name)
+        blob_storage().put_bytes(storage_key, file_bytes, mime)
+        document.storage_key = storage_key
+        document.storage_path = storage_key
+        session.add(document)
+        session.commit()
+
+        return JSONResponse(
+            status_code=201,
+            content={
+                "ok": True,
+                "duplicate": False,
+                "document_id": int(document.id or 0),
+            },
+        )
 
 
 @app.get("/api/invoices/{invoice_id}/pdf")
