@@ -179,12 +179,27 @@ class Document(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     company_id: int = Field(foreign_key="company.id")
     filename: str = ""
+    storage_key: str = ""
     original_filename: str = ""
+    mime: str = ""
     mime_type: str = ""
+    size: int = 0
     size_bytes: int = 0
+    sha256: str = ""
     source: str = ""
     doc_type: str = ""
     storage_path: str = ""
+    storage_key: str = ""
+    mime: str = ""
+    size: int = 0
+    sha256: str = ""
+    title: str = ""
+    description: str = ""
+    vendor: str = ""
+    doc_date: Optional[str] = None
+    amount_total: Optional[float] = None
+    currency: Optional[str] = None
+    keywords_json: str = "[]"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class DocumentMeta(SQLModel, table=True):
@@ -382,9 +397,13 @@ def ensure_document_schema():
             "id INTEGER PRIMARY KEY,"
             "company_id INTEGER NOT NULL,"
             "filename TEXT DEFAULT '',"
+            "storage_key TEXT DEFAULT '',"
             "original_filename TEXT DEFAULT '',"
+            "mime TEXT DEFAULT '',"
             "mime_type TEXT DEFAULT '',"
+            "size INTEGER DEFAULT 0,"
             "size_bytes INTEGER DEFAULT 0,"
+            "sha256 TEXT DEFAULT '',"
             "source TEXT DEFAULT '',"
             "doc_type TEXT DEFAULT '',"
             "storage_path TEXT DEFAULT '',"
@@ -392,20 +411,86 @@ def ensure_document_schema():
             ")"
         )
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(document)").fetchall()}
+        if "storage_key" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN storage_key TEXT DEFAULT ''")
         if "original_filename" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN original_filename TEXT DEFAULT ''")
+        if "mime" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime TEXT DEFAULT ''")
         if "mime_type" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime_type TEXT DEFAULT ''")
+        if "size" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size INTEGER DEFAULT 0")
         if "size_bytes" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size_bytes INTEGER DEFAULT 0")
+        if "sha256" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN sha256 TEXT DEFAULT ''")
         if "source" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN source TEXT DEFAULT ''")
         if "doc_type" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_type TEXT DEFAULT ''")
         if "storage_path" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN storage_path TEXT DEFAULT ''")
+        if "storage_key" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN storage_key TEXT DEFAULT ''")
+        if "mime" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime TEXT DEFAULT ''")
+        if "size" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size INTEGER DEFAULT 0")
+        if "sha256" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN sha256 TEXT DEFAULT ''")
+        if "title" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN title TEXT DEFAULT ''")
+        if "description" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN description TEXT DEFAULT ''")
+        if "vendor" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN vendor TEXT DEFAULT ''")
+        if "doc_date" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_date TEXT")
+        if "amount_total" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_total REAL")
+        if "currency" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN currency TEXT DEFAULT ''")
+        if "keywords_json" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN keywords_json TEXT DEFAULT '[]'")
         if "created_at" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN created_at TEXT DEFAULT (datetime('now'))")
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(document)").fetchall()}
+        if "storage_key" in columns and "storage_path" in columns:
+            conn.exec_driver_sql(
+                "UPDATE document SET storage_key = storage_path "
+                "WHERE (storage_key IS NULL OR storage_key = '') "
+                "AND storage_path IS NOT NULL AND storage_path != ''"
+            )
+        if "storage_key" in columns and "filename" in columns:
+            conn.exec_driver_sql(
+                "UPDATE document SET storage_key = filename "
+                "WHERE (storage_key IS NULL OR storage_key = '') "
+                "AND filename IS NOT NULL AND filename != ''"
+            )
+        if "storage_key" in columns:
+            conn.exec_driver_sql(
+                "UPDATE document SET storage_key = 'document-' || id "
+                "WHERE storage_key IS NULL OR storage_key = ''"
+            )
+        if "original_filename" in columns and "filename" in columns:
+            conn.exec_driver_sql(
+                "UPDATE document SET original_filename = filename "
+                "WHERE (original_filename IS NULL OR original_filename = '') "
+                "AND filename IS NOT NULL AND filename != ''"
+            )
+        if "mime" in columns and "mime_type" in columns:
+            conn.exec_driver_sql(
+                "UPDATE document SET mime = mime_type "
+                "WHERE (mime IS NULL OR mime = '') "
+                "AND mime_type IS NOT NULL AND mime_type != ''"
+            )
+        if "size" in columns and "size_bytes" in columns:
+            conn.exec_driver_sql(
+                "UPDATE document SET size = size_bytes "
+                "WHERE (size IS NULL OR size = 0) "
+                "AND size_bytes IS NOT NULL AND size_bytes != 0"
+            )
 
 ensure_document_schema()
 
