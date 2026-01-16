@@ -1,3 +1,3 @@
-from .document import Document, DocumentSource
+from .document import DocumentSource
 
-__all__ = ["Document", "DocumentSource"]
+__all__ = ["DocumentSource"]

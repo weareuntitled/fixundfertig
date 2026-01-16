@@ -3,13 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime
 from enum import Enum
 from typing import Iterable, Optional
-
-from pydantic import validator
-from sqlalchemy import Column, Text
-from sqlmodel import Field, SQLModel
 
 
 class DocumentSource(str, Enum):
@@ -93,25 +88,3 @@ def build_download_filename(title: Optional[str], mime: Optional[str]) -> str:
         return f"{root or base}.pdf"
     return base if ext or root else "document"
 
-
-class Document(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    company_id: int = Field(foreign_key="company.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    storage_key: str
-    original_filename: str = ""
-    mime: str = ""
-    size: int = 0
-    sha256: str = ""
-    source: DocumentSource = DocumentSource.MANUAL
-    title: str = ""
-    description: str = ""
-    vendor: str = ""
-    doc_date: Optional[str] = None
-    amount_total: Optional[float] = None
-    currency: Optional[str] = None
-    keywords_json: str = Field(default="[]", sa_column=Column(Text))
-
-    @validator("keywords_json", pre=True)
-    def _normalize_keywords(cls, value: Iterable[str] | str | None) -> str:
-        return normalize_keywords(value)
