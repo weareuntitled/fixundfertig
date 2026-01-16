@@ -1,11 +1,10 @@
-# APP/DATA.PY
-# ===========
+
 from __future__ import annotations
 
 from sqlalchemy import Column, Text, event, inspect
 from sqlalchemy.orm import sessionmaker
-from typing import Optional, List
-from enum import Enum
+from typing import Optional
+from enum import Enum  # <--- WICHTIG: Das hat gefehlt!
 from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
 from contextlib import contextmanager
 from datetime import datetime
@@ -28,15 +27,6 @@ class TokenPurpose(str, Enum):
     VERIFY_EMAIL = "verify_email"
     RESET_PASSWORD = "reset_password"
 
-class DocumentSource(str, Enum):
-    MANUAL = "MANUAL"
-    EMAIL = "EMAIL"
-    N8N = "N8N"
-    API = "API"
-
-# --- DB MODELS ---
-
-# 1. Define User FIRST so others can reference it directly
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
@@ -48,10 +38,8 @@ class User(SQLModel, table=True):
     is_active: bool = False
     is_email_verified: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Forward references using lowercase 'list' to avoid SQLModel parser issues with 'List'
-    tokens: list["Token"] = Relationship(back_populates="user")
-    companies: list["Company"] = Relationship(back_populates="user")
+    tokens: list[Token] = Relationship(back_populates="user")
+    companies: list[Company] = Relationship(back_populates="user")
 
     @validator("email", pre=True)
     def normalize_email(cls, value):
@@ -59,7 +47,6 @@ class User(SQLModel, table=True):
             return value
         return value.strip().lower()
 
-# 2. Define Token SECOND
 class Token(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id")
@@ -68,11 +55,8 @@ class Token(SQLModel, table=True):
     expires_at: datetime
     used_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Direct class reference (User is defined above)
     user: Optional[User] = Relationship(back_populates="tokens")
 
-# 3. Define Company THIRD
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: Optional[int] = Field(default=None, foreign_key="user.id")
@@ -104,8 +88,6 @@ class Company(SQLModel, table=True):
     next_invoice_nr: int = 10000
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
-    
-    # Direct class reference
     user: Optional[User] = Relationship(back_populates="companies")
 
 class Customer(SQLModel, table=True):
