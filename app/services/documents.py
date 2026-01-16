@@ -1,25 +1,28 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import secrets
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException
 
 from data import Document
-from services.storage import (
-    company_document_dir,
-    company_document_path,
-    ensure_company_dirs,
-)
+from models.document import DocumentSource, safe_filename
+from services.storage import company_documents_dir, ensure_company_dirs
 
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
 MAX_DOCUMENT_SIZE_BYTES = 15 * 1024 * 1024
 
 
-def _safe_filename(value: str) -> str:
-    name = os.path.basename(value or "").strip() or "upload"
-    return name.replace(" ", "_")
+def _storage_key_from_filename(filename: str) -> str:
+    safe_name = safe_filename(os.path.basename(filename or "document"))
+    root, ext = os.path.splitext(safe_name)
+    token = secrets.token_hex(4)
+    if not root:
+        root = "document"
+    return f"{root}-{token}{ext}"
 
 
 def _extension(value: str) -> str:
@@ -41,65 +44,83 @@ def validate_document_upload(filename: str, size_bytes: int | None) -> None:
         raise HTTPException(status_code=400, detail="File too large")
 
 
+def compute_sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def compute_sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def build_document_record(
     company_id: int,
-    filename: str,
-    *,
-    mime_type: str,
-    size_bytes: int,
-    source: str,
-    doc_type: str,
     original_filename: str,
+    *,
+    mime: str,
+    size: int,
+    sha256: str,
+    source: DocumentSource,
+    storage_key: str | None = None,
+    title: str = "",
+    description: str = "",
+    vendor: str = "",
+    doc_date: str | None = None,
+    amount_total: float | None = None,
+    currency: str | None = None,
 ) -> Document:
-    safe_name = _safe_filename(filename)
+    storage_key = storage_key or _storage_key_from_filename(original_filename)
     return Document(
         company_id=company_id,
-        filename=safe_name,
+        storage_key=storage_key,
         original_filename=original_filename,
-        mime_type=mime_type,
-        size_bytes=size_bytes,
+        mime=mime,
+        size=size,
+        sha256=sha256,
         source=source,
-        doc_type=doc_type,
-    )
-
-
-def set_document_storage_path(document: Document) -> None:
-    if not document.id:
-        raise ValueError("Document must be persisted before setting storage path")
-    ensure_company_dirs(document.company_id)
-    document.storage_path = company_document_path(
-        document.company_id,
-        document.id,
-        document.filename,
+        title=title,
+        description=description,
+        vendor=vendor,
+        doc_date=doc_date,
+        amount_total=amount_total,
+        currency=currency,
     )
     if hasattr(document, "storage_key"):
         document.storage_key = document.storage_path
 
 
-def resolve_document_path(storage_path: str) -> str:
-    if not storage_path:
+def document_storage_path(company_id: int, storage_key: str) -> str:
+    if not storage_key:
         return ""
-    if os.path.isabs(storage_path) or storage_path.startswith("storage/"):
-        return storage_path
-    return os.path.join("storage", storage_path)
+    ensure_company_dirs(company_id)
+    if os.path.isabs(storage_key) or storage_key.startswith("storage/"):
+        return storage_key
+    return os.path.join(company_documents_dir(company_id), storage_key)
 
 
-def ensure_document_dir(company_id: int, document_id: int) -> str:
-    directory = company_document_dir(company_id, document_id)
+def ensure_document_dir(company_id: int) -> str:
+    directory = company_documents_dir(company_id)
     os.makedirs(directory, exist_ok=True)
     return directory
 
 
 def serialize_document(document: Document) -> dict:
+    doc_source = document.source.value if isinstance(document.source, DocumentSource) else (document.source or "")
+    doc_type = _extension(document.original_filename or "")
     return {
         "id": int(document.id or 0),
         "company_id": int(document.company_id),
-        "filename": document.filename or "",
         "original_filename": document.original_filename or "",
-        "mime_type": document.mime_type or "",
-        "size_bytes": int(document.size_bytes or 0),
-        "source": document.source or "",
-        "type": document.doc_type or "",
+        "storage_key": document.storage_key or "",
+        "mime": document.mime or "",
+        "size": int(document.size or 0),
+        "sha256": document.sha256 or "",
+        "source": doc_source,
+        "title": document.title or "",
+        "type": doc_type,
         "created_at": (
             document.created_at.isoformat()
             if hasattr(document.created_at, "isoformat")
@@ -118,12 +139,14 @@ def document_matches_filters(
     date_to: str,
 ) -> bool:
     if query:
-        haystack = f"{document.filename} {document.original_filename}".lower()
+        haystack = f"{document.title} {document.original_filename}".lower()
         if query.lower() not in haystack:
             return False
-    if source and (document.source or "").lower() != source.lower():
+    doc_source = document.source.value if isinstance(document.source, DocumentSource) else (document.source or "")
+    if source and doc_source.lower() != source.lower():
         return False
-    if doc_type and (document.doc_type or "").lower() != doc_type.lower():
+    doc_ext = _extension(document.original_filename or "")
+    if doc_type and doc_ext.lower() != doc_type.lower():
         return False
     created_at = document.created_at
     if not isinstance(created_at, datetime):
