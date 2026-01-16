@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import mimetypes
 import os
 import re
 import time
@@ -23,6 +24,7 @@ from sqlmodel import select
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, Invoice, get_session
+from models.document import DocumentSource, normalize_keywords
 from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from invoice_numbering import build_invoice_filename
@@ -43,11 +45,11 @@ from pages import (
 from pages._shared import get_current_user_id, get_primary_company, list_companies
 from services.documents import (
     build_document_record,
+    compute_sha256_bytes,
     document_matches_filters,
+    document_storage_path,
     ensure_document_dir,
-    resolve_document_path,
     serialize_document,
-    set_document_storage_path,
     validate_document_upload,
 )
 
@@ -299,15 +301,6 @@ async def n8n_ingest(request: Request):
             file_name = f"document_{event_id}.bin"
         file_name = _safe_filename(file_name)
 
-        ensure_company_dirs(company_id)
-        doc_dir = company_documents_dir(company_id)
-        file_path = os.path.join(doc_dir, file_name)
-        if os.path.exists(file_path):
-            file_path = os.path.join(doc_dir, f"{event_id}_{file_name}")
-
-        with open(file_path, "wb") as handle:
-            handle.write(file_bytes)
-
         title = (extracted.get("suggested_title") or "").strip()
         if not title:
             title = _build_display_title(payload)
@@ -316,18 +309,28 @@ async def n8n_ingest(request: Request):
             description = description[:200]
         vendor = (extracted.get("vendor") or "").strip()
         keywords_list = _normalize_keywords(extracted.get("keywords"), max_items=4)
-        keywords = ", ".join(keywords_list)
+        keywords_json = normalize_keywords(keywords_list)
+        mime = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
-        document = Document(
-            company_id=company_id,
+        document = build_document_record(
+            company_id,
+            file_name,
+            mime=mime,
+            size=len(file_bytes),
+            sha256=compute_sha256_bytes(file_bytes),
+            source=DocumentSource.N8N,
             title=title,
             description=description,
             vendor=vendor,
-            keywords=keywords,
-            source="n8n",
-            file_path=file_path,
-            file_name=file_name,
         )
+        document.keywords_json = keywords_json
+        storage_path = document_storage_path(company_id, document.storage_key)
+        ensure_document_dir(company_id)
+        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+
+        with open(storage_path, "wb") as handle:
+            handle.write(file_bytes)
+
         session.add(document)
         session.add(WebhookEvent(event_id=event_id, source="n8n"))
         session.commit()
@@ -394,19 +397,13 @@ async def document_upload(
         document = build_document_record(
             int(company.id),
             filename,
-            mime_type=mime_type,
-            size_bytes=len(contents),
-            source="manual",
-            doc_type=ext,
-            original_filename=filename,
+            mime=mime_type,
+            size=len(contents),
+            sha256=compute_sha256_bytes(contents),
+            source=DocumentSource.MANUAL,
         )
-        session.add(document)
-        session.commit()
-        session.refresh(document)
-
-        set_document_storage_path(document)
-        ensure_document_dir(int(company.id), int(document.id))
-        storage_path = resolve_document_path(document.storage_path)
+        storage_path = document_storage_path(int(company.id), document.storage_key)
+        ensure_document_dir(int(company.id))
         os.makedirs(os.path.dirname(storage_path), exist_ok=True)
         with open(storage_path, "wb") as handle:
             handle.write(contents)
@@ -479,24 +476,17 @@ def document_file(document_id: int) -> Response:
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        storage_path = resolve_document_path(document.storage_path)
+        storage_path = document_storage_path(int(document.company_id), document.storage_key)
         if not storage_path or not os.path.exists(storage_path):
             raise HTTPException(status_code=404, detail="File not found")
 
-        ext = os.path.splitext(document.filename or "")[1].lower().lstrip(".")
-        if ext == "jpeg":
-            ext = "jpg"
-        content_type = document.mime_type or {
-            "pdf": "application/pdf",
-            "jpg": "image/jpeg",
-            "png": "image/png",
-        }.get(ext, "application/octet-stream")
-        if ext == "pdf":
+        content_type = document.mime or "application/octet-stream"
+        if content_type.endswith("/pdf"):
             disposition = "inline"
         else:
             disposition = "attachment"
         headers = {
-            "Content-Disposition": f'{disposition}; filename=\"{document.filename or "document"}\"'
+            "Content-Disposition": f'{disposition}; filename="{document.original_filename or "document"}"'
         }
         return FileResponse(storage_path, media_type=content_type, headers=headers)
 
@@ -517,15 +507,10 @@ def delete_document(document_id: int) -> dict:
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        storage_path = resolve_document_path(document.storage_path)
+        storage_path = document_storage_path(int(document.company_id), document.storage_key)
         if storage_path and os.path.exists(storage_path):
             try:
                 os.remove(storage_path)
-            except OSError:
-                pass
-        if storage_path:
-            try:
-                os.rmdir(os.path.dirname(storage_path))
             except OSError:
                 pass
 
