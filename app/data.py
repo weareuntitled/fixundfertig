@@ -12,6 +12,7 @@ from pydantic import validator
 import pandas as pd
 import io
 import os
+from models.document import DocumentSource
 
 # --- DB MODELLE ---
 class InvoiceStatus(str, Enum):
