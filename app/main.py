@@ -22,8 +22,7 @@ from sqlmodel import select
 
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
-from data import Company, Customer, Document, Invoice, get_session
-from models.document import DocumentSource, normalize_keywords
+from data import Company, Customer, Document, DocumentMeta, Invoice, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from invoice_numbering import build_invoice_filename
@@ -118,6 +117,63 @@ def _resolve_invoice_pdf_path(filename: str | None) -> Path | None:
     if Path(filename).is_absolute() or str(filename).startswith("storage/"):
         return Path(filename)
     return Path("storage/invoices") / filename
+
+
+def _safe_filename(name: str) -> str:
+    name = (name or "").strip() or "document"
+    name = re.sub(r"\s+", " ", name)
+    name = re.sub(r"[^a-zA-Z0-9äöüÄÖÜß _\.\(\)\[\]\-]+", "_", name)
+    name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
+    return name[:120] if len(name) > 120 else name
+
+
+def _json_text(value: object | None, *, default: str) -> str:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or default
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except TypeError:
+        return default
+
+
+def _normalize_keywords(raw: object, *, max_items: int = 4) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        items = re.split(r"[,\n;]+", raw)
+    elif isinstance(raw, (list, tuple, set)):
+        items = list(raw)
+    else:
+        items = [raw]
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _build_display_title(payload: dict) -> str:
+    for key in ("title", "file_name", "filename", "original_filename", "name"):
+        value = (payload.get(key) or "").strip()
+        if value:
+            return value
+    extracted = payload.get("extracted") or {}
+    vendor = (extracted.get("vendor") or "").strip()
+    if vendor:
+        return f"Dokument von {vendor}"
+    return "Dokument"
 
 
 def _format_nominatim_result(item: dict) -> dict:
@@ -255,23 +311,75 @@ async def n8n_ingest(request: Request):
         file_name = (payload.get("file_name") or payload.get("filename") or "").strip()
         if not file_name:
             file_name = f"document_{event_id}.bin"
-        mime_type = (payload.get("mime") or payload.get("mime_type") or "").strip()
-        storage_info = save_upload_bytes(company_id, file_name, file_bytes, mime_type)
-        ext = os.path.splitext(file_name)[1].lower().lstrip(".")
+        original_filename = file_name
+        safe_name = _safe_filename(file_name)
+
+        ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
         if ext == "jpeg":
             ext = "jpg"
+        mime_type = {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "png": "image/png",
+            "txt": "text/plain",
+        }.get(ext, "application/octet-stream")
 
         document = build_document_record(
             company_id,
-            file_name,
-            mime_type=storage_info["mime"],
-            size_bytes=storage_info["size"],
+            original_filename,
+            mime_type=mime_type,
+            size_bytes=len(file_bytes),
             source="n8n",
             doc_type=ext,
-            original_filename=file_name,
+            original_filename=original_filename,
         )
         document.storage_path = storage_info["path"]
         session.add(document)
+        session.commit()
+        session.refresh(document)
+
+        set_document_storage_path(document)
+        ensure_document_dir(company_id, int(document.id))
+        storage_path = resolve_document_path(document.storage_path)
+        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+
+        try:
+            with open(storage_path, "wb") as handle:
+                handle.write(file_bytes)
+        except OSError as exc:
+            session.delete(document)
+            session.commit()
+            raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
+
+        document.size_bytes = len(file_bytes)
+        session.add(document)
+
+        raw_payload_json = json.dumps(payload, ensure_ascii=False)
+        line_items_json = _json_text(
+            extracted.get("line_items") if isinstance(extracted, dict) else None,
+            default="[]",
+        )
+        compliance_flags_json = _json_text(
+            extracted.get("compliance_flags") if isinstance(extracted, dict) else None,
+            default="[]",
+        )
+        meta = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id == int(document.id or 0))
+        ).first()
+        if meta:
+            meta.raw_payload_json = raw_payload_json
+            meta.line_items_json = line_items_json
+            meta.compliance_flags_json = compliance_flags_json
+        else:
+            session.add(
+                DocumentMeta(
+                    document_id=int(document.id or 0),
+                    raw_payload_json=raw_payload_json,
+                    line_items_json=line_items_json,
+                    compliance_flags_json=compliance_flags_json,
+                )
+            )
+
         session.add(WebhookEvent(event_id=event_id, source="n8n"))
         session.add(
             DocumentMeta(
@@ -631,6 +739,11 @@ def delete_document(document_id: int) -> dict:
             except OSError:
                 pass
 
+        meta = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id == int(document_id))
+        ).first()
+        if meta:
+            session.delete(meta)
         session.delete(document)
         session.commit()
         return {"status": "deleted"}

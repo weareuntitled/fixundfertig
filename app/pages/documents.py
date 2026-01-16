@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hashlib
+import json
 import mimetypes
 import os
 import tempfile
@@ -10,8 +10,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from ._shared import *
-from data import Document
-from services.blob_storage import blob_storage, build_document_key
+from data import Document, DocumentMeta
 from services.documents import (
     build_document_record,
     compute_sha256_file,
@@ -204,6 +203,31 @@ def render_documents(session, comp: Company) -> None:
             ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
 
     delete_id = {"value": None}
+    meta_state = {"title": "", "raw": "", "line_items": "", "flags": ""}
+
+    def _format_json(value: str, *, redact_payload: bool = False) -> str:
+        if not value:
+            return ""
+        try:
+            payload = json.loads(value)
+        except Exception:
+            return value
+        if redact_payload and isinstance(payload, dict) and "file_base64" in payload:
+            payload = {**payload, "file_base64": "<redacted>"}
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    with ui.dialog() as meta_dialog:
+        with ui.card().classes(C_CARD + " p-5 w-[760px] max-w-[95vw]"):
+            ui.label("Dokument-Metadaten").classes(C_SECTION_TITLE)
+            meta_title = ui.label("").classes("text-sm text-slate-500")
+            ui.label("Payload (bereinigt)").classes("text-xs font-semibold text-slate-500 mt-3")
+            raw_area = ui.textarea(value="").props("readonly").classes("w-full text-xs font-mono min-h-[140px]")
+            ui.label("Line Items").classes("text-xs font-semibold text-slate-500 mt-3")
+            line_area = ui.textarea(value="").props("readonly").classes("w-full text-xs font-mono min-h-[120px]")
+            ui.label("Compliance Flags").classes("text-xs font-semibold text-slate-500 mt-3")
+            flags_area = ui.textarea(value="").props("readonly").classes("w-full text-xs font-mono min-h-[120px]")
+            with ui.row().classes("justify-end mt-4"):
+                ui.button("Schließen", on_click=meta_dialog.close).classes(C_BTN_SEC)
 
     with ui.dialog() as delete_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
@@ -219,12 +243,22 @@ def render_documents(session, comp: Company) -> None:
                     with get_session() as s:
                         document = s.get(Document, int(delete_id["value"]))
                         if document:
-                            storage_path = document_storage_path(int(document.company_id), document.storage_key)
+                            meta = s.exec(
+                                select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
+                            ).first()
+                            storage_path = resolve_document_path(document.storage_path)
                             if storage_path and os.path.exists(storage_path):
                                 try:
                                     os.remove(storage_path)
                                 except OSError:
                                     pass
+                            if storage_path:
+                                try:
+                                    os.rmdir(os.path.dirname(storage_path))
+                                except OSError:
+                                    pass
+                            if meta:
+                                s.delete(meta)
                             s.delete(document)
                             s.commit()
                     ui.notify("Gelöscht", color="green")
@@ -236,6 +270,24 @@ def render_documents(session, comp: Company) -> None:
     def _open_delete(doc_id: int) -> None:
         delete_id["value"] = doc_id
         delete_dialog.open()
+
+    def _open_meta(doc_id: int) -> None:
+        with get_session() as s:
+            meta = s.exec(select(DocumentMeta).where(DocumentMeta.document_id == doc_id)).first()
+            doc = s.get(Document, doc_id)
+        if not meta:
+            ui.notify("Keine Metadaten gefunden.", color="orange")
+            return
+        title_label = doc.original_filename if doc else ""
+        meta_state["title"] = f"Dokument #{doc_id} {title_label}".strip()
+        meta_state["raw"] = _format_json(meta.raw_payload_json, redact_payload=True)
+        meta_state["line_items"] = _format_json(meta.line_items_json)
+        meta_state["flags"] = _format_json(meta.compliance_flags_json)
+        meta_title.text = meta_state["title"]
+        raw_area.value = meta_state["raw"]
+        line_area.value = meta_state["line_items"]
+        flags_area.value = meta_state["flags"]
+        meta_dialog.open()
 
     @ui.refreshable
     def render_list():
@@ -263,6 +315,10 @@ def render_documents(session, comp: Company) -> None:
                     ui.label(row.get("type") or "-").classes("w-24 text-sm text-slate-600")
                     ui.label(row.get("source") or "-").classes("w-24 text-sm text-slate-600")
                     with ui.row().classes("w-32 justify-end gap-2"):
+                        ui.button(
+                            "Meta",
+                            on_click=lambda doc_id=row.get("id"): _open_meta(int(doc_id)),
+                        ).props("flat dense").classes("text-xs text-slate-600")
                         ui.link(
                             "Öffnen",
                             f"/api/documents/{row.get('id')}/file",

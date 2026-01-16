@@ -1,5 +1,5 @@
 
-from sqlalchemy import event, inspect
+from sqlalchemy import Column, Text, event, inspect
 from sqlalchemy.orm import sessionmaker
 from typing import Optional, List
 from enum import Enum  # <--- WICHTIG: Das hat gefehlt!
@@ -200,6 +200,19 @@ class Document(SQLModel, table=True):
     amount_total: Optional[float] = None
     currency: Optional[str] = None
     keywords_json: str = "[]"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class DocumentMeta(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    document_id: int = Field(foreign_key="document.id", index=True)
+    raw_payload_json: str = Field(default="{}", sa_column=Column(Text))
+    line_items_json: str = Field(default="[]", sa_column=Column(Text))
+    compliance_flags_json: str = Field(default="[]", sa_column=Column(Text))
+
+class WebhookEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_id: str = Field(index=True, unique=True)
+    source: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 os.makedirs('./storage', exist_ok=True)
