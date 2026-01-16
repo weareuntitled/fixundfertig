@@ -22,7 +22,7 @@ from sqlmodel import select
 
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
-from data import Company, Customer, Document, Invoice, get_session
+from data import Company, Customer, Document, DocumentMeta, Invoice, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from invoice_numbering import build_invoice_filename
@@ -121,6 +121,18 @@ def _safe_filename(name: str) -> str:
     name = re.sub(r"[^a-zA-Z0-9äöüÄÖÜß _\.\(\)\[\]\-]+", "_", name)
     name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
     return name[:120] if len(name) > 120 else name
+
+
+def _json_text(value: object | None, *, default: str) -> str:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or default
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except TypeError:
+        return default
 
 
 def _normalize_keywords(raw: object, *, max_items: int = 4) -> list[str]:
@@ -297,38 +309,74 @@ async def n8n_ingest(request: Request):
         file_name = (payload.get("file_name") or payload.get("filename") or "").strip()
         if not file_name:
             file_name = f"document_{event_id}.bin"
-        file_name = _safe_filename(file_name)
+        original_filename = file_name
+        safe_name = _safe_filename(file_name)
 
-        ensure_company_dirs(company_id)
-        doc_dir = company_documents_dir(company_id)
-        file_path = os.path.join(doc_dir, file_name)
-        if os.path.exists(file_path):
-            file_path = os.path.join(doc_dir, f"{event_id}_{file_name}")
+        ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
+        mime_type = {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "png": "image/png",
+            "txt": "text/plain",
+        }.get(ext, "application/octet-stream")
 
-        with open(file_path, "wb") as handle:
-            handle.write(file_bytes)
-
-        title = (extracted.get("suggested_title") or "").strip()
-        if not title:
-            title = _build_display_title(payload)
-        description = (extracted.get("summary") or "").strip()
-        if len(description) > 200:
-            description = description[:200]
-        vendor = (extracted.get("vendor") or "").strip()
-        keywords_list = _normalize_keywords(extracted.get("keywords"), max_items=4)
-        keywords = ", ".join(keywords_list)
-
-        document = Document(
-            company_id=company_id,
-            title=title,
-            description=description,
-            vendor=vendor,
-            keywords=keywords,
+        document = build_document_record(
+            company_id,
+            original_filename,
+            mime_type=mime_type,
+            size_bytes=len(file_bytes),
             source="n8n",
-            file_path=file_path,
-            file_name=file_name,
+            doc_type=ext,
+            original_filename=original_filename,
         )
         session.add(document)
+        session.commit()
+        session.refresh(document)
+
+        set_document_storage_path(document)
+        ensure_document_dir(company_id, int(document.id))
+        storage_path = resolve_document_path(document.storage_path)
+        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+
+        try:
+            with open(storage_path, "wb") as handle:
+                handle.write(file_bytes)
+        except OSError as exc:
+            session.delete(document)
+            session.commit()
+            raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
+
+        document.size_bytes = len(file_bytes)
+        session.add(document)
+
+        raw_payload_json = json.dumps(payload, ensure_ascii=False)
+        line_items_json = _json_text(
+            extracted.get("line_items") if isinstance(extracted, dict) else None,
+            default="[]",
+        )
+        compliance_flags_json = _json_text(
+            extracted.get("compliance_flags") if isinstance(extracted, dict) else None,
+            default="[]",
+        )
+        meta = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id == int(document.id or 0))
+        ).first()
+        if meta:
+            meta.raw_payload_json = raw_payload_json
+            meta.line_items_json = line_items_json
+            meta.compliance_flags_json = compliance_flags_json
+        else:
+            session.add(
+                DocumentMeta(
+                    document_id=int(document.id or 0),
+                    raw_payload_json=raw_payload_json,
+                    line_items_json=line_items_json,
+                    compliance_flags_json=compliance_flags_json,
+                )
+            )
+
         session.add(WebhookEvent(event_id=event_id, source="n8n"))
         session.commit()
         session.refresh(document)
@@ -529,6 +577,11 @@ def delete_document(document_id: int) -> dict:
             except OSError:
                 pass
 
+        meta = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id == int(document_id))
+        ).first()
+        if meta:
+            session.delete(meta)
         session.delete(document)
         session.commit()
         return {"status": "deleted"}
