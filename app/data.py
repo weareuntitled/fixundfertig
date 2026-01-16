@@ -175,6 +175,22 @@ class Expense(SQLModel, table=True):
     external_id: str = ""
     webhook_url: str = ""
 
+class Document(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id")
+    filename: str = ""
+    storage_key: str = ""
+    original_filename: str = ""
+    mime: str = ""
+    mime_type: str = ""
+    size: int = 0
+    size_bytes: int = 0
+    sha256: str = ""
+    source: str = ""
+    doc_type: str = ""
+    storage_path: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 os.makedirs('./storage', exist_ok=True)
 os.makedirs('./storage/invoices', exist_ok=True)
 engine = create_engine("sqlite:///storage/database.db")
@@ -356,19 +372,17 @@ def ensure_document_schema():
             "CREATE TABLE IF NOT EXISTS document ("
             "id INTEGER PRIMARY KEY,"
             "company_id INTEGER NOT NULL,"
-            "original_filename TEXT DEFAULT '',"
+            "filename TEXT DEFAULT '',"
             "storage_key TEXT DEFAULT '',"
+            "original_filename TEXT DEFAULT '',"
             "mime TEXT DEFAULT '',"
+            "mime_type TEXT DEFAULT '',"
             "size INTEGER DEFAULT 0,"
+            "size_bytes INTEGER DEFAULT 0,"
             "sha256 TEXT DEFAULT '',"
-            "source TEXT DEFAULT 'manual',"
-            "title TEXT DEFAULT '',"
-            "description TEXT DEFAULT '',"
-            "vendor TEXT DEFAULT '',"
-            "doc_date TEXT,"
-            "amount_total REAL,"
-            "currency TEXT,"
-            "keywords_json TEXT DEFAULT '[]',"
+            "source TEXT DEFAULT '',"
+            "doc_type TEXT DEFAULT '',"
+            "storage_path TEXT DEFAULT '',"
             "created_at TEXT DEFAULT (datetime('now'))"
             ")"
         )
@@ -379,8 +393,12 @@ def ensure_document_schema():
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN original_filename TEXT DEFAULT ''")
         if "mime" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime TEXT DEFAULT ''")
+        if "mime_type" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime_type TEXT DEFAULT ''")
         if "size" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size INTEGER DEFAULT 0")
+        if "size_bytes" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size_bytes INTEGER DEFAULT 0")
         if "sha256" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN sha256 TEXT DEFAULT ''")
         if "source" not in columns:

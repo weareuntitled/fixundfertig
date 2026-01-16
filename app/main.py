@@ -42,6 +42,7 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
+from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
     compute_sha256_bytes,
@@ -337,20 +338,36 @@ async def document_upload(
             "png": "image/png",
         }.get(ext, "")
 
-        storage_info = save_upload_bytes(int(company.id), filename, contents, mime_type)
-        document = build_document_record(
-            int(company.id),
-            filename,
-            mime_type=storage_info["mime"],
-            size_bytes=storage_info["size"],
-            source="manual",
-            doc_type=ext,
-            original_filename=filename,
-        )
-        document.storage_path = storage_info["path"]
-        session.add(document)
-        session.commit()
-        session.refresh(document)
+        sha256 = hashlib.sha256(contents).hexdigest()
+        size_bytes = len(contents)
+
+        try:
+            document = build_document_record(
+                int(company.id),
+                filename,
+                mime_type=mime_type,
+                size_bytes=size_bytes,
+                source="MANUAL",
+                doc_type=ext,
+                original_filename=filename,
+            )
+            document.mime = mime_type
+            document.size = size_bytes
+            document.sha256 = sha256
+            session.add(document)
+            session.flush()
+
+            storage_key = build_document_key(int(company.id), int(document.id), filename)
+            document.storage_key = storage_key
+            document.storage_path = storage_key
+
+            blob_storage().put_bytes(storage_key, contents, mime_type)
+            session.commit()
+            session.refresh(document)
+        except Exception:
+            session.rollback()
+            raise HTTPException(status_code=500, detail="Upload failed")
+
         return serialize_document(document)
 
 
