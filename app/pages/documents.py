@@ -1,21 +1,22 @@
 from __future__ import annotations
 
+import hashlib
 import mimetypes
 import os
+import tempfile
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import HTTPException
 
 from ._shared import *
 from data import Document
+from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
-    MAX_DOCUMENT_SIZE_BYTES,
     build_document_record,
     document_matches_filters,
-    ensure_document_dir,
     resolve_document_path,
     serialize_document,
-    set_document_storage_path,
     validate_document_upload,
 )
 
@@ -83,63 +84,70 @@ def render_documents(session, comp: Company) -> None:
             ui.notify("Kein aktives Unternehmen.", color="red")
             return
         filename = getattr(event, "name", "") or getattr(event.file, "name", "") or "upload"
-        size_hint = getattr(event, "size", None)
+
+        def _read_upload_bytes(upload_file) -> bytes:
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            temp_path = Path(temp_file.name)
+            temp_file.close()
+            try:
+                upload_file.save(str(temp_path))
+                return temp_path.read_bytes()
+            finally:
+                if temp_path.exists():
+                    temp_path.unlink()
 
         try:
-            validate_document_upload(filename, size_hint or 0)
+            data = _read_upload_bytes(event.file)
+            size_bytes = len(data)
+            validate_document_upload(filename, size_bytes)
         except HTTPException as exc:
             ui.notify(str(exc.detail), color="red")
+            return
+        except Exception as exc:
+            ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
             return
 
         ext = os.path.splitext(filename)[1].lower().lstrip(".")
         if ext == "jpeg":
             ext = "jpg"
 
-        mime_type = getattr(event, "type", "") or mimetypes.guess_type(filename)[0] or ""
+        mime_type = (
+            getattr(event, "type", "")
+            or getattr(event.file, "content_type", "")
+            or mimetypes.guess_type(filename)[0]
+            or ""
+        )
+        sha256 = hashlib.sha256(data).hexdigest()
 
         with get_session() as s:
-            document = build_document_record(
-                int(comp.id),
-                filename,
-                mime_type=mime_type,
-                size_bytes=int(size_hint or 0),
-                source="manual",
-                doc_type=ext,
-                original_filename=filename,
-            )
-            s.add(document)
-            s.commit()
-            s.refresh(document)
-
-            set_document_storage_path(document)
-            ensure_document_dir(int(comp.id), int(document.id))
-            storage_path = resolve_document_path(document.storage_path)
-            os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-
             try:
-                event.file.save(storage_path)
-            except Exception as exc:
-                s.delete(document)
+                document = build_document_record(
+                    int(comp.id),
+                    filename,
+                    mime_type=mime_type,
+                    size_bytes=size_bytes,
+                    source="MANUAL",
+                    doc_type=ext,
+                    original_filename=filename,
+                )
+                document.mime = mime_type
+                document.size = size_bytes
+                document.sha256 = sha256
+                s.add(document)
+                s.flush()
+
+                storage_key = build_document_key(int(comp.id), int(document.id), filename)
+                document.storage_key = storage_key
+                document.storage_path = storage_key
+
+                blob_storage().put_bytes(storage_key, data, mime_type)
                 s.commit()
+            except Exception as exc:
+                s.rollback()
                 ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
                 return
 
-            size_bytes = os.path.getsize(storage_path)
-            if size_bytes > MAX_DOCUMENT_SIZE_BYTES:
-                try:
-                    os.remove(storage_path)
-                except OSError:
-                    pass
-                s.delete(document)
-                s.commit()
-                ui.notify("Datei zu groß (max 15 MB).", color="red")
-                return
-
-            document.size_bytes = int(size_bytes)
-            s.add(document)
-            s.commit()
-
-        ui.notify("Dokument hochgeladen", color="green")
+        ui.notify(f"Dokument gespeichert: {filename} ({size_bytes} Bytes)", color="green")
         render_list.refresh()
 
     with ui.card().classes(C_CARD + " p-5 mb-4"):

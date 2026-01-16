@@ -7,7 +7,6 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationsh
 from contextlib import contextmanager
 from datetime import datetime
 from pydantic import validator
-from models.document import Document
 import pandas as pd
 import io
 import os
@@ -180,9 +179,13 @@ class Document(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     company_id: int = Field(foreign_key="company.id")
     filename: str = ""
+    storage_key: str = ""
     original_filename: str = ""
+    mime: str = ""
     mime_type: str = ""
+    size: int = 0
     size_bytes: int = 0
+    sha256: str = ""
     source: str = ""
     doc_type: str = ""
     storage_path: str = ""
@@ -370,9 +373,13 @@ def ensure_document_schema():
             "id INTEGER PRIMARY KEY,"
             "company_id INTEGER NOT NULL,"
             "filename TEXT DEFAULT '',"
+            "storage_key TEXT DEFAULT '',"
             "original_filename TEXT DEFAULT '',"
+            "mime TEXT DEFAULT '',"
             "mime_type TEXT DEFAULT '',"
+            "size INTEGER DEFAULT 0,"
             "size_bytes INTEGER DEFAULT 0,"
+            "sha256 TEXT DEFAULT '',"
             "source TEXT DEFAULT '',"
             "doc_type TEXT DEFAULT '',"
             "storage_path TEXT DEFAULT '',"
@@ -380,12 +387,20 @@ def ensure_document_schema():
             ")"
         )
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(document)").fetchall()}
+        if "storage_key" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN storage_key TEXT DEFAULT ''")
         if "original_filename" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN original_filename TEXT DEFAULT ''")
+        if "mime" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime TEXT DEFAULT ''")
         if "mime_type" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN mime_type TEXT DEFAULT ''")
+        if "size" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size INTEGER DEFAULT 0")
         if "size_bytes" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size_bytes INTEGER DEFAULT 0")
+        if "sha256" not in columns:
+            conn.exec_driver_sql("ALTER TABLE document ADD COLUMN sha256 TEXT DEFAULT ''")
         if "source" not in columns:
             conn.exec_driver_sql("ALTER TABLE document ADD COLUMN source TEXT DEFAULT ''")
         if "doc_type" not in columns:

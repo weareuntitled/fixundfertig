@@ -41,13 +41,12 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
+from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
     document_matches_filters,
-    ensure_document_dir,
     resolve_document_path,
     serialize_document,
-    set_document_storage_path,
     validate_document_upload,
 )
 
@@ -391,29 +390,35 @@ async def document_upload(
             "png": "image/png",
         }.get(ext, "")
 
-        document = build_document_record(
-            int(company.id),
-            filename,
-            mime_type=mime_type,
-            size_bytes=len(contents),
-            source="manual",
-            doc_type=ext,
-            original_filename=filename,
-        )
-        session.add(document)
-        session.commit()
-        session.refresh(document)
+        sha256 = hashlib.sha256(contents).hexdigest()
+        size_bytes = len(contents)
 
-        set_document_storage_path(document)
-        ensure_document_dir(int(company.id), int(document.id))
-        storage_path = resolve_document_path(document.storage_path)
-        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-        with open(storage_path, "wb") as handle:
-            handle.write(contents)
+        try:
+            document = build_document_record(
+                int(company.id),
+                filename,
+                mime_type=mime_type,
+                size_bytes=size_bytes,
+                source="MANUAL",
+                doc_type=ext,
+                original_filename=filename,
+            )
+            document.mime = mime_type
+            document.size = size_bytes
+            document.sha256 = sha256
+            session.add(document)
+            session.flush()
 
-        session.add(document)
-        session.commit()
-        session.refresh(document)
+            storage_key = build_document_key(int(company.id), int(document.id), filename)
+            document.storage_key = storage_key
+            document.storage_path = storage_key
+
+            blob_storage().put_bytes(storage_key, contents, mime_type)
+            session.commit()
+            session.refresh(document)
+        except Exception:
+            session.rollback()
+            raise HTTPException(status_code=500, detail="Upload failed")
 
         return serialize_document(document)
 
