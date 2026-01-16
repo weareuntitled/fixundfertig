@@ -7,7 +7,6 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationsh
 from contextlib import contextmanager
 from datetime import datetime
 from pydantic import validator
-from models.document import Document
 import pandas as pd
 import io
 import os
@@ -186,6 +185,20 @@ class Document(SQLModel, table=True):
     source: str = ""
     doc_type: str = ""
     storage_path: str = ""
+    storage_key: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class WebhookEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_id: str = Field(index=True)
+    source: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class DocumentMeta(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    document_id: int = Field(foreign_key="document.id")
+    source: str = ""
+    payload_json: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 os.makedirs('./storage', exist_ok=True)

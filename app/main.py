@@ -15,14 +15,14 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from fastapi import HTTPException, Response, UploadFile, File, Form
+from fastapi import HTTPException, Request, Response, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from nicegui import ui, app
 from sqlmodel import select
 
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
-from data import Company, Customer, Document, Invoice, get_session
+from data import Company, Customer, Document, DocumentMeta, Invoice, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from invoice_numbering import build_invoice_filename
@@ -50,6 +50,7 @@ from services.documents import (
     set_document_storage_path,
     validate_document_upload,
 )
+from services.documents_ingest import save_upload_bytes
 
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAXSIZE = 256
@@ -298,38 +299,43 @@ async def n8n_ingest(request: Request):
         if not file_name:
             file_name = f"document_{event_id}.bin"
         file_name = _safe_filename(file_name)
+        ext = os.path.splitext(file_name)[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
+        mime_type = {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "png": "image/png",
+        }.get(ext, "application/octet-stream")
 
-        ensure_company_dirs(company_id)
-        doc_dir = company_documents_dir(company_id)
-        file_path = os.path.join(doc_dir, file_name)
-        if os.path.exists(file_path):
-            file_path = os.path.join(doc_dir, f"{event_id}_{file_name}")
-
-        with open(file_path, "wb") as handle:
-            handle.write(file_bytes)
-
-        title = (extracted.get("suggested_title") or "").strip()
-        if not title:
-            title = _build_display_title(payload)
-        description = (extracted.get("summary") or "").strip()
-        if len(description) > 200:
-            description = description[:200]
-        vendor = (extracted.get("vendor") or "").strip()
-        keywords_list = _normalize_keywords(extracted.get("keywords"), max_items=4)
-        keywords = ", ".join(keywords_list)
-
-        document = Document(
-            company_id=company_id,
-            title=title,
-            description=description,
-            vendor=vendor,
-            keywords=keywords,
+        document = build_document_record(
+            company_id,
+            file_name,
+            mime_type=mime_type,
+            size_bytes=len(file_bytes),
             source="n8n",
-            file_path=file_path,
-            file_name=file_name,
+            doc_type=ext,
+            original_filename=file_name,
         )
         session.add(document)
+        session.commit()
+        session.refresh(document)
+
+        set_document_storage_path(document)
+        ensure_document_dir(company_id, int(document.id or 0))
+        storage_path = resolve_document_path(document.storage_path)
+        sha256, size_bytes = save_upload_bytes(storage_path, file_bytes)
+        document.size_bytes = int(size_bytes)
+
+        session.add(document)
         session.add(WebhookEvent(event_id=event_id, source="n8n"))
+        session.add(
+            DocumentMeta(
+                document_id=int(document.id or 0),
+                source="n8n",
+                payload_json=json.dumps({"payload": payload, "sha256": sha256}, ensure_ascii=False),
+            )
+        )
         session.commit()
         session.refresh(document)
         return {"status": "ok", "document_id": int(document.id or 0)}
