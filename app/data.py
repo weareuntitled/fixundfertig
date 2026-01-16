@@ -7,7 +7,6 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationsh
 from contextlib import contextmanager
 from datetime import datetime
 from pydantic import validator
-from models.document import Document
 import pandas as pd
 import io
 import os

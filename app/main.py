@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from fastapi import HTTPException, Response, UploadFile, File, Form
+from fastapi import HTTPException, Request, Response, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from nicegui import ui, app
 from sqlmodel import select
@@ -52,6 +52,7 @@ from services.documents import (
     serialize_document,
     validate_document_upload,
 )
+from services.documents_ingest import save_upload_bytes
 
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAXSIZE = 256
@@ -300,6 +301,14 @@ async def n8n_ingest(request: Request):
         if not file_name:
             file_name = f"document_{event_id}.bin"
         file_name = _safe_filename(file_name)
+        ext = os.path.splitext(file_name)[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
+        mime_type = {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "png": "image/png",
+        }.get(ext, "application/octet-stream")
 
         title = (extracted.get("suggested_title") or "").strip()
         if not title:
@@ -332,7 +341,24 @@ async def n8n_ingest(request: Request):
             handle.write(file_bytes)
 
         session.add(document)
+        session.commit()
+        session.refresh(document)
+
+        set_document_storage_path(document)
+        ensure_document_dir(company_id, int(document.id or 0))
+        storage_path = resolve_document_path(document.storage_path)
+        sha256, size_bytes = save_upload_bytes(storage_path, file_bytes)
+        document.size_bytes = int(size_bytes)
+
+        session.add(document)
         session.add(WebhookEvent(event_id=event_id, source="n8n"))
+        session.add(
+            DocumentMeta(
+                document_id=int(document.id or 0),
+                source="n8n",
+                payload_json=json.dumps({"payload": payload, "sha256": sha256}, ensure_ascii=False),
+            )
+        )
         session.commit()
         session.refresh(document)
         return {"status": "ok", "document_id": int(document.id or 0)}

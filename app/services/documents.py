@@ -88,6 +88,8 @@ def build_document_record(
         amount_total=amount_total,
         currency=currency,
     )
+    if hasattr(document, "storage_key"):
+        document.storage_key = document.storage_path
 
 
 def document_storage_path(company_id: int, storage_key: str) -> str:
