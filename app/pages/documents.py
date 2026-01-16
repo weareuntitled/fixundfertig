@@ -14,11 +14,13 @@ from data import Document
 from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
+    compute_sha256_file,
     document_matches_filters,
     resolve_document_path,
     serialize_document,
     validate_document_upload,
 )
+from storage.service import save_upload_bytes
 
 
 def render_documents(session, comp: Company) -> None:
@@ -66,14 +68,26 @@ def render_documents(session, comp: Company) -> None:
         return sorted(items, key=sort_key, reverse=True)
 
     def _doc_type_options(items: list[Document]) -> dict[str, str]:
-        types = sorted({(doc.doc_type or "").strip() for doc in items if (doc.doc_type or "").strip()})
+        types = sorted(
+            {
+                (os.path.splitext(doc.original_filename or "")[1].lstrip(".").lower())
+                for doc in items
+                if os.path.splitext(doc.original_filename or "")[1].lstrip(".").strip()
+            }
+        )
         options = {"": "Alle"}
         for entry in types:
             options[entry] = entry
         return options
 
     def _source_options(items: list[Document]) -> dict[str, str]:
-        sources = sorted({(doc.source or "").strip() for doc in items if (doc.source or "").strip()})
+        sources = sorted(
+            {
+                (doc.source.value if isinstance(doc.source, DocumentSource) else (doc.source or "")).strip()
+                for doc in items
+                if (doc.source or "")
+            }
+        )
         options = {"": "Alle"}
         for entry in sources:
             options[entry] = entry
@@ -118,6 +132,17 @@ def render_documents(session, comp: Company) -> None:
             or ""
         )
         sha256 = hashlib.sha256(data).hexdigest()
+
+        def _read_upload_bytes(upload_file) -> bytes:
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            temp_path = Path(temp_file.name)
+            temp_file.close()
+            try:
+                upload_file.save(str(temp_path))
+                return temp_path.read_bytes()
+            finally:
+                if temp_path.exists():
+                    temp_path.unlink()
 
         with get_session() as s:
             try:
@@ -194,15 +219,10 @@ def render_documents(session, comp: Company) -> None:
                     with get_session() as s:
                         document = s.get(Document, int(delete_id["value"]))
                         if document:
-                            storage_path = resolve_document_path(document.storage_path)
+                            storage_path = document_storage_path(int(document.company_id), document.storage_key)
                             if storage_path and os.path.exists(storage_path):
                                 try:
                                     os.remove(storage_path)
-                                except OSError:
-                                    pass
-                            if storage_path:
-                                try:
-                                    os.rmdir(os.path.dirname(storage_path))
                                 except OSError:
                                     pass
                             s.delete(document)
@@ -239,7 +259,7 @@ def render_documents(session, comp: Company) -> None:
                 created_at = row.get("created_at", "")
                 with ui.row().classes("w-full items-center border-t border-slate-100 px-4 py-3"):
                     ui.label(created_at[:10]).classes("w-32 text-sm text-slate-600")
-                    ui.label(row.get("original_filename") or row.get("filename")).classes("flex-1 text-sm text-slate-700 truncate")
+                    ui.label(row.get("original_filename") or row.get("title") or "Dokument").classes("flex-1 text-sm text-slate-700 truncate")
                     ui.label(row.get("type") or "-").classes("w-24 text-sm text-slate-600")
                     ui.label(row.get("source") or "-").classes("w-24 text-sm text-slate-600")
                     with ui.row().classes("w-32 justify-end gap-2"):
