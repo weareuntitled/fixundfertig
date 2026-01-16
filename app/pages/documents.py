@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import mimetypes
 import os
+import tempfile
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import HTTPException
 
@@ -10,15 +12,14 @@ from ._shared import *
 from data import Document
 from models.document import DocumentSource
 from services.documents import (
-    MAX_DOCUMENT_SIZE_BYTES,
     build_document_record,
     compute_sha256_file,
     document_matches_filters,
-    document_storage_path,
-    ensure_document_dir,
+    resolve_document_path,
     serialize_document,
     validate_document_upload,
 )
+from storage.service import save_upload_bytes
 
 
 def render_documents(session, comp: Company) -> None:
@@ -106,38 +107,44 @@ def render_documents(session, comp: Company) -> None:
 
         mime_type = getattr(event, "type", "") or mimetypes.guess_type(filename)[0] or ""
 
-        with get_session() as s:
-            document = build_document_record(
-                int(comp.id),
-                filename,
-                mime=mime_type,
-                size=0,
-                sha256="",
-                source=DocumentSource.MANUAL,
-            )
-            storage_path = document_storage_path(int(comp.id), document.storage_key)
-            ensure_document_dir(int(comp.id))
-            os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-
+        def _read_upload_bytes(upload_file) -> bytes:
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            temp_path = Path(temp_file.name)
+            temp_file.close()
             try:
-                event.file.save(storage_path)
+                upload_file.save(str(temp_path))
+                return temp_path.read_bytes()
+            finally:
+                if temp_path.exists():
+                    temp_path.unlink()
+
+        with get_session() as s:
+            try:
+                data = _read_upload_bytes(event.file)
             except Exception as exc:
                 ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
                 return
 
-            size_bytes = os.path.getsize(storage_path)
-            if size_bytes > MAX_DOCUMENT_SIZE_BYTES:
-                try:
-                    os.remove(storage_path)
-                except OSError:
-                    pass
-                ui.notify("Datei zu groß (max 15 MB).", color="red")
+            try:
+                validate_document_upload(filename, len(data))
+            except HTTPException as exc:
+                ui.notify(str(exc.detail), color="red")
                 return
 
-            document.size = int(size_bytes)
-            document.sha256 = compute_sha256_file(storage_path)
+            storage_info = save_upload_bytes(int(comp.id), filename, data, mime_type)
+            document = build_document_record(
+                int(comp.id),
+                filename,
+                mime_type=storage_info["mime"],
+                size_bytes=storage_info["size"],
+                source="manual",
+                doc_type=ext,
+                original_filename=filename,
+            )
+            document.storage_path = storage_info["path"]
             s.add(document)
             s.commit()
+            s.refresh(document)
 
         ui.notify("Dokument hochgeladen", color="green")
         render_list.refresh()

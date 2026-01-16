@@ -9,7 +9,6 @@ import importlib.util
 import json
 import mimetypes
 import os
-import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -47,12 +46,11 @@ from services.documents import (
     build_document_record,
     compute_sha256_bytes,
     document_matches_filters,
-    document_storage_path,
-    ensure_document_dir,
+    resolve_document_path,
     serialize_document,
     validate_document_upload,
 )
-from services.documents_ingest import save_upload_bytes
+from storage.service import save_upload_bytes
 
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAXSIZE = 256
@@ -116,51 +114,6 @@ def _resolve_invoice_pdf_path(filename: str | None) -> Path | None:
     if Path(filename).is_absolute() or str(filename).startswith("storage/"):
         return Path(filename)
     return Path("storage/invoices") / filename
-
-
-def _safe_filename(name: str) -> str:
-    name = (name or "").strip() or "document"
-    name = re.sub(r"\s+", " ", name)
-    name = re.sub(r"[^a-zA-Z0-9äöüÄÖÜß _\.\(\)\[\]\-]+", "_", name)
-    name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
-    return name[:120] if len(name) > 120 else name
-
-
-def _normalize_keywords(raw: object, *, max_items: int = 4) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        items = re.split(r"[,\n;]+", raw)
-    elif isinstance(raw, (list, tuple, set)):
-        items = list(raw)
-    else:
-        items = [raw]
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in items:
-        text = str(item or "").strip()
-        if not text:
-            continue
-        key = text.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(text)
-        if len(out) >= max_items:
-            break
-    return out
-
-
-def _build_display_title(payload: dict) -> str:
-    for key in ("title", "file_name", "filename", "original_filename", "name"):
-        value = (payload.get(key) or "").strip()
-        if value:
-            return value
-    extracted = payload.get("extracted") or {}
-    vendor = (extracted.get("vendor") or "").strip()
-    if vendor:
-        return f"Dokument von {vendor}"
-    return "Dokument"
 
 
 def _format_nominatim_result(item: dict) -> dict:
@@ -255,8 +208,6 @@ async def n8n_ingest(request: Request):
     event_id = str(payload.get("event_id") or "").strip()
     company_id_raw = payload.get("company_id")
     file_base64 = payload.get("file_base64")
-    extracted = payload.get("extracted") or {}
-
     if not event_id or not company_id_raw or not file_base64:
         raise HTTPException(status_code=400, detail="Missing required payload fields")
 
@@ -300,56 +251,22 @@ async def n8n_ingest(request: Request):
         file_name = (payload.get("file_name") or payload.get("filename") or "").strip()
         if not file_name:
             file_name = f"document_{event_id}.bin"
-        file_name = _safe_filename(file_name)
+        mime_type = (payload.get("mime") or payload.get("mime_type") or "").strip()
+        storage_info = save_upload_bytes(company_id, file_name, file_bytes, mime_type)
         ext = os.path.splitext(file_name)[1].lower().lstrip(".")
         if ext == "jpeg":
             ext = "jpg"
-        mime_type = {
-            "pdf": "application/pdf",
-            "jpg": "image/jpeg",
-            "png": "image/png",
-        }.get(ext, "application/octet-stream")
-
-        title = (extracted.get("suggested_title") or "").strip()
-        if not title:
-            title = _build_display_title(payload)
-        description = (extracted.get("summary") or "").strip()
-        if len(description) > 200:
-            description = description[:200]
-        vendor = (extracted.get("vendor") or "").strip()
-        keywords_list = _normalize_keywords(extracted.get("keywords"), max_items=4)
-        keywords_json = normalize_keywords(keywords_list)
-        mime = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
         document = build_document_record(
             company_id,
             file_name,
-            mime=mime,
-            size=len(file_bytes),
-            sha256=compute_sha256_bytes(file_bytes),
-            source=DocumentSource.N8N,
-            title=title,
-            description=description,
-            vendor=vendor,
+            mime_type=storage_info["mime"],
+            size_bytes=storage_info["size"],
+            source="n8n",
+            doc_type=ext,
+            original_filename=file_name,
         )
-        document.keywords_json = keywords_json
-        storage_path = document_storage_path(company_id, document.storage_key)
-        ensure_document_dir(company_id)
-        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-
-        with open(storage_path, "wb") as handle:
-            handle.write(file_bytes)
-
-        session.add(document)
-        session.commit()
-        session.refresh(document)
-
-        set_document_storage_path(document)
-        ensure_document_dir(company_id, int(document.id or 0))
-        storage_path = resolve_document_path(document.storage_path)
-        sha256, size_bytes = save_upload_bytes(storage_path, file_bytes)
-        document.size_bytes = int(size_bytes)
-
+        document.storage_path = storage_info["path"]
         session.add(document)
         session.add(WebhookEvent(event_id=event_id, source="n8n"))
         session.add(
@@ -420,24 +337,20 @@ async def document_upload(
             "png": "image/png",
         }.get(ext, "")
 
+        storage_info = save_upload_bytes(int(company.id), filename, contents, mime_type)
         document = build_document_record(
             int(company.id),
             filename,
-            mime=mime_type,
-            size=len(contents),
-            sha256=compute_sha256_bytes(contents),
-            source=DocumentSource.MANUAL,
+            mime_type=storage_info["mime"],
+            size_bytes=storage_info["size"],
+            source="manual",
+            doc_type=ext,
+            original_filename=filename,
         )
-        storage_path = document_storage_path(int(company.id), document.storage_key)
-        ensure_document_dir(int(company.id))
-        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-        with open(storage_path, "wb") as handle:
-            handle.write(contents)
-
+        document.storage_path = storage_info["path"]
         session.add(document)
         session.commit()
         session.refresh(document)
-
         return serialize_document(document)
 
 
