@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import mimetypes
 import os
 import time
 from datetime import datetime
@@ -14,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from fastapi import HTTPException, Response, UploadFile, File, Form
+from fastapi import HTTPException, Request, Response, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from nicegui import ui, app
 from sqlmodel import select
@@ -22,6 +23,7 @@ from sqlmodel import select
 from env import load_env
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, Invoice, get_session
+from models.document import DocumentSource, normalize_keywords
 from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from invoice_numbering import build_invoice_filename
@@ -42,6 +44,7 @@ from pages import (
 from pages._shared import get_current_user_id, get_primary_company, list_companies
 from services.documents import (
     build_document_record,
+    compute_sha256_bytes,
     document_matches_filters,
     resolve_document_path,
     serialize_document,
@@ -266,6 +269,13 @@ async def n8n_ingest(request: Request):
         document.storage_path = storage_info["path"]
         session.add(document)
         session.add(WebhookEvent(event_id=event_id, source="n8n"))
+        session.add(
+            DocumentMeta(
+                document_id=int(document.id or 0),
+                source="n8n",
+                payload_json=json.dumps({"payload": payload, "sha256": sha256}, ensure_ascii=False),
+            )
+        )
         session.commit()
         session.refresh(document)
         return {"status": "ok", "document_id": int(document.id or 0)}
@@ -405,24 +415,17 @@ def document_file(document_id: int) -> Response:
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        storage_path = resolve_document_path(document.storage_path)
+        storage_path = document_storage_path(int(document.company_id), document.storage_key)
         if not storage_path or not os.path.exists(storage_path):
             raise HTTPException(status_code=404, detail="File not found")
 
-        ext = os.path.splitext(document.filename or "")[1].lower().lstrip(".")
-        if ext == "jpeg":
-            ext = "jpg"
-        content_type = document.mime_type or {
-            "pdf": "application/pdf",
-            "jpg": "image/jpeg",
-            "png": "image/png",
-        }.get(ext, "application/octet-stream")
-        if ext == "pdf":
+        content_type = document.mime or "application/octet-stream"
+        if content_type.endswith("/pdf"):
             disposition = "inline"
         else:
             disposition = "attachment"
         headers = {
-            "Content-Disposition": f'{disposition}; filename=\"{document.filename or "document"}\"'
+            "Content-Disposition": f'{disposition}; filename="{document.original_filename or "document"}"'
         }
         return FileResponse(storage_path, media_type=content_type, headers=headers)
 
@@ -443,15 +446,10 @@ def delete_document(document_id: int) -> dict:
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        storage_path = resolve_document_path(document.storage_path)
+        storage_path = document_storage_path(int(document.company_id), document.storage_key)
         if storage_path and os.path.exists(storage_path):
             try:
                 os.remove(storage_path)
-            except OSError:
-                pass
-        if storage_path:
-            try:
-                os.rmdir(os.path.dirname(storage_path))
             except OSError:
                 pass
 
