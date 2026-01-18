@@ -933,20 +933,44 @@ def invoice_pdf(invoice_id: int):
 
 def layout_wrapper(content_func):
     # App shell with left sidebar
-    with ui.element("div").classes(C_BG + " w-full relative"):
-        ui.element("div").classes(
-            "pointer-events-none fixed -z-10 top-[-140px] left-[-140px] h-[420px] w-[420px] rounded-full "
-            "bg-gradient-to-br from-blue-400/70 via-blue-500/40 to-transparent blur-3xl"
-        )
-        ui.element("div").classes(
-            "pointer-events-none fixed -z-10 bottom-[-160px] right-[-160px] h-[460px] w-[460px] rounded-full "
-            "bg-gradient-to-tr from-lime-300/60 via-lime-400/40 to-transparent blur-3xl"
-        )
-        with ui.row().classes("w-full min-h-screen relative z-10"):
+    ui.add_head_html(
+        """
+        <style>
+          .aurora-orb {
+            position: absolute;
+            width: 420px;
+            height: 420px;
+            border-radius: 9999px;
+            filter: blur(70px);
+            opacity: 0.55;
+          }
+          .aurora-orb--one {
+            top: -140px;
+            left: -120px;
+            background: radial-gradient(circle at 30% 30%, rgba(59, 130, 246, 0.55), rgba(59, 130, 246, 0));
+          }
+          .aurora-orb--two {
+            top: 80px;
+            right: -160px;
+            background: radial-gradient(circle at 70% 30%, rgba(16, 185, 129, 0.45), rgba(16, 185, 129, 0));
+          }
+          .aurora-orb--three {
+            bottom: -160px;
+            left: 30%;
+            background: radial-gradient(circle at 40% 40%, rgba(244, 114, 182, 0.45), rgba(244, 114, 182, 0));
+          }
+        </style>
+        """
+    )
+    with ui.element("div").classes(C_BG + " w-full relative overflow-hidden"):
+        with ui.element("div").classes("pointer-events-none absolute inset-0 z-0"):
+            ui.element("div").classes("aurora-orb aurora-orb--one")
+            ui.element("div").classes("aurora-orb aurora-orb--two")
+            ui.element("div").classes("aurora-orb aurora-orb--three")
+        with ui.row().classes("w-full min-h-screen gap-6 p-4 relative z-10"):
             # Sidebar
             with ui.column().classes(
-                "w-[260px] h-[calc(100vh-40px)] m-5 bg-white/60 backdrop-blur-md rounded-[24px] "
-                "p-4 gap-6 overflow-y-auto"
+                "w-[260px] bg-white/70 backdrop-blur-xl border border-white/70 rounded-2xl shadow-lg p-4 gap-6 sticky top-4 h-[calc(100vh-2rem)] overflow-y-auto"
             ):
                 with ui.row().classes("items-center gap-2 px-2"):
                     ui.label("FixundFertig").classes("text-lg font-bold text-slate-900")
