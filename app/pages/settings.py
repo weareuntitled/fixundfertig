@@ -247,7 +247,7 @@ def render_settings(session, comp: Company) -> None:
 
                     ui.notify("Hochgeladen", color="green")
 
-                ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").props("flat dense").classes("w-full")
+                ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").classes(f"w-full {C_BTN_SEC}")
 
             with ui.card().classes(C_CARD + " p-6 w-full"):
                 ui.label("Business Meta").classes("text-sm font-semibold text-slate-700")

@@ -166,7 +166,7 @@ def render_documents(session, comp: Company) -> None:
     with ui.card().classes(C_CARD + " p-5 mb-4"):
         ui.label("Upload").classes("text-sm font-semibold text-slate-700")
         ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500 mb-2")
-        ui.upload(on_upload=_handle_upload, auto_upload=True, label="Datei wählen").props("flat dense").classes("w-full")
+        ui.upload(on_upload=_handle_upload, auto_upload=True, label="Datei wählen").classes(f"w-full {C_BTN_SEC}")
 
     with ui.row().classes("w-full justify-between items-end mb-3 gap-3 flex-wrap"):
         ui.input(
