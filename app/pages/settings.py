@@ -14,6 +14,7 @@ import httpx
 from nicegui import app, ui
 from sqlmodel import select
 
+from data import Document
 from services.documents import (
     build_display_title,
     build_download_filename,
