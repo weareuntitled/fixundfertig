@@ -4,7 +4,11 @@ from ._shared import *
 # Auto generated page renderer
 
 def render_dashboard(session, comp: Company) -> None:
-    ui.label("Dashboard").classes(C_PAGE_TITLE + " mb-4")
+    with ui.row().classes("w-full items-center justify-between mb-6"):
+        ui.label("Welcome back, Dr. Smith").classes("text-3xl font-bold tracking-tight text-slate-900")
+        ui.button("New invoice", icon="add", on_click=lambda: _open_invoice_editor(None)).classes(
+            "rounded-full border border-slate-200 bg-white/50 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white/70"
+        )
 
     invs = session.exec(
         select(Invoice)
