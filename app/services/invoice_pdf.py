@@ -44,8 +44,9 @@ LAYOUT = {
 
     # Farben (RGB: 0.0 bis 1.0)
     "col_primary": (0, 0, 0),        # Hauptfarbe Text (Schwarz)
-    "col_line": (0.8, 0.8, 0.8),     # Farbe der Trennlinien (Hellgrau)
-    "col_header_bg": (0.95, 0.95, 0.95), # Hintergrund Tabellenkopf (Ganz hellgrau)
+    "col_line": (0.0, 0.0, 0.0),     # Farbe der Trennlinien (Schwarz)
+    "col_header_bg": (1.0, 1.0, 1.0), # Hintergrund Tabellenkopf (Weiß)
+    "line_width": 1.0,               # Linienbreite
 
     # Texte
     "txt_small_biz": "Als Kleinunternehmer im Sinne von § 19 Abs. 1 UStG wird keine Umsatzsteuer berechnet.",
@@ -181,6 +182,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     buf = BytesIO()
     c = Canvas(buf, pagesize=A4)
     w, h = A4
+    c.setLineWidth(LAYOUT["line_width"])
 
     # Layout Variablen laden
     mx = LAYOUT["margin_x"]
@@ -294,7 +296,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         y_meta -= 24
 
     # Y synchronisieren (unter Empfänger oder Meta, je nachdem was tiefer ist)
-    y = min(y_rec, y_meta) - 10*mm
+    y = min(y_rec, y_meta) - 12*mm
 
     # 6. INTRO TEXT
     intro = _safe_str(_get(invoice, "intro_text", "intro", default=""))
@@ -308,7 +310,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     for ln in intro_lines:
         c.drawString(mx, y, ln)
         y -= 12
-    y -= 8
+    y -= 12
 
     # 7. TABELLE
     # Spaltenbreiten berechnen
@@ -319,16 +321,16 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     # Header Funktion
     def draw_table_header(curr_y):
         c.setFillColorRGB(*LAYOUT["col_header_bg"])
-        c.rect(mx, curr_y - 14, content_w, 14, stroke=0, fill=1) # Hintergrund
+        c.rect(mx, curr_y - 16, content_w, 16, stroke=0, fill=1) # Hintergrund
         
         c.setStrokeColorRGB(*LAYOUT["col_line"])
-        c.line(mx, curr_y - 14, w - mx, curr_y - 14) # Linie unten
+        c.line(mx, curr_y - 16, w - mx, curr_y - 16) # Linie unten
 
-        set_font(bold=True, size=9)
-        c.drawString(mx + 6, curr_y - 11, "Beschreibung")
-        c.drawRightString(mx + w_desc + w_qty - 6, curr_y - 11, "Menge")
-        c.drawRightString(w - mx - 6, curr_y - 11, "Preis")
-        return curr_y - 16
+        set_font(bold=True, size=11)
+        c.drawString(mx + 6, curr_y - 12, "Beschreibung")
+        c.drawRightString(mx + w_desc + w_qty - 6, curr_y - 12, "Menge")
+        c.drawRightString(w - mx - 6, curr_y - 12, "Preis")
+        return curr_y - 20
 
     y = draw_table_header(y)
 
@@ -341,6 +343,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         # Page Break Check
         if y - row_h < my_bot + 50*mm:
             c.showPage()
+            c.setLineWidth(LAYOUT["line_width"])
             y = h - LAYOUT["margin_top"]
             y = draw_table_header(y)
             set_font(bold=False, size=9)
@@ -367,6 +370,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     y -= 20
     if y < my_bot + 60*mm:
         c.showPage()
+        c.setLineWidth(LAYOUT["line_width"])
         y = h - LAYOUT["margin_top"]
 
     val_x = w - mx - 10
