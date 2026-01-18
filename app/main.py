@@ -965,8 +965,12 @@ def layout_wrapper(content_func):
         with ui.row().classes("w-full min-h-screen"):
             # Sidebar
             with ui.column().classes("w-64 bg-slate-50 border-r border-slate-200 px-4 py-6 gap-6"):
-                with ui.row().classes("items-center gap-2 px-2"):
-                    ui.label("FixundFertig").classes("text-lg font-bold text-slate-700")
+                with ui.row().classes("items-center gap-3 px-2"):
+                    with ui.element("div").classes(
+                        "h-9 w-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm"
+                    ):
+                        ui.label("FF").classes("text-xs font-semibold tracking-[0.2em]")
+                    ui.label("FixundFertig").classes("text-sm font-semibold text-slate-900 tracking-wide")
                 ui.separator().classes("opacity-70")
 
                 def nav_section(title: str, items: list[tuple[str, str]]):
