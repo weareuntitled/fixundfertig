@@ -9,7 +9,7 @@ def render_dashboard(session, comp: Company) -> None:
         app.storage.user["return_page"] = "dashboard"
         _open_invoice_editor(None)
 
-    with ui.row().classes("w-full items-center justify-between mb-6"):
+    with ui.row().classes("w-full items-center justify-between mb-6 flex-col sm:flex-row gap-3"):
         ui.label("Welcome back, Dr. Smith").classes("text-3xl font-bold tracking-tight text-slate-900")
         ui.button("New invoice", icon="add", on_click=_open_new_invoice).classes(
             "rounded-full border border-slate-200 bg-white/50 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white/70"
@@ -59,12 +59,12 @@ def render_dashboard(session, comp: Company) -> None:
         user = session.get(User, current_user_id)
 
     with ui.element("div").classes("w-full grid grid-cols-12 gap-6 mb-6"):
-        kpi_card("Umsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-500", "col-span-3")
-        kpi_card("Ausgaben", f"{kosten:,.2f} €", "trending_down", "text-rose-500", "col-span-3")
-        kpi_card("Offen", f"{offen:,.2f} €", "schedule", "text-blue-500", "col-span-3")
-        kpi_card("Rechnungen", f"{len(invs):,}", "receipt_long", "text-slate-500", "col-span-3")
+        kpi_card("Umsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-500", "col-span-12 sm:col-span-6 lg:col-span-3")
+        kpi_card("Ausgaben", f"{kosten:,.2f} €", "trending_down", "text-rose-500", "col-span-12 sm:col-span-6 lg:col-span-3")
+        kpi_card("Offen", f"{offen:,.2f} €", "schedule", "text-blue-500", "col-span-12 sm:col-span-6 lg:col-span-3")
+        kpi_card("Rechnungen", f"{len(invs):,}", "receipt_long", "text-slate-500", "col-span-12 sm:col-span-6 lg:col-span-3")
 
-        with ui.card().classes(C_GLASS_CARD + " p-6 col-span-8"):
+        with ui.card().classes(C_GLASS_CARD + " p-6 col-span-12 lg:col-span-8"):
             ui.label("Umsatzverlauf").classes(C_SECTION_TITLE + " mb-4")
             ui.echart({
                 "tooltip": {"trigger": "axis"},
@@ -82,7 +82,7 @@ def render_dashboard(session, comp: Company) -> None:
                 }],
             }).classes("w-full h-64")
 
-        with ui.card().classes(C_GLASS_CARD + " p-6 col-span-4"):
+        with ui.card().classes(C_GLASS_CARD + " p-6 col-span-12 lg:col-span-4"):
             ui.label("Profil & Assistent").classes(C_SECTION_TITLE + " mb-4")
             with ui.column().classes("gap-4"):
                 ui.label(comp.name or "Unternehmen").classes("text-lg font-semibold text-slate-900")
