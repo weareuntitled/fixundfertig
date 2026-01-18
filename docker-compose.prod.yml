@@ -1,13 +1,24 @@
+version: '3.8'
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # --- Deine Python App ---
   app:
-    build: ./app
+    build: .   # Achte darauf: "." wenn Dockerfile hier liegt, "./app" wenn im Unterordner
     container_name: fixundfertig_app
+    # --- NEU: Port 3000 öffnen ---
+    ports:
+      - "3000:8000"
+    # -----------------------------
     environment:
       - APP_BASE_URL=https://${APP_DOMAIN}
       - STORAGE_SECRET=${STORAGE_SECRET}
       - TZ=Europe/Berlin
-      # App kann jetzt auch Redis nutzen
       - REDIS_URL=redis://cache:6379/0
     volumes:
       - app_storage:/app/storage
@@ -17,35 +28,33 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'    # Max 1 CPU Kern
-          memory: 1G     # Max 1 GB RAM (Verhindert Server-Crash)
-    logging: &default-logging
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+          # Ich habe das Limit auskommentiert, damit es auf deinem 1-Core Server sicher läuft
+          # cpus: '1.0'
+          memory: 1G
+    logging: *default-logging
 
   # --- n8n Workflow Automation ---
   n8n:
     image: docker.n8n.io/n8nio/n8n
     container_name: fixundfertig_n8n
+    # --- NEU: Port 5678 öffnen ---
+    ports:
+      - "5678:5678"
+    # -----------------------------
     environment:
       - N8N_HOST=${N8N_DOMAIN}
       - N8N_PORT=5678
       - N8N_PROTOCOL=https
-      - WEBHOOK_URL=https://${N8N_DOMAIN}
+      - WEBHOOK_URL=https://${N8N_DOMAIN}/
       - TZ=Europe/Berlin
       - N8N_SECURE_COOKIE=false
-      # DB Setup
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=db
       - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=n8n
       - DB_POSTGRESDB_USER=n8n
       - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD}
-      # Redis Setup (Queue Management)
-      - EXECUTIONS_MODE=regular # Bei sehr viel Last auf 'queue' stellen
-      # Cleanups
+      - EXECUTIONS_MODE=regular
       - EXECUTIONS_DATA_PRUNE=true
       - EXECUTIONS_DATA_MAX_AGE=72
     volumes:
@@ -61,7 +70,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          # Limit auskommentiert zur Sicherheit
+          # cpus: '1.0'
           memory: 2G
     logging: *default-logging
 
@@ -86,11 +96,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          # Limit auskommentiert zur Sicherheit
+          # cpus: '1.0'
           memory: 512M
     logging: *default-logging
 
-  # --- Cache (Redis) - NEU ---
+  # --- Cache (Redis) ---
   cache:
     image: redis:alpine
     container_name: fixundfertig_redis
@@ -104,28 +115,24 @@ services:
       retries: 5
     logging: *default-logging
 
-  # --- Backup Service - NEU ---
-  # Erstellt jede Nacht Backups der Volumes
+  # --- Backup Service ---
   backup:
     image: offen/docker-volume-backup:v2
     container_name: fixundfertig_backup
     environment:
-      - BACKUP_CRON_EXPRESSION=0 3 * * * # Jeden Tag um 03:00 Uhr
+      - BACKUP_CRON_EXPRESSION=0 3 * * *
       - BACKUP_FILENAME=backup-%Y-%m-%dT%H-%M-%S.tar.gz
       - BACKUP_PRUNING_PREFIX=backup-
-      - BACKUP_RETENTION_DAYS=7 # Behalte Backups für 7 Tage
+      - BACKUP_RETENTION_DAYS=7
     volumes:
-      # Die Daten, die gesichert werden sollen (Read-Only :ro)
       - n8n_data:/backup/n8n_data:ro
       - app_storage:/backup/app_storage:ro
       - db_data:/backup/db_data:ro
-      # Hier landen die Backups (auf dem Host)
       - ./backups:/archive
-      # Docker Socket (um Container kurz zu stoppen für konsistente DB Backups - optional aber empfohlen)
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
-  # --- Reverse Proxy ---
+  # --- Reverse Proxy (Caddy) ---
   caddy:
     image: caddy:2
     container_name: fixundfertig_caddy
@@ -157,4 +164,3 @@ volumes:
 networks:
   internal_net:
     driver: bridge
-  caddy_config:
