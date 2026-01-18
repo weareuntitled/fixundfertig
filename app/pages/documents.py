@@ -24,15 +24,19 @@ from storage.service import save_upload_bytes
 
 
 def render_documents(session, comp: Company) -> None:
-    ui.label("Dokumente").classes(C_PAGE_TITLE)
-    ui.label("Uploads verwalten und durchsuchen.").classes("text-sm text-slate-500 mb-4")
-
     state = {
         "search": "",
         "source": "",
         "doc_type": "",
         "date_from": "",
         "date_to": "",
+    }
+    upload_state = {
+        "vendor": "",
+        "doc_date": "",
+        "amount_total": None,
+        "currency": "",
+        "description": "",
     }
 
     def _load_documents() -> list[Document]:
@@ -133,6 +137,14 @@ def render_documents(session, comp: Company) -> None:
         )
         sha256 = hashlib.sha256(data).hexdigest()
 
+        doc_date = upload_state["doc_date"] or None
+        amount_total = upload_state["amount_total"]
+        if amount_total in ("", None):
+            amount_total = None
+        currency = upload_state["currency"].strip() if upload_state["currency"] else ""
+        vendor = upload_state["vendor"].strip() if upload_state["vendor"] else ""
+        description = upload_state["description"].strip() if upload_state["description"] else ""
+
         with get_session() as s:
             try:
                 document = build_document_record(
@@ -142,6 +154,11 @@ def render_documents(session, comp: Company) -> None:
                     size_bytes=size_bytes,
                     source="MANUAL",
                     doc_type=ext,
+                    vendor=vendor,
+                    doc_date=doc_date,
+                    amount_total=amount_total,
+                    currency=currency,
+                    description=description,
                 )
                 document.mime = mime_type
                 document.size = size_bytes
@@ -167,11 +184,35 @@ def render_documents(session, comp: Company) -> None:
         with ui.card().classes(C_CARD + " p-5 w-[480px] max-w-[92vw]"):
             ui.label("Upload").classes(C_SECTION_TITLE)
             ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500 mb-2")
+            ui.input(
+                "Vendor / Verkäufer",
+                on_change=lambda e: upload_state.__setitem__("vendor", e.value or ""),
+            ).classes(C_INPUT + " w-full")
+            ui.input(
+                "Belegdatum",
+                on_change=lambda e: upload_state.__setitem__("doc_date", e.value or ""),
+            ).props("type=date").classes(C_INPUT + " w-full")
+            ui.number(
+                "Betrag",
+                on_change=lambda e: upload_state.__setitem__("amount_total", e.value),
+            ).props("step=0.01").classes(C_INPUT + " w-full")
+            ui.input(
+                "Währung",
+                on_change=lambda e: upload_state.__setitem__("currency", e.value or ""),
+            ).classes(C_INPUT + " w-full")
+            ui.textarea(
+                "Beschreibung",
+                on_change=lambda e: upload_state.__setitem__("description", e.value or ""),
+            ).classes(C_INPUT + " w-full")
             ui.upload(on_upload=_handle_upload, auto_upload=True, label="Datei wählen").classes("w-full")
             with ui.row().classes("justify-end w-full mt-4"):
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
-    with ui.row().classes("w-full justify-between items-end mb-3 gap-3 flex-wrap"):
+    with ui.row().classes("w-full justify-between items-center mb-2 gap-3 flex-wrap"):
+        ui.label("Filter").classes("text-sm text-slate-500")
+        ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
+
+    with ui.expansion("Filter anzeigen", icon="filter_alt").classes("w-full mb-4"):
         with ui.row().classes("gap-2 items-end flex-wrap"):
             ui.input(
                 "Suche",
@@ -198,7 +239,33 @@ def render_documents(session, comp: Company) -> None:
                 "Bis",
                 on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
             ).props("type=date").classes(C_INPUT + " w-36")
-        ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
+
+    with ui.row().classes("w-full items-end mb-3 gap-3 flex-wrap"):
+        ui.input(
+            "Suche",
+            placeholder="Dateiname",
+            on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
+        ).classes(C_INPUT + " w-56")
+        ui.select(
+            _source_options(_load_documents()),
+            label="Quelle",
+            value=state["source"],
+            on_change=lambda e: (state.__setitem__("source", e.value or ""), render_list.refresh()),
+        ).classes(C_INPUT + " w-40")
+        ui.select(
+            _doc_type_options(_load_documents()),
+            label="Typ",
+            value=state["doc_type"],
+            on_change=lambda e: (state.__setitem__("doc_type", e.value or ""), render_list.refresh()),
+        ).classes(C_INPUT + " w-32")
+        ui.input(
+            "Von",
+            on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh()),
+        ).props("type=date").classes(C_INPUT + " w-36")
+        ui.input(
+            "Bis",
+            on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
+        ).props("type=date").classes(C_INPUT + " w-36")
 
     delete_id = {"value": None}
     meta_state = {"title": "", "raw": "", "line_items": "", "flags": ""}
@@ -287,6 +354,14 @@ def render_documents(session, comp: Company) -> None:
         flags_area.value = meta_state["flags"]
         meta_dialog.open()
 
+    def _format_amount(doc: Document) -> str:
+        if doc.amount_total is None:
+            return "-"
+        currency = (doc.currency or "").strip()
+        if currency:
+            return f"{doc.amount_total:.2f} {currency}"
+        return f"{doc.amount_total:.2f}"
+
     @ui.refreshable
     def render_list():
         items = _sort_documents(_filter_documents(_load_documents()))
@@ -298,20 +373,24 @@ def render_documents(session, comp: Company) -> None:
 
         with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
             with ui.row().classes(C_TABLE_HEADER):
-                ui.label("Datum").classes("w-32 font-bold text-xs text-slate-500")
+                ui.label("Datum").classes("w-28 font-bold text-xs text-slate-500")
                 ui.label("Datei").classes("flex-1 font-bold text-xs text-slate-500")
-                ui.label("Typ").classes("w-24 font-bold text-xs text-slate-500")
-                ui.label("Quelle").classes("w-24 font-bold text-xs text-slate-500")
+                ui.label("Vendor").classes("w-40 font-bold text-xs text-slate-500")
+                ui.label("Betrag").classes("w-28 font-bold text-xs text-slate-500 text-right")
+                ui.label("Typ").classes("w-20 font-bold text-xs text-slate-500")
+                ui.label("Quelle").classes("w-20 font-bold text-xs text-slate-500")
                 ui.label("").classes("w-32 font-bold text-xs text-slate-500")
 
             for doc in items:
                 row = serialize_document(doc)
                 created_at = row.get("created_at", "")
                 with ui.row().classes("w-full items-center border-t border-slate-100 px-4 py-3"):
-                    ui.label(created_at[:10]).classes("w-32 text-sm text-slate-600")
+                    ui.label(created_at[:10]).classes("w-28 text-sm text-slate-600")
                     ui.label(row.get("original_filename") or row.get("title") or "Dokument").classes("flex-1 text-sm text-slate-700 truncate")
-                    ui.label(row.get("type") or "-").classes("w-24 text-sm text-slate-600")
-                    ui.label(row.get("source") or "-").classes("w-24 text-sm text-slate-600")
+                    ui.label(doc.vendor or "-").classes("w-40 text-sm text-slate-600 truncate")
+                    ui.label(_format_amount(doc)).classes("w-28 text-sm text-slate-600 text-right")
+                    ui.label(row.get("type") or "-").classes("w-20 text-sm text-slate-600")
+                    ui.label(row.get("source") or "-").classes("w-20 text-sm text-slate-600")
                     with ui.row().classes("w-32 justify-end gap-2"):
                         ui.button(
                             "Meta",
