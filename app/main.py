@@ -47,6 +47,7 @@ from services.documents import (
     build_document_record,
     build_display_title,
     document_matches_filters,
+    document_storage_path,
     ensure_document_dir,
     normalize_keywords,
     resolve_document_path,
