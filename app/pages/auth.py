@@ -14,23 +14,28 @@ from services.auth import (
     verify_email,
     verify_password,
 )
-from styles import C_BG, C_BTN_PRIM, C_CARD, C_CONTAINER, C_INPUT, C_PAGE_TITLE
 
 ERROR_TEXT = "text-sm text-rose-600"
-LINK_TEXT = "text-sm text-blue-600 hover:text-blue-700"
+LINK_TEXT = "text-sm text-slate-500 hover:text-slate-900 no-underline"
+TITLE_TEXT = "text-2xl font-semibold text-slate-900 text-center"
+SUBTITLE_TEXT = "text-sm text-slate-500 text-center"
+INPUT_CLASSES = "w-full"
+PRIMARY_BUTTON = "w-full bg-slate-900 text-white rounded-lg hover:bg-slate-800"
+CARD_CLASSES = "w-full max-w-[400px] bg-white rounded-xl shadow-lg border border-slate-200 p-6"
+BG_CLASSES = "min-h-screen w-full bg-slate-50 flex items-center justify-center px-4"
 logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def auth_shell(title: str, subtitle: str):
-    with ui.element("div").classes(C_BG + " w-full"):
-        with ui.column().classes(C_CONTAINER + " items-center"):
-            with ui.column().classes("w-full max-w-md gap-4"):
-                ui.label(title).classes(C_PAGE_TITLE + " text-center")
+def auth_layout(title: str, subtitle: str):
+    with ui.element("div").classes(BG_CLASSES):
+        with ui.column().classes("w-full items-center gap-6"):
+            ui.label("FixundFertig").classes("text-lg font-semibold text-slate-900")
+            with ui.column().classes(f"{CARD_CLASSES} gap-4"):
+                ui.label(title).classes(TITLE_TEXT)
                 if subtitle:
-                    ui.label(subtitle).classes("text-sm text-slate-500 text-center")
-                card = ui.column().classes(C_CARD + " w-full p-6 gap-4")
-                with card:
+                    ui.label(subtitle).classes(SUBTITLE_TEXT)
+                with ui.column().classes("w-full gap-4") as card:
                     yield card
 
 
@@ -45,12 +50,20 @@ def _set_error(label: ui.label, message: str) -> None:
     label.set_visibility(bool(message))
 
 
-def _show_success(card: ui.column, message: str, link_text: str | None = None, link_href: str | None = None) -> None:
+def _show_success(
+    card: ui.column,
+    message: str,
+    link_text: str | None = None,
+    link_href: str | None = None,
+    icon: str | None = None,
+) -> None:
     card.clear()
     with card:
-        ui.label(message).classes("text-sm text-slate-600")
+        if icon:
+            ui.icon(icon).classes("text-emerald-500 text-4xl self-center")
+        ui.label(message).classes("text-sm text-slate-500 text-center")
         if link_text and link_href:
-            ui.link(link_text, link_href).classes(LINK_TEXT)
+            ui.link(link_text, link_href).classes(f"{LINK_TEXT} self-center")
 
 
 def _mask_token_prefix(token: str | None, visible: int = 6) -> str:
@@ -64,12 +77,12 @@ def _mask_token_prefix(token: str | None, visible: int = 6) -> str:
 
 @ui.page("/login")
 def login_page():
-    with auth_shell("Welcome back", "Sign in to your account") as card:
+    with auth_layout("Welcome back", "Sign in to your account") as card:
         with ui.column().classes("w-full gap-1"):
-            identifier_input = ui.input("Email or username").classes(C_INPUT)
+            identifier_input = ui.input("Email or username").props("outlined dense").classes(INPUT_CLASSES)
             identifier_error = _error_label()
         with ui.column().classes("w-full gap-1"):
-            password_input = ui.input("Password").props("type=password").classes(C_INPUT)
+            password_input = ui.input("Password").props("outlined dense type=password").classes(INPUT_CLASSES)
             password_error = _error_label()
         status_error = _error_label()
 
@@ -85,16 +98,20 @@ def login_page():
                 _set_error(password_error, "Password is required")
             if not identifier or not password:
                 return
-            if not verify_password(identifier, password):
-                _set_error(status_error, "Invalid credentials")
-                return
-            if login_user(identifier):
-                app.storage.user["auth_user"] = identifier
-                _show_success(card, "Logged in successfully.", "Go to dashboard", "/")
-            else:
-                _set_error(status_error, "Please verify your email before logging in.")
+            login_button.loading = True
+            try:
+                if not verify_password(identifier, password):
+                    _set_error(status_error, "Invalid credentials")
+                    return
+                if login_user(identifier):
+                    app.storage.user["auth_user"] = identifier
+                    _show_success(card, "Logged in successfully.", "Go to dashboard", "/")
+                else:
+                    _set_error(status_error, "Please verify your email before logging in.")
+            finally:
+                login_button.loading = False
 
-        ui.button("Log in", on_click=handle_login).classes(C_BTN_PRIM + " w-full")
+        login_button = ui.button("Log in", on_click=handle_login).props("loading").classes(PRIMARY_BUTTON)
         with ui.row().classes("w-full justify-between"):
             ui.link("Forgot password?", "/forgot").classes(LINK_TEXT)
             ui.link("Create account", "/signup").classes(LINK_TEXT)
@@ -102,18 +119,18 @@ def login_page():
 
 @ui.page("/signup")
 def signup_page():
-    with auth_shell("Create account", "Start with your email and a password") as card:
+    with auth_layout("Create account", "Start with your email and a password") as card:
         with ui.column().classes("w-full gap-1"):
-            email_input = ui.input("Email").classes(C_INPUT)
+            email_input = ui.input("Email").props("outlined dense").classes(INPUT_CLASSES)
             email_error = _error_label()
         with ui.column().classes("w-full gap-1"):
-            username_input = ui.input("Username (optional)").classes(C_INPUT)
+            username_input = ui.input("Username (optional)").props("outlined dense").classes(INPUT_CLASSES)
             username_error = _error_label()
         with ui.column().classes("w-full gap-1"):
-            password_input = ui.input("Password").props("type=password").classes(C_INPUT)
+            password_input = ui.input("Password").props("outlined dense type=password").classes(INPUT_CLASSES)
             password_error = _error_label()
         with ui.column().classes("w-full gap-1"):
-            confirm_input = ui.input("Confirm password").props("type=password").classes(C_INPUT)
+            confirm_input = ui.input("Confirm password").props("outlined dense type=password").classes(INPUT_CLASSES)
             confirm_error = _error_label()
         status_error = _error_label()
 
@@ -135,35 +152,39 @@ def signup_page():
                 _set_error(confirm_error, "Passwords do not match")
             if not email or not password or (password and confirm != password):
                 return
+            signup_button.loading = True
             try:
-                _, _, token = create_user_pending(email, username, password)
-            except Exception as exc:
-                logger.warning(
-                    "signup.failed",
-                    exc_info=exc,
+                try:
+                    _, _, token = create_user_pending(email, username, password)
+                except Exception as exc:
+                    logger.warning(
+                        "signup.failed",
+                        exc_info=exc,
+                        extra={
+                            "email": email,
+                            "username": username or None,
+                            "token": _mask_token_prefix(None),
+                        },
+                    )
+                    _set_error(status_error, str(exc))
+                    return
+                logger.info(
+                    "signup.success",
                     extra={
                         "email": email,
                         "username": username or None,
-                        "token": _mask_token_prefix(None),
+                        "token": _mask_token_prefix(token),
                     },
                 )
-                _set_error(status_error, str(exc))
-                return
-            logger.info(
-                "signup.success",
-                extra={
-                    "email": email,
-                    "username": username or None,
-                    "token": _mask_token_prefix(token),
-                },
-            )
-            if token:
-                message = "Account created. Please check your email to verify your account."
-            else:
-                message = "Account created. You can now log in."
-            _show_success(card, message, "Go to login", "/login")
+                if token:
+                    message = "Account created. Please check your email to verify your account."
+                else:
+                    message = "Account created. You can now log in."
+                _show_success(card, message, "Go to login", "/login")
+            finally:
+                signup_button.loading = False
 
-        ui.button("Create account", on_click=handle_signup).classes(C_BTN_PRIM + " w-full")
+        signup_button = ui.button("Create account", on_click=handle_signup).props("loading").classes(PRIMARY_BUTTON)
         with ui.row().classes("w-full justify-between"):
             ui.link("Already have an account?", "/login").classes(LINK_TEXT)
 
@@ -171,9 +192,11 @@ def signup_page():
 @ui.page("/verify")
 def verify_page(request: Request):
     token_prefill = (request.query_params.get("token") or "").strip()
-    with auth_shell("Verify your email", "Enter the verification token") as card:
+    with auth_layout("Verify your email", "Enter the verification token") as card:
         with ui.column().classes("w-full gap-1"):
-            token_input = ui.input("Verification token", value=token_prefill).classes(C_INPUT)
+            token_input = ui.input("Verification token", value=token_prefill).props("outlined dense").classes(
+                INPUT_CLASSES
+            )
             token_error = _error_label()
         status_error = _error_label()
 
@@ -185,19 +208,20 @@ def verify_page(request: Request):
                 _set_error(token_error, "Verification token is required")
                 return
             if verify_email(token):
-                _show_success(card, "Email verified. You can now log in.", "Go to login", "/login")
+                _show_success(card, "Email verified. Redirecting to login...", icon="check_circle")
+                ui.timer(2.0, lambda: ui.navigate.to("/login"), once=True)
             else:
                 _set_error(status_error, "Invalid or expired token")
 
-        ui.button("Verify email", on_click=handle_verify).classes(C_BTN_PRIM + " w-full")
+        ui.button("Verify email", on_click=handle_verify).classes(PRIMARY_BUTTON)
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
 @ui.page("/forgot")
 def forgot_page():
-    with auth_shell("Forgot password", "We will email you a reset link") as card:
+    with auth_layout("Forgot password", "We will email you a reset link") as card:
         with ui.column().classes("w-full gap-1"):
-            email_input = ui.input("Email").classes(C_INPUT)
+            email_input = ui.input("Email").props("outlined dense").classes(INPUT_CLASSES)
             email_error = _error_label()
 
         def handle_request() -> None:
@@ -214,22 +238,22 @@ def forgot_page():
                 "/login",
             )
 
-        ui.button("Send reset link", on_click=handle_request).classes(C_BTN_PRIM + " w-full")
+        ui.button("Send reset link", on_click=handle_request).classes(PRIMARY_BUTTON)
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
 @ui.page("/reset")
 def reset_page(request: Request):
     token_prefill = (request.query_params.get("token") or "").strip()
-    with auth_shell("Reset password", "Enter your token and choose a new password") as card:
+    with auth_layout("Reset password", "Enter your token and choose a new password") as card:
         with ui.column().classes("w-full gap-1"):
-            token_input = ui.input("Reset token", value=token_prefill).classes(C_INPUT)
+            token_input = ui.input("Reset token", value=token_prefill).props("outlined dense").classes(INPUT_CLASSES)
             token_error = _error_label()
         with ui.column().classes("w-full gap-1"):
-            password_input = ui.input("New password").props("type=password").classes(C_INPUT)
+            password_input = ui.input("New password").props("outlined dense type=password").classes(INPUT_CLASSES)
             password_error = _error_label()
         with ui.column().classes("w-full gap-1"):
-            confirm_input = ui.input("Confirm password").props("type=password").classes(C_INPUT)
+            confirm_input = ui.input("Confirm password").props("outlined dense type=password").classes(INPUT_CLASSES)
             confirm_error = _error_label()
         status_error = _error_label()
 
@@ -254,5 +278,5 @@ def reset_page(request: Request):
             else:
                 _set_error(status_error, "Invalid or expired token")
 
-        ui.button("Reset password", on_click=handle_reset).classes(C_BTN_PRIM + " w-full")
+        ui.button("Reset password", on_click=handle_reset).classes(PRIMARY_BUTTON)
         ui.link("Back to login", "/login").classes(LINK_TEXT)
