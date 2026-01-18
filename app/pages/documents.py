@@ -467,7 +467,7 @@ def render_documents(session, comp: Company) -> None:
             table.on("selection", _on_selection)
 
             with table.add_slot("body-cell-amount") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_display").classes("text-right")
+                ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-actions") as slot:
                 with ui.row().classes("justify-end gap-2"):
