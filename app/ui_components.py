@@ -10,6 +10,8 @@ from styles import (
     C_BTN_SEC,
     C_CARD,
     C_CARD_HOVER,
+    C_GLASS_CARD,
+    C_GLASS_CARD_HOVER,
     C_SECTION_TITLE,
 )
 
@@ -36,7 +38,7 @@ def invoice_status_badge(status: str) -> str:
     return C_BADGE_GRAY
 
 def kpi_card(label, value, icon, color):
-    with ui.card().classes(C_CARD + " p-4 flex flex-row items-center justify-between"):
+    with ui.card().classes(C_GLASS_CARD + " " + C_GLASS_CARD_HOVER + " p-4 flex flex-row items-center justify-between transition-all"):
         with ui.column().classes('gap-1'):
             ui.label(label).classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
             ui.label(value).classes('text-2xl font-bold text-slate-800')
