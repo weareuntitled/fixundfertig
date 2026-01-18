@@ -204,30 +204,36 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     sender_phone = _safe_str(_get(comp, "phone", default="")) if comp is not None else ""
 
     header_parts = [p for p in [sender_name, sender_street, f"{sender_zip} {sender_city}".strip(), sender_country] if p]
-    if header_parts:
-        header_text = " - ".join(header_parts)
-        c.setFont(font, 8)
-        c.setStrokeColorRGB(0.6, 0.6, 0.6)
-        c.drawString(margin_x, h - 12 * mm, header_text)
-        c.line(margin_x, h - 14 * mm, w - margin_x, h - 14 * mm)
-        c.setStrokeColorRGB(0, 0, 0)
-
+    header_top_y = h - 12 * mm
     if comp is not None and _get(comp, "id", default=None) is not None:
         logo_path = company_logo_path(_get(comp, "id"))
         if logo_path and os.path.exists(logo_path):
             try:
                 logo = ImageReader(logo_path)
                 iw, ih = logo.getSize()
-                max_w = 40 * mm
-                max_h = 18 * mm
+                max_w = 26 * mm
+                max_h = 10 * mm
                 scale = min(max_w / iw, max_h / ih, 1.0)
                 draw_w = iw * scale
                 draw_h = ih * scale
-                x_logo = w - margin_x - draw_w
-                y_logo = (h - 6 * mm) - draw_h
+                x_logo = margin_x
+                y_logo = header_top_y - draw_h + 1
                 c.drawImage(logo, x_logo, y_logo, width=draw_w, height=draw_h, mask="auto")
+                header_left = x_logo + draw_w + 4
             except Exception:
-                pass
+                header_left = margin_x
+        else:
+            header_left = margin_x
+    else:
+        header_left = margin_x
+
+    if header_parts:
+        header_text = " - ".join(header_parts)
+        c.setFont(font, 8)
+        c.setStrokeColorRGB(0.6, 0.6, 0.6)
+        c.drawString(header_left, header_top_y, header_text)
+        c.line(margin_x, header_top_y - 2, w - margin_x, header_top_y - 2)
+        c.setStrokeColorRGB(0, 0, 0)
 
     text(margin_x, y, "Von", size=10, bold=True)
     y -= 12
@@ -394,8 +400,11 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         y -= 60
 
     # Footer
-    footer_y = bottom + 40
+    footer_top = bottom + 52
     c.setFont(font, 8)
+    c.setStrokeColorRGB(0.6, 0.6, 0.6)
+    c.line(margin_x, footer_top, w - margin_x, footer_top)
+    c.setStrokeColorRGB(0, 0, 0)
 
     iban = _safe_str(_get(comp, "iban", default="")) if comp is not None else ""
     bic = _safe_str(_get(comp, "bic", default="")) if comp is not None else ""
@@ -404,7 +413,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     vat_id = _safe_str(_get(comp, "vat_id", default="")) if comp is not None else ""
     jurisdiction = _safe_str(_get(comp, "city", default="")) if comp is not None else ""
 
-    # Left footer: contact
+    # Footer columns
     left_lines = []
     if sender_name:
         left_lines.append(sender_name)
@@ -416,10 +425,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         left_lines.append(sender_country)
     if sender_email:
         left_lines.append(sender_email)
-    if sender_phone:
-        left_lines.append(sender_phone)
 
-    # Middle footer: bank
     mid_lines = []
     if bank:
         mid_lines.append(bank)
@@ -428,30 +434,36 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     if bic:
         mid_lines.append(f"BIC: {bic}")
 
-    # Right footer: legal
     right_lines = []
     if tax_id:
-        right_lines.append(f"Steuernummer: {tax_id}")
+        right_lines.append(f"St-Nr: {tax_id}")
     if vat_id:
         right_lines.append(f"USt-ID: {vat_id}")
     if jurisdiction:
         right_lines.append(f"Gerichtsstand: {jurisdiction}")
 
     fx = margin_x
-    mx = w * 0.45
-    rx = w * 0.72
+    mx = w * 0.42
+    rx = w * 0.70
 
-    yy = footer_y
+    label_y = footer_top - 12
+    c.setFont(font_b, 8)
+    c.drawString(fx, label_y, "Adresse")
+    c.drawString(mx, label_y, "Bankverbindung")
+    c.drawString(rx, label_y, "Rechtliches")
+
+    c.setFont(font, 8)
+    yy = label_y - 10
     for ln in left_lines[:5]:
         c.drawString(fx, yy, ln)
         yy -= 10
 
-    yy = footer_y
+    yy = label_y - 10
     for ln in mid_lines[:5]:
         c.drawString(mx, yy, ln)
         yy -= 10
 
-    yy = footer_y
+    yy = label_y - 10
     for ln in right_lines[:5]:
         c.drawString(rx, yy, ln)
         yy -= 10
