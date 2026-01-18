@@ -1,4 +1,5 @@
 services:
+  # --- Deine Python App ---
   app:
     build: ./app
     container_name: fixundfertig_app
@@ -6,28 +7,125 @@ services:
       - APP_BASE_URL=https://${APP_DOMAIN}
       - STORAGE_SECRET=${STORAGE_SECRET}
       - TZ=Europe/Berlin
+      # App kann jetzt auch Redis nutzen
+      - REDIS_URL=redis://cache:6379/0
     volumes:
       - app_storage:/app/storage
     restart: unless-stopped
+    networks:
+      - internal_net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'    # Max 1 CPU Kern
+          memory: 1G     # Max 1 GB RAM (Verhindert Server-Crash)
+    logging: &default-logging
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # --- n8n Workflow Automation ---
   n8n:
     image: docker.n8n.io/n8nio/n8n
     container_name: fixundfertig_n8n
     environment:
       - N8N_HOST=${N8N_DOMAIN}
-      - N8N_PROTOCOL=https
       - N8N_PORT=5678
-      - N8N_EDITOR_BASE_URL=https://${N8N_DOMAIN}
+      - N8N_PROTOCOL=https
       - WEBHOOK_URL=https://${N8N_DOMAIN}
-      - N8N_SECURE_COOKIE=false
       - TZ=Europe/Berlin
+      - N8N_SECURE_COOKIE=false
+      # DB Setup
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=db
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD}
+      # Redis Setup (Queue Management)
+      - EXECUTIONS_MODE=regular # Bei sehr viel Last auf 'queue' stellen
+      # Cleanups
       - EXECUTIONS_DATA_PRUNE=true
       - EXECUTIONS_DATA_MAX_AGE=72
-      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
     volumes:
       - n8n_data:/home/node/.n8n
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - internal_net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+    logging: *default-logging
+
+  # --- Datenbank (Postgres) ---
+  db:
+    image: postgres:16-alpine
+    container_name: fixundfertig_db
+    environment:
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=n8n
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    logging: *default-logging
+
+  # --- Cache (Redis) - NEU ---
+  cache:
+    image: redis:alpine
+    container_name: fixundfertig_redis
+    restart: unless-stopped
+    networks:
+      - internal_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # --- Backup Service - NEU ---
+  # Erstellt jede Nacht Backups der Volumes
+  backup:
+    image: offen/docker-volume-backup:v2
+    container_name: fixundfertig_backup
+    environment:
+      - BACKUP_CRON_EXPRESSION=0 3 * * * # Jeden Tag um 03:00 Uhr
+      - BACKUP_FILENAME=backup-%Y-%m-%dT%H-%M-%S.tar.gz
+      - BACKUP_PRUNING_PREFIX=backup-
+      - BACKUP_RETENTION_DAYS=7 # Behalte Backups für 7 Tage
+    volumes:
+      # Die Daten, die gesichert werden sollen (Read-Only :ro)
+      - n8n_data:/backup/n8n_data:ro
+      - app_storage:/backup/app_storage:ro
+      - db_data:/backup/db_data:ro
+      # Hier landen die Backups (auf dem Host)
+      - ./backups:/archive
+      # Docker Socket (um Container kurz zu stoppen für konsistente DB Backups - optional aber empfohlen)
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
+  # --- Reverse Proxy ---
   caddy:
     image: caddy:2
     container_name: fixundfertig_caddy
@@ -45,9 +143,18 @@ services:
       - app
       - n8n
     restart: unless-stopped
+    networks:
+      - internal_net
+    logging: *default-logging
 
 volumes:
   app_storage:
   n8n_data:
   caddy_data:
+  caddy_config:
+  db_data:
+
+networks:
+  internal_net:
+    driver: bridge
   caddy_config:

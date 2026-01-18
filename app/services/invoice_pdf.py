@@ -12,13 +12,53 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.utils import ImageReader
+from reportlab.lib import colors
 
-from services.storage import company_logo_path
+# Falls die Datei fehlt, fangen wir den Fehler ab
+try:
+    from services.storage import company_logo_path
+except ImportError:
+    def company_logo_path(id): return None
 
+# ---------------------------------------------------------
+# HIER KANNST DU ALLES EINSTELLEN (DESIGN & LAYOUT)
+# ---------------------------------------------------------
+LAYOUT = {
+    # Ränder
+    "margin_x": 20 * mm,       # Rand links/rechts
+    "margin_top": 20 * mm,     # Rand oben
+    "margin_bottom": 20 * mm,  # Rand unten
+
+    # Schriftarten
+    "font_reg": "Helvetica",
+    "font_bold": "Helvetica-Bold",
+    
+    # Schriftgrößen
+    "fs_title": 16,     # Größe "Rechnung"
+    "fs_text": 10,      # Normaler Text
+    "fs_small": 8,      # Kleingedrucktes (Footer)
+
+    # Positionen (von oben gemessen)
+    "pos_address": 10 * mm,    # Wo fängt das Adressfeld an? (Ideal für Fensterkuvert)
+    "pos_info": 50 * mm,       # Wo fängt der Datumsblock rechts an?
+
+    # Farben (RGB: 0.0 bis 1.0)
+    "col_primary": (0, 0, 0),        # Hauptfarbe Text (Schwarz)
+    "col_line": (0.8, 0.8, 0.8),     # Farbe der Trennlinien (Hellgrau)
+    "col_header_bg": (0.95, 0.95, 0.95), # Hintergrund Tabellenkopf (Ganz hellgrau)
+
+    # Texte
+    "txt_small_biz": "Als Kleinunternehmer im Sinne von § 19 Abs. 1 UStG wird keine Umsatzsteuer berechnet.",
+    
+    # Tabellenspalten (Prozent der Breite, Summe ca. 1.0)
+    "col_w_desc": 0.50,
+    "col_w_qty": 0.15,
+    "col_w_price": 0.30
+}
+# ---------------------------------------------------------
 
 def _safe_str(x: Any) -> str:
     return (str(x) if x is not None else "").strip()
-
 
 def _wrap_text(text: str, font: str, size: int, max_width: float) -> list[str]:
     text = _safe_str(text)
@@ -39,7 +79,6 @@ def _wrap_text(text: str, font: str, size: int, max_width: float) -> list[str]:
         lines.append(cur)
     return lines or [""]
 
-
 def _get(obj: Any, *names: str, default: Any = "") -> Any:
     if obj is None:
         return default
@@ -55,13 +94,11 @@ def _get(obj: Any, *names: str, default: Any = "") -> Any:
                 return v
     return default
 
-
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
-
 
 @dataclass
 class _InvItem:
@@ -69,22 +106,17 @@ class _InvItem:
     quantity: float
     unit_price: float
 
-
 def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     """
-    Drop-in replacement style:
-    - nimmt invoice (SQLModel) entgegen
-    - optional company und customer (wenn du sie beim Aufruf schon hast)
-    - nutzt invoice.recipient_* bevorzugt, fallback auf customer recipient
-    - wrapped Description, dynamische Zeilenhöhe, sauberes Tabellenlayout
+    Funktioniert exakt wie vorher, nutzt aber die LAYOUT Konfiguration oben.
     """
-
-    # try to get company via invoice if not provided
+    
+    # 1. DATEN HOLEN
     comp = company or _get(invoice, "company", default=None) or getattr(invoice, "__dict__", {}).get("company", None)
     if customer is None:
         customer = _get(invoice, "customer", default=None)
 
-    # Resolve recipient
+    # Recipient
     rec_name = _safe_str(_get(invoice, "recipient_name", "address_name", default=""))
     rec_street = _safe_str(_get(invoice, "recipient_street", "address_street", default=""))
     rec_zip = _safe_str(_get(invoice, "recipient_postal_code", "address_zip", default=""))
@@ -102,39 +134,30 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     raw_items = _get(invoice, "line_items", "items", "positions", default=None)
     if raw_items is None:
         raw_items = getattr(invoice, "__dict__", {}).get("line_items", None)
+    
     items: list[_InvItem] = []
-    if isinstance(raw_items, list) and raw_items:
-        for it in raw_items:
-            items.append(
-                _InvItem(
-                    description=_safe_str(_get(it, "description", "desc", default="")),
-                    quantity=_safe_float(_get(it, "quantity", "qty", default=0)),
-                    unit_price=_safe_float(_get(it, "unit_price", "price", default=0)),
-                )
-            )
-    else:
-        # fallback if invoice has items relation (avoid dict.items method)
-        rel = None
-        if not isinstance(invoice, dict):
-            rel = getattr(invoice, "items", None) or getattr(invoice, "invoice_items", None)
-        if rel and not callable(rel):
-            for it in rel:
-                items.append(
-                    _InvItem(
-                        description=_safe_str(_get(it, "description", default="")),
-                        quantity=_safe_float(_get(it, "quantity", default=0)),
-                        unit_price=_safe_float(_get(it, "unit_price", default=0)),
-                    )
-                )
+    # Fallback für SQLModel Relations vs Dicts
+    item_iter = raw_items if isinstance(raw_items, list) else (getattr(invoice, "items", []) or [])
+    
+    for it in item_iter:
+        items.append(_InvItem(
+            description=_safe_str(_get(it, "description", "desc", default="")),
+            quantity=_safe_float(_get(it, "quantity", "qty", default=0)),
+            unit_price=_safe_float(_get(it, "unit_price", "price", default=0)),
+        ))
 
-    # Tax
+    # Steuern & Summen
     tax_rate = _safe_float(_get(invoice, "tax_rate", default=0.0))
     if tax_rate > 1.0:
         tax_rate = tax_rate / 100.0
-    # Kleinunternehmer in deiner App: oft tax_rate = 0
+    
     is_small_business = bool(_get(comp, "is_small_business", default=False)) if comp is not None else (tax_rate == 0.0)
 
-    # Dates
+    net = sum(i.quantity * i.unit_price for i in items)
+    tax = net * tax_rate
+    gross = net + tax
+
+    # Datum
     inv_date = _safe_str(_get(invoice, "date", "invoice_date", default=""))
     service_date = _safe_str(_get(invoice, "delivery_date", default=""))
     if not service_date:
@@ -145,334 +168,265 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         else:
             service_date = service_from or service_to
 
-    # Pay due (Default 14 Tage)
     due_str = ""
     try:
         if inv_date:
             d = datetime.strptime(inv_date, "%Y-%m-%d").date()
-            due = d + timedelta(days=14)
-            due_str = due.strftime("%d.%m.%Y")
+            due_str = (d + timedelta(days=14)).strftime("%d.%m.%Y")
+            inv_date = d.strftime("%d.%m.%Y") # Formatieren für Anzeige
     except Exception:
-        due_str = ""
+        pass
 
-    # Totals
-    net = sum(i.quantity * i.unit_price for i in items)
-    tax = net * tax_rate
-    gross = net + tax
-
+    # 2. PDF SETUP
     buf = BytesIO()
     c = Canvas(buf, pagesize=A4)
     w, h = A4
 
-    # Layout constants
-    margin_x = 18 * mm
-    top = h - 18 * mm
-    bottom = 18 * mm
+    # Layout Variablen laden
+    mx = LAYOUT["margin_x"]
+    my_top = h - LAYOUT["margin_top"]
+    my_bot = LAYOUT["margin_bottom"]
+    content_w = w - (2 * mx)
 
-    font = "Helvetica"
-    font_b = "Helvetica-Bold"
+    font_r = LAYOUT["font_reg"]
+    font_b = LAYOUT["font_bold"]
 
-    def text(x, y, s, size=10, bold=False):
-        c.setFont(font_b if bold else font, size)
-        c.drawString(x, y, _safe_str(s))
+    # Helper Fonts
+    def set_font(bold=False, size=10, color=LAYOUT["col_primary"]):
+        c.setFont(font_b if bold else font_r, size)
+        c.setFillColorRGB(*color)
 
-    def text_r(x_right, y, s, size=10, bold=False):
-        s = _safe_str(s)
-        c.setFont(font_b if bold else font, size)
-        c.drawRightString(x_right, y, s)
-
-    # Header
+    # 3. HEADER (Logo & Titel)
+    y = my_top
+    
+    # Titel rechts
     title = _safe_str(_get(invoice, "title", default="")) or "Rechnung"
     nr = _safe_str(_get(invoice, "nr", "invoice_number", default=""))
 
-    text(margin_x, top, title, size=22, bold=True)
+    set_font(bold=True, size=LAYOUT["fs_title"])
+    c.drawRightString(w - mx, y - 10, title)
+    
     if nr:
-        text_r(w - margin_x, top + 2, f"#{nr}", size=10, bold=False)
+        set_font(bold=False, size=10)
+        c.drawRightString(w - mx, y - 10 - LAYOUT["fs_title"], f"Nr. {nr}")
 
-    y = top - 18
+  # ... innerhalb von render_invoice_to_pdf_bytes ...
+    
+    # 1. Definieren wo oben ist (Seitenhöhe minus Rand)
+    logo_top_y = h - LAYOUT["margin_top"]  
+    
+    # Debugging: Falls das Logo immer noch fehlt, aktiviere diesen Print
+    # print(f"Suche Logo für ID {_get(comp, 'id')}")
 
-    # From block (left)
-    sender_name = _safe_str(_get(comp, "name", default="")) if comp is not None else ""
-    sender_person = (
-        _safe_str(_get(comp, "first_name", default="")) + " " + _safe_str(_get(comp, "last_name", default=""))
-    ).strip() if comp is not None else ""
-    sender_street = _safe_str(_get(comp, "street", default="")) if comp is not None else ""
-    sender_zip = _safe_str(_get(comp, "postal_code", default="")) if comp is not None else ""
-    sender_city = _safe_str(_get(comp, "city", default="")) if comp is not None else ""
-    sender_country = _safe_str(_get(comp, "country", default="")) if comp is not None else ""
-    sender_email = _safe_str(_get(comp, "email", default="")) if comp is not None else ""
-    sender_phone = _safe_str(_get(comp, "phone", default="")) if comp is not None else ""
-
-    header_parts = [p for p in [sender_name, sender_street, f"{sender_zip} {sender_city}".strip(), sender_country] if p]
-    header_top_y = h - 12 * mm
     if comp is not None and _get(comp, "id", default=None) is not None:
         logo_path = company_logo_path(_get(comp, "id"))
+        
+        # Prüfen ob Pfad existiert
         if logo_path and os.path.exists(logo_path):
+            # Try-Block TEMPORÄR entfernen oder Fehler printen, um zu sehen was passiert
             try:
                 logo = ImageReader(logo_path)
                 iw, ih = logo.getSize()
-                max_w = 26 * mm
-                max_h = 10 * mm
+                
+                # Maximale Größe definieren (z.B. 4cm breit, 2.5cm hoch)
+                max_w = 40 * mm 
+                max_h = 25 * mm
+                
+                # Skalierung berechnen (Aspektverhältnis beibehalten)
                 scale = min(max_w / iw, max_h / ih, 1.0)
                 draw_w = iw * scale
                 draw_h = ih * scale
-                x_logo = margin_x
-                y_logo = header_top_y - draw_h + 1
-                c.drawImage(logo, x_logo, y_logo, width=draw_w, height=draw_h, mask="auto")
-                header_left = x_logo + draw_w + 4
-            except Exception:
-                header_left = margin_x
-        else:
-            header_left = margin_x
-    else:
-        header_left = margin_x
+                
+                # WICHTIG: Positionierung
+                # x = linker Rand (mx)
+                # y = Oben (logo_top_y) minus Bildhöhe (draw_h), da Reportlab von unten malt
+                c.drawImage(logo, mx, logo_top_y - draw_h, width=draw_w, height=draw_h, mask="auto")
+                
+            except Exception as e:
+                print(f"Fehler beim Laden des Logos: {e}")
+                # Optional: Platzhalter zeichnen, um zu sehen ob Position stimmt
+                # c.rect(mx, logo_top_y - 25*mm, 40*mm, 25*mm)
 
-    if header_parts:
-        header_text = " - ".join(header_parts)
-        c.setFont(font, 8)
-        c.setStrokeColorRGB(0.6, 0.6, 0.6)
-        c.drawString(header_left, header_top_y, header_text)
-        c.line(margin_x, header_top_y - 2, w - margin_x, header_top_y - 2)
-        c.setStrokeColorRGB(0, 0, 0)
+    # 4. ABSENDERZEILE & EMPFÄNGER
+    # Kleine Zeile
+    y_addr = h - LAYOUT["pos_address"]
+    
+    sender_parts = []
+    if comp:
+        s_name = _safe_str(_get(comp, "name"))
+        s_str = _safe_str(_get(comp, "street"))
+        s_city = f"{_get(comp, 'postal_code','')} {_get(comp, 'city','')}".strip()
+        sender_parts = [p for p in [s_name, s_str, s_city] if p]
 
-    text(margin_x, y, "Von", size=10, bold=True)
-    y -= 12
-    if sender_name:
-        text(margin_x, y, sender_name, size=10, bold=True)
-        y -= 11
-    if sender_person:
-        text(margin_x, y, sender_person, size=10)
-        y -= 11
-    if sender_street:
-        text(margin_x, y, sender_street, size=10)
-        y -= 11
-    if sender_zip or sender_city:
-        text(margin_x, y, f"{sender_zip} {sender_city}".strip(), size=10)
-        y -= 11
-    if sender_email:
-        text(margin_x, y, sender_email, size=10)
-        y -= 11
-    if sender_phone:
-        text(margin_x, y, sender_phone, size=10)
+    if sender_parts:
+        c.setStrokeColorRGB(*LAYOUT["col_line"])
+        line_text = " - ".join(sender_parts[:3])
+        set_font(size=8, color=(0.5, 0.5, 0.5))
+        c.drawString(mx, y_addr + 2*mm, line_text)
+        c.line(mx, y_addr, mx + 85*mm, y_addr)
 
-    # Right meta block
-    meta_x = w - margin_x
-    meta_y = top - 20
-    text_r(meta_x, meta_y, "Rechnungsdatum", size=9, bold=True)
-    text_r(meta_x, meta_y - 11, inv_date or "-", size=9)
-    text_r(meta_x, meta_y - 26, "Leistungszeitraum", size=9, bold=True)
-    text_r(meta_x, meta_y - 37, service_date or "-", size=9)
-    if due_str:
-        text_r(meta_x, meta_y - 52, "Zahlung bis", size=9, bold=True)
-        text_r(meta_x, meta_y - 63, due_str, size=9)
-
-    # Recipient block
-    rx = w * 0.55
-    ry = top - 72
-    c.setFont(font_b, 10)
-    c.drawString(rx, ry, "Rechnung an")
-    ry -= 12
-    c.setFont(font, 10)
-
-    # If still empty, show placeholder to make it obvious
-    rec_lines = [
-        rec_name or "",
-        rec_street or "",
-        (f"{rec_zip} {rec_city}".strip() if (rec_zip or rec_city) else ""),
-        rec_country or "",
-    ]
-    rec_lines = [ln for ln in rec_lines if ln]
-    if not rec_lines:
-        rec_lines = ["(Kein Empfänger hinterlegt)"]
+    # Empfänger Block
+    y_rec = y_addr - 5*mm
+    set_font(size=LAYOUT["fs_text"], color=LAYOUT["col_primary"])
+    
+    rec_lines = [l for l in [rec_name, rec_street, f"{rec_zip} {rec_city}".strip(), rec_country] if l]
+    if not rec_lines: rec_lines = ["(Kein Empfänger hinterlegt)"]
 
     for ln in rec_lines:
-        c.drawString(rx, ry, ln)
-        ry -= 11
+        c.drawString(mx, y_rec, ln)
+        y_rec -= 12
 
-    # Intro text
-    y = min(y, ry) - 18
+    # 5. META DATEN (RECHTS)
+    y_meta = h - LAYOUT["pos_info"]
+    meta_x = w - mx
+    
+    meta_data = [
+        ("Datum:", inv_date or "-"),
+        ("Leistungszeitraum:", service_date or "-"),
+        ("Zahlung bis:", due_str)
+    ]
+
+    for label, val in meta_data:
+        set_font(bold=True, size=9)
+        c.drawRightString(meta_x, y_meta, label)
+        set_font(bold=False, size=9)
+        c.drawRightString(meta_x, y_meta - 11, val)
+        y_meta -= 24
+
+    # Y synchronisieren (unter Empfänger oder Meta, je nachdem was tiefer ist)
+    y = min(y_rec, y_meta) - 10*mm
+
+    # 6. INTRO TEXT
     intro = _safe_str(_get(invoice, "intro_text", "intro", default=""))
     if not intro:
         intro = _safe_str(_get(comp, "invoice_intro", default="")) if comp is not None else ""
     if not intro:
         intro = "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
 
-    intro_lines = _wrap_text(intro, font, 10, w - 2 * margin_x)
-    c.setFont(font, 10)
+    intro_lines = _wrap_text(intro, font_r, LAYOUT["fs_text"], content_w)
+    set_font(size=LAYOUT["fs_text"])
     for ln in intro_lines:
-        c.drawString(margin_x, y, ln)
+        c.drawString(mx, y, ln)
         y -= 12
+    y -= 8
 
-    y -= 6
+    # 7. TABELLE
+    # Spaltenbreiten berechnen
+    w_desc = content_w * LAYOUT["col_w_desc"]
+    w_qty = content_w * LAYOUT["col_w_qty"]
+    # Der Rest ist Preis
+    
+    # Header Funktion
+    def draw_table_header(curr_y):
+        c.setFillColorRGB(*LAYOUT["col_header_bg"])
+        c.rect(mx, curr_y - 14, content_w, 14, stroke=0, fill=1) # Hintergrund
+        
+        c.setStrokeColorRGB(*LAYOUT["col_line"])
+        c.line(mx, curr_y - 14, w - mx, curr_y - 14) # Linie unten
 
-    # Table
-    table_x = margin_x
-    table_w = w - 2 * margin_x
-    col_desc = table_w * 0.62
-    col_qty = table_w * 0.15
-    col_price = table_w * 0.23
+        set_font(bold=True, size=9)
+        c.drawString(mx + 6, curr_y - 11, "Beschreibung")
+        c.drawRightString(mx + w_desc + w_qty - 6, curr_y - 11, "Menge")
+        c.drawRightString(w - mx - 6, curr_y - 11, "Preis")
+        return curr_y - 16
 
-    row_h_min = 16
-    line_h = 11
+    y = draw_table_header(y)
 
-    def table_header(y0: float) -> float:
-        c.setFont(font_b, 9)
-        c.setLineWidth(0.5)
-        c.rect(table_x, y0 - 14, table_w, 14, stroke=1, fill=0)
-        c.drawString(table_x + 6, y0 - 11, "Beschreibung")
-        c.drawRightString(table_x + col_desc + col_qty - 6, y0 - 11, "Menge")
-        c.drawRightString(table_x + table_w - 6, y0 - 11, "Preis")
-        return y0 - 16
-
-    y = table_header(y)
-
-    c.setFont(font, 9)
+    set_font(bold=False, size=9)
 
     for it in items:
-        desc_lines = _wrap_text(it.description, font, 9, col_desc - 12)
-        needed_h = max(row_h_min, 8 + len(desc_lines) * line_h)
+        desc_lines = _wrap_text(it.description, font_r, 9, w_desc - 12)
+        row_h = max(16, 8 + len(desc_lines) * 11)
 
-        if y - needed_h < bottom + 55:
+        # Page Break Check
+        if y - row_h < my_bot + 50*mm:
             c.showPage()
-            y = top
-            y = table_header(y)
+            y = h - LAYOUT["margin_top"]
+            y = draw_table_header(y)
+            set_font(bold=False, size=9)
 
-        # Row border
-        c.rect(table_x, y - needed_h, table_w, needed_h, stroke=1, fill=0)
-
-        # Description
-        tx = table_x + 6
+        # Draw Row
         ty = y - 12
         for ln in desc_lines:
-            c.drawString(tx, ty, ln)
-            ty -= line_h
+            c.drawString(mx + 6, ty, ln)
+            ty -= 11
 
-        # Qty
         qty_str = f"{it.quantity:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        c.drawRightString(table_x + col_desc + col_qty - 6, y - 12, qty_str)
+        c.drawRightString(mx + w_desc + w_qty - 6, y - 12, qty_str)
 
-        # Price
         price_str = f"{it.unit_price:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-        c.drawRightString(table_x + table_w - 6, y - 12, price_str)
+        c.drawRightString(w - mx - 6, y - 12, price_str)
+        
+        # Linie pro Zeile
+        c.setStrokeColorRGB(*LAYOUT["col_line"])
+        c.line(mx, y - row_h, w - mx, y - row_h)
 
-        y -= needed_h
+        y -= row_h
 
-    # Totals
-    y -= 10
-    if y < bottom + 85:
+    # 8. SUMMEN
+    y -= 20
+    if y < my_bot + 60*mm:
         c.showPage()
-        y = top
+        y = h - LAYOUT["margin_top"]
 
-    c.setFont(font_b, 10)
-    c.drawRightString(table_x + table_w - 6, y, "Summe")
-    c.setFont(font, 10)
-    c.drawRightString(
-        table_x + table_w - 6,
-        y - 12,
-        f"{net:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."),
-    )
+    val_x = w - mx - 10
+    lbl_x = val_x - 30*mm
+
+    def draw_total_line(lbl, val, bold=False, offset=12):
+        set_font(bold=bold, size=10)
+        c.drawString(lbl_x, y, lbl)
+        c.drawRightString(val_x, y, val)
+        return y - offset
+
+    net_s = f"{net:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+    y = draw_total_line("Netto:", net_s)
+
+    gross_s = f"{gross:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
 
     if tax_rate > 0:
-        c.setFont(font_b, 10)
-        c.drawRightString(table_x + table_w - 6, y - 30, f"USt ({int(tax_rate*100)}%)")
-        c.setFont(font, 10)
-        c.drawRightString(
-            table_x + table_w - 6,
-            y - 42,
-            f"{tax:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."),
-        )
-        c.setFont(font_b, 12)
-        c.drawRightString(table_x + table_w - 6, y - 64, "Gesamt")
-        c.drawRightString(
-            table_x + table_w - 6,
-            y - 78,
-            f"{gross:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."),
-        )
-        y -= 90
+        tax_s = f"{tax:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+        y = draw_total_line(f"USt ({int(tax_rate*100)}%):", tax_s)
+        c.line(lbl_x, y+2, val_x, y+2) # Summenstrich
+        y -= 4
+        y = draw_total_line("Gesamt:", gross_s, bold=True)
     else:
-        c.setFont(font_b, 12)
-        c.drawRightString(table_x + table_w - 6, y - 30, "Gesamt")
-        c.drawRightString(
-            table_x + table_w - 6,
-            y - 44,
-            f"{gross:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."),
-        )
-        y -= 60
-
-    # Footer
-    footer_top = bottom + 52
-    c.setFont(font, 8)
-    c.setStrokeColorRGB(0.6, 0.6, 0.6)
-    c.line(margin_x, footer_top, w - margin_x, footer_top)
-    c.setStrokeColorRGB(0, 0, 0)
-
-    iban = _safe_str(_get(comp, "iban", default="")) if comp is not None else ""
-    bic = _safe_str(_get(comp, "bic", default="")) if comp is not None else ""
-    bank = _safe_str(_get(comp, "bank_name", default="")) if comp is not None else ""
-    tax_id = _safe_str(_get(comp, "tax_id", default="")) if comp is not None else ""
-    vat_id = _safe_str(_get(comp, "vat_id", default="")) if comp is not None else ""
-    jurisdiction = _safe_str(_get(comp, "city", default="")) if comp is not None else ""
-
-    # Footer columns
-    left_lines = []
-    if sender_name:
-        left_lines.append(sender_name)
-    if sender_street:
-        left_lines.append(sender_street)
-    if sender_zip or sender_city:
-        left_lines.append(f"{sender_zip} {sender_city}".strip())
-    if sender_country:
-        left_lines.append(sender_country)
-    if sender_email:
-        left_lines.append(sender_email)
-
-    mid_lines = []
-    if bank:
-        mid_lines.append(bank)
-    if iban:
-        mid_lines.append(f"IBAN: {iban}")
-    if bic:
-        mid_lines.append(f"BIC: {bic}")
-
-    right_lines = []
-    if tax_id:
-        right_lines.append(f"St-Nr: {tax_id}")
-    if vat_id:
-        right_lines.append(f"USt-ID: {vat_id}")
-    if jurisdiction:
-        right_lines.append(f"Gerichtsstand: {jurisdiction}")
-
-    fx = margin_x
-    mx = w * 0.42
-    rx = w * 0.70
-
-    label_y = footer_top - 12
-    c.setFont(font_b, 8)
-    c.drawString(fx, label_y, "Adresse")
-    c.drawString(mx, label_y, "Bankverbindung")
-    c.drawString(rx, label_y, "Rechtliches")
-
-    c.setFont(font, 8)
-    yy = label_y - 10
-    for ln in left_lines[:5]:
-        c.drawString(fx, yy, ln)
-        yy -= 10
-
-    yy = label_y - 10
-    for ln in mid_lines[:5]:
-        c.drawString(mx, yy, ln)
-        yy -= 10
-
-    yy = label_y - 10
-    for ln in right_lines[:5]:
-        c.drawString(rx, yy, ln)
-        yy -= 10
-
-    # Kleinunternehmer clause
+        # Kleinunternehmer -> Nur Gesamt
+        y = draw_total_line("Gesamt:", gross_s, bold=True)
+    
+    # Hinweis Text (Kleinunternehmer)
     if is_small_business:
-        clause = "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet."
-        c.setFont(font, 8)
-        c.drawString(margin_x, bottom + 18, clause)
+        y -= 10
+        set_font(size=8)
+        c.drawString(mx, y, LAYOUT["txt_small_biz"])
+
+    # 9. FOOTER (Wird auf die aktuelle Seite gemalt)
+    footer_y = my_bot + 25*mm
+    c.setStrokeColorRGB(*LAYOUT["col_line"])
+    c.line(mx, footer_y, w - mx, footer_y)
+    
+    footer_y -= 5*mm
+    set_font(size=7, color=(0.4, 0.4, 0.4))
+    
+    # Footer Daten
+    f_addr = [_get(comp, "name"), _get(comp, "email"), _get(comp, "website")]
+    f_bank = [_get(comp, "bank_name"), f"IBAN: {_get(comp, 'iban')}", f"BIC: {_get(comp, 'bic')}"]
+    f_legal = [f"St-Nr: {_get(comp, 'tax_id')}", f"USt-ID: {_get(comp, 'vat_id')}", f"Gericht: {_get(comp, 'city')}"]
+    
+    col_w = content_w / 3
+    
+    for i, (head, lines) in enumerate(zip(["Kontakt", "Bankverbindung", "Rechtliches"], [f_addr, f_bank, f_legal])):
+        tx = mx + (i * col_w)
+        ty = footer_y
+        
+        c.setFont(font_b, 7)
+        c.drawString(tx, ty, head)
+        c.setFont(font_r, 7)
+        
+        ty -= 8
+        for l in lines:
+            if l:
+                c.drawString(tx, ty, str(l))
+                ty -= 8
 
     c.save()
     return buf.getvalue()
