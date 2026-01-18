@@ -956,6 +956,23 @@ def _active_company_name() -> str | None:
         return name.strip() or None
 
 
+def _page_title(page: str | None) -> str:
+    titles = {
+        "dashboard": "Dashboard",
+        "invoices": "Invoices",
+        "documents": "Documents",
+        "exports": "Exports",
+        "customers": "Customers",
+        "customer_new": "New customer",
+        "customer_detail": "Customer detail",
+        "invoice_create": "Invoice editor",
+        "invoice_detail": "Invoice detail",
+        "expenses": "Expenses",
+        "settings": "Settings",
+    }
+    return titles.get(page or "", "Invoices")
+
+
 def layout_wrapper(content_func):
     identifier = app.storage.user.get("auth_user")
     initials = _avatar_initials(identifier)
@@ -999,7 +1016,6 @@ def layout_wrapper(content_func):
                     [
                         ("Invoices", "invoices"),
                         ("Documents", "documents"),
-                        ("Ledger", "ledger"),
                         ("Exports", "exports"),
                     ],
                 )
