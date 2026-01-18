@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import secrets
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -10,8 +12,8 @@ from typing import Iterable
 from fastapi import HTTPException
 
 from data import Document
-from models.document import DocumentSource, safe_filename
-from services.storage import company_documents_dir, ensure_company_dirs
+from models.document import DocumentSource, safe_filename as model_safe_filename
+from services.storage import company_document_dir, company_documents_dir, ensure_company_dirs
 
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
 MAX_DOCUMENT_SIZE_BYTES = 15 * 1024 * 1024
@@ -58,14 +60,7 @@ def normalize_keywords(value: Iterable[str] | str | None) -> str:
 
 
 def safe_filename(value: str) -> str:
-    name = (value or "").strip()
-    if not name:
-        return "document"
-    name = os.path.basename(name)
-    name = re.sub(r"\s+", " ", name).strip()
-    name = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
-    name = name.strip("._-")
-    return name or "document"
+    return model_safe_filename(value)
 
 
 def build_display_title(
@@ -138,11 +133,13 @@ def build_document_record(
     company_id: int,
     original_filename: str,
     *,
-    mime: str,
-    size: int,
-    sha256: str,
-    source: DocumentSource,
+    mime_type: str = "",
+    size_bytes: int = 0,
+    sha256: str = "",
+    source: DocumentSource | str = "",
+    doc_type: str = "",
     storage_key: str | None = None,
+    storage_path: str | None = None,
     title: str = "",
     description: str = "",
     vendor: str = "",
@@ -150,15 +147,21 @@ def build_document_record(
     amount_total: float | None = None,
     currency: str | None = None,
 ) -> Document:
-    storage_key = storage_key or _storage_key_from_filename(original_filename)
+    storage_key = storage_key or ""
+    source_value = source.value if isinstance(source, DocumentSource) else (source or "")
     return Document(
         company_id=company_id,
-        storage_key=storage_key,
+        filename=safe_filename(original_filename or "document"),
         original_filename=original_filename,
-        mime=mime,
-        size=size,
+        storage_key=storage_key,
+        storage_path=storage_path or "",
+        mime=mime_type,
+        mime_type=mime_type,
+        size=int(size_bytes or 0),
+        size_bytes=int(size_bytes or 0),
         sha256=sha256,
-        source=source,
+        source=source_value,
+        doc_type=doc_type or _extension(original_filename or ""),
         title=title,
         description=description,
         vendor=vendor,
@@ -166,8 +169,6 @@ def build_document_record(
         amount_total=amount_total,
         currency=currency,
     )
-    if hasattr(document, "storage_key"):
-        document.storage_key = document.storage_path
 
 
 def document_storage_path(company_id: int, storage_key: str) -> str:
@@ -176,13 +177,34 @@ def document_storage_path(company_id: int, storage_key: str) -> str:
     ensure_company_dirs(company_id)
     if os.path.isabs(storage_key) or storage_key.startswith("storage/"):
         return storage_key
+    if storage_key.startswith("companies/") or storage_key.startswith("documents/"):
+        root = (os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage").strip()
+        return os.path.join(root, storage_key)
     return os.path.join(company_documents_dir(company_id), storage_key)
 
 
-def ensure_document_dir(company_id: int) -> str:
-    directory = company_documents_dir(company_id)
+def ensure_document_dir(company_id: int, document_id: int | None = None) -> str:
+    directory = (
+        company_document_dir(company_id, document_id) if document_id is not None else company_documents_dir(company_id)
+    )
     os.makedirs(directory, exist_ok=True)
     return directory
+
+
+def resolve_document_path(storage_path: str | None) -> str:
+    if not storage_path:
+        return ""
+    if os.path.isabs(storage_path) or storage_path.startswith("storage/"):
+        return storage_path
+    if storage_path.startswith("companies/") or storage_path.startswith("documents/"):
+        root = (os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage").strip()
+        return os.path.join(root, storage_path)
+    return storage_path
+
+
+def set_document_storage_path(document: Document) -> None:
+    if not document.storage_path and document.storage_key:
+        document.storage_path = document.storage_key
 
 
 def serialize_document(document: Document) -> dict:

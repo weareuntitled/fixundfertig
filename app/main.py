@@ -50,6 +50,7 @@ from services.documents import (
     normalize_keywords,
     resolve_document_path,
     safe_filename,
+    set_document_storage_path,
     serialize_document,
     validate_document_upload,
 )
