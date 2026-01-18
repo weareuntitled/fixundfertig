@@ -89,12 +89,14 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     rec_street = _safe_str(_get(invoice, "recipient_street", "address_street", default=""))
     rec_zip = _safe_str(_get(invoice, "recipient_postal_code", "address_zip", default=""))
     rec_city = _safe_str(_get(invoice, "recipient_city", "address_city", default=""))
+    rec_country = _safe_str(_get(invoice, "recipient_country", "address_country", default=""))
 
     if (not rec_name) and customer is not None:
         rec_name = _safe_str(_get(customer, "recipient_name", "display_name", "name", default=""))
         rec_street = _safe_str(_get(customer, "recipient_street", "strasse", default=""))
         rec_zip = _safe_str(_get(customer, "recipient_postal_code", "plz", default=""))
         rec_city = _safe_str(_get(customer, "recipient_city", "ort", default=""))
+        rec_country = _safe_str(_get(customer, "country", default=""))
 
     # Items
     raw_items = _get(invoice, "line_items", "items", "positions", default=None)
@@ -191,12 +193,24 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
     # From block (left)
     sender_name = _safe_str(_get(comp, "name", default="")) if comp is not None else ""
-    sender_person = (_safe_str(_get(comp, "first_name", default="")) + " " + _safe_str(_get(comp, "last_name", default=""))).strip() if comp is not None else ""
+    sender_person = (
+        _safe_str(_get(comp, "first_name", default="")) + " " + _safe_str(_get(comp, "last_name", default=""))
+    ).strip() if comp is not None else ""
     sender_street = _safe_str(_get(comp, "street", default="")) if comp is not None else ""
     sender_zip = _safe_str(_get(comp, "postal_code", default="")) if comp is not None else ""
     sender_city = _safe_str(_get(comp, "city", default="")) if comp is not None else ""
+    sender_country = _safe_str(_get(comp, "country", default="")) if comp is not None else ""
     sender_email = _safe_str(_get(comp, "email", default="")) if comp is not None else ""
     sender_phone = _safe_str(_get(comp, "phone", default="")) if comp is not None else ""
+
+    header_parts = [p for p in [sender_name, sender_street, f"{sender_zip} {sender_city}".strip(), sender_country] if p]
+    if header_parts:
+        header_text = " - ".join(header_parts)
+        c.setFont(font, 8)
+        c.setStrokeColorRGB(0.6, 0.6, 0.6)
+        c.drawString(margin_x, h - 12 * mm, header_text)
+        c.line(margin_x, h - 14 * mm, w - margin_x, h - 14 * mm)
+        c.setStrokeColorRGB(0, 0, 0)
 
     if comp is not None and _get(comp, "id", default=None) is not None:
         logo_path = company_logo_path(_get(comp, "id"))
@@ -210,7 +224,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
                 draw_w = iw * scale
                 draw_h = ih * scale
                 x_logo = w - margin_x - draw_w
-                y_logo = (h - 12 * mm) - draw_h
+                y_logo = (h - 6 * mm) - draw_h
                 c.drawImage(logo, x_logo, y_logo, width=draw_w, height=draw_h, mask="auto")
             except Exception:
                 pass
@@ -259,6 +273,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         rec_name or "",
         rec_street or "",
         (f"{rec_zip} {rec_city}".strip() if (rec_zip or rec_city) else ""),
+        rec_country or "",
     ]
     rec_lines = [ln for ln in rec_lines if ln]
     if not rec_lines:
@@ -393,8 +408,12 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     left_lines = []
     if sender_name:
         left_lines.append(sender_name)
-    if sender_person:
-        left_lines.append(sender_person)
+    if sender_street:
+        left_lines.append(sender_street)
+    if sender_zip or sender_city:
+        left_lines.append(f"{sender_zip} {sender_city}".strip())
+    if sender_country:
+        left_lines.append(sender_country)
     if sender_email:
         left_lines.append(sender_email)
     if sender_phone:
