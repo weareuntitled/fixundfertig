@@ -470,6 +470,7 @@ def render_documents(session, comp: Company) -> None:
                 ui.label().bind_text_from(
                     slot,
                     "props.row.amount_display",
+                    other_strict=False,
                 ).classes("text-right")
 
             with table.add_slot("body-cell-actions") as slot:
