@@ -30,7 +30,6 @@ def render_documents(session, comp: Company) -> None:
         "year": str(datetime.now().year),
         "date_from": "",
         "date_to": "",
-        "sort": "date_desc",
     }
     upload_state = {
         "vendor": "",
@@ -71,24 +70,7 @@ def render_documents(session, comp: Company) -> None:
             return datetime.min
 
     def _sort_documents(items: list[Document]) -> list[Document]:
-        sort_map = {
-            "date_desc": (lambda doc: _doc_created_at(doc), True),
-            "date_asc": (lambda doc: _doc_created_at(doc), False),
-            "name_asc": (
-                lambda doc: (doc.original_filename or doc.title or "").lower(),
-                False,
-            ),
-            "name_desc": (
-                lambda doc: (doc.original_filename or doc.title or "").lower(),
-                True,
-            ),
-            "vendor_asc": (lambda doc: (doc.vendor or "").lower(), False),
-            "vendor_desc": (lambda doc: (doc.vendor or "").lower(), True),
-            "amount_desc": (lambda doc: float(doc.amount_total or 0), True),
-            "amount_asc": (lambda doc: float(doc.amount_total or 0), False),
-        }
-        key, reverse = sort_map.get(state["sort"], sort_map["date_desc"])
-        return sorted(items, key=key, reverse=reverse)
+        return sorted(items, key=_doc_created_at, reverse=True)
 
     def _resolved_date_range() -> tuple[str, str]:
         period = state["period"]
@@ -104,6 +86,10 @@ def render_documents(session, comp: Company) -> None:
             start = datetime(year, 1, 1).date()
             end = datetime(year, 12, 31).date()
             return start.isoformat(), end.isoformat()
+
+        if period == "last_week":
+            start = today - timedelta(days=7)
+            return start.isoformat(), today.isoformat()
 
         if period == "last_3_months":
             start = today - timedelta(days=90)
@@ -125,8 +111,11 @@ def render_documents(session, comp: Company) -> None:
         options = {year: year for year in sorted(years, reverse=True)}
         return options
 
-    def _export_documents() -> None:
-        items = _sort_documents(_filter_documents(_load_documents()))
+    def _export_documents(selected_ids: set[int]) -> None:
+        if not selected_ids:
+            ui.notify("Bitte Dokumente auswählen.", color="orange")
+            return
+        items = [doc for doc in _filter_documents(_load_documents()) if int(doc.id or 0) in selected_ids]
         if not items:
             ui.notify("Keine Dokumente zum Export.", color="orange")
             return
@@ -260,70 +249,75 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end w-full mt-4"):
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
+    selected_ids: set[int] = set()
+    export_button = None
+    upload_button = None
+
+    def _update_action_buttons() -> None:
+        if export_button and upload_button:
+            has_selection = bool(selected_ids)
+            export_button.visible = has_selection
+            upload_button.visible = not has_selection
+
     @ui.refreshable
     def render_filters():
-        with ui.row().classes("w-full justify-between items-center mb-3 gap-3 flex-wrap"):
-            with ui.row().classes("items-center gap-2 flex-wrap"):
+        with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
+            ui.label("Dokumente").classes(C_PAGE_TITLE)
+            ui.input(
+                placeholder="Suche",
+                value=state["search"],
+                on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
+            ).props("dense").classes(C_INPUT + " w-64")
+            ui.space()
+            nonlocal export_button, upload_button
+            export_button = ui.button(
+                "Export",
+                icon="download",
+                on_click=lambda: _export_documents(selected_ids),
+            ).classes(C_BTN_SEC)
+            upload_button = ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
+            _update_action_buttons()
+
+        with ui.row().classes("w-full items-center gap-2 flex-wrap mb-3"):
+            ui.label("Zeitraum").classes("text-xs text-slate-500")
+            ui.button(
+                "Letzte Woche",
+                on_click=lambda: (state.__setitem__("period", "last_week"), render_filters.refresh(), render_list.refresh()),
+            ).props("outline").classes(C_BTN_SEC + " text-xs")
+            ui.button(
+                "Letzter Monat",
+                on_click=lambda: (state.__setitem__("period", "last_month"), render_filters.refresh(), render_list.refresh()),
+            ).props("outline").classes(C_BTN_SEC + " text-xs")
+            ui.button(
+                "Letzte 3 Monate",
+                on_click=lambda: (state.__setitem__("period", "last_3_months"), render_filters.refresh(), render_list.refresh()),
+            ).props("outline").classes(C_BTN_SEC + " text-xs")
+            ui.button(
+                "Jahr",
+                on_click=lambda: (state.__setitem__("period", "year"), render_filters.refresh(), render_list.refresh()),
+            ).props("outline").classes(C_BTN_SEC + " text-xs")
+            ui.button(
+                "Individuell",
+                on_click=lambda: (state.__setitem__("period", "custom"), render_filters.refresh(), render_list.refresh()),
+            ).props("outline").classes(C_BTN_SEC + " text-xs")
+            if state["period"] == "year":
+                ui.select(
+                    _year_options(_load_documents()),
+                    label="Jahr",
+                    value=state["year"],
+                    on_change=lambda e: (state.__setitem__("year", e.value or ""), render_list.refresh()),
+                ).props("dense").classes(C_INPUT + " w-28")
+            if state["period"] == "custom":
                 ui.input(
-                    "Suche",
-                    placeholder="Dateiname oder Vendor",
-                    value=state["search"],
-                    on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
-                ).props("dense").classes(C_INPUT + " w-48")
-                ui.select(
-                    {
-                        "last_month": "Letzter Monat",
-                        "last_3_months": "Letzte 3 Monate",
-                        "year": "Jahr",
-                        "custom": "Individuell",
-                    },
-                    label="Zeitraum",
-                    value=state["period"],
-                    on_change=lambda e: (
-                        state.__setitem__("period", e.value or "last_month"),
-                        render_filters.refresh(),
-                        render_list.refresh(),
-                    ),
-                ).props("dense").classes(C_INPUT + " w-40")
-                if state["period"] == "year":
-                    ui.select(
-                        _year_options(_load_documents()),
-                        label="Jahr",
-                        value=state["year"],
-                        on_change=lambda e: (
-                            state.__setitem__("year", e.value or ""),
-                            render_list.refresh(),
-                        ),
-                    ).props("dense").classes(C_INPUT + " w-28")
-                if state["period"] == "custom":
-                    ui.input(
-                        "Von",
-                        value=state["date_from"],
-                        on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh()),
-                    ).props("dense type=date").classes(C_INPUT + " w-32")
-                    ui.input(
-                        "Bis",
-                        value=state["date_to"],
-                        on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
-                    ).props("dense type=date").classes(C_INPUT + " w-32")
-            with ui.row().classes("items-center gap-2"):
-                ui.select(
-                    {
-                        "date_desc": "Datum (neueste)",
-                        "date_asc": "Datum (älteste)",
-                        "name_asc": "Dokument (A–Z)",
-                        "name_desc": "Dokument (Z–A)",
-                        "vendor_asc": "Vendor (A–Z)",
-                        "vendor_desc": "Vendor (Z–A)",
-                        "amount_desc": "Betrag (absteigend)",
-                        "amount_asc": "Betrag (aufsteigend)",
-                    },
-                    label="Sortierung",
-                    value=state["sort"],
-                    on_change=lambda e: (state.__setitem__("sort", e.value or "date_desc"), render_list.refresh()),
-                ).props("dense").classes(C_INPUT + " w-52")
-                ui.button("Export", icon="download", on_click=_export_documents).classes(C_BTN_SEC)
-                ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
+                    "Von",
+                    value=state["date_from"],
+                    on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh()),
+                ).props("dense type=date").classes(C_INPUT + " w-32")
+                ui.input(
+                    "Bis",
+                    value=state["date_to"],
+                    on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
+                ).props("dense type=date").classes(C_INPUT + " w-32")
 
     delete_id = {"value": None}
     meta_state = {"title": "", "raw": "", "line_items": "", "flags": ""}
@@ -423,6 +417,8 @@ def render_documents(session, comp: Company) -> None:
     @ui.refreshable
     def render_list():
         items = _sort_documents(_filter_documents(_load_documents()))
+        selected_ids.clear()
+        _update_action_buttons()
 
         if not items:
             with ui.card().classes(C_CARD + " p-4"):
@@ -430,38 +426,54 @@ def render_documents(session, comp: Company) -> None:
             return
 
         with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
-            with ui.row().classes(C_TABLE_HEADER):
-                ui.label("Datum").classes("w-28 font-bold text-xs text-slate-500")
-                ui.label("Datei").classes("flex-1 font-bold text-xs text-slate-500")
-                ui.label("Vendor").classes("w-44 font-bold text-xs text-slate-500")
-                ui.label("Betrag").classes("w-28 font-bold text-xs text-slate-500 text-right")
-                ui.label("").classes("w-32 font-bold text-xs text-slate-500")
-
+            rows = []
             for doc in items:
                 row = serialize_document(doc)
                 created_at = row.get("created_at", "")
-                with ui.row().classes("w-full items-center border-t border-slate-100 px-4 py-3"):
-                    ui.label(created_at[:10]).classes("w-28 text-sm text-slate-600")
-                    ui.label(
-                        row.get("original_filename") or row.get("title") or "Dokument"
-                    ).classes("flex-1 text-sm text-slate-700 truncate")
-                    ui.label(doc.vendor or "-").classes("w-44 text-sm text-slate-600 truncate")
-                    ui.label(_format_amount(doc)).classes("w-28 text-sm text-slate-600 text-right")
-                    with ui.row().classes("w-32 justify-end gap-2"):
-                        ui.button(
-                            "Meta",
-                            on_click=lambda doc_id=row.get("id"): _open_meta(int(doc_id)),
-                        ).props("flat dense").classes("text-xs text-slate-600")
-                        ui.link(
-                            "Öffnen",
-                            f"/api/documents/{row.get('id')}/file",
-                            new_tab=True,
-                        ).classes("text-sm text-sky-600")
-                        ui.button(
-                            "",
-                            icon="delete",
-                            on_click=lambda doc_id=row.get("id"): _open_delete(int(doc_id)),
-                        ).props("flat dense").classes("text-rose-600")
+                rows.append(
+                    {
+                        "id": int(row.get("id") or 0),
+                        "date": created_at[:10],
+                        "filename": row.get("original_filename") or row.get("title") or "Dokument",
+                        "vendor": doc.vendor or "-",
+                        "amount": float(doc.amount_total or 0),
+                        "amount_display": _format_amount(doc),
+                        "open_url": f"/api/documents/{row.get('id')}/file",
+                    }
+                )
+
+            columns = [
+                {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
+                {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
+                {"name": "vendor", "label": "Vendor", "field": "vendor", "sortable": True, "align": "left"},
+                {"name": "amount", "label": "Betrag", "field": "amount", "sortable": True, "align": "right"},
+                {"name": "actions", "label": "", "field": "actions", "sortable": False, "align": "right"},
+            ]
+            table = ui.table(columns=columns, rows=rows, row_key="id", selection="multiple").classes("w-full")
+
+            def _on_selection(event) -> None:
+                selected_rows = event.value or []
+                selected_ids.clear()
+                selected_ids.update({int(item.get("id") or 0) for item in selected_rows})
+                _update_action_buttons()
+
+            table.on("selection", _on_selection)
+
+            with table.add_slot("body-cell-amount") as slot:
+                ui.label().bind_text_from(slot, "props.row.amount_display").classes("text-right")
+
+            with table.add_slot("body-cell-actions") as slot:
+                with ui.row().classes("justify-end gap-2"):
+                    ui.button(
+                        "Meta",
+                        on_click=lambda doc_id=slot.props["row"]["id"]: _open_meta(int(doc_id)),
+                    ).props("flat dense").classes("text-xs text-slate-600")
+                    ui.link("Öffnen", slot.props["row"]["open_url"], new_tab=True).classes("text-sm text-sky-600")
+                    ui.button(
+                        "",
+                        icon="delete",
+                        on_click=lambda doc_id=slot.props["row"]["id"]: _open_delete(int(doc_id)),
+                    ).props("flat dense").classes("text-rose-600")
 
     render_filters()
     render_list()
