@@ -1,11 +1,9 @@
 
-from __future__ import annotations
-
 from sqlalchemy import Column, Text, event, inspect
-from sqlalchemy.orm import Mapped, relationship, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from typing import Optional
 from enum import Enum  # <--- WICHTIG: Das hat gefehlt!
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field, Session, SQLModel, create_engine, select, Relationship
 from contextlib import contextmanager
 from datetime import datetime
 from pydantic import validator
@@ -39,8 +37,9 @@ class User(SQLModel, table=True):
     is_active: bool = False
     is_email_verified: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    tokens: Mapped[list["Token"]] = relationship(back_populates="user")
-    companies: Mapped[list["Company"]] = relationship(back_populates="user")
+    # SQLModel relationships must use Relationship (not SQLAlchemy relationship/Mapped).
+    tokens: list["Token"] = Relationship(back_populates="user")
+    companies: list["Company"] = Relationship(back_populates="user")
 
     @validator("email", pre=True)
     def normalize_email(cls, value):
@@ -56,7 +55,7 @@ class Token(SQLModel, table=True):
     expires_at: datetime
     used_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    user: Mapped[Optional["User"]] = relationship(back_populates="tokens")
+    user: Optional["User"] = Relationship(back_populates="tokens")
 
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -89,7 +88,7 @@ class Company(SQLModel, table=True):
     next_invoice_nr: int = 10000
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
-    user: Mapped[Optional["User"]] = relationship(back_populates="companies")
+    user: Optional["User"] = Relationship(back_populates="companies")
 
 class Customer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
