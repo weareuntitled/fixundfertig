@@ -1,22 +1,21 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import mimetypes
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
 
 from ._shared import *
 from data import Document, DocumentMeta
-from models.document import DocumentSource
 from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
-    compute_sha256_file,
     document_matches_filters,
     resolve_document_path,
     serialize_document,
@@ -27,18 +26,10 @@ from services.documents import (
 def render_documents(session, comp: Company) -> None:
     state = {
         "search": "",
-        "source": "",
-        "doc_type": "",
+        "period": "last_month",
+        "year": str(datetime.now().year),
         "date_from": "",
         "date_to": "",
-        "view": "list",
-    }
-    upload_state = {
-        "vendor": "",
-        "doc_date": "",
-        "amount_total": None,
-        "currency": "",
-        "description": "",
     }
     upload_state = {
         "vendor": "",
@@ -55,56 +46,97 @@ def render_documents(session, comp: Company) -> None:
         ).all()
 
     def _filter_documents(items: list[Document]) -> list[Document]:
+        date_from, date_to = _resolved_date_range()
         return [
             doc
             for doc in items
             if document_matches_filters(
                 doc,
                 query=state["search"],
-                source=state["source"],
-                doc_type=state["doc_type"],
-                date_from=state["date_from"],
-                date_to=state["date_to"],
+                source="",
+                doc_type="",
+                date_from=date_from,
+                date_to=date_to,
             )
         ]
 
+    def _doc_created_at(doc: Document) -> datetime:
+        created_at = doc.created_at
+        if isinstance(created_at, datetime):
+            return created_at
+        try:
+            return datetime.fromisoformat(str(created_at))
+        except Exception:
+            return datetime.min
+
     def _sort_documents(items: list[Document]) -> list[Document]:
-        def sort_key(doc: Document):
-            created_at = doc.created_at
-            if isinstance(created_at, datetime):
-                return created_at
+        return sorted(items, key=_doc_created_at, reverse=True)
+
+    def _resolved_date_range() -> tuple[str, str]:
+        period = state["period"]
+        if period == "custom":
+            return state["date_from"], state["date_to"]
+
+        today = datetime.now().date()
+        if period == "year":
             try:
-                return datetime.fromisoformat(str(created_at))
-            except Exception:
-                return datetime.min
+                year = int(state["year"])
+            except (TypeError, ValueError):
+                year = today.year
+            start = datetime(year, 1, 1).date()
+            end = datetime(year, 12, 31).date()
+            return start.isoformat(), end.isoformat()
 
-        return sorted(items, key=sort_key, reverse=True)
+        if period == "last_week":
+            start = today - timedelta(days=7)
+            return start.isoformat(), today.isoformat()
 
-    def _doc_type_options(items: list[Document]) -> dict[str, str]:
-        types = sorted(
-            {
-                (os.path.splitext(doc.original_filename or "")[1].lstrip(".").lower())
-                for doc in items
-                if os.path.splitext(doc.original_filename or "")[1].lstrip(".").strip()
-            }
-        )
-        options = {"": "Alle"}
-        for entry in types:
-            options[entry] = entry
+        if period == "last_3_months":
+            start = today - timedelta(days=90)
+            return start.isoformat(), today.isoformat()
+
+        first_of_month = today.replace(day=1)
+        last_month_end = first_of_month - timedelta(days=1)
+        last_month_start = last_month_end.replace(day=1)
+        return last_month_start.isoformat(), last_month_end.isoformat()
+
+    def _year_options(items: list[Document]) -> dict[str, str]:
+        years = {
+            str(_doc_created_at(doc).year)
+            for doc in items
+            if _doc_created_at(doc) != datetime.min
+        }
+        if not years:
+            years = {str(datetime.now().year)}
+        options = {year: year for year in sorted(years, reverse=True)}
         return options
 
-    def _source_options(items: list[Document]) -> dict[str, str]:
-        sources = sorted(
-            {
-                (doc.source.value if isinstance(doc.source, DocumentSource) else (doc.source or "")).strip()
-                for doc in items
-                if (doc.source or "")
-            }
-        )
-        options = {"": "Alle"}
-        for entry in sources:
-            options[entry] = entry
-        return options
+    def _export_documents(selected_ids: set[int]) -> None:
+        if not selected_ids:
+            ui.notify("Bitte Dokumente auswählen.", color="orange")
+            return
+        items = [doc for doc in _filter_documents(_load_documents()) if int(doc.id or 0) in selected_ids]
+        if not items:
+            ui.notify("Keine Dokumente zum Export.", color="orange")
+            return
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", encoding="utf-8", newline="") as temp:
+            writer = csv.writer(temp, delimiter=";")
+            writer.writerow(["Datum", "Dokument", "Vendor", "Betrag", "Währung", "Beschreibung", "ID"])
+            for doc in items:
+                created_at = _doc_created_at(doc).date().isoformat() if _doc_created_at(doc) != datetime.min else ""
+                writer.writerow(
+                    [
+                        created_at,
+                        doc.original_filename or doc.title or "Dokument",
+                        doc.vendor or "",
+                        f"{doc.amount_total:.2f}" if doc.amount_total is not None else "",
+                        doc.currency or "",
+                        doc.description or "",
+                        str(doc.id or ""),
+                    ]
+                )
+        ui.download(temp.name)
+        ui.notify("Export bereit.", color="green")
 
     async def _read_upload_bytes(upload_file) -> bytes:
         temp_file = tempfile.NamedTemporaryFile(delete=False)
@@ -217,18 +249,75 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end w-full mt-4"):
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
-    with ui.row().classes("w-full justify-between items-center mb-3 gap-3 flex-wrap"):
-        with ui.row().classes("items-center gap-2"):
-            ui.label("Ansicht").classes("text-sm text-slate-500")
+    selected_ids: set[int] = set()
+    export_button = None
+    upload_button = None
+
+    def _update_action_buttons() -> None:
+        if export_button and upload_button:
+            has_selection = bool(selected_ids)
+            export_button.visible = has_selection
+            upload_button.visible = not has_selection
+
+    @ui.refreshable
+    def render_filters():
+        with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
+            ui.label("Dokumente").classes(C_PAGE_TITLE)
+            ui.input(
+                placeholder="Suche",
+                value=state["search"],
+                on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
+            ).props("dense").classes(C_INPUT + " w-64")
+            ui.space()
+            nonlocal export_button, upload_button
+            export_button = ui.button(
+                "Export",
+                icon="download",
+                on_click=lambda: _export_documents(selected_ids),
+            ).classes(C_BTN_SEC)
+            upload_button = ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
+            _update_action_buttons()
+
+        with ui.row().classes("w-full items-center gap-2 flex-wrap mb-3"):
+            ui.label("Zeitraum").classes("text-xs text-slate-500")
             ui.button(
-                "Liste",
-                on_click=lambda: (state.__setitem__("view", "list"), render_list.refresh()),
+                "Letzte Woche",
+                on_click=lambda: (state.__setitem__("period", "last_week"), render_filters.refresh(), render_list.refresh()),
             ).props("outline").classes(C_BTN_SEC + " text-xs")
             ui.button(
-                "Tabelle",
-                on_click=lambda: (state.__setitem__("view", "table"), render_list.refresh()),
+                "Letzter Monat",
+                on_click=lambda: (state.__setitem__("period", "last_month"), render_filters.refresh(), render_list.refresh()),
             ).props("outline").classes(C_BTN_SEC + " text-xs")
-        ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
+            ui.button(
+                "Letzte 3 Monate",
+                on_click=lambda: (state.__setitem__("period", "last_3_months"), render_filters.refresh(), render_list.refresh()),
+            ).props("outline").classes(C_BTN_SEC + " text-xs")
+            ui.button(
+                "Jahr",
+                on_click=lambda: (state.__setitem__("period", "year"), render_filters.refresh(), render_list.refresh()),
+            ).props("outline").classes(C_BTN_SEC + " text-xs")
+            ui.button(
+                "Individuell",
+                on_click=lambda: (state.__setitem__("period", "custom"), render_filters.refresh(), render_list.refresh()),
+            ).props("outline").classes(C_BTN_SEC + " text-xs")
+            if state["period"] == "year":
+                ui.select(
+                    _year_options(_load_documents()),
+                    label="Jahr",
+                    value=state["year"],
+                    on_change=lambda e: (state.__setitem__("year", e.value or ""), render_list.refresh()),
+                ).props("dense").classes(C_INPUT + " w-28")
+            if state["period"] == "custom":
+                ui.input(
+                    "Von",
+                    value=state["date_from"],
+                    on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh()),
+                ).props("dense type=date").classes(C_INPUT + " w-32")
+                ui.input(
+                    "Bis",
+                    value=state["date_to"],
+                    on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
+                ).props("dense type=date").classes(C_INPUT + " w-32")
 
     delete_id = {"value": None}
     meta_state = {"title": "", "raw": "", "line_items": "", "flags": ""}
@@ -328,109 +417,63 @@ def render_documents(session, comp: Company) -> None:
     @ui.refreshable
     def render_list():
         items = _sort_documents(_filter_documents(_load_documents()))
+        selected_ids.clear()
+        _update_action_buttons()
 
         if not items:
             with ui.card().classes(C_CARD + " p-4"):
                 ui.label("Keine Dokumente gefunden").classes("text-sm text-slate-500")
             return
 
-        with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
-            with ui.row().classes("w-full items-end gap-2 px-4 py-3 border-b border-slate-100 flex-wrap"):
-                ui.input(
-                    "Suche",
-                    placeholder="Dateiname",
-                    value=state["search"],
-                    on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
-                ).props("dense").classes(C_INPUT + " w-48")
-                ui.select(
-                    _source_options(_load_documents()),
-                    label="Quelle",
-                    value=state["source"],
-                    on_change=lambda e: (state.__setitem__("source", e.value or ""), render_list.refresh()),
-                ).props("dense").classes(C_INPUT + " w-32")
-                ui.select(
-                    _doc_type_options(_load_documents()),
-                    label="Typ",
-                    value=state["doc_type"],
-                    on_change=lambda e: (state.__setitem__("doc_type", e.value or ""), render_list.refresh()),
-                ).props("dense").classes(C_INPUT + " w-28")
-                ui.input(
-                    "Von",
-                    value=state["date_from"],
-                    on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh()),
-                ).props("dense type=date").classes(C_INPUT + " w-32")
-                ui.input(
-                    "Bis",
-                    value=state["date_to"],
-                    on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
-                ).props("dense type=date").classes(C_INPUT + " w-32")
+        with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
+            rows = []
+            for doc in items:
+                row = serialize_document(doc)
+                created_at = row.get("created_at", "")
+                rows.append(
+                    {
+                        "id": int(row.get("id") or 0),
+                        "date": created_at[:10],
+                        "filename": row.get("original_filename") or row.get("title") or "Dokument",
+                        "vendor": doc.vendor or "-",
+                        "amount": float(doc.amount_total or 0),
+                        "amount_display": _format_amount(doc),
+                        "open_url": f"/api/documents/{row.get('id')}/file",
+                    }
+                )
 
-            if state["view"] == "table":
-                with ui.row().classes(C_TABLE_HEADER):
-                    ui.label("Datum").classes("w-28 font-bold text-xs text-slate-500")
-                    ui.label("Datei").classes("flex-1 font-bold text-xs text-slate-500")
-                    ui.label("Vendor").classes("w-40 font-bold text-xs text-slate-500")
-                    ui.label("Betrag").classes("w-28 font-bold text-xs text-slate-500 text-right")
-                    ui.label("Typ").classes("w-20 font-bold text-xs text-slate-500")
-                    ui.label("Quelle").classes("w-20 font-bold text-xs text-slate-500")
-                    ui.label("").classes("w-32 font-bold text-xs text-slate-500")
+            columns = [
+                {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
+                {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
+                {"name": "vendor", "label": "Vendor", "field": "vendor", "sortable": True, "align": "left"},
+                {"name": "amount", "label": "Betrag", "field": "amount", "sortable": True, "align": "right"},
+                {"name": "actions", "label": "", "field": "actions", "sortable": False, "align": "right"},
+            ]
+            table = ui.table(columns=columns, rows=rows, row_key="id", selection="multiple").classes("w-full")
 
-                for doc in items:
-                    row = serialize_document(doc)
-                    created_at = row.get("created_at", "")
-                    with ui.row().classes("w-full items-center border-t border-slate-100 px-4 py-3"):
-                        ui.label(created_at[:10]).classes("w-28 text-sm text-slate-600")
-                        ui.label(
-                            row.get("original_filename") or row.get("title") or "Dokument"
-                        ).classes("flex-1 text-sm text-slate-700 truncate")
-                        ui.label(doc.vendor or "-").classes("w-40 text-sm text-slate-600 truncate")
-                        ui.label(_format_amount(doc)).classes("w-28 text-sm text-slate-600 text-right")
-                        ui.label(row.get("type") or "-").classes("w-20 text-sm text-slate-600")
-                        ui.label(row.get("source") or "-").classes("w-20 text-sm text-slate-600")
-                        with ui.row().classes("w-32 justify-end gap-2"):
-                            ui.button(
-                                "Meta",
-                                on_click=lambda doc_id=row.get("id"): _open_meta(int(doc_id)),
-                            ).props("flat dense").classes("text-xs text-slate-600")
-                            ui.link(
-                                "Öffnen",
-                                f"/api/documents/{row.get('id')}/file",
-                                new_tab=True,
-                            ).classes("text-sm text-sky-600")
-                            ui.button(
-                                "",
-                                icon="delete",
-                                on_click=lambda doc_id=row.get("id"): _open_delete(int(doc_id)),
-                            ).props("flat dense").classes("text-rose-600")
-            else:
-                with ui.column().classes("w-full divide-y divide-slate-100"):
-                    for doc in items:
-                        row = serialize_document(doc)
-                        created_at = row.get("created_at", "")
-                        with ui.row().classes("w-full items-center px-4 py-3 gap-4 flex-wrap"):
-                            with ui.column().classes("flex-1 min-w-[220px]"):
-                                ui.label(
-                                    row.get("original_filename") or row.get("title") or "Dokument"
-                                ).classes("text-sm text-slate-700 font-medium truncate")
-                                ui.label(
-                                    f"{created_at[:10]} • {doc.vendor or '-'} • {row.get('type') or '-'}"
-                                ).classes("text-xs text-slate-500 truncate")
-                            ui.label(_format_amount(doc)).classes("text-sm text-slate-600 text-right w-28")
-                            ui.label(row.get("source") or "-").classes("text-xs text-slate-500 w-20")
-                            with ui.row().classes("w-32 justify-end gap-2"):
-                                ui.button(
-                                    "Meta",
-                                    on_click=lambda doc_id=row.get("id"): _open_meta(int(doc_id)),
-                                ).props("flat dense").classes("text-xs text-slate-600")
-                                ui.link(
-                                    "Öffnen",
-                                    f"/api/documents/{row.get('id')}/file",
-                                    new_tab=True,
-                                ).classes("text-sm text-sky-600")
-                                ui.button(
-                                    "",
-                                    icon="delete",
-                                    on_click=lambda doc_id=row.get("id"): _open_delete(int(doc_id)),
-                                ).props("flat dense").classes("text-rose-600")
+            def _on_selection(event) -> None:
+                selected_rows = event.value or []
+                selected_ids.clear()
+                selected_ids.update({int(item.get("id") or 0) for item in selected_rows})
+                _update_action_buttons()
 
+            table.on("selection", _on_selection)
+
+            with table.add_slot("body-cell-amount") as slot:
+                ui.label().bind_text_from(slot, "props.row.amount_display").classes("text-right")
+
+            with table.add_slot("body-cell-actions") as slot:
+                with ui.row().classes("justify-end gap-2"):
+                    ui.button(
+                        "Meta",
+                        on_click=lambda doc_id=slot.props["row"]["id"]: _open_meta(int(doc_id)),
+                    ).props("flat dense").classes("text-xs text-slate-600")
+                    ui.link("Öffnen", slot.props["row"]["open_url"], new_tab=True).classes("text-sm text-sky-600")
+                    ui.button(
+                        "",
+                        icon="delete",
+                        on_click=lambda doc_id=slot.props["row"]["id"]: _open_delete(int(doc_id)),
+                    ).props("flat dense").classes("text-rose-600")
+
+    render_filters()
     render_list()
