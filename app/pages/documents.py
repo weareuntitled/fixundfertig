@@ -24,9 +24,6 @@ from storage.service import save_upload_bytes
 
 
 def render_documents(session, comp: Company) -> None:
-    ui.label("Dokumente").classes(C_PAGE_TITLE)
-    ui.label("Uploads verwalten und durchsuchen.").classes("text-sm text-slate-500 mb-4")
-
     state = {
         "search": "",
         "source": "",
@@ -34,6 +31,13 @@ def render_documents(session, comp: Company) -> None:
         "date_from": "",
         "date_to": "",
         "view": "list",
+    }
+    upload_state = {
+        "vendor": "",
+        "doc_date": "",
+        "amount_total": None,
+        "currency": "",
+        "description": "",
     }
     upload_state = {
         "vendor": "",
