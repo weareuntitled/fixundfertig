@@ -9,6 +9,8 @@ C_CONTAINER = "w-full max-w-6xl mx-auto px-6 py-8 gap-6"
 # Panels / cards
 C_CARD = "bg-white border border-slate-200 rounded-xl shadow-sm"
 C_CARD_HOVER = "hover:border-slate-300 hover:shadow-md hover:-translate-y-0.5"
+C_GLASS_CARD = "bg-white/90 backdrop-blur-xl border border-white/50 shadow-sm shadow-[0_20px_40px_-15px_rgba(47,101,246,0.1)] rounded-[24px]"
+C_GLASS_CARD_HOVER = "hover:bg-white/90 hover:backdrop-blur-xl hover:border-white/50 hover:shadow-sm hover:shadow-[0_20px_40px_-15px_rgba(47,101,246,0.1)]"
 
 # Buttons
 C_BTN_PRIM = "!bg-blue-600 !text-white hover:bg-blue-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-600/25"
