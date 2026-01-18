@@ -4,10 +4,13 @@ from ._shared import *
 # Auto generated page renderer
 
 def render_customers(session, comp: Company) -> None:
-    ui.label("Kunden").classes(C_PAGE_TITLE)
-
-    with ui.row().classes("gap-3 mb-4"):
-        ui.button("Neu", icon="add", on_click=lambda: (app.storage.user.__setitem__("page", "customer_new"), ui.navigate.to("/"))).classes(C_BTN_PRIM)
+    with ui.row().classes("w-full items-center justify-between mb-4 flex-col sm:flex-row gap-3"):
+        ui.label("Kunden").classes(C_PAGE_TITLE)
+        ui.button(
+            "Neu",
+            icon="add",
+            on_click=lambda: (app.storage.user.__setitem__("page", "customer_new"), ui.navigate.to("/")),
+        ).classes(C_BTN_PRIM)
 
     customers = session.exec(
         select(Customer)
