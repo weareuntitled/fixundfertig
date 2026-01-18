@@ -4,12 +4,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import BytesIO
+import os
 from typing import Any
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
+from reportlab.lib.utils import ImageReader
+
+from services.storage import company_logo_path
 
 
 def _safe_str(x: Any) -> str:
@@ -36,6 +40,29 @@ def _wrap_text(text: str, font: str, size: int, max_width: float) -> list[str]:
     return lines or [""]
 
 
+def _get(obj: Any, *names: str, default: Any = "") -> Any:
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        for n in names:
+            if n in obj and obj[n] not in (None, ""):
+                return obj[n]
+        return default
+    for n in names:
+        if hasattr(obj, n):
+            v = getattr(obj, n)
+            if v not in (None, ""):
+                return v
+    return default
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 @dataclass
 class _InvItem:
     description: str
@@ -53,30 +80,34 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     """
 
     # try to get company via invoice if not provided
-    comp = company or getattr(invoice, "company", None) or getattr(invoice, "__dict__", {}).get("company", None)
+    comp = company or _get(invoice, "company", default=None) or getattr(invoice, "__dict__", {}).get("company", None)
+    if customer is None:
+        customer = _get(invoice, "customer", default=None)
 
     # Resolve recipient
-    rec_name = _safe_str(getattr(invoice, "recipient_name", ""))
-    rec_street = _safe_str(getattr(invoice, "recipient_street", ""))
-    rec_zip = _safe_str(getattr(invoice, "recipient_postal_code", ""))
-    rec_city = _safe_str(getattr(invoice, "recipient_city", ""))
+    rec_name = _safe_str(_get(invoice, "recipient_name", "address_name", default=""))
+    rec_street = _safe_str(_get(invoice, "recipient_street", "address_street", default=""))
+    rec_zip = _safe_str(_get(invoice, "recipient_postal_code", "address_zip", default=""))
+    rec_city = _safe_str(_get(invoice, "recipient_city", "address_city", default=""))
 
     if (not rec_name) and customer is not None:
-        rec_name = _safe_str(getattr(customer, "recipient_name", None) or getattr(customer, "display_name", None))
-        rec_street = _safe_str(getattr(customer, "recipient_street", None) or getattr(customer, "strasse", None))
-        rec_zip = _safe_str(getattr(customer, "recipient_postal_code", None) or getattr(customer, "plz", None))
-        rec_city = _safe_str(getattr(customer, "recipient_city", None) or getattr(customer, "ort", None))
+        rec_name = _safe_str(_get(customer, "recipient_name", "display_name", "name", default=""))
+        rec_street = _safe_str(_get(customer, "recipient_street", "strasse", default=""))
+        rec_zip = _safe_str(_get(customer, "recipient_postal_code", "plz", default=""))
+        rec_city = _safe_str(_get(customer, "recipient_city", "ort", default=""))
 
     # Items
-    raw_items = getattr(invoice, "__dict__", {}).get("line_items", None)
+    raw_items = _get(invoice, "line_items", "items", "positions", default=None)
+    if raw_items is None:
+        raw_items = getattr(invoice, "__dict__", {}).get("line_items", None)
     items: list[_InvItem] = []
     if isinstance(raw_items, list) and raw_items:
         for it in raw_items:
             items.append(
                 _InvItem(
-                    description=_safe_str(it.get("description") or it.get("desc")),
-                    quantity=float(it.get("quantity") or it.get("qty") or 0),
-                    unit_price=float(it.get("unit_price") or it.get("price") or 0),
+                    description=_safe_str(_get(it, "description", "desc", default="")),
+                    quantity=_safe_float(_get(it, "quantity", "qty", default=0)),
+                    unit_price=_safe_float(_get(it, "unit_price", "price", default=0)),
                 )
             )
     else:
@@ -86,20 +117,29 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
             for it in rel:
                 items.append(
                     _InvItem(
-                        description=_safe_str(getattr(it, "description", "")),
-                        quantity=float(getattr(it, "quantity", 0) or 0),
-                        unit_price=float(getattr(it, "unit_price", 0) or 0),
+                        description=_safe_str(_get(it, "description", default="")),
+                        quantity=_safe_float(_get(it, "quantity", default=0)),
+                        unit_price=_safe_float(_get(it, "unit_price", default=0)),
                     )
                 )
 
     # Tax
-    tax_rate = float(getattr(invoice, "__dict__", {}).get("tax_rate", None) or getattr(invoice, "tax_rate", 0.0) or 0.0)
+    tax_rate = _safe_float(_get(invoice, "tax_rate", default=0.0))
+    if tax_rate > 1.0:
+        tax_rate = tax_rate / 100.0
     # Kleinunternehmer in deiner App: oft tax_rate = 0
-    is_small_business = bool(getattr(comp, "is_small_business", False)) if comp is not None else (tax_rate == 0.0)
+    is_small_business = bool(_get(comp, "is_small_business", default=False)) if comp is not None else (tax_rate == 0.0)
 
     # Dates
-    inv_date = _safe_str(getattr(invoice, "date", ""))
-    service_date = _safe_str(getattr(invoice, "delivery_date", ""))
+    inv_date = _safe_str(_get(invoice, "date", "invoice_date", default=""))
+    service_date = _safe_str(_get(invoice, "delivery_date", default=""))
+    if not service_date:
+        service_from = _safe_str(_get(invoice, "service_from", default=""))
+        service_to = _safe_str(_get(invoice, "service_to", default=""))
+        if service_from and service_to and service_from != service_to:
+            service_date = f"{service_from} bis {service_to}"
+        else:
+            service_date = service_from or service_to
 
     # Pay due (Default 14 Tage)
     due_str = ""
@@ -138,8 +178,8 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         c.drawRightString(x_right, y, s)
 
     # Header
-    title = _safe_str(getattr(invoice, "title", "")) or "Rechnung"
-    nr = _safe_str(getattr(invoice, "nr", ""))
+    title = _safe_str(_get(invoice, "title", default="")) or "Rechnung"
+    nr = _safe_str(_get(invoice, "nr", "invoice_number", default=""))
 
     text(margin_x, top, title, size=22, bold=True)
     if nr:
@@ -148,13 +188,30 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     y = top - 18
 
     # From block (left)
-    sender_name = _safe_str(getattr(comp, "name", "")) if comp is not None else ""
-    sender_person = (_safe_str(getattr(comp, "first_name", "")) + " " + _safe_str(getattr(comp, "last_name", ""))).strip() if comp is not None else ""
-    sender_street = _safe_str(getattr(comp, "street", "")) if comp is not None else ""
-    sender_zip = _safe_str(getattr(comp, "postal_code", "")) if comp is not None else ""
-    sender_city = _safe_str(getattr(comp, "city", "")) if comp is not None else ""
-    sender_email = _safe_str(getattr(comp, "email", "")) if comp is not None else ""
-    sender_phone = _safe_str(getattr(comp, "phone", "")) if comp is not None else ""
+    sender_name = _safe_str(_get(comp, "name", default="")) if comp is not None else ""
+    sender_person = (_safe_str(_get(comp, "first_name", default="")) + " " + _safe_str(_get(comp, "last_name", default=""))).strip() if comp is not None else ""
+    sender_street = _safe_str(_get(comp, "street", default="")) if comp is not None else ""
+    sender_zip = _safe_str(_get(comp, "postal_code", default="")) if comp is not None else ""
+    sender_city = _safe_str(_get(comp, "city", default="")) if comp is not None else ""
+    sender_email = _safe_str(_get(comp, "email", default="")) if comp is not None else ""
+    sender_phone = _safe_str(_get(comp, "phone", default="")) if comp is not None else ""
+
+    if comp is not None and _get(comp, "id", default=None) is not None:
+        logo_path = company_logo_path(_get(comp, "id"))
+        if logo_path and os.path.exists(logo_path):
+            try:
+                logo = ImageReader(logo_path)
+                iw, ih = logo.getSize()
+                max_w = 40 * mm
+                max_h = 18 * mm
+                scale = min(max_w / iw, max_h / ih, 1.0)
+                draw_w = iw * scale
+                draw_h = ih * scale
+                x_logo = w - margin_x - draw_w
+                y_logo = (h - 12 * mm) - draw_h
+                c.drawImage(logo, x_logo, y_logo, width=draw_w, height=draw_h, mask="auto")
+            except Exception:
+                pass
 
     text(margin_x, y, "Von", size=10, bold=True)
     y -= 12
@@ -211,7 +268,9 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
     # Intro text
     y = min(y, ry) - 18
-    intro = _safe_str(getattr(comp, "invoice_intro", "")) if comp is not None else ""
+    intro = _safe_str(_get(invoice, "intro_text", "intro", default=""))
+    if not intro:
+        intro = _safe_str(_get(comp, "invoice_intro", default="")) if comp is not None else ""
     if not intro:
         intro = "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
 
@@ -321,12 +380,12 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     footer_y = bottom + 40
     c.setFont(font, 8)
 
-    iban = _safe_str(getattr(comp, "iban", "")) if comp is not None else ""
-    bic = _safe_str(getattr(comp, "bic", "")) if comp is not None else ""
-    bank = _safe_str(getattr(comp, "bank_name", "")) if comp is not None else ""
-    tax_id = _safe_str(getattr(comp, "tax_id", "")) if comp is not None else ""
-    vat_id = _safe_str(getattr(comp, "vat_id", "")) if comp is not None else ""
-    jurisdiction = _safe_str(getattr(comp, "city", "")) if comp is not None else ""
+    iban = _safe_str(_get(comp, "iban", default="")) if comp is not None else ""
+    bic = _safe_str(_get(comp, "bic", default="")) if comp is not None else ""
+    bank = _safe_str(_get(comp, "bank_name", default="")) if comp is not None else ""
+    tax_id = _safe_str(_get(comp, "tax_id", default="")) if comp is not None else ""
+    vat_id = _safe_str(_get(comp, "vat_id", default="")) if comp is not None else ""
+    jurisdiction = _safe_str(_get(comp, "city", default="")) if comp is not None else ""
 
     # Left footer: contact
     left_lines = []
