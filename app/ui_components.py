@@ -54,14 +54,17 @@ def settings_card(title: str | None = None, classes: str = ""):
 
 
 @contextmanager
-def settings_grid(columns: int = 2):
-    with ui.grid(columns=columns).classes("w-full gap-4"):
+def settings_grid(columns: int | None = 2):
+    responsive_classes = "grid grid-cols-1 gap-4 w-full"
+    if columns:
+        responsive_classes = f"{responsive_classes} md:grid-cols-{columns}"
+    with ui.element("div").classes(responsive_classes):
         yield
 
 @contextmanager
 def settings_two_column_layout(max_width_class: str = "max-w-5xl"):
     with ui.element("div").classes(f"w-full {max_width_class} mx-auto"):
-        with ui.grid(columns=2).classes("w-full gap-4"):
+        with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 w-full"):
             yield
 
 def sticky_header(title, on_cancel, on_save=None, on_finalize=None):
