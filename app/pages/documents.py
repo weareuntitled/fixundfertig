@@ -245,8 +245,18 @@ def render_documents(session, comp: Company) -> None:
                 "Beschreibung",
                 on_change=lambda e: upload_state.__setitem__("description", e.value or ""),
             ).classes(C_INPUT + " w-full")
-            ui.upload(on_upload=_handle_upload, auto_upload=True, label="Datei wählen").classes("w-full")
-            with ui.row().classes("justify-end w-full mt-4"):
+            upload_input = ui.upload(
+                on_upload=_handle_upload,
+                auto_upload=False,
+                label="Datei wählen",
+            ).classes("w-full")
+            with ui.row().classes("justify-end w-full mt-4 gap-2"):
+                ui.button(
+                    "Speichern",
+                    on_click=lambda: upload_input.upload()
+                    if upload_input.value
+                    else ui.notify("Bitte Datei auswählen.", color="orange"),
+                ).classes(C_BTN_PRIM)
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
     selected_ids: set[int] = set()
@@ -263,11 +273,6 @@ def render_documents(session, comp: Company) -> None:
     def render_filters():
         with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
             ui.label("Dokumente").classes(C_PAGE_TITLE)
-            ui.input(
-                placeholder="Suche",
-                value=state["search"],
-                on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
-            ).props("dense").classes(C_INPUT + " w-64")
             ui.space()
             nonlocal export_button, upload_button
             export_button = ui.button(
@@ -277,6 +282,13 @@ def render_documents(session, comp: Company) -> None:
             ).classes(C_BTN_SEC)
             upload_button = ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
             _update_action_buttons()
+
+        with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
+            ui.input(
+                placeholder="Suche",
+                value=state["search"],
+                on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
+            ).props("dense").classes(C_INPUT + " w-64")
 
         with ui.row().classes("w-full items-center gap-2 flex-wrap mb-3"):
             ui.label("Zeitraum").classes("text-xs text-slate-500")
@@ -419,11 +431,6 @@ def render_documents(session, comp: Company) -> None:
         items = _sort_documents(_filter_documents(_load_documents()))
         selected_ids.clear()
         _update_action_buttons()
-
-        if not items:
-            with ui.card().classes(C_CARD + " p-4"):
-                ui.label("Keine Dokumente gefunden").classes("text-sm text-slate-500")
-            return
 
         with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
             rows = []
