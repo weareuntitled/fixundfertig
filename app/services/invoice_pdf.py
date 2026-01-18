@@ -113,9 +113,11 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
                 )
             )
     else:
-        # fallback if invoice has items relation
-        rel = getattr(invoice, "items", None) or getattr(invoice, "invoice_items", None)
-        if rel:
+        # fallback if invoice has items relation (avoid dict.items method)
+        rel = None
+        if not isinstance(invoice, dict):
+            rel = getattr(invoice, "items", None) or getattr(invoice, "invoice_items", None)
+        if rel and not callable(rel):
             for it in rel:
                 items.append(
                     _InvItem(
