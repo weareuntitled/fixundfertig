@@ -979,23 +979,21 @@ def layout_wrapper(content_func):
     company_name = _active_company_name()
 
     with ui.element("div").classes("w-full min-h-screen bg-white"):
-        with ui.row().classes("w-full min-h-screen"):
+        with ui.row().classes("w-full min-h-screen h-screen items-stretch"):
             # Sidebar
-            with ui.column().classes("w-64 bg-slate-50 border-r border-slate-200 px-4 py-6 gap-6"):
-                with ui.row().classes("items-center gap-3 px-2"):
-                    with ui.element("div").classes(
-                        "h-9 w-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm"
-                    ):
-                        ui.label("FF").classes("text-xs font-semibold tracking-[0.2em]")
-                    ui.label("FixundFertig").classes("text-sm font-semibold text-slate-900 tracking-wide")
+            with ui.column().classes(
+                "w-64 min-h-screen h-screen self-stretch bg-slate-50 border-r border-slate-200 px-4 py-6 gap-6"
+            ):
+                with ui.row().classes("items-center gap-2 px-2"):
+                    ui.label("FixundFertig").classes("text-lg font-bold text-slate-700")
                 ui.separator().classes("opacity-70")
 
-                def nav_section(title: str, items: list[tuple[str, str]]):
+                def nav_section(title: str, items: list[tuple[str, str, str]]):
                     ui.label(title).classes(
                         "text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 mt-1"
                     )
                     with ui.column().classes("gap-2 mt-1"):
-                        for label, target in items:
+                        for label, target, icon in items:
                             active = app.storage.user.get("page", "invoices") == target
                             base = (
                                 "w-full justify-start normal-case px-4 py-2 rounded-full transition-all duration-150"
@@ -1005,21 +1003,23 @@ def layout_wrapper(content_func):
                                 if active
                                 else f"{base} text-slate-600 hover:text-slate-900 hover:bg-white/80"
                             )
-                            ui.button(
-                                label,
-                                on_click=lambda t=target: set_page(t),
-                            ).props("flat").classes(cls)
+                            icon_cls = "text-base text-slate-700" if active else "text-base text-slate-400"
+                            with ui.button(on_click=lambda t=target: set_page(t)).props("flat").classes(cls):
+                                with ui.row().classes("items-center gap-2"):
+                                    ui.icon(icon).classes(icon_cls)
+                                    ui.label(label)
 
-                nav_section("Workspace", [("Dashboard", "dashboard")])
+                nav_section("Workspace", [("Dashboard", "dashboard", "dashboard")])
                 nav_section(
                     "Billing",
                     [
-                        ("Invoices", "invoices"),
-                        ("Documents", "documents"),
-                        ("Exports", "exports"),
+                        ("Invoices", "invoices", "receipt_long"),
+                        ("Documents", "documents", "description"),
+                        ("Ledger", "ledger", "account_balance"),
+                        ("Exports", "exports", "file_download"),
                     ],
                 )
-                nav_section("CRM", [("Customers", "customers")])
+                nav_section("CRM", [("Customers", "customers", "groups")])
 
             # Main content
             with ui.column().classes("flex-1 w-full bg-white relative"):
