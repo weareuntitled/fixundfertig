@@ -44,6 +44,22 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     customers = session.exec(customer_stmt).all()
     customers_by_id = {int(c.id): c for c in customers if getattr(c, "id", None) is not None}
     new_customer_value = "__new_customer__"
+    new_customer_id = app.storage.user.pop("new_customer_id", None)
+    if new_customer_id is not None:
+        try:
+            new_customer_id = int(new_customer_id)
+        except (TypeError, ValueError):
+            new_customer_id = None
+    if new_customer_id is not None and new_customer_id not in customers_by_id:
+        extra_stmt = select(Customer).where(
+            Customer.company_id == int(comp.id),
+            Customer.archived == False,
+            Customer.id == int(new_customer_id),
+        )
+        new_customer = session.exec(extra_stmt).first()
+        if new_customer:
+            customers.append(new_customer)
+            customers_by_id[int(new_customer.id)] = new_customer
 
     # NiceGUI ui.select expects dict[value, label] when using dict options
     customer_options: dict[Any, str] = {}
@@ -279,8 +295,17 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 f"{ex}</div>{preview_html}"
             )
 
+    def _is_new_customer_selection(value: Any) -> bool:
+        if value == new_customer_value:
+            return True
+        if isinstance(value, str) and value.strip().lower() == "neuen kunden hinzufügen":
+            return True
+        return False
+
     def _on_customer_change(e) -> None:
-        if e.value == new_customer_value:
+        if _is_new_customer_selection(e.value):
+            app.storage.user["return_page"] = "invoice_create"
+            app.storage.user["return_invoice_draft_id"] = app.storage.user.get("invoice_draft_id")
             app.storage.user["page"] = "customer_new"
             ui.navigate.to("/")
             return
@@ -299,5 +324,9 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     intro_input.on("update:value", lambda e: mark_preview_dirty())
     vat_switch.on("update:modelValue", lambda e: mark_preview_dirty())
     ui.timer(0.1, debounce_tick)
+
+    if new_customer_id is not None:
+        customer_select.value = new_customer_id
+        mark_preview_dirty()
 
     update_preview(force_pdf=True)

@@ -70,6 +70,18 @@ def render_customer_new(session, comp: Company) -> None:
             )
             s.add(c)
             s.commit()
+            new_customer_id = int(c.id) if c.id is not None else None
+        return_page = app.storage.user.get("return_page")
+        if return_page == "invoice_create" and new_customer_id is not None:
+            return_invoice_draft_id = app.storage.user.get("return_invoice_draft_id")
+            if return_invoice_draft_id is not None:
+                app.storage.user["invoice_draft_id"] = return_invoice_draft_id
+            app.storage.user["new_customer_id"] = new_customer_id
+            app.storage.user["page"] = "invoice_create"
+            app.storage.user.pop("return_page", None)
+            app.storage.user.pop("return_invoice_draft_id", None)
+            ui.navigate.to("/")
+            return
         app.storage.user["page"] = "customers"
         ui.navigate.to("/")
 
