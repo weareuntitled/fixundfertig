@@ -9,7 +9,11 @@ def render_customers(session, comp: Company) -> None:
     with ui.row().classes("gap-3 mb-4"):
         ui.button("Neu", icon="add", on_click=lambda: (app.storage.user.__setitem__("page", "customer_new"), ui.navigate.to("/"))).classes(C_BTN_PRIM)
 
-    customers = session.exec(select(Customer).where(Customer.archived == False)).all()
+    customers = session.exec(
+        select(Customer)
+        .where(Customer.archived == False, Customer.company_id == comp.id)
+        .order_by(Customer.name)
+    ).all()
     with ui.grid(columns=3).classes("w-full gap-4"):
         for c in customers:
             def open_detail(customer_id: int = int(c.id)):
