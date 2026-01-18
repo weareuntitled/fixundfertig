@@ -24,9 +24,6 @@ from storage.service import save_upload_bytes
 
 
 def render_documents(session, comp: Company) -> None:
-    ui.label("Dokumente").classes(C_PAGE_TITLE)
-    ui.label("Uploads verwalten und durchsuchen.").classes("text-sm text-slate-500 mb-4")
-
     state = {
         "search": "",
         "source": "",
@@ -171,34 +168,36 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end w-full mt-4"):
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
-    with ui.row().classes("w-full justify-between items-end mb-3 gap-3 flex-wrap"):
-        with ui.row().classes("gap-2 items-end flex-wrap"):
-            ui.input(
-                "Suche",
-                placeholder="Dateiname",
-                on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
-            ).classes(C_INPUT + " w-56")
-            ui.select(
-                _source_options(_load_documents()),
-                label="Quelle",
-                value=state["source"],
-                on_change=lambda e: (state.__setitem__("source", e.value or ""), render_list.refresh()),
-            ).classes(C_INPUT + " w-40")
-            ui.select(
-                _doc_type_options(_load_documents()),
-                label="Typ",
-                value=state["doc_type"],
-                on_change=lambda e: (state.__setitem__("doc_type", e.value or ""), render_list.refresh()),
-            ).classes(C_INPUT + " w-32")
-            ui.input(
-                "Von",
-                on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh()),
-            ).props("type=date").classes(C_INPUT + " w-36")
-            ui.input(
-                "Bis",
-                on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
-            ).props("type=date").classes(C_INPUT + " w-36")
+    with ui.row().classes("w-full justify-between items-center mb-4"):
+        ui.label("Dokumente").classes(C_PAGE_TITLE)
         ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
+
+    with ui.row().classes("w-full items-end mb-3 gap-3 flex-wrap"):
+        ui.input(
+            "Suche",
+            placeholder="Dateiname",
+            on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
+        ).classes(C_INPUT + " w-56")
+        ui.select(
+            _source_options(_load_documents()),
+            label="Quelle",
+            value=state["source"],
+            on_change=lambda e: (state.__setitem__("source", e.value or ""), render_list.refresh()),
+        ).classes(C_INPUT + " w-40")
+        ui.select(
+            _doc_type_options(_load_documents()),
+            label="Typ",
+            value=state["doc_type"],
+            on_change=lambda e: (state.__setitem__("doc_type", e.value or ""), render_list.refresh()),
+        ).classes(C_INPUT + " w-32")
+        ui.input(
+            "Von",
+            on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh()),
+        ).props("type=date").classes(C_INPUT + " w-36")
+        ui.input(
+            "Bis",
+            on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
+        ).props("type=date").classes(C_INPUT + " w-36")
 
     delete_id = {"value": None}
     meta_state = {"title": "", "raw": "", "line_items": "", "flags": ""}

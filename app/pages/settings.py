@@ -63,7 +63,93 @@ def render_settings(session, comp: Company) -> None:
     except Exception:
         active_company_id = int(comp.id or 0)
 
-    ui.label("Einstellungen").classes(C_PAGE_TITLE + " mb-6")
+    def _open_create_dialog() -> None:
+        dlg = ui.dialog()
+        with dlg, ui.card().classes("p-5 w-[420px]"):
+            ui.label("Neues Unternehmen").classes("font-semibold")
+            name_in = ui.input("Name", placeholder="z.B. untitled-ux").classes(C_INPUT)
+            err = ui.label("").classes("text-sm text-rose-600")
+            err.set_visibility(False)
+
+            def _do_create() -> None:
+                err.set_visibility(False)
+                name = (name_in.value or "").strip()
+                if not name:
+                    err.text = "Name ist erforderlich"
+                    err.set_visibility(True)
+                    return
+                try:
+                    new_comp = create_company(user_id, name=name)
+                except Exception as exc:
+                    err.text = str(exc)
+                    err.set_visibility(True)
+                    return
+
+                if new_comp and new_comp.id:
+                    app.storage.user["active_company_id"] = int(new_comp.id)
+                app.storage.user["page"] = "settings"
+                dlg.close()
+                ui.navigate.to("/")
+
+            with ui.row().classes("justify-end gap-2 w-full mt-3"):
+                ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
+                ui.button("Erstellen", on_click=_do_create).classes(C_BTN_PRIM)
+
+        dlg.open()
+
+    def _open_delete_dialog() -> None:
+        if len(companies) <= 1:
+            ui.notify("Mindestens ein Unternehmen muss bestehen bleiben.", color="orange")
+            return
+
+        dlg = ui.dialog()
+        with dlg, ui.card().classes("p-5 w-[520px]"):
+            ui.label("Unternehmen löschen").classes("font-semibold")
+            ui.label(
+                "Das Unternehmen wird inklusive Kunden, Rechnungen, Ausgaben und Uploads gelöscht."
+            ).classes("text-sm text-slate-600")
+            confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
+
+            def _do_delete() -> None:
+                if (confirm.value or "").strip().upper() != "DELETE":
+                    ui.notify('Bitte "DELETE" tippen.', color="orange")
+                    return
+
+                cid = int(app.storage.user.get("active_company_id") or comp.id or 0)
+                if not cid:
+                    ui.notify("Keine Company-ID gefunden.", color="red")
+                    return
+
+                try:
+                    delete_company_dirs(cid)
+                except Exception:
+                    pass
+
+                try:
+                    delete_company(user_id, cid)
+                except Exception as exc:
+                    ui.notify(f"Löschen fehlgeschlagen: {exc}", color="red")
+                    return
+
+                remaining = list_companies(user_id)
+                if remaining and remaining[0].id:
+                    app.storage.user["active_company_id"] = int(remaining[0].id)
+                else:
+                    app.storage.user.pop("active_company_id", None)
+
+                app.storage.user["page"] = "settings"
+                dlg.close()
+                ui.navigate.to("/")
+
+            with ui.row().classes("justify-end gap-2 w-full mt-3"):
+                ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
+                ui.button("Löschen", on_click=_do_delete).classes(C_BTN_PRIM)
+
+        dlg.open()
+
+    with ui.row().classes("w-full justify-between items-center mb-6"):
+        ui.label("Einstellungen").classes(C_PAGE_TITLE)
+        ui.button("Neues Unternehmen", on_click=_open_create_dialog).classes(C_BTN_PRIM)
 
     # ----------------------------
     # Company switcher + CRUD
@@ -102,92 +188,6 @@ def render_settings(session, comp: Company) -> None:
         ).classes(C_INPUT)
 
         with ui.row().classes("w-full gap-2 mt-3 flex-wrap"):
-
-            def _open_create_dialog() -> None:
-                dlg = ui.dialog()
-                with dlg, ui.card().classes("p-5 w-[420px]"):
-                    ui.label("Neues Unternehmen").classes("font-semibold")
-                    name_in = ui.input("Name", placeholder="z.B. untitled-ux").classes(C_INPUT)
-                    err = ui.label("").classes("text-sm text-rose-600")
-                    err.set_visibility(False)
-
-                    def _do_create() -> None:
-                        err.set_visibility(False)
-                        name = (name_in.value or "").strip()
-                        if not name:
-                            err.text = "Name ist erforderlich"
-                            err.set_visibility(True)
-                            return
-                        try:
-                            new_comp = create_company(user_id, name=name)
-                        except Exception as exc:
-                            err.text = str(exc)
-                            err.set_visibility(True)
-                            return
-
-                        if new_comp and new_comp.id:
-                            app.storage.user["active_company_id"] = int(new_comp.id)
-                        app.storage.user["page"] = "settings"
-                        dlg.close()
-                        ui.navigate.to("/")
-
-                    with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                        ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
-                        ui.button("Erstellen", on_click=_do_create).classes(C_BTN_PRIM)
-
-                dlg.open()
-
-            def _open_delete_dialog() -> None:
-                if len(companies) <= 1:
-                    ui.notify("Mindestens ein Unternehmen muss bestehen bleiben.", color="orange")
-                    return
-
-                dlg = ui.dialog()
-                with dlg, ui.card().classes("p-5 w-[520px]"):
-                    ui.label("Unternehmen löschen").classes("font-semibold")
-                    ui.label(
-                        "Das Unternehmen wird inklusive Kunden, Rechnungen, Ausgaben und Uploads gelöscht."
-                    ).classes("text-sm text-slate-600")
-                    confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
-
-                    def _do_delete() -> None:
-                        if (confirm.value or "").strip().upper() != "DELETE":
-                            ui.notify('Bitte "DELETE" tippen.', color="orange")
-                            return
-
-                        cid = int(app.storage.user.get("active_company_id") or comp.id or 0)
-                        if not cid:
-                            ui.notify("Keine Company-ID gefunden.", color="red")
-                            return
-
-                        try:
-                            delete_company_dirs(cid)
-                        except Exception:
-                            pass
-
-                        try:
-                            delete_company(user_id, cid)
-                        except Exception as exc:
-                            ui.notify(f"Löschen fehlgeschlagen: {exc}", color="red")
-                            return
-
-                        remaining = list_companies(user_id)
-                        if remaining and remaining[0].id:
-                            app.storage.user["active_company_id"] = int(remaining[0].id)
-                        else:
-                            app.storage.user.pop("active_company_id", None)
-
-                        app.storage.user["page"] = "settings"
-                        dlg.close()
-                        ui.navigate.to("/")
-
-                    with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                        ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
-                        ui.button("Löschen", on_click=_do_delete).classes(C_BTN_PRIM)
-
-                dlg.open()
-
-            ui.button("Neues Unternehmen", on_click=_open_create_dialog).classes(C_BTN_SEC)
             ui.button("Unternehmen löschen", on_click=_open_delete_dialog).classes(C_BTN_SEC)
 
     # Refresh comp to active company for this user
