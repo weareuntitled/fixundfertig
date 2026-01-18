@@ -2,7 +2,7 @@ name: Deploy to Hostinger
 
 on:
   push:
-    branches: [ "main" ]  # Oder "master", je nachdem wie dein Branch heißt
+    branches: [ "main" ]
 
 jobs:
   deploy:
@@ -16,15 +16,18 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            # In den Ordner gehen
-            cd /var/www/fixundfertig
+            # 1. In den richtigen Ordner wechseln (~ steht für /root/)
+            cd ~/fixundfertig
             
-            # Neuesten Code holen
+            # 2. Eventuelle lokale Änderungen (wie requirements) verwerfen, 
+            # damit der Pull nicht blockiert wird (Vorsicht!)
+            git reset --hard
+            
+            # 3. Neuesten Code holen
             git pull origin main
             
-            # WICHTIG: Docker neu bauen und starten
-            # Wir nutzen deine spezielle prod-Datei
-            docker-compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            # 4. Bauen und Starten (Mit Leerzeichen statt Bindestrich!)
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
             
-            # Aufräumen (optional): Alte Images löschen, um Platz zu sparen
+            # 5. Aufräumen
             docker image prune -f
