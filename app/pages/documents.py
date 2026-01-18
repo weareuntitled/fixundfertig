@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from ._shared import *
 from data import Document, DocumentMeta
+from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
     compute_sha256_file,
@@ -20,7 +21,6 @@ from services.documents import (
     serialize_document,
     validate_document_upload,
 )
-from storage.service import save_upload_bytes
 
 
 def render_documents(session, comp: Company) -> None:
