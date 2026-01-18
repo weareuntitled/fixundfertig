@@ -3,16 +3,17 @@
 # =========================
 
 # --- STYLE SYSTEM (Clean admin look) ---
-C_BG = "bg-slate-50 text-slate-900 min-h-screen"
+C_BG = "bg-slate-50 text-slate-900 min-h-screen antialiased"
 C_CONTAINER = "w-full max-w-6xl mx-auto px-6 py-8 gap-6"
 
 # Panels / cards
-C_CARD = "bg-white border border-slate-200 rounded-xl shadow-sm"
+C_CARD = "bg-white border border-slate-200/80 rounded-2xl shadow-sm"
 C_CARD_HOVER = "hover:border-slate-300 hover:shadow-md hover:-translate-y-0.5"
 
 # Buttons
 C_BTN_PRIM = "!bg-blue-600 !text-white hover:bg-blue-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-600/25"
 C_BTN_SEC = "!bg-white !text-slate-700 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-blue-600/15"
+C_BTN_GHOST = "!bg-transparent !text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:scale-[0.98] rounded-lg px-3 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-blue-600/15"
 
 # Inputs
 C_INPUT = "border-slate-200 bg-white rounded-lg text-sm px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-blue-600/20 focus-visible:border-blue-600 w-full transition-all"
@@ -32,8 +33,14 @@ C_SECTION_TITLE = "text-sm font-semibold text-slate-600"
 C_TABLE_HEADER = "w-full bg-slate-50 border-b border-slate-200 px-4 py-3 gap-4"
 C_TABLE_ROW = "w-full px-4 py-3 border-b border-slate-100 items-center gap-4 hover:bg-slate-50 transition-colors"
 
+# Sidebar / navigation
+C_SIDEBAR = "w-[260px] bg-white border-r border-slate-200/80 p-4 gap-4 sticky top-0 h-screen overflow-y-auto"
+C_SIDEBAR_BRAND = "text-lg font-semibold text-slate-900 tracking-tight"
+C_NAV_SECTION = "gap-2"
+C_NAV_SECTION_TITLE = "text-[11px] font-semibold text-slate-400 uppercase tracking-[0.12em]"
+C_NAV_ITEM = "text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors"
+C_NAV_ITEM_ACTIVE = "text-blue-700 bg-blue-50 border border-blue-100 px-3 py-2 rounded-lg font-semibold"
+
 # Legacy header tokens (kept so other components don’t break)
 C_HEADER = "bg-white border-b border-slate-200 h-16 px-6 flex items-center justify-between sticky top-0 z-50"
 C_BRAND_BADGE = "bg-blue-600 text-white p-2 rounded-lg shadow-sm"
-C_NAV_ITEM = "text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-100 transition-all duration-150"
-C_NAV_ITEM_ACTIVE = "text-slate-900 px-3 py-2 rounded-lg bg-slate-100 transition-all duration-150"
