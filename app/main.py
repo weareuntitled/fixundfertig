@@ -24,7 +24,7 @@ from env import load_env
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
+from styles import C_BG, C_BTN_SEC, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
 from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
@@ -977,9 +977,7 @@ def layout_wrapper(content_func):
                         clear_auth_session()
                         ui.navigate.to("/login")
 
-                    ui.button("Logout", on_click=handle_logout).props("flat").classes(
-                        "text-slate-500 hover:text-slate-900"
-                    )
+                    ui.button("Logout", on_click=handle_logout).classes(C_BTN_SEC)
                 content_func()
 
 
