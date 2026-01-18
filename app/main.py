@@ -24,7 +24,17 @@ from env import load_env
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
+from styles import (
+    C_BG,
+    C_BTN_GHOST,
+    C_CONTAINER,
+    C_NAV_ITEM,
+    C_NAV_ITEM_ACTIVE,
+    C_NAV_SECTION,
+    C_NAV_SECTION_TITLE,
+    C_SIDEBAR,
+    C_SIDEBAR_BRAND,
+)
 from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
@@ -936,38 +946,38 @@ def layout_wrapper(content_func):
     with ui.element("div").classes(C_BG + " w-full"):
         with ui.row().classes("w-full min-h-screen"):
             # Sidebar
-            with ui.column().classes(
-                "w-[260px] bg-white border-r border-slate-200 p-4 gap-6 sticky top-0 h-screen overflow-y-auto"
-            ):
+            with ui.column().classes(C_SIDEBAR):
                 with ui.row().classes("items-center gap-2 px-2"):
-                    ui.label("FixundFertig").classes("text-lg font-bold text-slate-900")
+                    ui.label("FixundFertig").classes(C_SIDEBAR_BRAND)
                 ui.separator().classes("opacity-60")
 
-                def nav_section(title: str, items: list[tuple[str, str]]):
-                    ui.label(title).classes(
-                        "text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 mt-1"
-                    )
-                    with ui.column().classes("gap-1 mt-1"):
-                        for label, target in items:
+                def nav_section(title: str, icon: str, items: list[tuple[str, str, str]]):
+                    with ui.row().classes("items-center gap-2 px-2"):
+                        ui.icon(icon).classes("text-slate-400 text-sm")
+                        ui.label(title).classes(C_NAV_SECTION_TITLE)
+                    with ui.column().classes(f"mt-1 {C_NAV_SECTION}"):
+                        for label, target, item_icon in items:
                             active = app.storage.user.get("page", "invoices") == target
                             cls = C_NAV_ITEM_ACTIVE if active else C_NAV_ITEM
                             ui.button(
                                 label,
+                                icon=item_icon,
                                 on_click=lambda t=target: set_page(t),
-                            ).props("flat").classes(f"w-full justify-start normal-case {cls}")
+                            ).props("flat").classes(f"w-full justify-start normal-case gap-2 {cls}")
 
-                nav_section("Workspace", [("Dashboard", "dashboard")])
+                nav_section("Workspace", "space_dashboard", [("Dashboard", "dashboard", "dashboard")])
                 nav_section(
                     "Billing",
+                    "receipt_long",
                     [
-                        ("Rechnungen", "invoices"),
-                        ("Dokumente", "documents"),
-                        ("Finanzen", "ledger"),
-                        ("Exporte", "exports"),
+                        ("Rechnungen", "invoices", "receipt_long"),
+                        ("Dokumente", "documents", "description"),
+                        ("Finanzen", "ledger", "account_balance"),
+                        ("Exporte", "exports", "file_download"),
                     ],
                 )
-                nav_section("CRM", [("Kunden", "customers")])
-                nav_section("Settings", [("Einstellungen", "settings")])
+                nav_section("CRM", "groups", [("Kunden", "customers", "groups")])
+                nav_section("Settings", "settings", [("Einstellungen", "settings", "settings")])
 
             # Main content
             with ui.column().classes("flex-1 w-full"):
@@ -977,9 +987,7 @@ def layout_wrapper(content_func):
                         clear_auth_session()
                         ui.navigate.to("/login")
 
-                    ui.button("Logout", on_click=handle_logout).props("flat").classes(
-                        "text-slate-500 hover:text-slate-900"
-                    )
+                    ui.button("Logout", on_click=handle_logout).props("flat").classes(C_BTN_GHOST)
                 content_func()
 
 
