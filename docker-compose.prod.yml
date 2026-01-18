@@ -61,7 +61,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.5'
+          cpus: '1.0'
           memory: 2G
     logging: *default-logging
 
