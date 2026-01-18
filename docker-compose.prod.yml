@@ -11,10 +11,8 @@ services:
   app:
     build: .   # Achte darauf: "." wenn Dockerfile hier liegt, "./app" wenn im Unterordner
     container_name: fixundfertig_app
-    # --- NEU: Port 3000 öffnen ---
     ports:
       - "3000:8000"
-    # -----------------------------
     environment:
       - APP_BASE_URL=https://${APP_DOMAIN}
       - STORAGE_SECRET=${STORAGE_SECRET}
@@ -28,8 +26,6 @@ services:
     deploy:
       resources:
         limits:
-          # Ich habe das Limit auskommentiert, damit es auf deinem 1-Core Server sicher läuft
-          # cpus: '1.0'
           memory: 1G
     logging: *default-logging
 
@@ -37,10 +33,8 @@ services:
   n8n:
     image: docker.n8n.io/n8nio/n8n
     container_name: fixundfertig_n8n
-    # --- NEU: Port 5678 öffnen ---
     ports:
       - "5678:5678"
-    # -----------------------------
     environment:
       - N8N_HOST=${N8N_DOMAIN}
       - N8N_PORT=5678
@@ -57,6 +51,10 @@ services:
       - EXECUTIONS_MODE=regular
       - EXECUTIONS_DATA_PRUNE=true
       - EXECUTIONS_DATA_MAX_AGE=72
+      # --- NEU: Konfiguration für Python Runner ---
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_RUNNERS_TASK_BROKER_ADDR=n8n-task-runners:5678
+      # --------------------------------------------
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -64,16 +62,29 @@ services:
         condition: service_healthy
       cache:
         condition: service_started
+      n8n-task-runners:
+        condition: service_started
     restart: unless-stopped
     networks:
       - internal_net
     deploy:
       resources:
         limits:
-          # Limit auskommentiert zur Sicherheit
-          # cpus: '1.0'
           memory: 2G
     logging: *default-logging
+
+  # --- NEU: Python Task Runner Service ---
+  n8n-task-runners:
+    image: n8nio/n8n-task-runners:latest-python
+    container_name: fixundfertig_task_runners
+    environment:
+      - N8N_GRPC_PORT=5678
+      - TZ=Europe/Berlin
+    restart: unless-stopped
+    networks:
+      - internal_net
+    logging: *default-logging
+  # ---------------------------------------
 
   # --- Datenbank (Postgres) ---
   db:
@@ -96,8 +107,6 @@ services:
     deploy:
       resources:
         limits:
-          # Limit auskommentiert zur Sicherheit
-          # cpus: '1.0'
           memory: 512M
     logging: *default-logging
 
