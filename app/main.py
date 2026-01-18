@@ -956,29 +956,10 @@ def _active_company_name() -> str | None:
         return name.strip() or None
 
 
-def _page_title(page: str | None) -> str:
-    titles = {
-        "dashboard": "Dashboard",
-        "invoices": "Invoices",
-        "documents": "Documents",
-        "ledger": "Ledger",
-        "exports": "Exports",
-        "customers": "Customers",
-        "customer_new": "New customer",
-        "customer_detail": "Customer detail",
-        "invoice_create": "Invoice editor",
-        "invoice_detail": "Invoice detail",
-        "expenses": "Expenses",
-        "settings": "Settings",
-    }
-    return titles.get(page or "", "Invoices")
-
-
 def layout_wrapper(content_func):
     identifier = app.storage.user.get("auth_user")
     initials = _avatar_initials(identifier)
     company_name = _active_company_name()
-    page_title = _page_title(app.storage.user.get("page", "invoices"))
 
     with ui.element("div").classes("w-full min-h-screen bg-white"):
         with ui.row().classes("w-full min-h-screen"):
@@ -1030,12 +1011,8 @@ def layout_wrapper(content_func):
                 with ui.row().classes(
                     "w-full h-16 items-center justify-between px-6 border-b border-slate-200 bg-white sticky top-0 z-50"
                 ):
-                    ui.label(page_title).classes("text-lg font-semibold text-slate-900")
+                    ui.element("div").classes("flex-1")
                     with ui.row().classes("items-center gap-2"):
-                        ui.button(
-                            icon="settings",
-                            on_click=lambda: ui.navigate.to("/settings"),
-                        ).props("flat dense").classes("text-slate-500")
                         avatar_menu = ui.menu().classes("min-w-[220px]")
                         with ui.avatar().classes(
                             "bg-slate-800 text-white rounded-full cursor-pointer shadow-sm hover:shadow-md transition"

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
+import time
 
 from nicegui import app, ui
 from sqlmodel import select
@@ -61,7 +63,93 @@ def render_settings(session, comp: Company) -> None:
     except Exception:
         active_company_id = int(comp.id or 0)
 
-    ui.label("Einstellungen").classes(C_PAGE_TITLE + " mb-6")
+    def _open_create_dialog() -> None:
+        dlg = ui.dialog()
+        with dlg, ui.card().classes("p-5 w-[420px]"):
+            ui.label("Neues Unternehmen").classes("font-semibold")
+            name_in = ui.input("Name", placeholder="z.B. untitled-ux").classes(C_INPUT)
+            err = ui.label("").classes("text-sm text-rose-600")
+            err.set_visibility(False)
+
+            def _do_create() -> None:
+                err.set_visibility(False)
+                name = (name_in.value or "").strip()
+                if not name:
+                    err.text = "Name ist erforderlich"
+                    err.set_visibility(True)
+                    return
+                try:
+                    new_comp = create_company(user_id, name=name)
+                except Exception as exc:
+                    err.text = str(exc)
+                    err.set_visibility(True)
+                    return
+
+                if new_comp and new_comp.id:
+                    app.storage.user["active_company_id"] = int(new_comp.id)
+                app.storage.user["page"] = "settings"
+                dlg.close()
+                ui.navigate.to("/")
+
+            with ui.row().classes("justify-end gap-2 w-full mt-3"):
+                ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
+                ui.button("Erstellen", on_click=_do_create).classes(C_BTN_PRIM)
+
+        dlg.open()
+
+    def _open_delete_dialog() -> None:
+        if len(companies) <= 1:
+            ui.notify("Mindestens ein Unternehmen muss bestehen bleiben.", color="orange")
+            return
+
+        dlg = ui.dialog()
+        with dlg, ui.card().classes("p-5 w-[520px]"):
+            ui.label("Unternehmen löschen").classes("font-semibold")
+            ui.label(
+                "Das Unternehmen wird inklusive Kunden, Rechnungen, Ausgaben und Uploads gelöscht."
+            ).classes("text-sm text-slate-600")
+            confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
+
+            def _do_delete() -> None:
+                if (confirm.value or "").strip().upper() != "DELETE":
+                    ui.notify('Bitte "DELETE" tippen.', color="orange")
+                    return
+
+                cid = int(app.storage.user.get("active_company_id") or comp.id or 0)
+                if not cid:
+                    ui.notify("Keine Company-ID gefunden.", color="red")
+                    return
+
+                try:
+                    delete_company_dirs(cid)
+                except Exception:
+                    pass
+
+                try:
+                    delete_company(user_id, cid)
+                except Exception as exc:
+                    ui.notify(f"Löschen fehlgeschlagen: {exc}", color="red")
+                    return
+
+                remaining = list_companies(user_id)
+                if remaining and remaining[0].id:
+                    app.storage.user["active_company_id"] = int(remaining[0].id)
+                else:
+                    app.storage.user.pop("active_company_id", None)
+
+                app.storage.user["page"] = "settings"
+                dlg.close()
+                ui.navigate.to("/")
+
+            with ui.row().classes("justify-end gap-2 w-full mt-3"):
+                ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
+                ui.button("Löschen", on_click=_do_delete).classes(C_BTN_PRIM)
+
+        dlg.open()
+
+    with ui.row().classes("w-full justify-between items-center mb-6"):
+        ui.label("Einstellungen").classes(C_PAGE_TITLE)
+        ui.button("Neues Unternehmen", on_click=_open_create_dialog).classes(C_BTN_PRIM)
 
     # ----------------------------
     # Company switcher + CRUD
@@ -100,92 +188,6 @@ def render_settings(session, comp: Company) -> None:
         ).classes(C_INPUT)
 
         with ui.row().classes("w-full gap-2 mt-3 flex-wrap"):
-
-            def _open_create_dialog() -> None:
-                dlg = ui.dialog()
-                with dlg, ui.card().classes("p-5 w-[420px]"):
-                    ui.label("Neues Unternehmen").classes("font-semibold")
-                    name_in = ui.input("Name", placeholder="z.B. untitled-ux").classes(C_INPUT)
-                    err = ui.label("").classes("text-sm text-rose-600")
-                    err.set_visibility(False)
-
-                    def _do_create() -> None:
-                        err.set_visibility(False)
-                        name = (name_in.value or "").strip()
-                        if not name:
-                            err.text = "Name ist erforderlich"
-                            err.set_visibility(True)
-                            return
-                        try:
-                            new_comp = create_company(user_id, name=name)
-                        except Exception as exc:
-                            err.text = str(exc)
-                            err.set_visibility(True)
-                            return
-
-                        if new_comp and new_comp.id:
-                            app.storage.user["active_company_id"] = int(new_comp.id)
-                        app.storage.user["page"] = "settings"
-                        dlg.close()
-                        ui.navigate.to("/")
-
-                    with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                        ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
-                        ui.button("Erstellen", on_click=_do_create).classes(C_BTN_PRIM)
-
-                dlg.open()
-
-            def _open_delete_dialog() -> None:
-                if len(companies) <= 1:
-                    ui.notify("Mindestens ein Unternehmen muss bestehen bleiben.", color="orange")
-                    return
-
-                dlg = ui.dialog()
-                with dlg, ui.card().classes("p-5 w-[520px]"):
-                    ui.label("Unternehmen löschen").classes("font-semibold")
-                    ui.label(
-                        "Das Unternehmen wird inklusive Kunden, Rechnungen, Ausgaben und Uploads gelöscht."
-                    ).classes("text-sm text-slate-600")
-                    confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
-
-                    def _do_delete() -> None:
-                        if (confirm.value or "").strip().upper() != "DELETE":
-                            ui.notify('Bitte "DELETE" tippen.', color="orange")
-                            return
-
-                        cid = int(app.storage.user.get("active_company_id") or comp.id or 0)
-                        if not cid:
-                            ui.notify("Keine Company-ID gefunden.", color="red")
-                            return
-
-                        try:
-                            delete_company_dirs(cid)
-                        except Exception:
-                            pass
-
-                        try:
-                            delete_company(user_id, cid)
-                        except Exception as exc:
-                            ui.notify(f"Löschen fehlgeschlagen: {exc}", color="red")
-                            return
-
-                        remaining = list_companies(user_id)
-                        if remaining and remaining[0].id:
-                            app.storage.user["active_company_id"] = int(remaining[0].id)
-                        else:
-                            app.storage.user.pop("active_company_id", None)
-
-                        app.storage.user["page"] = "settings"
-                        dlg.close()
-                        ui.navigate.to("/")
-
-                    with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                        ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
-                        ui.button("Löschen", on_click=_do_delete).classes(C_BTN_PRIM)
-
-                dlg.open()
-
-            ui.button("Neues Unternehmen", on_click=_open_create_dialog).classes(C_BTN_SEC)
             ui.button("Unternehmen löschen", on_click=_open_delete_dialog).classes(C_BTN_SEC)
 
     # Refresh comp to active company for this user
@@ -204,20 +206,67 @@ def render_settings(session, comp: Company) -> None:
     ui.label("").classes("mb-1")
 
     with ui.element("div").classes("w-full max-w-5xl mx-auto"):
-        # Two column top
-        with ui.grid(columns=2).classes("w-full gap-4"):
-            with ui.card().classes(C_CARD + " p-6 w-full"):
-                ui.label("Person / Kontakt").classes("text-sm font-semibold text-slate-700")
-                with ui.grid(columns=2).classes("w-full gap-4"):
+        with ui.element("div").classes("grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6"):
+            with ui.element("div").classes("space-y-3"):
+                ui.label("Logo").classes("text-sm font-semibold text-slate-700")
+                with ui.element("div").classes("w-full rounded-lg border border-slate-200 bg-white p-4 space-y-3"):
+                    logo_url = ""
+                    logo_exists = False
+                    if comp.id:
+                        logo_path = company_logo_path(int(comp.id))
+                        logo_exists = os.path.exists(logo_path)
+                        logo_url = f"/{logo_path.replace(os.sep, '/')}"
+
+                    logo_preview = ui.image(logo_url).classes(
+                        "w-full h-40 object-contain rounded-md border border-slate-100 bg-slate-50"
+                    )
+                    logo_preview.set_visibility(logo_exists)
+                    logo_placeholder = ui.label("Kein Logo hochgeladen").classes(
+                        "text-sm text-slate-500 text-center w-full py-8"
+                    )
+                    logo_placeholder.set_visibility(not logo_exists)
+
+                    def _refresh_logo_preview(cid: int) -> None:
+                        logo_path = company_logo_path(cid)
+                        logo_preview.set_source(f"/{logo_path.replace(os.sep, '/')}?v={int(time.time())}")
+                        logo_preview.set_visibility(True)
+                        logo_placeholder.set_visibility(False)
+
+                    def on_up(e) -> None:
+                        if not comp.id:
+                            ui.notify("Kein aktives Unternehmen.", color="red")
+                            return
+                        cid = int(comp.id)
+                        ensure_company_dirs(cid)
+
+                        # NiceGUI v3: UploadEventArguments hat "file" (nicht "content")
+                        # file.save(path) speichert direkt auf Disk
+                        try:
+                            e.file.save(company_logo_path(cid))
+                        except Exception as exc:
+                            ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
+                            return
+
+                        _refresh_logo_preview(cid)
+                        ui.notify("Hochgeladen", color="green")
+
+                    ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").classes(
+                        f"w-full {C_BTN_SEC}"
+                    )
+
+            with ui.element("div").classes("space-y-6"):
+                ui.label("Unternehmen & Kontakt").classes("text-sm font-semibold text-slate-700")
+                with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4"):
                     name = ui.input("Firma", value=comp.name).classes(C_INPUT)
                     first_name = ui.input("Vorname", value=comp.first_name).classes(C_INPUT)
                     last_name = ui.input("Nachname", value=comp.last_name).classes(C_INPUT)
                     email = ui.input("Email", value=comp.email).classes(C_INPUT)
                     phone = ui.input("Telefon", value=comp.phone).classes(C_INPUT)
 
-            with ui.card().classes(C_CARD + " p-6 w-full"):
+                ui.separator().classes("my-1")
+
                 ui.label("Adresse").classes("text-sm font-semibold text-slate-700")
-                with ui.grid(columns=2).classes("w-full gap-4"):
+                with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4"):
                     with ui.element("div").classes("relative w-full"):
                         street = ui.input("Straße", value=comp.street).classes(C_INPUT)
                         street_dropdown = ui.element("div").classes(
@@ -227,31 +276,8 @@ def render_settings(session, comp: Company) -> None:
                     city = ui.input("Ort", value=comp.city).classes(C_INPUT)
                     country = ui.input("Land", value=comp.country or "DE").classes(C_INPUT)
 
-            with ui.card().classes(C_CARD + " p-6 w-full"):
-                ui.label("Logo Upload").classes("text-sm font-semibold text-slate-700")
-
-                def on_up(e) -> None:
-                    if not comp.id:
-                        ui.notify("Kein aktives Unternehmen.", color="red")
-                        return
-                    cid = int(comp.id)
-                    ensure_company_dirs(cid)
-
-                    # NiceGUI v3: UploadEventArguments hat "file" (nicht "content")
-                    # file.save(path) speichert direkt auf Disk
-                    try:
-                        e.file.save(company_logo_path(cid))
-                    except Exception as exc:
-                        ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
-                        return
-
-                    ui.notify("Hochgeladen", color="green")
-
-                ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").classes(f"w-full {C_BTN_SEC}")
-
-            with ui.card().classes(C_CARD + " p-6 w-full"):
-                ui.label("Business Meta").classes("text-sm font-semibold text-slate-700")
-
+        with ui.element("div").classes("w-full mt-6 space-y-4"):
+            with ui.expansion("Business Meta").classes("w-full"):
                 business_type_options = [
                     "Einzelunternehmen",
                     "Freelancer",
@@ -262,7 +288,7 @@ def render_settings(session, comp: Company) -> None:
                     "Other",
                 ]
 
-                with ui.grid(columns=2).classes("w-full gap-4"):
+                with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
                     business_type = ui.select(
                         options=business_type_options,
                         label="Unternehmensform",
@@ -290,151 +316,146 @@ def render_settings(session, comp: Company) -> None:
 
                 iban.on("blur", _iban_lookup)
 
-        # Single column blocks
-        with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
-            ui.label("Rechnungsnummern").classes("text-sm font-semibold text-slate-700")
-            with ui.grid(columns=2).classes("w-full gap-4"):
-                next_invoice_nr = ui.number(
-                    "Nächste Rechnungsnummer",
-                    value=comp.next_invoice_nr,
-                    min=1,
-                    step=1,
-                ).classes(C_INPUT)
-                invoice_number_template = ui.input(
-                    "Rechnungsnummer-Regel",
-                    value=comp.invoice_number_template or "{seq}",
-                    placeholder="{seq}",
-                ).classes(C_INPUT)
-                invoice_filename_template = ui.input(
-                    "Dateiname-Regel (PDF)",
-                    value=comp.invoice_filename_template or "rechnung_{nr}",
-                    placeholder="rechnung_{nr}",
-                ).classes(C_INPUT)
+            with ui.expansion("Rechnungsnummern").classes("w-full"):
+                with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
+                    next_invoice_nr = ui.number(
+                        "Nächste Rechnungsnummer",
+                        value=comp.next_invoice_nr,
+                        min=1,
+                        step=1,
+                    ).classes(C_INPUT)
+                    invoice_number_template = ui.input(
+                        "Rechnungsnummer-Regel",
+                        value=comp.invoice_number_template or "{seq}",
+                        placeholder="{seq}",
+                    ).classes(C_INPUT)
+                    invoice_filename_template = ui.input(
+                        "Dateiname-Regel (PDF)",
+                        value=comp.invoice_filename_template or "rechnung_{nr}",
+                        placeholder="rechnung_{nr}",
+                    ).classes(C_INPUT)
 
-            ui.label("Platzhalter: {seq}, {date}, {customer_code}, {customer_kdnr}, {nr}.").classes(
-                "text-sm text-slate-500"
-            )
-
-        with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
-            ui.label("Integrationen").classes("text-sm font-semibold text-slate-700")
-
-            ui.label("SMTP (für Mails aus der App)").classes("text-sm font-semibold text-slate-700 mt-2")
-            ui.label("Port 465 nutzt SSL. Andere Ports nutzen STARTTLS.").classes("text-sm text-slate-500")
-
-            with ui.grid(columns=2).classes("w-full gap-4"):
-                smtp_server = ui.input("SMTP Server", value=getattr(comp, "smtp_server", "") or "").classes(C_INPUT)
-                smtp_port = ui.number("SMTP Port", value=getattr(comp, "smtp_port", 465) or 465).classes(C_INPUT)
-                smtp_user = ui.input("SMTP User", value=getattr(comp, "smtp_user", "") or "").classes(C_INPUT)
-                smtp_password = (
-                    ui.input("SMTP Passwort", value=getattr(comp, "smtp_password", "") or "")
-                    .props("type=password")
-                    .classes(C_INPUT)
+                ui.label("Platzhalter: {seq}, {date}, {customer_code}, {customer_kdnr}, {nr}.").classes(
+                    "text-sm text-slate-500"
                 )
-                default_sender_email = ui.input(
-                    "Standard Absender-Email (optional)",
-                    value=comp.default_sender_email,
-                ).classes(C_INPUT)
 
-            ui.separator().classes("my-4")
+            with ui.expansion("Integrationen").classes("w-full"):
+                ui.label("SMTP (für Mails aus der App)").classes("text-sm font-semibold text-slate-700 pt-2")
+                ui.label("Port 465 nutzt SSL. Andere Ports nutzen STARTTLS.").classes("text-sm text-slate-500")
 
-            ui.label("n8n").classes("text-sm font-semibold text-slate-700")
-            ui.label("Webhooks für Automationen.").classes("text-sm text-slate-500")
-
-            with ui.grid(columns=2).classes("w-full gap-4"):
-                n8n_webhook_url = ui.input("n8n Webhook URL", value=comp.n8n_webhook_url).classes(C_INPUT)
-                n8n_secret = ui.input("n8n Secret", value=comp.n8n_secret).classes(C_INPUT).props("type=password")
-                n8n_enabled = ui.switch("n8n aktivieren", value=bool(comp.n8n_enabled)).props("dense color=grey-8")
-                google_drive_folder_id = ui.input(
-                    "Google Drive Ordner-ID",
-                    value=comp.google_drive_folder_id,
-                ).classes(C_INPUT)
-
-            def _copy_n8n_secret() -> None:
-                secret_value = (n8n_secret.value or "").strip()
-                if not secret_value:
-                    ui.notify("n8n Secret fehlt.", color="orange")
-                    return
-                ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(secret_value)})")
-                ui.notify("Secret kopiert.", color="green")
-
-            with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
-                ui.button(
-                    "Secret generieren",
-                    on_click=lambda: (
-                        n8n_secret.set_value(secrets.token_urlsafe(32)),
-                        ui.notify("Secret generiert", color="green"),
-                    ),
-                ).classes(C_BTN_SEC)
-                ui.button("Secret kopieren", on_click=_copy_n8n_secret).classes(C_BTN_SEC)
-
-        with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
-            ui.label("Account").classes("text-sm font-semibold text-slate-700")
-
-            current_pw = ui.input("Aktuelles Passwort").props("type=password").classes(C_INPUT)
-            new_pw = ui.input("Neues Passwort").props("type=password").classes(C_INPUT)
-            confirm_pw = ui.input("Neues Passwort bestätigen").props("type=password").classes(C_INPUT)
-
-            def _change_password() -> None:
-                if not (new_pw.value or ""):
-                    ui.notify("Neues Passwort fehlt.", color="orange")
-                    return
-                if (new_pw.value or "") != (confirm_pw.value or ""):
-                    ui.notify("Passwörter stimmen nicht überein.", color="orange")
-                    return
-
-                from services.account import change_password
-
-                try:
-                    change_password(user_id, current_pw.value or "", new_pw.value or "")
-                except Exception as exc:
-                    ui.notify(f"Passwort ändern fehlgeschlagen: {exc}", color="red")
-                    return
-
-                ui.notify("Passwort geändert", color="green")
-                current_pw.set_value("")
-                new_pw.set_value("")
-                confirm_pw.set_value("")
-
-            with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
-                ui.button("Passwort ändern", on_click=_change_password).classes(C_BTN_SEC)
-
-            ui.separator().classes("my-4")
-
-            def _open_delete_account_dialog() -> None:
-                dlg = ui.dialog()
-                with dlg, ui.card().classes("p-5 w-[560px]"):
-                    ui.label("Account löschen").classes("font-semibold")
-                    ui.label("Das löscht deinen Account und alle Unternehmen inklusive Daten und Uploads.").classes(
-                        "text-sm text-slate-600"
+                with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
+                    smtp_server = ui.input("SMTP Server", value=getattr(comp, "smtp_server", "") or "").classes(C_INPUT)
+                    smtp_port = ui.number("SMTP Port", value=getattr(comp, "smtp_port", 465) or 465).classes(C_INPUT)
+                    smtp_user = ui.input("SMTP User", value=getattr(comp, "smtp_user", "") or "").classes(C_INPUT)
+                    smtp_password = (
+                        ui.input("SMTP Passwort", value=getattr(comp, "smtp_password", "") or "")
+                        .props("type=password")
+                        .classes(C_INPUT)
                     )
-                    confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
+                    default_sender_email = ui.input(
+                        "Standard Absender-Email (optional)",
+                        value=comp.default_sender_email,
+                    ).classes(C_INPUT)
 
-                    def _do_delete_account() -> None:
-                        if (confirm.value or "").strip().upper() != "DELETE":
-                            ui.notify('Bitte "DELETE" tippen.', color="orange")
-                            return
+                ui.separator().classes("my-4")
 
-                        from services.account import delete_account
+                ui.label("n8n").classes("text-sm font-semibold text-slate-700")
+                ui.label("Webhooks für Automationen.").classes("text-sm text-slate-500")
 
-                        try:
-                            delete_account(user_id)
-                        except Exception as exc:
-                            ui.notify(f"Account löschen fehlgeschlagen: {exc}", color="red")
-                            return
+                with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
+                    n8n_webhook_url = ui.input("n8n Webhook URL", value=comp.n8n_webhook_url).classes(C_INPUT)
+                    n8n_secret = ui.input("n8n Secret", value=comp.n8n_secret).classes(C_INPUT).props("type=password")
+                    n8n_enabled = ui.switch("n8n aktivieren", value=bool(comp.n8n_enabled)).props("dense color=grey-8")
+                    google_drive_folder_id = ui.input(
+                        "Google Drive Ordner-ID",
+                        value=comp.google_drive_folder_id,
+                    ).classes(C_INPUT)
 
-                        clear_auth_session()
-                        app.storage.user.clear()
-                        dlg.close()
-                        ui.notify("Account gelöscht", color="green")
-                        ui.navigate.to("/signup")
+                def _copy_n8n_secret() -> None:
+                    secret_value = (n8n_secret.value or "").strip()
+                    if not secret_value:
+                        ui.notify("n8n Secret fehlt.", color="orange")
+                        return
+                    ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(secret_value)})")
+                    ui.notify("Secret kopiert.", color="green")
 
-                    with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                        ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
-                        ui.button("Account löschen", on_click=_do_delete_account).classes(C_BTN_PRIM)
+                with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
+                    ui.button(
+                        "Secret generieren",
+                        on_click=lambda: (
+                            n8n_secret.set_value(secrets.token_urlsafe(32)),
+                            ui.notify("Secret generiert", color="green"),
+                        ),
+                    ).classes(C_BTN_SEC)
+                    ui.button("Secret kopieren", on_click=_copy_n8n_secret).classes(C_BTN_SEC)
 
-                dlg.open()
+            with ui.expansion("Account").classes("w-full"):
+                with ui.element("div").classes("space-y-4 pt-2"):
+                    current_pw = ui.input("Aktuelles Passwort").props("type=password").classes(C_INPUT)
+                    new_pw = ui.input("Neues Passwort").props("type=password").classes(C_INPUT)
+                    confirm_pw = ui.input("Neues Passwort bestätigen").props("type=password").classes(C_INPUT)
 
-            ui.button("Account löschen", on_click=_open_delete_account_dialog).classes(C_BTN_PRIM)
+                def _change_password() -> None:
+                    if not (new_pw.value or ""):
+                        ui.notify("Neues Passwort fehlt.", color="orange")
+                        return
+                    if (new_pw.value or "") != (confirm_pw.value or ""):
+                        ui.notify("Passwörter stimmen nicht überein.", color="orange")
+                        return
+
+                    from services.account import change_password
+
+                    try:
+                        change_password(user_id, current_pw.value or "", new_pw.value or "")
+                    except Exception as exc:
+                        ui.notify(f"Passwort ändern fehlgeschlagen: {exc}", color="red")
+                        return
+
+                    ui.notify("Passwort geändert", color="green")
+                    current_pw.set_value("")
+                    new_pw.set_value("")
+                    confirm_pw.set_value("")
+
+                with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
+                    ui.button("Passwort ändern", on_click=_change_password).classes(C_BTN_SEC)
+
+                ui.separator().classes("my-4")
+
+                def _open_delete_account_dialog() -> None:
+                    dlg = ui.dialog()
+                    with dlg, ui.card().classes("p-5 w-[560px]"):
+                        ui.label("Account löschen").classes("font-semibold")
+                        ui.label("Das löscht deinen Account und alle Unternehmen inklusive Daten und Uploads.").classes(
+                            "text-sm text-slate-600"
+                        )
+                        confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
+
+                        def _do_delete_account() -> None:
+                            if (confirm.value or "").strip().upper() != "DELETE":
+                                ui.notify('Bitte "DELETE" tippen.', color="orange")
+                                return
+
+                            from services.account import delete_account
+
+                            try:
+                                delete_account(user_id)
+                            except Exception as exc:
+                                ui.notify(f"Account löschen fehlgeschlagen: {exc}", color="red")
+                                return
+
+                            clear_auth_session()
+                            app.storage.user.clear()
+                            dlg.close()
+                            ui.notify("Account gelöscht", color="green")
+                            ui.navigate.to("/signup")
+
+                        with ui.row().classes("justify-end gap-2 w-full mt-3"):
+                            ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
+                            ui.button("Account löschen", on_click=_do_delete_account).classes(C_BTN_PRIM)
+
+                    dlg.open()
+
+                ui.button("Account löschen", on_click=_open_delete_account_dialog).classes(C_BTN_PRIM)
 
     # Wire address autocomplete
     use_address_autocomplete(street, plz, city, country, street_dropdown)

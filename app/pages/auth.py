@@ -105,7 +105,8 @@ def login_page():
                     return
                 if login_user(identifier):
                     app.storage.user["auth_user"] = identifier
-                    _show_success(card, "Logged in successfully.", "Go to dashboard", "/")
+                    app.storage.user["page"] = "dashboard"
+                    ui.navigate.to("/")
                 else:
                     _set_error(status_error, "Please verify your email before logging in.")
             finally:
