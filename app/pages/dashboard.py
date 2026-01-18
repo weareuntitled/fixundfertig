@@ -1,5 +1,6 @@
 from __future__ import annotations
 from ._shared import *
+from ._shared import _open_invoice_editor
 from datetime import datetime
 
 # Auto generated page renderer
@@ -11,9 +12,7 @@ def render_dashboard(session, comp: Company) -> None:
 
     with ui.row().classes("w-full items-center justify-between mb-6 flex-col sm:flex-row gap-3"):
         ui.label("Welcome back, Dr. Smith").classes("text-3xl font-bold tracking-tight text-slate-900")
-        ui.button("New invoice", icon="add", on_click=_open_new_invoice).classes(
-            "rounded-full border border-slate-200 bg-white/50 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white/70"
-        )
+        ui.button("New invoice", icon="add", on_click=_open_new_invoice).classes(C_BTN_PRIM)
 
     invs = session.exec(
         select(Invoice)
