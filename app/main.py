@@ -961,7 +961,6 @@ def _page_title(page: str | None) -> str:
         "dashboard": "Dashboard",
         "invoices": "Invoices",
         "documents": "Documents",
-        "ledger": "Ledger",
         "exports": "Exports",
         "customers": "Customers",
         "customer_new": "New customer",
@@ -1014,7 +1013,6 @@ def layout_wrapper(content_func):
                     [
                         ("Invoices", "invoices"),
                         ("Documents", "documents"),
-                        ("Ledger", "ledger"),
                         ("Exports", "exports"),
                     ],
                 )
