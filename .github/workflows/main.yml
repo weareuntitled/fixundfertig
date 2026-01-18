@@ -17,7 +17,7 @@ jobs:
           port: 22
           script: |
             # In den Ordner gehen
-            cd /var/www/fixundfertig
+            cd /fixundfertig
             
             # Neuesten Code holen
             git pull origin main
