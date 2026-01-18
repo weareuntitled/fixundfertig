@@ -12,7 +12,7 @@ from typing import Iterable
 from fastapi import HTTPException
 
 from data import Document
-from models.document import DocumentSource, safe_filename
+from models.document import DocumentSource, safe_filename as model_safe_filename
 from services.storage import company_document_dir, company_documents_dir, ensure_company_dirs
 
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
@@ -57,6 +57,10 @@ def normalize_keywords(value: Iterable[str] | str | None) -> str:
         return json.dumps([str(loaded).strip()], ensure_ascii=False)
     items = [str(item).strip() for item in value if str(item).strip()]
     return json.dumps(_dedupe_keep_order(items), ensure_ascii=False)
+
+
+def safe_filename(value: str) -> str:
+    return model_safe_filename(value)
 
 
 def build_display_title(
