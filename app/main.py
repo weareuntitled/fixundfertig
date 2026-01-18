@@ -1147,11 +1147,22 @@ def settings_page():
     ui.navigate.to("/")
 
 
-storage_secret = os.getenv("STORAGE_SECRET", "secret2026")
-ui.run(
-    title="FixundFertig",
-    port=8080,
-    language="de",
-    storage_secret=storage_secret,
-    favicon="🚀",
-)
+# ... (Code davor bleibt gleich)
+
+# 1. Secret laden
+storage_secret = os.getenv("STORAGE_SECRET")
+if not storage_secret:
+     # Optional: Warnung, oder wir setzen einen Fallback nur zum Testen, 
+     # aber besser ist es, das in der .env zu haben.
+     print("WARNUNG: STORAGE_SECRET nicht gesetzt!")
+
+# 2. Der Start-Block
+if __name__ in {"__main__", "__mp_main__"}:
+    ui.run(
+        title="FixundFertig",
+        host="0.0.0.0",      # <--- WICHTIG: Damit Docker von außen draufkommt
+        port=8000,           # <--- WICHTIG: Muss zum Dockerfile/Docker-Compose passen (war 8080)
+        language="de",
+        storage_secret=storage_secret,
+        favicon="🚀",
+    )

@@ -10,4 +10,5 @@ pydantic==2.12.5
 reportlab==4.4.7
 SQLAlchemy==2.0.45
 sqlmodel==0.0.31
-starlette==0.52.1
+uvicorn
+redis
