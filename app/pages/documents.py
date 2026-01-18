@@ -473,13 +473,17 @@ def render_documents(session, comp: Company) -> None:
                 with ui.row().classes("justify-end gap-2"):
                     ui.button(
                         "Meta",
-                        on_click=lambda doc_id=slot.props["row"]["id"]: _open_meta(int(doc_id)),
+                        on_click=lambda: _open_meta(int(slot.props["row"]["id"])),
                     ).props("flat dense").classes("text-xs text-slate-600")
-                    ui.link("Öffnen", slot.props["row"]["open_url"], new_tab=True).classes("text-sm text-sky-600")
+                    ui.link("Öffnen", new_tab=True).bind_href_from(
+                        slot,
+                        "props.row.open_url",
+                        strict=False,
+                    ).classes("text-sm text-sky-600")
                     ui.button(
                         "",
                         icon="delete",
-                        on_click=lambda doc_id=slot.props["row"]["id"]: _open_delete(int(doc_id)),
+                        on_click=lambda: _open_delete(int(slot.props["row"]["id"])),
                     ).props("flat dense").classes("text-rose-600")
 
     render_filters()
