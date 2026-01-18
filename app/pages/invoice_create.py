@@ -11,6 +11,7 @@ from sqlmodel import select
 from renderer import PDFInvoiceRenderer
 
 from data import Customer
+from logic import finalize_invoice_logic
 from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
 
 
@@ -175,9 +176,42 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
                 add_btn.on("click", dialog.open)
 
+                def _finalize_invoice() -> None:
+                    errors: list[str] = []
+                    if customer_select.value in (None, new_customer_value):
+                        errors.append("Bitte einen Kunden auswählen.")
+                    if not (invoice_date_input.value or "").strip():
+                        errors.append("Bitte ein Rechnungsdatum setzen.")
+                    if not any((str(it.get("description", "")).strip() for it in items)):
+                        errors.append("Bitte mindestens eine Position mit Beschreibung hinzufügen.")
+                    if errors:
+                        for message in errors:
+                            ui.notify(message, color="red")
+                        return
+                    try:
+                        new_invoice_id = finalize_invoice_logic(
+                            session=session,
+                            comp_id=int(comp.id),
+                            cust_id=int(customer_select.value),
+                            title=title_input.value or "Rechnung",
+                            date_str=str(invoice_date_input.value or ""),
+                            delivery_str=str(service_input.value or ""),
+                            recipient_data={},
+                            items=items,
+                            ust_enabled=bool(vat_switch.value),
+                            intro_text=intro_input.value or "",
+                            service_from=service_from,
+                            service_to=service_to,
+                        )
+                        app.storage.user["page"] = "invoice_detail"
+                        app.storage.user["invoice_detail_id"] = int(new_invoice_id)
+                        ui.navigate.to("/")
+                    except Exception as exc:
+                        ui.notify(f"Fehler beim Speichern der Rechnung: {exc}", color="red")
+
                 ui.button(
                     "Rechnung finalisieren",
-                    on_click=lambda: ui.notify("Finalize Hook fehlt", type="warning"),
+                    on_click=_finalize_invoice,
                 ).props("unelevated color=primary").classes("mt-4")
 
         # RIGHT column preview
