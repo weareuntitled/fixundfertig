@@ -41,8 +41,8 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         .where(Customer.company_id == int(comp.id), Customer.archived == False)
         .order_by(Customer.name)
     )
-    customers = session.exec(customer_stmt).all()
-    customers_by_id = {int(c.id): c for c in customers if getattr(c, "id", None) is not None}
+    all_customers = session.exec(customer_stmt).all()
+    customers_by_id = {int(c.id): c for c in all_customers if getattr(c, "id", None) is not None}
     new_customer_value = "__new_customer__"
     new_customer_id = app.storage.user.pop("new_customer_id", None)
     if new_customer_id is not None:
@@ -58,17 +58,24 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         )
         new_customer = session.exec(extra_stmt).first()
         if new_customer:
-            customers.append(new_customer)
+            all_customers.append(new_customer)
             customers_by_id[int(new_customer.id)] = new_customer
 
     # NiceGUI ui.select expects dict[value, label] when using dict options
-    customer_options: dict[Any, str] = {}
-    for i, c in enumerate(customers):
-        if getattr(c, "id", None) is None:
-            continue
-        label = str(_get(c, "display_name", "name", default=f"Kunde {i+1}"))
-        customer_options[int(c.id)] = label
-    customer_options[new_customer_value] = "Neuen Kunden hinzufügen"
+    def _build_customer_options(filter_text: str | None = None) -> dict[Any, str]:
+        customer_options: dict[Any, str] = {}
+        normalized = (filter_text or "").strip().lower()
+        for i, c in enumerate(all_customers):
+            if getattr(c, "id", None) is None:
+                continue
+            label = str(_get(c, "display_name", "name", default=f"Kunde {i+1}"))
+            if normalized and normalized not in label.lower():
+                continue
+            customer_options[int(c.id)] = label
+        customer_options[new_customer_value] = "Neuen Kunden hinzufügen"
+        return customer_options
+
+    customer_options = _build_customer_options()
     customer_default = next(iter(customer_options.keys()), new_customer_value)
 
     items: list[dict] = []
@@ -87,6 +94,18 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     label="Kunde",
                     with_input=True,
                 ).props("use-input").classes("w-full")
+                def _filter_customers(e) -> None:
+                    filter_text = ""
+                    if getattr(e, "value", None) is not None:
+                        filter_text = str(e.value or "")
+                    elif getattr(e, "args", None):
+                        filter_text = str(e.args.get("value", "") or "")
+                    current_value = customer_select.value
+                    customer_select.options = _build_customer_options(filter_text)
+                    if current_value not in customer_select.options:
+                        customer_select.value = current_value
+
+                customer_select.on("filter", _filter_customers)
 
                 title_input = ui.input("Titel", value="Rechnung").classes("w-full")
 
