@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import re
 import mimetypes
 import os
 import time
@@ -24,7 +25,7 @@ from env import load_env
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import C_BG, C_BTN_SEC, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
+from styles import C_CONTAINER
 from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
@@ -931,87 +932,101 @@ def invoice_pdf(invoice_id: int):
         return Response(content=pdf_bytes, media_type="application/pdf")
 
 
+def _avatar_initials(identifier: str | None) -> str:
+    if not identifier:
+        return "U"
+    cleaned = identifier.strip()
+    if "@" in cleaned:
+        cleaned = cleaned.split("@", 1)[0]
+    parts = [part for part in re.split(r"[\s._-]+", cleaned) if part]
+    if not parts:
+        return "U"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return f"{parts[0][0]}{parts[1][0]}".upper()
+
+
+def _active_company_name() -> str | None:
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if not user_id:
+            return None
+        company = _resolve_active_company(session, user_id)
+        name = getattr(company, "name", "") if company else ""
+        return name.strip() or None
+
+
 def layout_wrapper(content_func):
-    # App shell with left sidebar
-    ui.add_head_html(
-        """
-        <style>
-          .aurora-orb {
-            position: absolute;
-            width: 420px;
-            height: 420px;
-            border-radius: 9999px;
-            filter: blur(70px);
-            opacity: 0.55;
-          }
-          .aurora-orb--one {
-            top: -140px;
-            left: -120px;
-            background: radial-gradient(circle at 30% 30%, rgba(59, 130, 246, 0.55), rgba(59, 130, 246, 0));
-          }
-          .aurora-orb--two {
-            top: 80px;
-            right: -160px;
-            background: radial-gradient(circle at 70% 30%, rgba(16, 185, 129, 0.45), rgba(16, 185, 129, 0));
-          }
-          .aurora-orb--three {
-            bottom: -160px;
-            left: 30%;
-            background: radial-gradient(circle at 40% 40%, rgba(244, 114, 182, 0.45), rgba(244, 114, 182, 0));
-          }
-        </style>
-        """
-    )
-    with ui.element("div").classes(C_BG + " w-full relative overflow-hidden"):
-        with ui.element("div").classes("pointer-events-none absolute inset-0 z-0"):
-            ui.element("div").classes("aurora-orb aurora-orb--one")
-            ui.element("div").classes("aurora-orb aurora-orb--two")
-            ui.element("div").classes("aurora-orb aurora-orb--three")
-        with ui.row().classes("w-full min-h-screen gap-6 p-4 relative z-10"):
+    identifier = app.storage.user.get("auth_user")
+    initials = _avatar_initials(identifier)
+    company_name = _active_company_name()
+
+    with ui.element("div").classes("w-full min-h-screen bg-white"):
+        with ui.row().classes("w-full min-h-screen"):
             # Sidebar
-            with ui.column().classes(
-                "w-[260px] bg-white/70 backdrop-blur-xl border border-white/70 rounded-2xl shadow-lg p-4 gap-6 sticky top-4 h-[calc(100vh-2rem)] overflow-y-auto"
-            ):
+            with ui.column().classes("w-64 bg-slate-50 border-r border-slate-200 px-4 py-6 gap-6"):
                 with ui.row().classes("items-center gap-2 px-2"):
-                    ui.label("FixundFertig").classes("text-lg font-bold text-slate-900")
-                ui.separator().classes("opacity-60")
+                    ui.label("FixundFertig").classes("text-lg font-bold text-slate-700")
+                ui.separator().classes("opacity-70")
 
                 def nav_section(title: str, items: list[tuple[str, str]]):
                     ui.label(title).classes(
                         "text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 mt-1"
                     )
-                    with ui.column().classes("gap-1 mt-1"):
+                    with ui.column().classes("gap-2 mt-1"):
                         for label, target in items:
                             active = app.storage.user.get("page", "invoices") == target
-                            cls = C_NAV_ITEM_ACTIVE if active else C_NAV_ITEM
+                            base = (
+                                "w-full justify-start normal-case px-4 py-2 rounded-full transition-all duration-150"
+                            )
+                            cls = (
+                                f"{base} text-slate-900 bg-white shadow-sm"
+                                if active
+                                else f"{base} text-slate-600 hover:text-slate-900 hover:bg-white/80"
+                            )
                             ui.button(
                                 label,
                                 on_click=lambda t=target: set_page(t),
-                            ).props("flat").classes(f"w-full justify-start normal-case {cls}")
+                            ).props("flat").classes(cls)
 
                 nav_section("Workspace", [("Dashboard", "dashboard")])
                 nav_section(
                     "Billing",
                     [
-                        ("Rechnungen", "invoices"),
-                        ("Dokumente", "documents"),
-                        ("Finanzen", "ledger"),
-                        ("Exporte", "exports"),
+                        ("Invoices", "invoices"),
+                        ("Documents", "documents"),
+                        ("Ledger", "ledger"),
+                        ("Exports", "exports"),
                     ],
                 )
-                nav_section("CRM", [("Kunden", "customers")])
-                nav_section("Settings", [("Einstellungen", "settings")])
+                nav_section("CRM", [("Customers", "customers")])
 
             # Main content
-            with ui.column().classes("flex-1 w-full"):
-                with ui.row().classes("w-full justify-end px-6 py-4"):
+            with ui.column().classes("flex-1 w-full bg-white relative"):
 
-                    def handle_logout() -> None:
-                        clear_auth_session()
-                        ui.navigate.to("/login")
+                def handle_logout() -> None:
+                    clear_auth_session()
+                    ui.navigate.to("/login")
 
-                    ui.button("Logout", on_click=handle_logout).classes(C_BTN_SEC)
-                content_func()
+                with ui.element("div").classes("fixed top-4 right-6 z-20"):
+                    avatar_menu = ui.menu().classes("min-w-[220px]")
+                    with ui.avatar().classes(
+                        "bg-slate-800 text-white rounded-full cursor-pointer shadow-sm hover:shadow-md transition"
+                    ) as avatar:
+                        ui.label(initials).classes("text-sm font-semibold")
+                    avatar.on("click", avatar_menu.open)
+
+                    with avatar_menu:
+                        if identifier:
+                            ui.label(identifier).classes("text-xs text-slate-500 px-3 pt-2")
+                        if company_name:
+                            ui.label(company_name).classes("text-sm text-slate-700 px-3 pb-2")
+                        ui.separator().classes("my-1")
+                        ui.item("Settings", on_click=lambda: ui.navigate.to("/settings"))
+                        ui.item("Logout", on_click=handle_logout).classes("text-red-600")
+
+                with ui.element("div").classes("w-full pt-16 px-6 pb-6"):
+                    content_func()
 
 
 @ui.page("/")
@@ -1097,6 +1112,14 @@ def index():
                     render_invoices(session, comp)
 
     layout_wrapper(content)
+
+
+@ui.page("/settings")
+def settings_page():
+    if not require_auth():
+        return
+    app.storage.user["page"] = "settings"
+    ui.navigate.to("/")
 
 
 storage_secret = os.getenv("STORAGE_SECRET", "secret2026")
