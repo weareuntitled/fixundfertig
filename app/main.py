@@ -1032,10 +1032,6 @@ def layout_wrapper(content_func):
                 ):
                     ui.label(page_title).classes("text-lg font-semibold text-slate-900")
                     with ui.row().classes("items-center gap-2"):
-                        ui.button(
-                            icon="settings",
-                            on_click=lambda: ui.navigate.to("/settings"),
-                        ).props("flat dense").classes("text-slate-500")
                         avatar_menu = ui.menu().classes("min-w-[220px]")
                         with ui.avatar().classes(
                             "bg-slate-800 text-white rounded-full cursor-pointer shadow-sm hover:shadow-md transition"
