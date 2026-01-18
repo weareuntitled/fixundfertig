@@ -41,7 +41,9 @@ def kpi_card(label, value, icon, color):
         with ui.column().classes('gap-1'):
             ui.label(label).classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
             ui.label(value).classes('text-2xl font-bold text-slate-800')
-        ui.icon(icon).classes(f"text-3xl {color} opacity-20")
+            ui.label(trend_text).classes(f"text-xs font-semibold px-2 py-0.5 rounded-full w-fit {trend_classes}")
+        with ui.element("div").classes(f"w-10 h-10 rounded-full {icon_badge_bg} flex items-center justify-center"):
+            ui.icon(icon).classes(f"text-xl {color}")
 
 @contextmanager
 def settings_card(title: str | None = None, classes: str = ""):
