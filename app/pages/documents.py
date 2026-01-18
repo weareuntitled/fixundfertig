@@ -466,20 +466,48 @@ def render_documents(session, comp: Company) -> None:
 
             table.on("selection", _on_selection)
 
+            def _row_from_slot(slot_obj):
+                props = getattr(slot_obj, "props", None)
+                if not isinstance(props, dict):
+                    return None
+                return props.get("row")
+
             with table.add_slot("body-cell-amount") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_display").classes("text-right")
+                ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-actions") as slot:
+                def _open_meta_from_slot() -> None:
+                    row = _row_from_slot(slot)
+                    if not row:
+                        ui.notify("Dokument nicht verfügbar.", type="warning")
+                        return
+                    _open_meta(int(row["id"]))
+
+                def _open_delete_from_slot() -> None:
+                    row = _row_from_slot(slot)
+                    if not row:
+                        ui.notify("Dokument nicht verfügbar.", type="warning")
+                        return
+                    _open_delete(int(row["id"]))
+
+                def _open_document_from_slot() -> None:
+                    row = _row_from_slot(slot)
+                    if not row or not row.get("open_url"):
+                        ui.notify("Dokument nicht verfügbar.", type="warning")
+                        return
+                    ui.run_javascript(f"window.open({json.dumps(row['open_url'])}, '_blank')")
+
                 with ui.row().classes("justify-end gap-2"):
                     ui.button(
                         "Meta",
-                        on_click=lambda doc_id=slot.props["row"]["id"]: _open_meta(int(doc_id)),
+                        on_click=_open_meta_from_slot,
                     ).props("flat dense").classes("text-xs text-slate-600")
-                    ui.link("Öffnen", slot.props["row"]["open_url"], new_tab=True).classes("text-sm text-sky-600")
+                    link = ui.link("Öffnen", "#").classes("text-sm text-sky-600")
+                    link.on("click", _open_document_from_slot)
                     ui.button(
                         "",
                         icon="delete",
-                        on_click=lambda doc_id=slot.props["row"]["id"]: _open_delete(int(doc_id)),
+                        on_click=_open_delete_from_slot,
                     ).props("flat dense").classes("text-rose-600")
 
     render_filters()
