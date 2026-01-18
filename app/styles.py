@@ -35,5 +35,14 @@ C_TABLE_ROW = "w-full px-4 py-3 border-b border-slate-100 items-center gap-4 hov
 # Legacy header tokens (kept so other components don’t break)
 C_HEADER = "bg-white border-b border-slate-200 h-16 px-6 flex items-center justify-between sticky top-0 z-50"
 C_BRAND_BADGE = "bg-blue-600 text-white p-2 rounded-lg shadow-sm"
-C_NAV_ITEM = "text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-100 transition-all duration-150"
-C_NAV_ITEM_ACTIVE = "text-slate-900 px-3 py-2 rounded-lg bg-slate-100 transition-all duration-150"
+C_SIDEBAR = "w-[260px] bg-white border-r border-slate-200 p-4 gap-6 sticky top-0 h-screen overflow-y-auto"
+C_NAV_SECTION = "gap-1 mt-1"
+C_NAV_ICON = "text-slate-400 text-sm"
+C_NAV_ITEM = (
+    "text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50 "
+    "transition-all duration-150 border-l-4 border-transparent"
+)
+C_NAV_ITEM_ACTIVE = (
+    "text-blue-700 px-3 py-2 rounded-lg bg-blue-50 font-semibold transition-all duration-150 "
+    "border-l-4 border-blue-600"
+)

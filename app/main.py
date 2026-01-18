@@ -24,7 +24,15 @@ from env import load_env
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import C_BG, C_CONTAINER, C_NAV_ITEM, C_NAV_ITEM_ACTIVE
+from styles import (
+    C_BG,
+    C_CONTAINER,
+    C_NAV_ICON,
+    C_NAV_ITEM,
+    C_NAV_ITEM_ACTIVE,
+    C_NAV_SECTION,
+    C_SIDEBAR,
+)
 from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
@@ -936,38 +944,65 @@ def layout_wrapper(content_func):
     with ui.element("div").classes(C_BG + " w-full"):
         with ui.row().classes("w-full min-h-screen"):
             # Sidebar
-            with ui.column().classes(
-                "w-[260px] bg-white border-r border-slate-200 p-4 gap-6 sticky top-0 h-screen overflow-y-auto"
-            ):
+            with ui.column().classes(C_SIDEBAR):
                 with ui.row().classes("items-center gap-2 px-2"):
                     ui.label("FixundFertig").classes("text-lg font-bold text-slate-900")
                 ui.separator().classes("opacity-60")
 
-                def nav_section(title: str, items: list[tuple[str, str]]):
-                    ui.label(title).classes(
-                        "text-xs font-semibold text-slate-400 uppercase tracking-wider px-2 mt-1"
-                    )
-                    with ui.column().classes("gap-1 mt-1"):
-                        for label, target in items:
-                            active = app.storage.user.get("page", "invoices") == target
+                nav_sections = [
+                    {
+                        "title": "Workspace",
+                        "icon": "workspaces",
+                        "items": [
+                            {"label": "Dashboard", "target": "dashboard", "icon": "dashboard"},
+                        ],
+                    },
+                    {
+                        "title": "Billing",
+                        "icon": "request_quote",
+                        "items": [
+                            {"label": "Rechnungen", "target": "invoices", "icon": "receipt_long"},
+                            {"label": "Dokumente", "target": "documents", "icon": "description"},
+                            {"label": "Finanzen", "target": "ledger", "icon": "account_balance"},
+                            {"label": "Exporte", "target": "exports", "icon": "file_download"},
+                        ],
+                    },
+                    {
+                        "title": "CRM",
+                        "icon": "groups",
+                        "items": [
+                            {"label": "Kunden", "target": "customers", "icon": "people"},
+                        ],
+                    },
+                    {
+                        "title": "Settings",
+                        "icon": "settings",
+                        "items": [
+                            {"label": "Einstellungen", "target": "settings", "icon": "settings"},
+                        ],
+                    },
+                ]
+
+                def nav_section(section: dict) -> None:
+                    with ui.row().classes("items-center gap-2 px-2 mt-1"):
+                        ui.icon(section["icon"]).classes(C_NAV_ICON)
+                        ui.label(section["title"]).classes(
+                            "text-xs font-semibold text-slate-400 uppercase tracking-wider"
+                        )
+                    with ui.column().classes(C_NAV_SECTION):
+                        for item in section["items"]:
+                            active = app.storage.user.get("page", "invoices") == item["target"]
                             cls = C_NAV_ITEM_ACTIVE if active else C_NAV_ITEM
                             ui.button(
-                                label,
-                                on_click=lambda t=target: set_page(t),
+                                item["label"],
+                                on_click=lambda t=item["target"]: set_page(t),
+                                icon=item["icon"],
                             ).props("flat").classes(f"w-full justify-start normal-case {cls}")
 
-                nav_section("Workspace", [("Dashboard", "dashboard")])
-                nav_section(
-                    "Billing",
-                    [
-                        ("Rechnungen", "invoices"),
-                        ("Dokumente", "documents"),
-                        ("Finanzen", "ledger"),
-                        ("Exporte", "exports"),
-                    ],
-                )
-                nav_section("CRM", [("Kunden", "customers")])
-                nav_section("Settings", [("Einstellungen", "settings")])
+                for index, section in enumerate(nav_sections):
+                    nav_section(section)
+                    if index < len(nav_sections) - 1:
+                        ui.separator().classes("opacity-40")
 
             # Main content
             with ui.column().classes("flex-1 w-full"):
