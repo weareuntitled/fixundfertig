@@ -98,6 +98,59 @@ def render_dashboard(session, comp: Company) -> None:
                     ui.label("• Neue Ausgaben direkt nach dem Kauf erfassen.")
                     ui.label("• Umsatzverlauf monatlich vergleichen.")
 
+    paid_invoices = [
+        inv for inv in invs if inv.status in (InvoiceStatus.PAID, InvoiceStatus.FINALIZED)
+    ]
+    invoice_totals_by_month: dict[datetime, float] = {}
+    for inv in paid_invoices:
+        dt = _parse_iso_date(inv.date)
+        if dt == datetime.min:
+            continue
+        month_key = dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        invoice_totals_by_month[month_key] = invoice_totals_by_month.get(month_key, 0.0) + float(
+            inv.total_brutto or 0
+        )
+
+    months_sorted = sorted(invoice_totals_by_month.keys())
+    month_labels = [month.strftime("%m.%Y") for month in months_sorted]
+    month_values = [round(invoice_totals_by_month[month], 2) for month in months_sorted]
+
+    ui.label("Umsatzverlauf").classes(C_SECTION_TITLE + " mb-2")
+    with ui.card().classes(C_CARD + " p-4 mb-6"):
+        if not month_labels:
+            ui.label("Noch keine bezahlten Rechnungen verfügbar.").classes("text-sm text-slate-500 mb-2")
+        ui.echart(
+            {
+                "tooltip": {"trigger": "axis"},
+                "grid": {"left": "3%", "right": "4%", "bottom": "3%", "containLabel": True},
+                "xAxis": {"type": "category", "boundaryGap": False, "data": month_labels},
+                "yAxis": {"type": "value"},
+                "series": [
+                    {
+                        "data": month_values,
+                        "type": "line",
+                        "smooth": True,
+                        "smoothMonotone": "x",
+                        "showSymbol": False,
+                        "lineStyle": {"width": 3},
+                        "areaStyle": {
+                            "color": {
+                                "type": "linear",
+                                "x": 0,
+                                "y": 0,
+                                "x2": 0,
+                                "y2": 1,
+                                "colorStops": [
+                                    {"offset": 0, "color": "rgba(59, 130, 246, 0.45)"},
+                                    {"offset": 1, "color": "rgba(59, 130, 246, 0.0)"},
+                                ],
+                            }
+                        },
+                    }
+                ],
+            }
+        ).classes("w-full").style("height: 240px")
+
     ui.label("Neueste Rechnungen").classes(C_SECTION_TITLE + " mb-2")
     with ui.card().classes(C_GLASS_CARD + " p-6 overflow-hidden"):
         with ui.row().classes(C_TABLE_HEADER):
