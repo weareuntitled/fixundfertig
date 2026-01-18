@@ -573,7 +573,6 @@ async def document_upload(
                 size_bytes=size_bytes,
                 source="MANUAL",
                 doc_type=ext,
-                original_filename=filename,
             )
             document.mime = mime_type
             document.size = size_bytes
@@ -1069,4 +1068,11 @@ def index():
     layout_wrapper(content)
 
 
-ui.run(title="FixundFertig", port=8080, language="de", storage_secret="secret2026", favicon="🚀")
+storage_secret = os.getenv("STORAGE_SECRET", "secret2026")
+ui.run(
+    title="FixundFertig",
+    port=8080,
+    language="de",
+    storage_secret=storage_secret,
+    favicon="🚀",
+)

@@ -142,7 +142,6 @@ def render_documents(session, comp: Company) -> None:
                     size_bytes=size_bytes,
                     source="MANUAL",
                     doc_type=ext,
-                    original_filename=filename,
                 )
                 document.mime = mime_type
                 document.size = size_bytes
