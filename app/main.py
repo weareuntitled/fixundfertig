@@ -120,14 +120,6 @@ def _resolve_invoice_pdf_path(filename: str | None) -> Path | None:
     return Path("storage/invoices") / filename
 
 
-def _safe_filename(name: str) -> str:
-    name = (name or "").strip() or "document"
-    name = re.sub(r"\s+", " ", name)
-    name = re.sub(r"[^a-zA-Z0-9äöüÄÖÜß _\.\(\)\[\]\-]+", "_", name)
-    name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
-    return name[:120] if len(name) > 120 else name
-
-
 def _json_text(value: object | None, *, default: str) -> str:
     if value is None:
         return default
@@ -138,43 +130,6 @@ def _json_text(value: object | None, *, default: str) -> str:
         return json.dumps(value, ensure_ascii=False)
     except TypeError:
         return default
-
-
-def _normalize_keywords(raw: object, *, max_items: int = 4) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        items = re.split(r"[,\n;]+", raw)
-    elif isinstance(raw, (list, tuple, set)):
-        items = list(raw)
-    else:
-        items = [raw]
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in items:
-        text = str(item or "").strip()
-        if not text:
-            continue
-        key = text.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(text)
-        if len(out) >= max_items:
-            break
-    return out
-
-
-def _build_display_title(payload: dict) -> str:
-    for key in ("title", "file_name", "filename", "original_filename", "name"):
-        value = (payload.get(key) or "").strip()
-        if value:
-            return value
-    extracted = payload.get("extracted") or {}
-    vendor = (extracted.get("vendor") or "").strip()
-    if vendor:
-        return f"Dokument von {vendor}"
-    return "Dokument"
 
 
 def _format_nominatim_result(item: dict) -> dict:
@@ -313,7 +268,7 @@ async def n8n_ingest(request: Request):
         if not file_name:
             file_name = f"document_{event_id}.bin"
         original_filename = file_name
-        safe_name = _safe_filename(file_name)
+        safe_name = safe_filename(file_name)
 
         ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
         if ext == "jpeg":
