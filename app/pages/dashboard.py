@@ -151,6 +151,22 @@ def render_dashboard(session, comp: Company) -> None:
             }
         ).classes("w-full").style("height: 240px")
 
+    with ui.grid(columns=4).classes("w-full gap-4 mb-8"):
+        with ui.card().classes(C_CARD + " col-span-4 bg-white/70 border-white/60 backdrop-blur-md shadow-sm"):
+            with ui.column().classes("w-full items-center gap-5 py-6"):
+                ui.element("div").classes("h-20 w-20 rounded-full bg-blue-100/70 border border-white/80 shadow-inner")
+                with ui.row().classes("items-center gap-4"):
+                    ui.button(
+                        "Neue Rechnung",
+                        icon="add",
+                        on_click=lambda: _open_invoice_editor(None),
+                    ).classes(C_BTN_PRIM + " rounded-full px-6 py-3 text-base")
+                    ui.button(
+                        "Kunden ansehen",
+                        icon="people",
+                        on_click=lambda: (app.storage.user.__setitem__("page", "customers"), ui.navigate.to("/")),
+                    ).classes(C_BTN_SEC + " rounded-full px-6 py-3 text-base")
+
     ui.label("Neueste Rechnungen").classes(C_SECTION_TITLE + " mb-2")
     with ui.card().classes(C_GLASS_CARD + " p-6 overflow-hidden"):
         with ui.row().classes(C_TABLE_HEADER):
