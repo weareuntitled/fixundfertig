@@ -26,7 +26,7 @@ def render_dashboard(session, comp: Company) -> None:
         kpi_card("Offen", f"{offen:,.2f} €", "schedule", "text-blue-500")
 
     ui.label("Neueste Rechnungen").classes(C_SECTION_TITLE + " mb-2")
-    with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+    with ui.card().classes(C_CARD + " p-0 overflow-hidden " + C_GLASS_CARD_HOVER):
         with ui.row().classes(C_TABLE_HEADER):
             ui.label("Nr.").classes("w-20 font-bold text-xs text-slate-500")
             ui.label("Kunde").classes("flex-1 font-bold text-xs text-slate-500")
