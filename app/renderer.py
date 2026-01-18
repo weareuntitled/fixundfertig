@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from renderer_interface import InvoiceRenderer
+from services.invoice_pdf import render_invoice_to_pdf_bytes as render_invoice_to_pdf_bytes_reportlab
 
 from fpdf import FPDF
 
@@ -369,19 +370,18 @@ class InvoicePDF(FPDF):
 class PDFInvoiceRenderer(InvoiceRenderer):
     def render(self, invoice: Any, template_id: str | None = None) -> bytes:
         company = None
+        customer = None
         if isinstance(invoice, dict):
             company = invoice.get("company")
+            customer = invoice.get("customer")
         else:
             company = getattr(invoice, "company", None)
 
-        if company is None:
-            return render_invoice_to_pdf_bytes(invoice)
-
-        return render_invoice_pdf_bytes(invoice, company)
+        return render_invoice_to_pdf_bytes_reportlab(invoice, company=company, customer=customer)
 
 
 def render_invoice_pdf_bytes(invoice: Any, company: Any) -> bytes:
-    return InvoicePDF(invoice=invoice, company=company).render()
+    return render_invoice_to_pdf_bytes_reportlab(invoice, company=company)
 
 
 def render_invoice_pdf_base64(invoice: Any, company: Any) -> str:
@@ -393,16 +393,26 @@ def render_invoice_to_pdf_bytes(*args, **kwargs) -> bytes:
     """
     Accepts (invoice, company) or (company, invoice).
     """
-    if "invoice" in kwargs and "company" in kwargs:
-        return render_invoice_pdf_bytes(kwargs["invoice"], kwargs["company"])
+    if "invoice" in kwargs or "company" in kwargs or "customer" in kwargs:
+        return render_invoice_to_pdf_bytes_reportlab(
+            kwargs.get("invoice"),
+            company=kwargs.get("company"),
+            customer=kwargs.get("customer"),
+        )
 
     if len(args) >= 2:
         a, b = args[0], args[1]
         if _looks_like_invoice(a) and _looks_like_company(b):
-            return render_invoice_pdf_bytes(a, b)
+            return render_invoice_to_pdf_bytes_reportlab(a, company=b)
         if _looks_like_company(a) and _looks_like_invoice(b):
-            return render_invoice_pdf_bytes(b, a)
-        return render_invoice_pdf_bytes(a, b)
+            return render_invoice_to_pdf_bytes_reportlab(b, company=a)
+        return render_invoice_to_pdf_bytes_reportlab(a, company=b)
+
+    if len(args) == 1:
+        invoice = args[0]
+        company = invoice.get("company") if isinstance(invoice, dict) else getattr(invoice, "company", None)
+        customer = invoice.get("customer") if isinstance(invoice, dict) else getattr(invoice, "customer", None)
+        return render_invoice_to_pdf_bytes_reportlab(invoice, company=company, customer=customer)
 
     raise TypeError("render_invoice_to_pdf_bytes needs at least (invoice, company)")
 
