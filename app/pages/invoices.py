@@ -82,40 +82,52 @@ def render_invoices(session, comp: Company) -> None:
         # Left column
         with ui.column().classes("col-span-10 lg:col-span-7 gap-3"):
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
-                with ui.row().classes(C_TABLE_HEADER):
-                    ui.label("Nr").classes("w-24 font-bold text-xs text-slate-500")
-                    ui.label("Kunde").classes("flex-1 font-bold text-xs text-slate-500")
-                    ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-slate-500")
-                    ui.label("Status").classes("w-28 text-right font-bold text-xs text-slate-500")
-                    ui.label("").classes("w-44 text-right font-bold text-xs text-slate-500")
+                with ui.element("div").classes("overflow-x-auto"):
+                    with ui.element("div").classes("w-full sm:min-w-[720px]"):
+                        with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
+                            ui.label("Nr").classes("w-24 font-bold text-xs text-slate-500")
+                            ui.label("Kunde").classes("flex-1 font-bold text-xs text-slate-500")
+                            ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-slate-500")
+                            ui.label("Status").classes("w-28 text-right font-bold text-xs text-slate-500")
+                            ui.label("").classes("w-44 text-right font-bold text-xs text-slate-500")
 
-                if not finals:
-                    with ui.row().classes(C_TABLE_ROW):
-                        ui.label("Noch keine Rechnungen vorhanden").classes("text-sm text-slate-500")
-                else:
-                    for inv in finals:
-                        with ui.row().classes(C_TABLE_ROW + " group"):
-                            with ui.row().classes("flex-1 items-center gap-4 cursor-pointer").on(
-                                "click", lambda _, x=inv: _open_invoice_detail(int(x.id))
-                            ):
-                                ui.label(f"#{inv.nr}" if inv.nr else "-").classes("w-24 text-xs font-mono text-slate-700")
-                                ui.label(cust_name(inv)).classes("flex-1 text-sm text-slate-900")
-                                ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes("w-28 text-right text-sm font-mono text-slate-800")
-                                with ui.row().classes("w-28 justify-end"):
-                                    ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))
+                        if not finals:
+                            with ui.row().classes(C_TABLE_ROW):
+                                ui.label("Noch keine Rechnungen vorhanden").classes("text-sm text-slate-500")
+                        else:
+                            for inv in finals:
+                                with ui.row().classes(C_TABLE_ROW + " group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0"):
+                                    with ui.row().classes("flex-1 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 cursor-pointer w-full").on(
+                                        "click", lambda _, x=inv: _open_invoice_detail(int(x.id))
+                                    ):
+                                        with ui.column().classes("w-full sm:w-24 gap-1"):
+                                            ui.label("Nr").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                                            ui.label(f"#{inv.nr}" if inv.nr else "-").classes("text-xs font-mono text-slate-700")
+                                        with ui.column().classes("w-full sm:flex-1 gap-1"):
+                                            ui.label("Kunde").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                                            ui.label(cust_name(inv)).classes("text-sm text-slate-900")
+                                        with ui.column().classes("w-full sm:w-28 gap-1 sm:items-end"):
+                                            ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                                            ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes("text-sm font-mono text-slate-800 sm:text-right")
+                                        with ui.column().classes("w-full sm:w-28 gap-1 sm:items-end"):
+                                            ui.label("Status").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                                            with ui.row().classes("sm:justify-end"):
+                                                ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))
 
-                            with ui.row().classes("w-44 justify-end gap-2"):
-                                ui.button("Download", on_click=lambda x=inv: run_download(x)).props("flat dense no-parent-event").classes("text-slate-600")
-                                ui.button("Senden", on_click=lambda x=inv: run_send(x)).props("flat dense no-parent-event").classes("text-slate-600")
+                                    with ui.column().classes("w-full sm:w-44 gap-2 sm:items-end"):
+                                        ui.label("Aktionen").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                                        with ui.row().classes("w-full sm:w-44 justify-start sm:justify-end gap-2"):
+                                            ui.button("Download", on_click=lambda x=inv: run_download(x)).props("flat dense no-parent-event").classes("text-slate-600")
+                                            ui.button("Senden", on_click=lambda x=inv: run_send(x)).props("flat dense no-parent-event").classes("text-slate-600")
 
-                                with ui.button(icon="more_vert").props("flat dense no-parent-event").classes("text-slate-600"):
-                                    with ui.menu().props("auto-close no-parent-event"):
-                                        if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
-                                            ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))
-                                        if inv.status == InvoiceStatus.SENT:
-                                            ui.menu_item("Als bezahlt markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.PAID))
-                                        if inv.status != InvoiceStatus.CANCELLED:
-                                            ui.menu_item("Stornieren", on_click=lambda x=inv: do_cancel(x))
+                                            with ui.button(icon="more_vert").props("flat dense no-parent-event").classes("text-slate-600"):
+                                                with ui.menu().props("auto-close no-parent-event"):
+                                                    if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
+                                                        ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))
+                                                    if inv.status == InvoiceStatus.SENT:
+                                                        ui.menu_item("Als bezahlt markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.PAID))
+                                                    if inv.status != InvoiceStatus.CANCELLED:
+                                                        ui.menu_item("Stornieren", on_click=lambda x=inv: do_cancel(x))
 
         # Right column
         with ui.column().classes("col-span-10 lg:col-span-3 gap-4"):
