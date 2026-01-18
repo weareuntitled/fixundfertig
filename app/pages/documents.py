@@ -93,25 +93,25 @@ def render_documents(session, comp: Company) -> None:
             options[entry] = entry
         return options
 
-    def _handle_upload(event) -> None:
+    async def _read_upload_bytes(upload_file) -> bytes:
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_path = Path(temp_file.name)
+        temp_file.close()
+        try:
+            await upload_file.save(str(temp_path))
+            return temp_path.read_bytes()
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+    async def _handle_upload(event) -> None:
         if not comp.id:
             ui.notify("Kein aktives Unternehmen.", color="red")
             return
         filename = getattr(event, "name", "") or getattr(event.file, "name", "") or "upload"
 
-        def _read_upload_bytes(upload_file) -> bytes:
-            temp_file = tempfile.NamedTemporaryFile(delete=False)
-            temp_path = Path(temp_file.name)
-            temp_file.close()
-            try:
-                upload_file.save(str(temp_path))
-                return temp_path.read_bytes()
-            finally:
-                if temp_path.exists():
-                    temp_path.unlink()
-
         try:
-            data = _read_upload_bytes(event.file)
+            data = await _read_upload_bytes(event.file)
             size_bytes = len(data)
             validate_document_upload(filename, size_bytes)
         except HTTPException as exc:
@@ -132,17 +132,6 @@ def render_documents(session, comp: Company) -> None:
             or ""
         )
         sha256 = hashlib.sha256(data).hexdigest()
-
-        def _read_upload_bytes(upload_file) -> bytes:
-            temp_file = tempfile.NamedTemporaryFile(delete=False)
-            temp_path = Path(temp_file.name)
-            temp_file.close()
-            try:
-                upload_file.save(str(temp_path))
-                return temp_path.read_bytes()
-            finally:
-                if temp_path.exists():
-                    temp_path.unlink()
 
         with get_session() as s:
             try:
