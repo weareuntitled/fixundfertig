@@ -36,8 +36,9 @@ def invoice_status_badge(status: str) -> str:
     if status == "Bezahlt": return C_BADGE_GREEN
     return C_BADGE_GRAY
 
-def kpi_card(label, value, icon, color):
-    with ui.card().classes(C_CARD + " " + C_CARD_HOVER + " p-4 flex flex-row items-center justify-between"):
+def kpi_card(label, value, icon, color, classes: str = ""):
+    card_classes = f"{C_CARD} {C_CARD_HOVER} p-4 flex flex-row items-center justify-between {classes}".strip()
+    with ui.card().classes(card_classes):
         with ui.column().classes('gap-1'):
             ui.label(label).classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
             ui.label(value).classes('text-2xl font-bold text-slate-800')
