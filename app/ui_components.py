@@ -10,7 +10,8 @@ from styles import (
     C_BTN_SEC,
     C_CARD,
     C_CARD_HOVER,
-    C_GLASS_CARD,
+    C_CARD_GLASS,
+    C_CARD_GLASS_HOVER,
     C_SECTION_TITLE,
 )
 
@@ -36,12 +37,25 @@ def invoice_status_badge(status: str) -> str:
     if status == "Bezahlt": return C_BADGE_GREEN
     return C_BADGE_GRAY
 
-def kpi_card(label, value, icon, color, classes: str = ""):
-    with ui.card().classes(f"{C_GLASS_CARD} p-6 flex flex-row items-center justify-between {classes}".strip()):
+def kpi_card(label, value, icon, color):
+    icon_badge_bg = "bg-blue-50" if "blue" in color else "bg-slate-100"
+    if icon == "trending_up":
+        trend_text = "Steigend"
+        trend_classes = "bg-lime-100 text-lime-700"
+    elif icon == "trending_down":
+        trend_text = "Fallend"
+        trend_classes = "bg-rose-100 text-rose-700"
+    else:
+        trend_text = "Stabil"
+        trend_classes = "bg-slate-100 text-slate-600"
+
+    with ui.card().classes(f"{C_CARD_GLASS} {C_CARD_GLASS_HOVER} p-4 flex flex-row items-center justify-between"):
         with ui.column().classes('gap-1'):
             ui.label(label).classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
             ui.label(value).classes('text-2xl font-bold text-slate-800')
-        ui.icon(icon).classes(f"text-3xl {color} opacity-20")
+            ui.label(trend_text).classes(f"text-xs font-semibold px-2 py-0.5 rounded-full w-fit {trend_classes}")
+        with ui.element("div").classes(f"w-10 h-10 rounded-full {icon_badge_bg} flex items-center justify-center"):
+            ui.icon(icon).classes(f"text-xl {color}")
 
 @contextmanager
 def settings_card(title: str | None = None, classes: str = ""):
