@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from ._shared import *
 from data import Document, DocumentMeta
+from models.document import DocumentSource
 from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
