@@ -9,7 +9,7 @@ x-logging: &default-logging
 services:
   # --- Deine Python App ---
   app:
-    build: .   # Achte darauf: "." wenn Dockerfile hier liegt, "./app" wenn im Unterordner
+    build: .
     container_name: fixundfertig_app
     ports:
       - "3000:8000"
@@ -29,7 +29,7 @@ services:
           memory: 1G
     logging: *default-logging
 
-  # --- n8n Workflow Automation ---
+  # --- n8n Workflow Automation (BROKER) ---
   n8n:
     image: docker.n8n.io/n8nio/n8n
     container_name: fixundfertig_n8n
@@ -51,10 +51,14 @@ services:
       - EXECUTIONS_MODE=regular
       - EXECUTIONS_DATA_PRUNE=true
       - EXECUTIONS_DATA_MAX_AGE=72
-      # --- NEU: Konfiguration für Python Runner ---
+      
+      # --- TASK RUNNER CONFIG (BROKER) ---
       - N8N_RUNNERS_ENABLED=true
-      - N8N_RUNNERS_TASK_BROKER_ADDR=n8n-task-runners:5678
-      # --------------------------------------------
+      - N8N_RUNNERS_MODE=external                # Wichtig: Sagt n8n, dass Runner extern sind
+      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0 # Wichtig: Damit Runner connecten darf
+      - N8N_RUNNERS_AUTH_TOKEN=my-secret-token-123 # Sicherer Token für die Verbindung
+      # -----------------------------------
+      
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -73,18 +77,18 @@ services:
           memory: 2G
     logging: *default-logging
 
-  # --- NEU: Python Task Runner Service ---
+  # --- n8n Task Runner (WORKER) ---
   n8n-task-runners:
-    image: n8nio/n8n-task-runners:latest-python
+    image: n8nio/runners:latest   # KORRIGIERTES IMAGE
     container_name: fixundfertig_task_runners
     environment:
-      - N8N_GRPC_PORT=5678
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679  # Verbindet sich zum n8n Container
+      - N8N_RUNNERS_AUTH_TOKEN=my-secret-token-123   # Muss gleich sein wie oben
       - TZ=Europe/Berlin
     restart: unless-stopped
     networks:
       - internal_net
     logging: *default-logging
-  # ---------------------------------------
 
   # --- Datenbank (Postgres) ---
   db:
