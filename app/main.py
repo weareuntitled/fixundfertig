@@ -1003,7 +1003,7 @@ def layout_wrapper(content_func):
                                 if active
                                 else f"{base} text-slate-600 hover:text-slate-900 hover:bg-white/80"
                             )
-                            icon_cls = "text-base text-slate-700" if active else "text-base text-slate-400"
+                            icon_cls = "text-sm text-slate-700" if active else "text-sm text-slate-400"
                             with ui.button(on_click=lambda t=target: set_page(t)).props("flat").classes(cls):
                                 with ui.row().classes("items-center gap-2"):
                                     ui.icon(icon).classes(icon_cls)
