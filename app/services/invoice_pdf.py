@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import BytesIO
 import os
+from pathlib import Path
 from typing import Any
 
 from reportlab.lib.pagesizes import A4
@@ -13,12 +14,6 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.lib import colors
-
-# Falls die Datei fehlt, fangen wir den Fehler ab
-try:
-    from services.storage import company_logo_path
-except ImportError:
-    def company_logo_path(id): return None
 
 # ---------------------------------------------------------
 # HIER KANNST DU ALLES EINSTELLEN (DESIGN & LAYOUT)
@@ -218,34 +213,34 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     # Debugging: Falls das Logo immer noch fehlt, aktiviere diesen Print
     # print(f"Suche Logo für ID {_get(comp, 'id')}")
 
-    if comp is not None and _get(comp, "id", default=None) is not None:
-        logo_path = company_logo_path(_get(comp, "id"))
-        
-        # Prüfen ob Pfad existiert
-        if logo_path and os.path.exists(logo_path):
-            # Try-Block TEMPORÄR entfernen oder Fehler printen, um zu sehen was passiert
-            try:
-                logo = ImageReader(logo_path)
-                iw, ih = logo.getSize()
-                
-                # Maximale Größe definieren (z.B. 4cm breit, 2.5cm hoch)
-                max_w = 40 * mm 
-                max_h = 25 * mm
-                
-                # Skalierung berechnen (Aspektverhältnis beibehalten)
-                scale = min(max_w / iw, max_h / ih, 1.0)
-                draw_w = iw * scale
-                draw_h = ih * scale
-                
-                # WICHTIG: Positionierung
-                # x = linker Rand (mx)
-                # y = Oben (logo_top_y) minus Bildhöhe (draw_h), da Reportlab von unten malt
-                c.drawImage(logo, mx, logo_top_y - draw_h, width=draw_w, height=draw_h, mask="auto")
-                
-            except Exception as e:
-                print(f"Fehler beim Laden des Logos: {e}")
-                # Optional: Platzhalter zeichnen, um zu sehen ob Position stimmt
-                # c.rect(mx, logo_top_y - 25*mm, 40*mm, 25*mm)
+    logo_path = Path(os.path.abspath(__file__)).resolve().parents[1] / "assets" / "danep-logo.png"
+    logo = None
+    if logo_path.exists():
+        try:
+            logo = ImageReader(str(logo_path))
+        except Exception:
+            logo = None
+
+    if logo is not None:
+        iw, ih = logo.getSize()
+
+        # Maximale Größe definieren (z.B. 4.5cm breit, 2.5cm hoch)
+        max_w = 45 * mm
+        max_h = 25 * mm
+
+        # Skalierung berechnen (Aspektverhältnis beibehalten)
+        scale = min(max_w / iw, max_h / ih, 1.0)
+        draw_w = iw * scale
+        draw_h = ih * scale
+
+        # WICHTIG: Positionierung
+        # x = rechter Rand (w - mx - draw_w)
+        # y = Oben (logo_top_y) minus Bildhöhe (draw_h), da Reportlab von unten malt
+        c.drawImage(logo, w - mx - draw_w, logo_top_y - draw_h, width=draw_w, height=draw_h, mask="auto")
+    else:
+        fallback_name = _safe_str(_get(comp, "name", default="DANEP")) or "DANEP"
+        set_font(bold=True, size=12)
+        c.drawRightString(w - mx, logo_top_y - 10, fallback_name)
 
     # 4. ABSENDERZEILE & EMPFÄNGER
     # Kleine Zeile
