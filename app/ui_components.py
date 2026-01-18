@@ -10,6 +10,7 @@ from styles import (
     C_BTN_SEC,
     C_CARD,
     C_CARD_HOVER,
+    C_GLASS_CARD_HOVER,
     C_SECTION_TITLE,
 )
 
