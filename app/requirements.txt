@@ -7,3 +7,4 @@ requests
 httpx
 passlib[bcrypt]
 boto3
+reportlab
