@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import secrets
 import time
@@ -23,7 +24,7 @@ from ._shared import (
 from auth_guard import clear_auth_session
 from services.companies import create_company, delete_company, list_companies, update_company
 from services.iban import lookup_bank_from_iban
-from services.storage import company_logo_path, delete_company_dirs, ensure_company_dirs
+from services.storage import cleanup_company_logos, company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
 LINK_TEXT = "text-sm text-blue-600 hover:text-blue-700"
@@ -238,21 +239,45 @@ def render_settings(session, comp: Company) -> None:
                             return
                         cid = int(comp.id)
                         ensure_company_dirs(cid)
+                        upload_name = getattr(e, "name", "") or getattr(getattr(e, "file", None), "name", "")
+                        content_type = getattr(e, "type", "") or getattr(
+                            getattr(e, "file", None), "content_type", ""
+                        )
+                        ext = os.path.splitext(upload_name or "")[1].lower().lstrip(".")
+                        if not content_type:
+                            content_type = mimetypes.guess_type(upload_name or "")[0] or ""
 
-                        # NiceGUI v3: UploadEventArguments hat "file" (nicht "content")
-                        # file.save(path) speichert direkt auf Disk
+                        if content_type == "image/png":
+                            ext = "png"
+                        elif content_type in {"image/jpeg", "image/jpg"}:
+                            ext = "jpg"
+
+                        if ext not in {"png", "jpg", "jpeg"}:
+                            ui.notify("Bitte PNG oder JPG hochladen.", color="orange")
+                            return
+
+                        save_path = company_logo_path(cid, ext)
+
                         try:
-                            e.file.save(company_logo_path(cid))
+                            if hasattr(e, "file") and getattr(e, "file", None) is not None:
+                                e.file.save(save_path)
+                            elif hasattr(e, "content") and e.content is not None:
+                                with open(save_path, "wb") as handle:
+                                    handle.write(e.content)
+                            else:
+                                raise RuntimeError("Keine Upload-Daten gefunden.")
                         except Exception as exc:
                             ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
                             return
+
+                        cleanup_company_logos(cid, ext)
 
                         _refresh_logo_preview(cid)
                         ui.notify("Hochgeladen", color="green")
 
                     ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").classes(
                         f"w-full {C_BTN_SEC}"
-                    )
+                    ).props("accept=.png,.jpg,.jpeg,image/png,image/jpeg")
 
             with ui.element("div").classes("space-y-6"):
                 ui.label("Unternehmen & Kontakt").classes("text-sm font-semibold text-slate-700")
