@@ -30,7 +30,12 @@ logger = logging.getLogger(__name__)
 def auth_layout(title: str, subtitle: str):
     with ui.element("div").classes(BG_CLASSES):
         with ui.column().classes("w-full items-center gap-6"):
-            ui.label("FixundFertig").classes("text-lg font-semibold text-slate-900")
+            with ui.row().classes("items-center gap-3"):
+                with ui.element("div").classes(
+                    "h-9 w-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm"
+                ):
+                    ui.label("FF").classes("text-xs font-semibold tracking-[0.2em]")
+                ui.label("FixundFertig").classes("text-sm font-semibold text-slate-900 tracking-wide")
             with ui.column().classes(f"{CARD_CLASSES} gap-4"):
                 ui.label(title).classes(TITLE_TEXT)
                 if subtitle:
@@ -105,7 +110,8 @@ def login_page():
                     return
                 if login_user(identifier):
                     app.storage.user["auth_user"] = identifier
-                    _show_success(card, "Logged in successfully.", "Go to dashboard", "/")
+                    app.storage.user["page"] = "dashboard"
+                    ui.navigate.to("/")
                 else:
                     _set_error(status_error, "Please verify your email before logging in.")
             finally:
