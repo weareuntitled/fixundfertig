@@ -163,33 +163,42 @@ def render_documents(session, comp: Company) -> None:
         ui.notify(f"Dokument gespeichert: {filename} ({size_bytes} Bytes)", color="green")
         render_list.refresh()
 
-    with ui.card().classes(C_CARD + " p-5 mb-4"):
-        ui.label("Upload").classes("text-sm font-semibold text-slate-700")
-        ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500 mb-2")
-        ui.upload(on_upload=_handle_upload, auto_upload=True, label="Datei wählen").classes(f"w-full {C_BTN_SEC}")
+    with ui.dialog() as upload_dialog:
+        with ui.card().classes(C_CARD + " p-5 w-[480px] max-w-[92vw]"):
+            ui.label("Upload").classes(C_SECTION_TITLE)
+            ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500 mb-2")
+            ui.upload(on_upload=_handle_upload, auto_upload=True, label="Datei wählen").classes("w-full")
+            with ui.row().classes("justify-end w-full mt-4"):
+                ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
     with ui.row().classes("w-full justify-between items-end mb-3 gap-3 flex-wrap"):
-        ui.input(
-            "Suche",
-            placeholder="Dateiname",
-            on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
-        ).classes(C_INPUT + " min-w-[240px]")
-
         with ui.row().classes("gap-2 items-end flex-wrap"):
+            ui.input(
+                "Suche",
+                placeholder="Dateiname",
+                on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
+            ).classes(C_INPUT + " w-56")
             ui.select(
                 _source_options(_load_documents()),
                 label="Quelle",
                 value=state["source"],
                 on_change=lambda e: (state.__setitem__("source", e.value or ""), render_list.refresh()),
-            ).classes(C_INPUT)
+            ).classes(C_INPUT + " w-40")
             ui.select(
                 _doc_type_options(_load_documents()),
                 label="Typ",
                 value=state["doc_type"],
                 on_change=lambda e: (state.__setitem__("doc_type", e.value or ""), render_list.refresh()),
-            ).classes(C_INPUT)
-            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
-            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
+            ).classes(C_INPUT + " w-32")
+            ui.input(
+                "Von",
+                on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh()),
+            ).props("type=date").classes(C_INPUT + " w-36")
+            ui.input(
+                "Bis",
+                on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
+            ).props("type=date").classes(C_INPUT + " w-36")
+        ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
 
     delete_id = {"value": None}
     meta_state = {"title": "", "raw": "", "line_items": "", "flags": ""}

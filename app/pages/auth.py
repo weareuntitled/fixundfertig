@@ -111,7 +111,7 @@ def login_page():
             finally:
                 login_button.loading = False
 
-        login_button = ui.button("Log in", on_click=handle_login).props("loading").classes(PRIMARY_BUTTON)
+        login_button = ui.button("Log in", on_click=handle_login).props("loading=false").classes(PRIMARY_BUTTON)
         with ui.row().classes("w-full justify-between"):
             ui.link("Forgot password?", "/forgot").classes(LINK_TEXT)
             ui.link("Create account", "/signup").classes(LINK_TEXT)
@@ -184,7 +184,9 @@ def signup_page():
             finally:
                 signup_button.loading = False
 
-        signup_button = ui.button("Create account", on_click=handle_signup).props("loading").classes(PRIMARY_BUTTON)
+        signup_button = ui.button("Create account", on_click=handle_signup).props("loading=false").classes(
+            PRIMARY_BUTTON
+        )
         with ui.row().classes("w-full justify-between"):
             ui.link("Already have an account?", "/login").classes(LINK_TEXT)
 
