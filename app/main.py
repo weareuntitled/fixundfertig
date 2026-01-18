@@ -933,11 +933,20 @@ def invoice_pdf(invoice_id: int):
 
 def layout_wrapper(content_func):
     # App shell with left sidebar
-    with ui.element("div").classes(C_BG + " w-full"):
-        with ui.row().classes("w-full min-h-screen"):
+    with ui.element("div").classes(C_BG + " w-full relative"):
+        ui.element("div").classes(
+            "pointer-events-none fixed -z-10 top-[-140px] left-[-140px] h-[420px] w-[420px] rounded-full "
+            "bg-gradient-to-br from-blue-400/70 via-blue-500/40 to-transparent blur-3xl"
+        )
+        ui.element("div").classes(
+            "pointer-events-none fixed -z-10 bottom-[-160px] right-[-160px] h-[460px] w-[460px] rounded-full "
+            "bg-gradient-to-tr from-lime-300/60 via-lime-400/40 to-transparent blur-3xl"
+        )
+        with ui.row().classes("w-full min-h-screen relative z-10"):
             # Sidebar
             with ui.column().classes(
-                "w-[260px] bg-white border-r border-slate-200 p-4 gap-6 sticky top-0 h-screen overflow-y-auto"
+                "w-[260px] h-[calc(100vh-40px)] m-5 bg-white/60 backdrop-blur-md rounded-[24px] "
+                "p-4 gap-6 overflow-y-auto"
             ):
                 with ui.row().classes("items-center gap-2 px-2"):
                     ui.label("FixundFertig").classes("text-lg font-bold text-slate-900")
