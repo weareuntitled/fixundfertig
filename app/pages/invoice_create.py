@@ -39,7 +39,6 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         select(Customer)
         .where(Customer.company_id == int(comp.id), Customer.archived == False)
         .order_by(Customer.name)
-        .limit(5)
     )
     customers = session.exec(customer_stmt).all()
     customers_by_id = {int(c.id): c for c in customers if getattr(c, "id", None) is not None}
