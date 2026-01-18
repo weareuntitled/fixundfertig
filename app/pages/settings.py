@@ -1,26 +1,12 @@
 # app/pages/settings.py
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
 import json
-import os
 import secrets
-import time
-from datetime import datetime
 
-import httpx
 from nicegui import app, ui
 from sqlmodel import select
 
-from data import Document
-from services.documents import (
-    build_display_title,
-    build_download_filename,
-    normalize_keywords,
-    safe_filename,
-)
 from ._shared import (
     C_BTN_PRIM,
     C_BTN_SEC,
@@ -33,11 +19,8 @@ from ._shared import (
     use_address_autocomplete,
 )
 from auth_guard import clear_auth_session
-from integrations.n8n_client import post_to_n8n
 from services.companies import create_company, delete_company, list_companies, update_company
-from services.email import send_email
 from services.iban import lookup_bank_from_iban
-from services.blob_storage import blob_storage, build_document_key
 from services.storage import company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
@@ -267,88 +250,6 @@ def render_settings(session, comp: Company) -> None:
                 ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").props("flat dense").classes("w-full")
 
             with ui.card().classes(C_CARD + " p-6 w-full"):
-                ui.label("Dokument-Storage (Test)").classes("text-sm font-semibold text-slate-700")
-                doc_id_input = ui.input("Dokument-ID", placeholder="z.B. 12345").classes(C_INPUT)
-                key_output = ui.input("Letzter Key", value="").props("readonly").classes(C_INPUT)
-
-                def _read_upload_bytes(upload_file) -> bytes:
-                    temp_file = tempfile.NamedTemporaryFile(delete=False)
-                    temp_path = Path(temp_file.name)
-                    temp_file.close()
-                    try:
-                        upload_file.save(str(temp_path))
-                        return temp_path.read_bytes()
-                    finally:
-                        if temp_path.exists():
-                            temp_path.unlink()
-
-                def _resolve_key() -> str | None:
-                    key = (key_output.value or "").strip()
-                    if not key:
-                        ui.notify("Kein Key vorhanden.", color="red")
-                        return None
-                    return key
-
-                def on_doc_upload(e) -> None:
-                    if not comp.id:
-                        ui.notify("Kein aktives Unternehmen.", color="red")
-                        return
-                    cid = int(comp.id)
-                    doc_id = (doc_id_input.value or "").strip() or str(int(time.time()))
-                    key = build_document_key(cid, doc_id, e.file.name)
-                    mime = getattr(e.file, "content_type", None) or "application/octet-stream"
-                    try:
-                        data = _read_upload_bytes(e.file)
-                        blob_storage().put_bytes(key, data, mime)
-                    except Exception as exc:
-                        ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
-                        return
-                    doc_id_input.set_value(doc_id)
-                    key_output.set_value(key)
-                    ui.notify("Dokument gespeichert", color="green")
-
-                def on_doc_exists() -> None:
-                    key = _resolve_key()
-                    if not key:
-                        return
-                    try:
-                        exists = blob_storage().exists(key)
-                    except Exception as exc:
-                        ui.notify(f"Prüfung fehlgeschlagen: {exc}", color="red")
-                        return
-                    ui.notify("Dokument vorhanden" if exists else "Dokument nicht gefunden", color="green")
-
-                def on_doc_load() -> None:
-                    key = _resolve_key()
-                    if not key:
-                        return
-                    try:
-                        data = blob_storage().get_bytes(key)
-                    except Exception as exc:
-                        ui.notify(f"Laden fehlgeschlagen: {exc}", color="red")
-                        return
-                    ui.notify(f"Bytes geladen: {len(data)}", color="green")
-
-                def on_doc_delete() -> None:
-                    key = _resolve_key()
-                    if not key:
-                        return
-                    try:
-                        blob_storage().delete(key)
-                    except Exception as exc:
-                        ui.notify(f"Löschen fehlgeschlagen: {exc}", color="red")
-                        return
-                    ui.notify("Dokument gelöscht", color="green")
-
-                ui.upload(on_upload=on_doc_upload, auto_upload=True, label="Datei wählen").props("flat dense").classes(
-                    "w-full"
-                )
-                with ui.row().classes("w-full gap-2 flex-wrap"):
-                    ui.button("Vorhanden?", on_click=on_doc_exists).classes(C_BTN_SEC)
-                    ui.button("Bytes prüfen", on_click=on_doc_load).classes(C_BTN_SEC)
-                    ui.button("Löschen", on_click=on_doc_delete).classes(C_BTN_SEC)
-
-            with ui.card().classes(C_CARD + " p-6 w-full"):
                 ui.label("Business Meta").classes("text-sm font-semibold text-slate-700")
 
                 business_type_options = [
@@ -434,35 +335,6 @@ def render_settings(session, comp: Company) -> None:
                     value=comp.default_sender_email,
                 ).classes(C_INPUT)
 
-            with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
-                test_to = ui.input("Test Empfänger", placeholder="z.B. deine private Adresse").classes(C_INPUT)
-
-                def _send_test_mail() -> None:
-                    cfg = {
-                        "host": (smtp_server.value or "").strip(),
-                        "port": int(smtp_port.value or 0),
-                        "user": (smtp_user.value or "").strip(),
-                        "password": smtp_password.value or "",
-                        "sender": (default_sender_email.value or smtp_user.value or "").strip(),
-                    }
-                    try:
-                        ok = send_email(
-                            to=(test_to.value or "").strip(),
-                            subject="FixundFertig SMTP Test",
-                            text="SMTP Test erfolgreich. Wenn du das liest, passt deine SMTP Konfiguration.",
-                            smtp_config=cfg,
-                        )
-                    except Exception as exc:
-                        ui.notify(f"SMTP Test fehlgeschlagen: {exc}", color="red")
-                        return
-
-                    ui.notify(
-                        "SMTP Test Mail gesendet" if ok else "SMTP Config fehlt",
-                        color="green" if ok else "orange",
-                    )
-
-                ui.button("Test Mail senden", on_click=_send_test_mail).classes(C_BTN_SEC)
-
             ui.separator().classes("my-4")
 
             ui.label("n8n").classes("text-sm font-semibold text-slate-700")
@@ -477,6 +349,14 @@ def render_settings(session, comp: Company) -> None:
                     value=comp.google_drive_folder_id,
                 ).classes(C_INPUT)
 
+            def _copy_n8n_secret() -> None:
+                secret_value = (n8n_secret.value or "").strip()
+                if not secret_value:
+                    ui.notify("n8n Secret fehlt.", color="orange")
+                    return
+                ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(secret_value)})")
+                ui.notify("Secret kopiert.", color="green")
+
             with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
                 ui.button(
                     "Secret generieren",
@@ -485,205 +365,7 @@ def render_settings(session, comp: Company) -> None:
                         ui.notify("Secret generiert", color="green"),
                     ),
                 ).classes(C_BTN_SEC)
-
-                def test_n8n_webhook() -> None:
-                    try:
-                        resp = post_to_n8n(
-                            webhook_url=(n8n_webhook_url.value or "").strip(),
-                            secret=(n8n_secret.value or "").strip(),
-                            event="ping",
-                            company_id=int(comp.id or 0),
-                            data={"name": name.value, "email": email.value},
-                        )
-                    except Exception as exc:
-                        ui.notify(f"n8n Fehler: {exc}", color="red")
-                        return
-                    ui.notify(f"n8n OK. HTTP {resp.status_code}", color="green")
-
-                ui.button("Webhook testen", on_click=test_n8n_webhook).classes(C_BTN_SEC)
-
-                def test_n8n_ingest() -> None:
-                    secret_value = (n8n_secret.value or "").strip()
-                    if not secret_value:
-                        ui.notify("n8n Secret fehlt.", color="orange")
-                        return
-                    if not bool(n8n_enabled.value):
-                        ui.notify("n8n ist deaktiviert.", color="orange")
-                        return
-
-                    base_url = os.environ.get("APP_BASE_URL", "http://localhost:8080").rstrip("/")
-                    event_id = secrets.token_urlsafe(12)
-                    payload = {
-                        "event_id": event_id,
-                        "company_id": int(comp.id or 0),
-                        "file_name": "n8n-test.txt",
-                        "file_base64": base64.b64encode(b"FixundFertig n8n Test").decode("utf-8"),
-                        "extracted": {
-                            "suggested_title": "n8n Testdokument",
-                            "summary": "Test fuer den n8n Webhook Import.",
-                            "vendor": "n8n",
-                            "keywords": ["test", "n8n", "ingest"],
-                        },
-                    }
-                    raw_body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-                    timestamp = str(int(time.time()))
-                    signed_payload = f"{timestamp}.".encode("utf-8") + raw_body
-                    signature = hmac.new(secret_value.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
-                    headers = {
-                        "Content-Type": "application/json",
-                        "X-Timestamp": timestamp,
-                        "X-Signature": signature,
-                    }
-                    try:
-                        resp = httpx.post(
-                            f"{base_url}/api/webhooks/n8n/ingest",
-                            content=raw_body,
-                            headers=headers,
-                            timeout=8.0,
-                        )
-                    except Exception as exc:
-                        ui.notify(f"Ingest fehlgeschlagen: {exc}", color="red")
-                        return
-
-                    if resp.status_code >= 400:
-                        ui.notify(f"Ingest Fehler: HTTP {resp.status_code}", color="red")
-                        return
-                    ui.notify("Ingest OK. Dokument angelegt.", color="green")
-
-                ui.button("Ingest testen", on_click=test_n8n_ingest).classes(C_BTN_SEC)
-
-                def test_n8n_upload() -> None:
-                    secret_value = (n8n_secret.value or "").strip()
-                    if not secret_value:
-                        ui.notify("n8n Secret fehlt.", color="orange")
-                        return
-                    if not bool(n8n_enabled.value):
-                        ui.notify("n8n ist deaktiviert.", color="orange")
-                        return
-
-                    base_url = os.environ.get("APP_BASE_URL", "http://localhost:8080").rstrip("/")
-                    payload = {
-                        "title": "n8n Upload Test",
-                        "extracted": {
-                            "vendor": "n8n",
-                            "doc_date": datetime.now().date().isoformat(),
-                            "amount_total": 12.34,
-                            "currency": "EUR",
-                        },
-                    }
-                    data = {"payload_json": json.dumps(payload, ensure_ascii=False)}
-                    files = {
-                        "file": (
-                            "n8n-upload-test.txt",
-                            b"FixundFertig n8n Upload Test",
-                            "text/plain",
-                        )
-                    }
-                    headers = {
-                        "X-Company-Id": str(int(comp.id or 0)),
-                        "X-N8N-Secret": secret_value,
-                    }
-                    try:
-                        resp = httpx.post(
-                            f"{base_url}/api/webhooks/n8n/upload",
-                            data=data,
-                            files=files,
-                            headers=headers,
-                            timeout=8.0,
-                        )
-                    except Exception as exc:
-                        ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
-                        return
-
-                    if resp.status_code >= 400:
-                        ui.notify(f"Upload Fehler: HTTP {resp.status_code}", color="red")
-                        return
-                    ui.notify("Upload OK. Dokument gespeichert.", color="green")
-
-                ui.button("Upload testen", on_click=test_n8n_upload).classes(C_BTN_SEC)
-
-        with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
-            ui.label("Dokumente").classes("text-sm font-semibold text-slate-700")
-            ui.label("Test-Hook für Metadaten").classes("text-sm text-slate-500")
-
-            with ui.grid(columns=2).classes("w-full gap-4"):
-                doc_vendor = ui.input("Lieferant", placeholder="z.B. ACME GmbH").classes(C_INPUT)
-                doc_date = ui.input("Belegdatum", placeholder="YYYY-MM-DD").classes(C_INPUT)
-                doc_amount = ui.number("Betrag", step=0.01).classes(C_INPUT)
-                doc_currency = ui.input("Währung", value="EUR").classes(C_INPUT)
-                doc_filename = ui.input("Originaldatei", placeholder="scan.pdf").classes(C_INPUT)
-                doc_keywords = ui.input("Keywords (kommagetrennt)", placeholder="steuer, hardware").classes(C_INPUT)
-
-            preview = ui.label("").classes("text-sm text-slate-500 mt-2")
-            count_label = ui.label("").classes("text-sm text-slate-500")
-
-            def _refresh_document_status() -> None:
-                cid = int(comp.id or 0)
-                if not cid:
-                    count_label.text = "Kein aktives Unternehmen."
-                    preview.text = ""
-                    return
-                with get_session() as s:
-                    docs = list(
-                        s.exec(select(Document).where(Document.company_id == cid).order_by(Document.created_at.desc()))
-                    )
-                count_label.text = f"{len(docs)} Dokument(e) gespeichert."
-                if docs:
-                    latest = docs[0]
-                    preview.text = f"Letztes: {latest.title or 'Dokument'}"
-                else:
-                    preview.text = "Noch keine Dokumente."
-
-            def _create_document() -> None:
-                cid = int(comp.id or 0)
-                if not cid:
-                    ui.notify("Kein aktives Unternehmen.", color="red")
-                    return
-                amount_value = doc_amount.value
-                amount = float(amount_value) if amount_value not in (None, "") else None
-                title = build_display_title(
-                    doc_vendor.value or "",
-                    doc_date.value or "",
-                    amount,
-                    doc_currency.value or "",
-                    doc_filename.value or "",
-                )
-                storage_key = f"{safe_filename(doc_filename.value or title)}-{secrets.token_hex(4)}"
-                keywords_json = normalize_keywords(doc_keywords.value or "")
-                original_name = doc_filename.value or title
-                safe_name = safe_filename(original_name)
-                document = Document(
-                    company_id=cid,
-                    filename=safe_name,
-                    original_filename=original_name,
-                    mime_type="application/pdf",
-                    size_bytes=0,
-                    source="manual",
-                    doc_type="pdf",
-                    storage_key=storage_key,
-                    storage_path="",
-                    mime="application/pdf",
-                    size=0,
-                    sha256="",
-                    title=title,
-                    description="",
-                    vendor=doc_vendor.value or "",
-                    doc_date=(doc_date.value or "").strip() or None,
-                    amount_total=amount,
-                    currency=(doc_currency.value or "").strip() or None,
-                    keywords_json=keywords_json,
-                )
-                with get_session() as s:
-                    s.add(document)
-                    s.commit()
-                download_name = build_download_filename(title, document.mime)
-                ui.notify(f"Dokument gespeichert: {download_name}", color="green")
-                _refresh_document_status()
-
-            with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
-                ui.button("Beispieldokument speichern", on_click=_create_document).classes(C_BTN_SEC)
-
-            _refresh_document_status()
+                ui.button("Secret kopieren", on_click=_copy_n8n_secret).classes(C_BTN_SEC)
 
         with ui.card().classes(C_CARD + " p-6 w-full mt-4"):
             ui.label("Account").classes("text-sm font-semibold text-slate-700")
