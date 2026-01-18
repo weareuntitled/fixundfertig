@@ -30,7 +30,4 @@ def render_exports(session, comp: Company) -> None:
         export_card("Rechnungen CSV", "Alle Rechnungen als CSV-Datei", lambda: run_export(export_invoices_csv, "Rechnungen CSV"))
         export_card("Positionen CSV", "Alle Rechnungspositionen als CSV-Datei", lambda: run_export(export_invoice_items_csv, "Positionen CSV"))
         export_card("Kunden CSV", "Alle Kunden als CSV-Datei", lambda: run_export(export_customers_csv, "Kunden CSV"))
-
-    with ui.expansion("Erweitert").classes("w-full mt-4"):
-        with ui.column().classes("w-full gap-2 p-2"):
-            export_card("DB-Backup", "SQLite Datenbank sichern", lambda: run_export(export_database_backup, "DB-Backup"))
+        export_card("DB-Backup", "SQLite Datenbank sichern", lambda: run_export(export_database_backup, "DB-Backup"))

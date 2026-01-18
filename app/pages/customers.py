@@ -14,14 +14,31 @@ def render_customers(session, comp: Company) -> None:
         .where(Customer.archived == False, Customer.company_id == comp.id)
         .order_by(Customer.name)
     ).all()
-    with ui.grid(columns=3).classes("w-full gap-4"):
-        for c in customers:
-            def open_detail(customer_id: int = int(c.id)):
-                app.storage.user["customer_detail_id"] = customer_id
-                app.storage.user["page"] = "customer_detail"
-                ui.navigate.to("/")
+    with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+        with ui.row().classes(C_TABLE_HEADER):
+            ui.label("Name").classes("flex-1 font-bold text-xs text-slate-500")
+            ui.label("Email").classes("w-64 font-bold text-xs text-slate-500")
+            ui.label("Details").classes("w-64 font-bold text-xs text-slate-500")
 
-            with ui.card().classes(C_CARD + " p-4 cursor-pointer " + C_CARD_HOVER).on("click", lambda _, x=int(c.id): open_detail(x)):
-                ui.label(c.display_name).classes("font-bold")
-                if c.email:
-                    ui.label(c.email).classes("text-xs text-slate-500")
+        if not customers:
+            with ui.row().classes(C_TABLE_ROW):
+                ui.label("Noch keine Kunden vorhanden").classes("text-sm text-slate-500")
+        else:
+            for c in customers:
+                def open_detail(customer_id: int = int(c.id)):
+                    app.storage.user["customer_detail_id"] = customer_id
+                    app.storage.user["page"] = "customer_detail"
+                    ui.navigate.to("/")
+
+                details: list[str] = []
+                if c.vorname or c.nachname:
+                    details.append(f"{c.vorname} {c.nachname}".strip())
+                if c.ort or c.plz:
+                    details.append(" ".join([part for part in [c.plz, c.ort] if part]))
+                if c.short_code:
+                    details.append(f"Kürzel: {c.short_code}")
+
+                with ui.row().classes(C_TABLE_ROW + " cursor-pointer").on("click", lambda _, x=int(c.id): open_detail(x)):
+                    ui.label(c.display_name).classes("flex-1 text-sm text-slate-900")
+                    ui.label(c.email or "-").classes("w-64 text-sm text-slate-600")
+                    ui.label(" · ".join(details) if details else "-").classes("w-64 text-sm text-slate-600")

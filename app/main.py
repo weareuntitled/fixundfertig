@@ -977,14 +977,17 @@ def layout_wrapper(content_func):
     identifier = app.storage.user.get("auth_user")
     initials = _avatar_initials(identifier)
     company_name = _active_company_name()
-    page_title = _page_title(app.storage.user.get("page", "invoices"))
 
     with ui.element("div").classes("w-full min-h-screen bg-white"):
         with ui.row().classes("w-full min-h-screen"):
             # Sidebar
             with ui.column().classes("w-64 bg-slate-50 border-r border-slate-200 px-4 py-6 gap-6"):
-                with ui.row().classes("items-center gap-2 px-2"):
-                    ui.label("FixundFertig").classes("text-lg font-bold text-slate-700")
+                with ui.row().classes("items-center gap-3 px-2"):
+                    with ui.element("div").classes(
+                        "h-9 w-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm"
+                    ):
+                        ui.label("FF").classes("text-xs font-semibold tracking-[0.2em]")
+                    ui.label("FixundFertig").classes("text-sm font-semibold text-slate-900 tracking-wide")
                 ui.separator().classes("opacity-70")
 
                 def nav_section(title: str, items: list[tuple[str, str]]):
@@ -1028,12 +1031,8 @@ def layout_wrapper(content_func):
                 with ui.row().classes(
                     "w-full h-16 items-center justify-between px-6 border-b border-slate-200 bg-white sticky top-0 z-50"
                 ):
-                    ui.label(page_title).classes("text-lg font-semibold text-slate-900")
+                    ui.element("div").classes("flex-1")
                     with ui.row().classes("items-center gap-2"):
-                        ui.button(
-                            icon="settings",
-                            on_click=lambda: ui.navigate.to("/settings"),
-                        ).props("flat dense").classes("text-slate-500")
                         avatar_menu = ui.menu().classes("min-w-[220px]")
                         with ui.avatar().classes(
                             "bg-slate-800 text-white rounded-full cursor-pointer shadow-sm hover:shadow-md transition"
