@@ -287,7 +287,6 @@ async def n8n_ingest(request: Request):
             size_bytes=len(file_bytes),
             source="n8n",
             doc_type=ext,
-            original_filename=original_filename,
         )
         document.storage_path = storage_info["path"]
         session.add(document)
