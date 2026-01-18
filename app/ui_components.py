@@ -10,8 +10,7 @@ from styles import (
     C_BTN_SEC,
     C_CARD,
     C_CARD_HOVER,
-    C_CARD_GLASS,
-    C_CARD_GLASS_HOVER,
+    C_GLASS_CARD_HOVER,
     C_SECTION_TITLE,
 )
 
@@ -38,18 +37,7 @@ def invoice_status_badge(status: str) -> str:
     return C_BADGE_GRAY
 
 def kpi_card(label, value, icon, color):
-    icon_badge_bg = "bg-blue-50" if "blue" in color else "bg-slate-100"
-    if icon == "trending_up":
-        trend_text = "Steigend"
-        trend_classes = "bg-lime-100 text-lime-700"
-    elif icon == "trending_down":
-        trend_text = "Fallend"
-        trend_classes = "bg-rose-100 text-rose-700"
-    else:
-        trend_text = "Stabil"
-        trend_classes = "bg-slate-100 text-slate-600"
-
-    with ui.card().classes(f"{C_CARD_GLASS} {C_CARD_GLASS_HOVER} p-4 flex flex-row items-center justify-between"):
+    with ui.card().classes(C_CARD + " p-4 flex flex-row items-center justify-between " + C_GLASS_CARD_HOVER):
         with ui.column().classes('gap-1'):
             ui.label(label).classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
             ui.label(value).classes('text-2xl font-bold text-slate-800')

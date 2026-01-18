@@ -39,7 +39,7 @@ from invoice_numbering import build_invoice_filename
 from styles import (
     C_CARD,
     C_CARD_HOVER,
-    C_GLASS_CARD,
+    C_GLASS_CARD_HOVER,
     C_BTN_PRIM,
     C_BTN_SEC,
     C_INPUT,
