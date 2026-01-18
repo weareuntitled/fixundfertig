@@ -4,7 +4,12 @@ FixundFertig Native Mode (Windows, ohne Docker)
 
 Start:
   powershell -ExecutionPolicy Bypass -File .\start_native.ps1
+  powershell -ExecutionPolicy Bypass -File .\start_native.ps1 -Optimized
 #>
+
+param(
+  [switch]$Optimized
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -88,10 +93,15 @@ Write-Green "✅ Setup fertig."
 # 3) Prozesse starten + Cleanup
 # -----------------------------------------------
 $n8nProc = $null
+$n8nLogJob = $null
 
 # Cleanup Handler (Ctrl+C / Script Ende)
 $cleanup = {
   Write-Yellow "`n🧹 Beende Prozesse..."
+  if ($script:n8nLogJob) {
+    try { Stop-Job -Job $script:n8nLogJob -ErrorAction SilentlyContinue } catch {}
+    try { Remove-Job -Job $script:n8nLogJob -Force -ErrorAction SilentlyContinue } catch {}
+  }
   if ($script:n8nProc -and -not $script:n8nProc.HasExited) {
     try { $script:n8nProc.Kill($true) } catch {}
     Write-Yellow "n8n gestoppt."
@@ -99,7 +109,7 @@ $cleanup = {
 }
 
 # Ctrl+C abfangen
-$null = Register-EngineEvent PowerShell.Exiting -Action $cleanup
+$eventSubscription = Register-EngineEvent PowerShell.Exiting -Action $cleanup
 
 # Start n8n
 if ($HasNode) {
@@ -121,7 +131,7 @@ if ($HasNode) {
   $script:n8nProc.Start() | Out-Null
 
   # Async log writer
-  Start-Job -ScriptBlock {
+  $script:n8nLogJob = Start-Job -ScriptBlock {
     param($p, $logPath)
     try {
       $sw = New-Object System.IO.StreamWriter($logPath, $false, [System.Text.Encoding]::UTF8)
@@ -134,7 +144,7 @@ if ($HasNode) {
       while (-not $p.StandardError.EndOfStream)  { $sw.WriteLine($p.StandardError.ReadLine()) }
       $sw.Close()
     } catch {}
-  } -ArgumentList $script:n8nProc, $n8nLog | Out-Null
+  } -ArgumentList $script:n8nProc, $n8nLog
 
   Write-Green "✅ n8n läuft. Logs: $n8nLog"
 } else {
@@ -159,8 +169,16 @@ if (-not (Test-Path $mainPy)) {
 }
 
 try {
-  & $venvPython $mainPy
+  if ($Optimized) {
+    Write-Blue "⚡ Starte im Optimized Modus (-O)..."
+    & $venvPython -O $mainPy
+  } else {
+    & $venvPython $mainPy
+  }
 } finally {
   & $cleanup
+  if ($eventSubscription) {
+    Unregister-Event -SourceIdentifier $eventSubscription.Name -ErrorAction SilentlyContinue
+  }
   Set-Location $RepoRoot
 }
