@@ -40,6 +40,7 @@ services:
       - N8N_PORT=5678
       - N8N_PROTOCOL=https
       - N8N_PROXY_HOPS=1
+      - N8N_SECRET=${N8N_SECRET}
       - WEBHOOK_URL=https://${N8N_DOMAIN}/
       - TZ=Europe/Berlin
       - N8N_SECURE_COOKIE=false
