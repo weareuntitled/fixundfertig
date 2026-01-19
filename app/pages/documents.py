@@ -33,8 +33,11 @@ def render_documents(session, comp: Company) -> None:
     }
     upload_state = {
         "vendor": "",
+        "doc_number": "",
         "doc_date": "",
         "amount_total": None,
+        "amount_net": None,
+        "amount_tax": None,
         "currency": "",
         "description": "",
     }
@@ -121,15 +124,31 @@ def render_documents(session, comp: Company) -> None:
             return
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", encoding="utf-8", newline="") as temp:
             writer = csv.writer(temp, delimiter=";")
-            writer.writerow(["Datum", "Dokument", "Vendor", "Betrag", "Währung", "Beschreibung", "ID"])
+            writer.writerow(
+                [
+                    "Datum",
+                    "Dokument",
+                    "Belegnummer",
+                    "Vendor",
+                    "Betrag",
+                    "Netto",
+                    "Steuer",
+                    "Währung",
+                    "Beschreibung",
+                    "ID",
+                ]
+            )
             for doc in items:
                 created_at = _doc_created_at(doc).date().isoformat() if _doc_created_at(doc) != datetime.min else ""
                 writer.writerow(
                     [
                         created_at,
                         doc.original_filename or doc.title or "Dokument",
+                        doc.doc_number or "",
                         doc.vendor or "",
                         f"{doc.amount_total:.2f}" if doc.amount_total is not None else "",
+                        f"{doc.amount_net:.2f}" if doc.amount_net is not None else "",
+                        f"{doc.amount_tax:.2f}" if doc.amount_tax is not None else "",
                         doc.currency or "",
                         doc.description or "",
                         str(doc.id or ""),
@@ -182,8 +201,15 @@ def render_documents(session, comp: Company) -> None:
         amount_total = upload_state["amount_total"]
         if amount_total in ("", None):
             amount_total = None
+        amount_net = upload_state["amount_net"]
+        if amount_net in ("", None):
+            amount_net = None
+        amount_tax = upload_state["amount_tax"]
+        if amount_tax in ("", None):
+            amount_tax = None
         currency = upload_state["currency"].strip() if upload_state["currency"] else ""
         vendor = upload_state["vendor"].strip() if upload_state["vendor"] else ""
+        doc_number = upload_state["doc_number"].strip() if upload_state["doc_number"] else ""
         description = upload_state["description"].strip() if upload_state["description"] else ""
 
         with get_session() as s:
@@ -196,8 +222,11 @@ def render_documents(session, comp: Company) -> None:
                     source="MANUAL",
                     doc_type=ext,
                     vendor=vendor,
+                    doc_number=doc_number,
                     doc_date=doc_date,
                     amount_total=amount_total,
+                    amount_net=amount_net,
+                    amount_tax=amount_tax,
                     currency=currency,
                     description=description,
                 )
@@ -230,12 +259,24 @@ def render_documents(session, comp: Company) -> None:
                 on_change=lambda e: upload_state.__setitem__("vendor", e.value or ""),
             ).classes(C_INPUT + " w-full")
             ui.input(
+                "Belegnummer",
+                on_change=lambda e: upload_state.__setitem__("doc_number", e.value or ""),
+            ).classes(C_INPUT + " w-full")
+            ui.input(
                 "Belegdatum",
                 on_change=lambda e: upload_state.__setitem__("doc_date", e.value or ""),
             ).props("type=date").classes(C_INPUT + " w-full")
             ui.number(
                 "Betrag",
                 on_change=lambda e: upload_state.__setitem__("amount_total", e.value),
+            ).props("step=0.01").classes(C_INPUT + " w-full")
+            ui.number(
+                "Netto",
+                on_change=lambda e: upload_state.__setitem__("amount_net", e.value),
+            ).props("step=0.01").classes(C_INPUT + " w-full")
+            ui.number(
+                "Steuerbetrag",
+                on_change=lambda e: upload_state.__setitem__("amount_tax", e.value),
             ).props("step=0.01").classes(C_INPUT + " w-full")
             ui.input(
                 "Währung",
@@ -418,13 +459,13 @@ def render_documents(session, comp: Company) -> None:
         flags_area.value = meta_state["flags"]
         meta_dialog.open()
 
-    def _format_amount(doc: Document) -> str:
-        if doc.amount_total is None:
+    def _format_amount_value(amount: float | None, currency: str | None) -> str:
+        if amount is None:
             return "-"
-        currency = (doc.currency or "").strip()
+        currency = (currency or "").strip()
         if currency:
-            return f"{doc.amount_total:.2f} {currency}"
-        return f"{doc.amount_total:.2f}"
+            return f"{amount:.2f} {currency}"
+        return f"{amount:.2f}"
 
     @ui.refreshable
     def render_list():
@@ -442,9 +483,14 @@ def render_documents(session, comp: Company) -> None:
                         "id": int(row.get("id") or 0),
                         "date": created_at[:10],
                         "filename": row.get("original_filename") or row.get("title") or "Dokument",
+                        "doc_number": doc.doc_number or "-",
                         "vendor": doc.vendor or "-",
                         "amount": float(doc.amount_total or 0),
-                        "amount_display": _format_amount(doc),
+                        "amount_net": float(doc.amount_net or 0),
+                        "amount_tax": float(doc.amount_tax or 0),
+                        "amount_display": _format_amount_value(doc.amount_total, doc.currency),
+                        "amount_net_display": _format_amount_value(doc.amount_net, doc.currency),
+                        "amount_tax_display": _format_amount_value(doc.amount_tax, doc.currency),
                         "open_url": f"/api/documents/{row.get('id')}/file",
                     }
                 )
@@ -452,8 +498,11 @@ def render_documents(session, comp: Company) -> None:
             columns = [
                 {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
                 {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
+                {"name": "doc_number", "label": "Belegnr", "field": "doc_number", "sortable": True, "align": "left"},
                 {"name": "vendor", "label": "Vendor", "field": "vendor", "sortable": True, "align": "left"},
                 {"name": "amount", "label": "Betrag", "field": "amount", "sortable": True, "align": "right"},
+                {"name": "amount_net", "label": "Netto", "field": "amount_net", "sortable": True, "align": "right"},
+                {"name": "amount_tax", "label": "Steuer", "field": "amount_tax", "sortable": True, "align": "right"},
                 {"name": "actions", "label": "", "field": "actions", "sortable": False, "align": "right"},
             ]
             table = ui.table(columns=columns, rows=rows, row_key="id", selection="multiple").classes("w-full")
@@ -474,6 +523,12 @@ def render_documents(session, comp: Company) -> None:
 
             with table.add_slot("body-cell-amount") as slot:
                 ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
+
+            with table.add_slot("body-cell-amount_net") as slot:
+                ui.label().bind_text_from(slot, "props.row.amount_net_display", strict=False).classes("text-right")
+
+            with table.add_slot("body-cell-amount_tax") as slot:
+                ui.label().bind_text_from(slot, "props.row.amount_tax_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-actions") as slot:
                 def _open_meta_from_slot() -> None:

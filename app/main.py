@@ -48,11 +48,8 @@ from services.documents import (
     build_display_title,
     document_matches_filters,
     document_storage_path,
-    ensure_document_dir,
     normalize_keywords,
-    resolve_document_path,
     safe_filename,
-    set_document_storage_path,
     serialize_document,
     validate_document_upload,
 )
@@ -223,6 +220,10 @@ async def n8n_ingest(request: Request):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid payload structure")
 
+    extracted = payload.get("extracted") or {}
+    if not isinstance(extracted, dict):
+        extracted = {}
+
     event_id = str(payload.get("event_id") or "").strip()
     company_id_raw = payload.get("company_id")
     file_base64 = payload.get("file_base64")
@@ -282,34 +283,50 @@ async def n8n_ingest(request: Request):
             "txt": "text/plain",
         }.get(ext, "application/octet-stream")
 
+        vendor_value = (extracted.get("vendor") or payload.get("vendor") or "").strip()
+        doc_date_value = (extracted.get("doc_date") or payload.get("doc_date") or "").strip() or None
+        amount_value = _parse_optional_float(extracted.get("amount_total") or payload.get("amount_total"))
+        amount_net_value = _parse_optional_float(extracted.get("amount_net") or payload.get("amount_net"))
+        amount_tax_value = _parse_optional_float(extracted.get("amount_tax") or payload.get("amount_tax"))
+        currency_value = (extracted.get("currency") or payload.get("currency") or "").strip() or None
+        doc_number_value = (extracted.get("doc_number") or payload.get("doc_number") or "").strip()
+        title_value = (extracted.get("title") or payload.get("title") or "").strip()
+        if not title_value:
+            title_value = build_display_title(
+                vendor_value,
+                doc_date_value,
+                amount_value,
+                currency_value,
+                safe_name,
+            )
+        description_value = (extracted.get("summary") or payload.get("summary") or "").strip()
+        keywords_value = extracted.get("keywords") or payload.get("keywords")
+
+        storage_info = save_upload_bytes(company_id, safe_name, file_bytes, mime_type)
         document = build_document_record(
             company_id,
             original_filename,
-            mime_type=mime_type,
-            size_bytes=len(file_bytes),
+            mime_type=storage_info["mime"],
+            size_bytes=storage_info["size"],
+            sha256=storage_info["sha256"],
             source="n8n",
             doc_type=ext,
+            storage_key=storage_info["storage_key"],
+            storage_path=storage_info["path"],
+            title=title_value,
+            description=description_value,
+            vendor=vendor_value,
+            doc_number=doc_number_value,
+            doc_date=doc_date_value,
+            amount_total=amount_value,
+            amount_net=amount_net_value,
+            amount_tax=amount_tax_value,
+            currency=currency_value,
         )
-        document.storage_path = storage_info["path"]
+        document.keywords_json = normalize_keywords(keywords_value)
         session.add(document)
         session.commit()
         session.refresh(document)
-
-        set_document_storage_path(document)
-        ensure_document_dir(company_id, int(document.id))
-        storage_path = resolve_document_path(document.storage_path)
-        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-
-        try:
-            with open(storage_path, "wb") as handle:
-                handle.write(file_bytes)
-        except OSError as exc:
-            session.delete(document)
-            session.commit()
-            raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
-
-        document.size_bytes = len(file_bytes)
-        session.add(document)
 
         raw_payload_json = json.dumps(payload, ensure_ascii=False)
         line_items_json = _json_text(
@@ -338,13 +355,6 @@ async def n8n_ingest(request: Request):
             )
 
         session.add(WebhookEvent(event_id=event_id, source="n8n"))
-        session.add(
-            DocumentMeta(
-                document_id=int(document.id or 0),
-                source="n8n",
-                payload_json=json.dumps({"payload": payload, "sha256": sha256}, ensure_ascii=False),
-            )
-        )
         session.commit()
         session.refresh(document)
         return {"status": "ok", "document_id": int(document.id or 0)}
@@ -369,8 +379,11 @@ async def n8n_upload(
     title: str | None = Form(None),
     description: str | None = Form(None),
     vendor: str | None = Form(None),
+    doc_number: str | None = Form(None),
     doc_date: str | None = Form(None),
     amount_total: str | None = Form(None),
+    amount_net: str | None = Form(None),
+    amount_tax: str | None = Form(None),
     currency: str | None = Form(None),
     keywords: str | None = Form(None),
 ) -> Response:
@@ -421,9 +434,16 @@ async def n8n_upload(
         }.get(ext, "application/octet-stream")
 
     vendor_value = (vendor or extracted.get("vendor") or payload.get("vendor") or "").strip()
+    doc_number_value = (doc_number or extracted.get("doc_number") or payload.get("doc_number") or "").strip()
     doc_date_value = (doc_date or extracted.get("doc_date") or payload.get("doc_date") or "").strip() or None
     amount_value = _parse_optional_float(
         amount_total if amount_total is not None else extracted.get("amount_total") or payload.get("amount_total")
+    )
+    amount_net_value = _parse_optional_float(
+        amount_net if amount_net is not None else extracted.get("amount_net") or payload.get("amount_net")
+    )
+    amount_tax_value = _parse_optional_float(
+        amount_tax if amount_tax is not None else extracted.get("amount_tax") or payload.get("amount_tax")
     )
     currency_value = (currency or extracted.get("currency") or payload.get("currency") or "").strip() or None
     keywords_value = keywords or extracted.get("keywords") or payload.get("keywords")
@@ -482,8 +502,11 @@ async def n8n_upload(
             title=title_value,
             description=description_value,
             vendor=vendor_value,
+            doc_number=doc_number_value,
             doc_date=doc_date_value,
             amount_total=amount_value,
+            amount_net=amount_net_value,
+            amount_tax=amount_tax_value,
             currency=currency_value,
             keywords_json=normalize_keywords(keywords_value),
         )
@@ -540,6 +563,16 @@ def invoice_pdf(invoice_id: int, rev: str | None = None) -> Response:
 async def document_upload(
     company_id: int = Form(...),
     file: UploadFile = File(...),
+    title: str | None = Form(None),
+    description: str | None = Form(None),
+    vendor: str | None = Form(None),
+    doc_number: str | None = Form(None),
+    doc_date: str | None = Form(None),
+    amount_total: str | None = Form(None),
+    amount_net: str | None = Form(None),
+    amount_tax: str | None = Form(None),
+    currency: str | None = Form(None),
+    keywords: str | None = Form(None),
 ) -> dict:
     _require_api_auth()
     filename = file.filename or ""
@@ -567,6 +600,25 @@ async def document_upload(
         sha256 = hashlib.sha256(contents).hexdigest()
         size_bytes = len(contents)
 
+        vendor_value = (vendor or "").strip()
+        doc_number_value = (doc_number or "").strip()
+        doc_date_value = (doc_date or "").strip() or None
+        amount_value = _parse_optional_float(amount_total)
+        amount_net_value = _parse_optional_float(amount_net)
+        amount_tax_value = _parse_optional_float(amount_tax)
+        currency_value = (currency or "").strip() or None
+        title_value = (title or "").strip()
+        if not title_value:
+            title_value = build_display_title(
+                vendor_value,
+                doc_date_value,
+                amount_value,
+                currency_value,
+                filename,
+            )
+        description_value = (description or "").strip()
+        keywords_value = keywords
+
         try:
             document = build_document_record(
                 int(company.id),
@@ -575,7 +627,17 @@ async def document_upload(
                 size_bytes=size_bytes,
                 source="MANUAL",
                 doc_type=ext,
+                title=title_value,
+                description=description_value,
+                vendor=vendor_value,
+                doc_number=doc_number_value,
+                doc_date=doc_date_value,
+                amount_total=amount_value,
+                amount_net=amount_net_value,
+                amount_tax=amount_tax_value,
+                currency=currency_value,
             )
+            document.keywords_json = normalize_keywords(keywords_value)
             document.mime = mime_type
             document.size = size_bytes
             document.sha256 = sha256

@@ -143,8 +143,11 @@ def build_document_record(
     title: str = "",
     description: str = "",
     vendor: str = "",
+    doc_number: str = "",
     doc_date: str | None = None,
     amount_total: float | None = None,
+    amount_net: float | None = None,
+    amount_tax: float | None = None,
     currency: str | None = None,
 ) -> Document:
     storage_key = storage_key or ""
@@ -165,8 +168,11 @@ def build_document_record(
         title=title,
         description=description,
         vendor=vendor,
+        doc_number=doc_number,
         doc_date=doc_date,
         amount_total=amount_total,
+        amount_net=amount_net,
+        amount_tax=amount_tax,
         currency=currency,
     )
 
@@ -221,6 +227,15 @@ def serialize_document(document: Document) -> dict:
         "source": doc_source,
         "title": document.title or "",
         "type": doc_type,
+        "vendor": document.vendor or "",
+        "doc_number": document.doc_number or "",
+        "doc_date": document.doc_date or "",
+        "amount_total": document.amount_total,
+        "amount_net": document.amount_net,
+        "amount_tax": document.amount_tax,
+        "currency": document.currency or "",
+        "description": document.description or "",
+        "keywords_json": document.keywords_json or "[]",
         "created_at": (
             document.created_at.isoformat()
             if hasattr(document.created_at, "isoformat")
