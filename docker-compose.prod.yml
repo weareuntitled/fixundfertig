@@ -83,7 +83,7 @@ services:
     image: n8nio/runners:latest
     container_name: fixundfertig_task_runners
     environment:
-      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5678  # <--- ÄNDERUNG: Port 5678 (statt 5679)
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n:5679
       - N8N_RUNNERS_AUTH_TOKEN=my-secret-token-123
       - TZ=Europe/Berlin
     restart: unless-stopped
