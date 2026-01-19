@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import hashlib
+import logging
 import mimetypes
 import os
 import json
@@ -24,6 +25,8 @@ from services.documents import (
     resolve_document_path,
     validate_document_upload,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def render_documents(session, comp: Company) -> None:
