@@ -759,7 +759,7 @@ def render_documents(session, comp: Company) -> None:
 
     def _format_amount_value(amount: float | None, currency: str | None) -> str:
         if amount is None:
-            return "-"
+            return "nicht verfügbar"
         currency = (currency or "").strip()
         if currency:
             return f"{amount:.2f} {currency}"
@@ -780,6 +780,16 @@ def render_documents(session, comp: Company) -> None:
                 amount_total = _coerce_float(doc.amount_total)
                 amount_net = _coerce_float(doc.amount_net)
                 amount_tax = _coerce_float(doc.amount_tax)
+                logger.debug(
+                    "document_row_keys",
+                    extra={
+                        "doc_id": doc_id,
+                        "amount_total": amount_total,
+                        "amount_net": amount_net,
+                        "amount_tax": amount_tax,
+                        "currency": doc.currency,
+                    },
+                )
                 rows.append(
                     {
                         "id": doc_id,
@@ -791,9 +801,9 @@ def render_documents(session, comp: Company) -> None:
                         "mime": doc.mime or doc.mime_type or "-",
                         "doc_number": doc.doc_number or "-",
                         "vendor": doc.vendor or "-",
-                        "amount": float(amount_total or 0),
-                        "amount_net": float(amount_net or 0),
-                        "amount_tax": float(amount_tax or 0),
+                        "amount": amount_total,
+                        "amount_net": amount_net,
+                        "amount_tax": amount_tax,
                         "amount_display": _format_amount_value(amount_total, doc.currency),
                         "amount_net_display": _format_amount_value(amount_net, doc.currency),
                         "amount_tax_display": _format_amount_value(amount_tax, doc.currency),
