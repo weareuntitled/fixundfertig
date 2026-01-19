@@ -963,11 +963,32 @@ def render_documents(session, comp: Company) -> None:
                         )
                         ui.notify("Dokument nicht verfügbar.", type="warning")
                         return
-                    row_payload = json.dumps(row, default=str)
-                    logger.info(
-                        "DOC_ROW_DEBUG",
-                        extra={"doc_id": int(row.get("id") or 0), "row": row_payload},
-                    )
+                    doc_id = int(row["id"])
+                    open_url = row.get("open_url") or f"/api/documents/{doc_id}/file"
+                    try:
+                        with get_session() as s:
+                            doc = s.get(Document, doc_id)
+                        if not doc:
+                            raise FileNotFoundError("Document not found")
+                        storage_key = (doc.storage_key or doc.storage_path or "").strip()
+                        storage_path = resolve_document_path(doc.storage_path)
+                        if storage_path and os.path.exists(storage_path):
+                            ui.run_javascript(f"window.open('{open_url}')")
+                            return
+                        if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+                            if blob_storage().exists(storage_key):
+                                ui.run_javascript(f"window.open('{open_url}')")
+                                return
+                        raise FileNotFoundError("Document file missing")
+                    except Exception:
+                        logger.exception(
+                            "Fehler beim Öffnen des Dokuments: document_id=%s storage_key=%s storage_path=%s open_url=%s",
+                            doc_id,
+                            storage_key if "storage_key" in locals() else None,
+                            storage_path if "storage_path" in locals() else None,
+                            open_url,
+                        )
+                        ui.notify(f"Datei nicht gefunden (Dokument-ID {doc_id}).", color="red")
 
                 with ui.row().classes("justify-end gap-2"):
                     link = ui.link("Öffnen", "#").classes("text-sm text-sky-600")

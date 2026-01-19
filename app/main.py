@@ -906,18 +906,48 @@ def document_file(document_id: int) -> Response:
         if storage_path and storage_path.exists():
             return FileResponse(str(storage_path), media_type=content_type, headers=headers)
 
+        blob_exists = None
+        blob_size = None
         if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
             storage = blob_storage()
-            if storage.exists(storage_key):
-                data = storage.get_bytes(storage_key)
-                return Response(content=data, media_type=content_type, headers=headers)
+            try:
+                blob_exists = storage.exists(storage_key)
+                if blob_exists:
+                    data = storage.get_bytes(storage_key)
+                    blob_size = len(data)
+                    return Response(content=data, media_type=content_type, headers=headers)
+            except Exception:
+                logger.exception(
+                    "Blob storage lookup failed for document_id=%s storage_key=%s",
+                    document_id,
+                    storage_key,
+                )
+
+        resolved_path = str(storage_path) if storage_path else ""
+        local_exists = os.path.exists(resolved_path) if resolved_path else False
+        local_size = None
+        if local_exists:
+            try:
+                local_size = os.path.getsize(resolved_path)
+            except OSError:
+                local_size = None
+        storage_local_root = os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage"
 
         logger.warning(
-            "Document file missing for document_id=%s storage_path=%s storage_key=%s resolved_path=%s",
+            (
+                "Document file missing for document_id=%s expected_storage_path=%s "
+                "resolved_storage_path=%s storage_key=%s storage_local_root=%s "
+                "local_exists=%s local_size=%s blob_exists=%s blob_size=%s"
+            ),
             document_id,
             document.storage_path,
-            document.storage_key,
             str(storage_path) if storage_path else None,
+            storage_key,
+            storage_local_root,
+            local_exists,
+            local_size,
+            blob_exists,
+            blob_size,
         )
         raise HTTPException(status_code=404, detail="File not found")
 
