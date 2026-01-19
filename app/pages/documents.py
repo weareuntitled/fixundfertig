@@ -39,6 +39,7 @@ def render_documents(session, comp: Company) -> None:
         "date_from": "",
         "date_to": "",
     }
+    debug_enabled = os.getenv("FF_DEBUG") == "1"
     upload_state = {
         "vendor": "",
         "doc_number": "",
@@ -132,6 +133,7 @@ def render_documents(session, comp: Company) -> None:
         cleaned = cleaned.replace("/", "_").replace("\\", "_").replace(":", "_")
         return cleaned or "document"
 
+    @ui_handler("documents.export")
     def _export_documents(selected_ids: set[int]) -> None:
         if not selected_ids:
             ui.notify("Bitte Dokumente auswählen.", color="orange")
@@ -219,87 +221,119 @@ def render_documents(session, comp: Company) -> None:
             if temp_path.exists():
                 temp_path.unlink()
 
+    @ui_handler("documents.upload")
     async def _handle_upload(event) -> None:
-        if not comp.id:
-            ui.notify("Kein aktives Unternehmen.", color="red")
-            return
+        action = "document_upload"
+        document_id = None
+        storage_key = None
         filename = getattr(event, "name", "") or getattr(event.file, "name", "") or "upload"
-
         try:
-            data = await _read_upload_bytes(event.file)
-            size_bytes = len(data)
-            validate_document_upload(filename, size_bytes)
-        except HTTPException as exc:
-            ui.notify(str(exc.detail), color="red")
-            return
-        except Exception as exc:
-            ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
-            return
-
-        ext = os.path.splitext(filename)[1].lower().lstrip(".")
-        if ext == "jpeg":
-            ext = "jpg"
-
-        mime_type = (
-            getattr(event, "type", "")
-            or getattr(event.file, "content_type", "")
-            or mimetypes.guess_type(filename)[0]
-            or ""
-        )
-        sha256 = hashlib.sha256(data).hexdigest()
-
-        doc_date = upload_state["doc_date"] or None
-        amount_total = upload_state["amount_total"]
-        if amount_total in ("", None):
-            amount_total = None
-        amount_net = upload_state["amount_net"]
-        if amount_net in ("", None):
-            amount_net = None
-        amount_tax = upload_state["amount_tax"]
-        if amount_tax in ("", None):
-            amount_tax = None
-        currency = upload_state["currency"].strip() if upload_state["currency"] else ""
-        vendor = upload_state["vendor"].strip() if upload_state["vendor"] else ""
-        doc_number = upload_state["doc_number"].strip() if upload_state["doc_number"] else ""
-        description = upload_state["description"].strip() if upload_state["description"] else ""
-
-        with get_session() as s:
-            try:
-                document = build_document_record(
-                    int(comp.id),
-                    filename,
-                    mime_type=mime_type,
-                    size_bytes=size_bytes,
-                    source="MANUAL",
-                    doc_type=ext,
-                    vendor=vendor,
-                    doc_number=doc_number,
-                    doc_date=doc_date,
-                    amount_total=amount_total,
-                    amount_net=amount_net,
-                    amount_tax=amount_tax,
-                    currency=currency,
-                    description=description,
-                )
-                document.mime = mime_type
-                document.size = size_bytes
-                document.sha256 = sha256
-                s.add(document)
-                s.flush()
-
-                storage_key = build_document_key(int(comp.id), int(document.id), filename)
-                document.storage_key = storage_key
-                document.storage_path = storage_key
-
-                blob_storage().put_bytes(storage_key, data, mime_type)
-                s.commit()
-            except Exception as exc:
-                s.rollback()
-                ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
+            if not comp.id:
+                ui.notify("Kein aktives Unternehmen.", color="red")
                 return
 
-        ui.notify(f"Dokument gespeichert: {filename} ({size_bytes} Bytes)", color="green")
-        render_list.refresh()
+            try:
+                data = await _read_upload_bytes(event.file)
+                size_bytes = len(data)
+                validate_document_upload(filename, size_bytes)
+            except HTTPException:
+                logger.exception(
+                    "ACTION_FAILED",
+                    extra=_build_action_context(
+                        action,
+                        filename=filename,
+                    ),
+                )
+                ui.notify("Fehler beim Upload (Dokument-ID: unbekannt)", color="red")
+                return
+
+            ext = os.path.splitext(filename)[1].lower().lstrip(".")
+            if ext == "jpeg":
+                ext = "jpg"
+
+            mime_type = (
+                getattr(event, "type", "")
+                or getattr(event.file, "content_type", "")
+                or mimetypes.guess_type(filename)[0]
+                or ""
+            )
+            sha256 = hashlib.sha256(data).hexdigest()
+
+            doc_date = upload_state["doc_date"] or None
+            amount_total = upload_state["amount_total"]
+            if amount_total in ("", None):
+                amount_total = None
+            amount_net = upload_state["amount_net"]
+            if amount_net in ("", None):
+                amount_net = None
+            amount_tax = upload_state["amount_tax"]
+            if amount_tax in ("", None):
+                amount_tax = None
+            currency = upload_state["currency"].strip() if upload_state["currency"] else ""
+            vendor = upload_state["vendor"].strip() if upload_state["vendor"] else ""
+            doc_number = upload_state["doc_number"].strip() if upload_state["doc_number"] else ""
+            description = upload_state["description"].strip() if upload_state["description"] else ""
+
+            with get_session() as s:
+                try:
+                    document = build_document_record(
+                        int(comp.id),
+                        filename,
+                        mime_type=mime_type,
+                        size_bytes=size_bytes,
+                        source="MANUAL",
+                        doc_type=ext,
+                        vendor=vendor,
+                        doc_number=doc_number,
+                        doc_date=doc_date,
+                        amount_total=amount_total,
+                        amount_net=amount_net,
+                        amount_tax=amount_tax,
+                        currency=currency,
+                        description=description,
+                    )
+                    document.mime = mime_type
+                    document.size = size_bytes
+                    document.sha256 = sha256
+                    s.add(document)
+                    s.flush()
+
+                    document_id = int(document.id)
+                    storage_key = build_document_key(int(comp.id), int(document.id), filename)
+                    document.storage_key = storage_key
+                    document.storage_path = storage_key
+
+                    blob_storage().put_bytes(storage_key, data, mime_type)
+                    s.commit()
+                except Exception:
+                    s.rollback()
+                    raise
+
+            logger.info(
+                "ACTION_SUCCESS",
+                extra=_build_action_context(
+                    action,
+                    document_id=document_id,
+                    filename=filename,
+                    storage_key=storage_key,
+                    storage_path=storage_key,
+                ),
+            )
+            ui.notify(f"Dokument gespeichert: {filename} ({size_bytes} Bytes)", color="green")
+            render_list.refresh()
+        except Exception:
+            logger.exception(
+                "ACTION_FAILED",
+                extra=_build_action_context(
+                    action,
+                    document_id=document_id,
+                    filename=filename,
+                    storage_key=storage_key,
+                    storage_path=storage_key,
+                ),
+            )
+            doc_id_display = document_id if document_id is not None else "unbekannt"
+            ui.notify(f"Fehler beim Upload (Dokument-ID: {doc_id_display})", color="red")
 
     with ui.dialog() as upload_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[480px] max-w-[92vw]"):
@@ -364,13 +398,16 @@ def render_documents(session, comp: Company) -> None:
         if debug_button:
             debug_button.visible = bool(selected_ids)
 
+    @ui_handler("documents.debug")
     def _debug_log_selection() -> None:
         payload = {"selected_ids": sorted(selected_ids)}
         ui.run_javascript(f"console.log('documents_debug', {json.dumps(payload)});")
 
+    @ui_handler("documents.dialog.reset_events.open")
     def _open_reset_events() -> None:
         reset_dialog.open()
 
+    @ui_handler("documents.dialog.delete_all.open")
     def _open_delete_all() -> None:
         delete_all_dialog.open()
 
@@ -490,41 +527,75 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=delete_all_dialog.close).classes(C_BTN_SEC)
 
+                @ui_handler("documents.dialog.delete_all.confirm")
                 def _confirm_delete_all():
-                    with get_session() as s:
-                        documents = s.exec(
-                            select(Document).where(Document.company_id == int(comp.id or 0))
-                        ).all()
-                        for document in documents:
-                            meta = s.exec(
-                                select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
-                            ).first()
-                            storage_key = (document.storage_key or document.storage_path or "").strip()
-                            if storage_key.startswith("storage/"):
-                                storage_key = storage_key.removeprefix("storage/").lstrip("/")
-                            storage_path = resolve_document_path(document.storage_path)
-                            if storage_path and os.path.exists(storage_path):
-                                try:
-                                    os.remove(storage_path)
-                                except OSError:
-                                    pass
-                            if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
-                                try:
-                                    blob_storage().delete(storage_key)
-                                except Exception:
-                                    pass
-                            if storage_path:
-                                try:
-                                    os.rmdir(os.path.dirname(storage_path))
-                                except OSError:
-                                    pass
-                            if meta:
-                                s.delete(meta)
-                            s.delete(document)
-                        s.commit()
-                    ui.notify("Alle Dokumente gelöscht.", color="green")
-                    delete_all_dialog.close()
-                    render_list.refresh()
+                    action = "delete_all_documents"
+                    current_document_id = None
+                    current_filename = None
+                    current_storage_key = None
+                    current_storage_path = None
+                    try:
+                        with get_session() as s:
+                            documents = s.exec(
+                                select(Document).where(Document.company_id == int(comp.id or 0))
+                            ).all()
+                            for document in documents:
+                                current_document_id = int(document.id or 0) or None
+                                current_filename = document.original_filename or document.title or None
+                                meta = s.exec(
+                                    select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
+                                ).first()
+                                storage_key = (document.storage_key or document.storage_path or "").strip()
+                                if storage_key.startswith("storage/"):
+                                    storage_key = storage_key.removeprefix("storage/").lstrip("/")
+                                storage_path = resolve_document_path(document.storage_path)
+                                current_storage_key = storage_key or None
+                                current_storage_path = storage_path or None
+                                if storage_path and os.path.exists(storage_path):
+                                    try:
+                                        os.remove(storage_path)
+                                    except OSError:
+                                        pass
+                                if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+                                    try:
+                                        blob_storage().delete(storage_key)
+                                    except Exception:
+                                        pass
+                                if storage_path:
+                                    try:
+                                        os.rmdir(os.path.dirname(storage_path))
+                                    except OSError:
+                                        pass
+                                if meta:
+                                    s.delete(meta)
+                                s.delete(document)
+                            s.commit()
+                        logger.info(
+                            "ACTION_SUCCESS",
+                            extra=_build_action_context(
+                                action,
+                                document_id=current_document_id,
+                                filename=current_filename,
+                                storage_key=current_storage_key,
+                                storage_path=current_storage_path,
+                            ),
+                        )
+                        ui.notify("Alle Dokumente gelöscht.", color="green")
+                        delete_all_dialog.close()
+                        render_list.refresh()
+                    except Exception:
+                        logger.exception(
+                            "ACTION_FAILED",
+                            extra=_build_action_context(
+                                action,
+                                document_id=current_document_id,
+                                filename=current_filename,
+                                storage_key=current_storage_key,
+                                storage_path=current_storage_path,
+                            ),
+                        )
+                        doc_id_display = current_document_id if current_document_id is not None else "unbekannt"
+                        ui.notify(f"Fehler beim Löschen (Dokument-ID: {doc_id_display})", color="red")
 
                 ui.button("Alle löschen", on_click=_confirm_delete_all).classes("bg-rose-600 text-white hover:bg-rose-700")
 
@@ -537,6 +608,7 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=reset_dialog.close).classes(C_BTN_SEC)
 
+                @ui_handler("documents.dialog.reset_events.confirm")
                 def _confirm_reset():
                     with get_session() as s:
                         s.exec(delete(WebhookEvent))
@@ -553,66 +625,128 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=delete_dialog.close).classes(C_BTN_SEC)
 
+                @ui_handler("documents.dialog.delete.confirm")
                 def _confirm_delete():
-                    if not delete_id["value"]:
+                    action = "delete_document"
+                    document_id = int(delete_id["value"] or 0) or None
+                    filename = None
+                    storage_key = None
+                    storage_path = None
+                    try:
+                        if not delete_id["value"]:
+                            delete_dialog.close()
+                            return
+                        with get_session() as s:
+                            document = s.get(Document, int(delete_id["value"]))
+                            if document:
+                                filename = document.original_filename or document.title or None
+                                meta = s.exec(
+                                    select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
+                                ).first()
+                                storage_key = (document.storage_key or document.storage_path or "").strip()
+                                if storage_key.startswith("storage/"):
+                                    storage_key = storage_key.removeprefix("storage/").lstrip("/")
+                                storage_path = resolve_document_path(document.storage_path)
+                                if storage_path and os.path.exists(storage_path):
+                                    try:
+                                        os.remove(storage_path)
+                                    except OSError:
+                                        pass
+                                if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+                                    try:
+                                        blob_storage().delete(storage_key)
+                                    except Exception:
+                                        pass
+                                if storage_path:
+                                    try:
+                                        os.rmdir(os.path.dirname(storage_path))
+                                    except OSError:
+                                        pass
+                                if meta:
+                                    s.delete(meta)
+                                s.delete(document)
+                                s.commit()
+                        logger.info(
+                            "ACTION_SUCCESS",
+                            extra=_build_action_context(
+                                action,
+                                document_id=document_id,
+                                filename=filename,
+                                storage_key=storage_key,
+                                storage_path=storage_path,
+                            ),
+                        )
+                        ui.notify("Gelöscht", color="green")
                         delete_dialog.close()
-                        return
-                    with get_session() as s:
-                        document = s.get(Document, int(delete_id["value"]))
-                        if document:
-                            meta = s.exec(
-                                select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
-                            ).first()
-                            storage_key = (document.storage_key or document.storage_path or "").strip()
-                            if storage_key.startswith("storage/"):
-                                storage_key = storage_key.removeprefix("storage/").lstrip("/")
-                            storage_path = resolve_document_path(document.storage_path)
-                            if storage_path and os.path.exists(storage_path):
-                                try:
-                                    os.remove(storage_path)
-                                except OSError:
-                                    pass
-                            if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
-                                try:
-                                    blob_storage().delete(storage_key)
-                                except Exception:
-                                    pass
-                            if storage_path:
-                                try:
-                                    os.rmdir(os.path.dirname(storage_path))
-                                except OSError:
-                                    pass
-                            if meta:
-                                s.delete(meta)
-                            s.delete(document)
-                            s.commit()
-                    ui.notify("Gelöscht", color="green")
-                    delete_dialog.close()
-                    render_list.refresh()
+                        render_list.refresh()
+                    except Exception:
+                        logger.exception(
+                            "ACTION_FAILED",
+                            extra=_build_action_context(
+                                action,
+                                document_id=document_id,
+                                filename=filename,
+                                storage_key=storage_key,
+                                storage_path=storage_path,
+                            ),
+                        )
+                        doc_id_display = document_id if document_id is not None else "unbekannt"
+                        ui.notify(f"Fehler beim Löschen (Dokument-ID: {doc_id_display})", color="red")
 
                 ui.button("Löschen", on_click=_confirm_delete).classes("bg-rose-600 text-white hover:bg-rose-700")
 
+    @ui_handler("documents.dialog.delete.open")
     def _open_delete(doc_id: int) -> None:
         delete_id["value"] = doc_id
         delete_dialog.open()
 
+    @ui_handler("documents.dialog.meta.open")
     def _open_meta(doc_id: int) -> None:
-        with get_session() as s:
-            meta = s.exec(select(DocumentMeta).where(DocumentMeta.document_id == doc_id)).first()
-            doc = s.get(Document, doc_id)
-        if not meta:
-            ui.notify("Keine Metadaten gefunden.", color="orange")
-            return
-        title_label = doc.original_filename if doc else ""
-        meta_state["title"] = f"Dokument #{doc_id} {title_label}".strip()
-        meta_state["raw"] = _format_json(meta.raw_payload_json, redact_payload=True)
-        meta_state["line_items"] = _format_json(meta.line_items_json)
-        meta_state["flags"] = _format_json(meta.compliance_flags_json)
-        meta_title.text = meta_state["title"]
-        raw_area.value = meta_state["raw"]
-        line_area.value = meta_state["line_items"]
-        flags_area.value = meta_state["flags"]
-        meta_dialog.open()
+        action = "open_document_meta"
+        filename = None
+        storage_key = None
+        storage_path = None
+        try:
+            with get_session() as s:
+                meta = s.exec(select(DocumentMeta).where(DocumentMeta.document_id == doc_id)).first()
+                doc = s.get(Document, doc_id)
+            if not meta:
+                ui.notify("Keine Metadaten gefunden.", color="orange")
+                return
+            filename = doc.original_filename if doc else ""
+            storage_key = (doc.storage_key or "").strip() if doc else None
+            storage_path = (doc.storage_path or "").strip() if doc else None
+            meta_state["title"] = f"Dokument #{doc_id} {filename}".strip()
+            meta_state["raw"] = _format_json(meta.raw_payload_json, redact_payload=True)
+            meta_state["line_items"] = _format_json(meta.line_items_json)
+            meta_state["flags"] = _format_json(meta.compliance_flags_json)
+            meta_title.text = meta_state["title"]
+            raw_area.value = meta_state["raw"]
+            line_area.value = meta_state["line_items"]
+            flags_area.value = meta_state["flags"]
+            meta_dialog.open()
+            logger.info(
+                "ACTION_SUCCESS",
+                extra=_build_action_context(
+                    action,
+                    document_id=doc_id,
+                    filename=filename,
+                    storage_key=storage_key,
+                    storage_path=storage_path,
+                ),
+            )
+        except Exception:
+            logger.exception(
+                "ACTION_FAILED",
+                extra=_build_action_context(
+                    action,
+                    document_id=doc_id,
+                    filename=filename,
+                    storage_key=storage_key,
+                    storage_path=storage_path,
+                ),
+            )
+            ui.notify(f"Fehler beim Öffnen der Metadaten (Dokument-ID: {doc_id})", color="red")
 
     def _format_size(size_bytes: int) -> str:
         if size_bytes <= 0:
@@ -625,7 +759,7 @@ def render_documents(session, comp: Company) -> None:
 
     def _format_amount_value(amount: float | None, currency: str | None) -> str:
         if amount is None:
-            return "-"
+            return "nicht verfügbar"
         currency = (currency or "").strip()
         if currency:
             return f"{amount:.2f} {currency}"
@@ -646,6 +780,16 @@ def render_documents(session, comp: Company) -> None:
                 amount_total = _coerce_float(doc.amount_total)
                 amount_net = _coerce_float(doc.amount_net)
                 amount_tax = _coerce_float(doc.amount_tax)
+                logger.debug(
+                    "document_row_keys",
+                    extra={
+                        "doc_id": doc_id,
+                        "amount_total": amount_total,
+                        "amount_net": amount_net,
+                        "amount_tax": amount_tax,
+                        "currency": doc.currency,
+                    },
+                )
                 rows.append(
                     {
                         "id": doc_id,
@@ -657,9 +801,9 @@ def render_documents(session, comp: Company) -> None:
                         "mime": doc.mime or doc.mime_type or "-",
                         "doc_number": doc.doc_number or "-",
                         "vendor": doc.vendor or "-",
-                        "amount": float(amount_total or 0),
-                        "amount_net": float(amount_net or 0),
-                        "amount_tax": float(amount_tax or 0),
+                        "amount": amount_total,
+                        "amount_net": amount_net,
+                        "amount_tax": amount_tax,
                         "amount_display": _format_amount_value(amount_total, doc.currency),
                         "amount_net_display": _format_amount_value(amount_net, doc.currency),
                         "amount_tax_display": _format_amount_value(amount_tax, doc.currency),
@@ -716,6 +860,7 @@ def render_documents(session, comp: Company) -> None:
                     warn_icon.tooltip("Sehr kleine Datei (< 1 KB).")
 
             with table.add_slot("body-cell-actions") as slot:
+                @ui_handler("documents.row.meta.open")
                 def _open_meta_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row:
@@ -729,25 +874,90 @@ def render_documents(session, comp: Company) -> None:
                         return
                     _open_meta(int(row["id"]))
 
+                @ui_handler("documents.row.delete.open")
                 def _open_delete_from_slot() -> None:
-                    row = _row_from_slot(slot)
-                    if not row:
-                        props = getattr(slot, "props", None)
-                        logger.warning(
-                            "Dokumentslot ohne Row für Löschen: props_type=%s row=%s",
-                            type(props).__name__,
-                            row,
+                    action = "open_delete_dialog"
+                    document_id = None
+                    filename = None
+                    try:
+                        row = _row_from_slot(slot)
+                        if not row:
+                            props = getattr(slot, "props", None)
+                            logger.warning(
+                                "Dokumentslot ohne Row für Löschen: props_type=%s row=%s",
+                                type(props).__name__,
+                                row,
+                            )
+                            ui.notify("Dokument nicht verfügbar.", type="warning")
+                            return
+                        document_id = int(row["id"])
+                        filename = row.get("filename")
+                        _open_delete(document_id)
+                        logger.info(
+                            "ACTION_SUCCESS",
+                            extra=_build_action_context(
+                                action,
+                                document_id=document_id,
+                                filename=filename,
+                            ),
                         )
-                        ui.notify("Dokument nicht verfügbar.", type="warning")
-                        return
-                    _open_delete(int(row["id"]))
+                    except Exception:
+                        logger.exception(
+                            "ACTION_FAILED",
+                            extra=_build_action_context(
+                                action,
+                                document_id=document_id,
+                                filename=filename,
+                            ),
+                        )
+                        doc_id_display = document_id if document_id is not None else "unbekannt"
+                        ui.notify(f"Fehler beim Öffnen des Löschdialogs (Dokument-ID: {doc_id_display})", color="red")
 
+                @ui_handler("documents.row.document.open")
                 def _open_document_from_slot() -> None:
+                    action = "open_document"
+                    document_id = None
+                    filename = None
+                    try:
+                        row = _row_from_slot(slot)
+                        if not row or not row.get("id"):
+                            props = getattr(slot, "props", None)
+                            logger.warning(
+                                "Dokumentslot ohne ID: props_type=%s row=%s",
+                                type(props).__name__,
+                                row,
+                            )
+                            ui.notify("Dokument nicht verfügbar.", type="warning")
+                            return
+                        document_id = int(row["id"])
+                        filename = row.get("filename")
+                        ui.run_javascript(f"window.open('/api/documents/{document_id}/file')")
+                        logger.info(
+                            "ACTION_SUCCESS",
+                            extra=_build_action_context(
+                                action,
+                                document_id=document_id,
+                                filename=filename,
+                            ),
+                        )
+                    except Exception:
+                        logger.exception(
+                            "ACTION_FAILED",
+                            extra=_build_action_context(
+                                action,
+                                document_id=document_id,
+                                filename=filename,
+                            ),
+                        )
+                        doc_id_display = document_id if document_id is not None else "unbekannt"
+                        ui.notify(f"Fehler beim Öffnen des Dokuments (Dokument-ID: {doc_id_display})", color="red")
+
+                def _log_row_debug_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row or not row.get("id"):
                         props = getattr(slot, "props", None)
                         logger.warning(
-                            "Dokumentslot ohne ID: props_type=%s row=%s",
+                            "Dokumentslot ohne Row für Debug: props_type=%s row=%s",
                             type(props).__name__,
                             row,
                         )
@@ -793,6 +1003,12 @@ def render_documents(session, comp: Company) -> None:
                         icon="delete",
                         on_click=_open_delete_from_slot,
                     ).props("flat dense").classes("text-rose-600")
+                    if debug_enabled:
+                        ui.button(
+                            "",
+                            icon="bug_report",
+                            on_click=_log_row_debug_from_slot,
+                        ).props("flat dense").classes("text-amber-600")
 
     render_filters()
     render_list()
