@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import hashlib
-import json
 import mimetypes
 import os
 import tempfile
@@ -18,7 +17,6 @@ from services.documents import (
     build_document_record,
     document_matches_filters,
     resolve_document_path,
-    serialize_document,
     validate_document_upload,
 )
 
@@ -68,6 +66,16 @@ def render_documents(session, comp: Company) -> None:
             return datetime.fromisoformat(str(created_at))
         except Exception:
             return datetime.min
+
+    def _document_invoice_date(doc: Document) -> str:
+        value = getattr(doc, "invoice_date", None) or doc.doc_date
+        return value or ""
+
+    def _document_amount(doc: Document, field: str, fallback: float | None = None) -> float | None:
+        value = getattr(doc, field, None)
+        if value is None:
+            return fallback
+        return value
 
     def _sort_documents(items: list[Document]) -> list[Document]:
         return sorted(items, key=_doc_created_at, reverse=True)
@@ -119,18 +127,51 @@ def render_documents(session, comp: Company) -> None:
         if not items:
             ui.notify("Keine Dokumente zum Export.", color="orange")
             return
+        headers = [
+            "Datum",
+            "Dokument",
+            "Händler",
+            "Händler-Adresse",
+            "PLZ",
+            "Stadt",
+            "Netto",
+            "MwSt",
+            "Brutto",
+            "Währung",
+            "Steuer-Typ",
+            "Typ",
+            "Beschreibung",
+            "ID",
+        ]
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", encoding="utf-8", newline="") as temp:
             writer = csv.writer(temp, delimiter=";")
-            writer.writerow(["Datum", "Dokument", "Vendor", "Betrag", "Währung", "Beschreibung", "ID"])
+            writer.writerow(headers)
             for doc in items:
-                created_at = _doc_created_at(doc).date().isoformat() if _doc_created_at(doc) != datetime.min else ""
+                invoice_date = _document_invoice_date(doc)
+                vendor_name = (getattr(doc, "vendor_name", None) or doc.vendor or "")
+                vendor_address_line1 = getattr(doc, "vendor_address_line1", None) or ""
+                vendor_postal_code = getattr(doc, "vendor_postal_code", None) or ""
+                vendor_city = getattr(doc, "vendor_city", None) or ""
+                currency = doc.currency or ""
+                tax_treatment = getattr(doc, "tax_treatment", None) or ""
+                document_type = (getattr(doc, "document_type", None) or doc.doc_type or "")
+                net_amount = _document_amount(doc, "net_amount")
+                tax_amount = _document_amount(doc, "tax_amount")
+                gross_amount = _document_amount(doc, "gross_amount", fallback=doc.amount_total)
                 writer.writerow(
                     [
-                        created_at,
+                        invoice_date,
                         doc.original_filename or doc.title or "Dokument",
-                        doc.vendor or "",
-                        f"{doc.amount_total:.2f}" if doc.amount_total is not None else "",
-                        doc.currency or "",
+                        vendor_name,
+                        vendor_address_line1,
+                        vendor_postal_code,
+                        vendor_city,
+                        f"{net_amount:.2f}" if net_amount is not None else "",
+                        f"{tax_amount:.2f}" if tax_amount is not None else "",
+                        f"{gross_amount:.2f}" if gross_amount is not None else "",
+                        currency,
+                        tax_treatment,
+                        document_type,
                         doc.description or "",
                         str(doc.id or ""),
                     ]
@@ -332,32 +373,6 @@ def render_documents(session, comp: Company) -> None:
                 ).props("dense type=date").classes(C_INPUT + " w-32")
 
     delete_id = {"value": None}
-    meta_state = {"title": "", "raw": "", "line_items": "", "flags": ""}
-
-    def _format_json(value: str, *, redact_payload: bool = False) -> str:
-        if not value:
-            return ""
-        try:
-            payload = json.loads(value)
-        except Exception:
-            return value
-        if redact_payload and isinstance(payload, dict) and "file_base64" in payload:
-            payload = {**payload, "file_base64": "<redacted>"}
-        return json.dumps(payload, ensure_ascii=False, indent=2)
-
-    with ui.dialog() as meta_dialog:
-        with ui.card().classes(C_CARD + " p-5 w-[760px] max-w-[95vw]"):
-            ui.label("Dokument-Metadaten").classes(C_SECTION_TITLE)
-            meta_title = ui.label("").classes("text-sm text-slate-500")
-            ui.label("Payload (bereinigt)").classes("text-xs font-semibold text-slate-500 mt-3")
-            raw_area = ui.textarea(value="").props("readonly").classes("w-full text-xs font-mono min-h-[140px]")
-            ui.label("Line Items").classes("text-xs font-semibold text-slate-500 mt-3")
-            line_area = ui.textarea(value="").props("readonly").classes("w-full text-xs font-mono min-h-[120px]")
-            ui.label("Compliance Flags").classes("text-xs font-semibold text-slate-500 mt-3")
-            flags_area = ui.textarea(value="").props("readonly").classes("w-full text-xs font-mono min-h-[120px]")
-            with ui.row().classes("justify-end mt-4"):
-                ui.button("Schließen", on_click=meta_dialog.close).classes(C_BTN_SEC)
-
     with ui.dialog() as delete_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
             ui.label("Dokument löschen").classes(C_SECTION_TITLE)
@@ -400,31 +415,13 @@ def render_documents(session, comp: Company) -> None:
         delete_id["value"] = doc_id
         delete_dialog.open()
 
-    def _open_meta(doc_id: int) -> None:
-        with get_session() as s:
-            meta = s.exec(select(DocumentMeta).where(DocumentMeta.document_id == doc_id)).first()
-            doc = s.get(Document, doc_id)
-        if not meta:
-            ui.notify("Keine Metadaten gefunden.", color="orange")
-            return
-        title_label = doc.original_filename if doc else ""
-        meta_state["title"] = f"Dokument #{doc_id} {title_label}".strip()
-        meta_state["raw"] = _format_json(meta.raw_payload_json, redact_payload=True)
-        meta_state["line_items"] = _format_json(meta.line_items_json)
-        meta_state["flags"] = _format_json(meta.compliance_flags_json)
-        meta_title.text = meta_state["title"]
-        raw_area.value = meta_state["raw"]
-        line_area.value = meta_state["line_items"]
-        flags_area.value = meta_state["flags"]
-        meta_dialog.open()
-
-    def _format_amount(doc: Document) -> str:
-        if doc.amount_total is None:
+    def _format_amount(value: float | None, currency: str) -> str:
+        if value is None:
             return "-"
-        currency = (doc.currency or "").strip()
+        currency = (currency or "").strip()
         if currency:
-            return f"{doc.amount_total:.2f} {currency}"
-        return f"{doc.amount_total:.2f}"
+            return f"{value:.2f} {currency}"
+        return f"{value:.2f}"
 
     @ui.refreshable
     def render_list():
@@ -435,25 +432,33 @@ def render_documents(session, comp: Company) -> None:
         with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
             rows = []
             for doc in items:
-                row = serialize_document(doc)
-                created_at = row.get("created_at", "")
+                invoice_date = _document_invoice_date(doc)
+                currency = doc.currency or ""
+                net_amount = _document_amount(doc, "net_amount")
+                tax_amount = _document_amount(doc, "tax_amount")
+                gross_amount = _document_amount(doc, "gross_amount", fallback=doc.amount_total)
                 rows.append(
                     {
-                        "id": int(row.get("id") or 0),
-                        "date": created_at[:10],
-                        "filename": row.get("original_filename") or row.get("title") or "Dokument",
-                        "vendor": doc.vendor or "-",
-                        "amount": float(doc.amount_total or 0),
-                        "amount_display": _format_amount(doc),
-                        "open_url": f"/api/documents/{row.get('id')}/file",
+                        "id": int(doc.id or 0),
+                        "date": invoice_date,
+                        "vendor_name": (getattr(doc, "vendor_name", None) or doc.vendor or "-"),
+                        "net_amount": float(net_amount or 0),
+                        "net_display": _format_amount(net_amount, currency),
+                        "tax_amount": float(tax_amount or 0),
+                        "tax_display": _format_amount(tax_amount, currency),
+                        "gross_amount": float(gross_amount or 0),
+                        "gross_display": _format_amount(gross_amount, currency),
+                        "document_type": (getattr(doc, "document_type", None) or doc.doc_type or ""),
                     }
                 )
 
             columns = [
                 {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
-                {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
-                {"name": "vendor", "label": "Vendor", "field": "vendor", "sortable": True, "align": "left"},
-                {"name": "amount", "label": "Betrag", "field": "amount", "sortable": True, "align": "right"},
+                {"name": "vendor_name", "label": "Händler", "field": "vendor_name", "sortable": True, "align": "left"},
+                {"name": "net_amount", "label": "Netto", "field": "net_amount", "sortable": True, "align": "right"},
+                {"name": "tax_amount", "label": "MwSt", "field": "tax_amount", "sortable": True, "align": "right"},
+                {"name": "gross_amount", "label": "Brutto", "field": "gross_amount", "sortable": True, "align": "right"},
+                {"name": "document_type", "label": "Typ", "field": "document_type", "sortable": True, "align": "left"},
                 {"name": "actions", "label": "", "field": "actions", "sortable": False, "align": "right"},
             ]
             table = ui.table(columns=columns, rows=rows, row_key="id", selection="multiple").classes("w-full")
@@ -472,17 +477,16 @@ def render_documents(session, comp: Company) -> None:
                     return None
                 return props.get("row")
 
-            with table.add_slot("body-cell-amount") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
+            with table.add_slot("body-cell-net_amount") as slot:
+                ui.label().bind_text_from(slot, "props.row.net_display", strict=False).classes("text-right")
+
+            with table.add_slot("body-cell-tax_amount") as slot:
+                ui.label().bind_text_from(slot, "props.row.tax_display", strict=False).classes("text-right")
+
+            with table.add_slot("body-cell-gross_amount") as slot:
+                ui.label().bind_text_from(slot, "props.row.gross_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-actions") as slot:
-                def _open_meta_from_slot() -> None:
-                    row = _row_from_slot(slot)
-                    if not row:
-                        ui.notify("Dokument nicht verfügbar.", type="warning")
-                        return
-                    _open_meta(int(row["id"]))
-
                 def _open_delete_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row:
@@ -492,16 +496,12 @@ def render_documents(session, comp: Company) -> None:
 
                 def _open_document_from_slot() -> None:
                     row = _row_from_slot(slot)
-                    if not row or not row.get("open_url"):
+                    if not row or not row.get("id"):
                         ui.notify("Dokument nicht verfügbar.", type="warning")
                         return
-                    ui.run_javascript(f"window.open({json.dumps(row['open_url'])}, '_blank')")
+                    ui.run_javascript(f"window.open('/api/documents/{int(row['id'])}/file')")
 
                 with ui.row().classes("justify-end gap-2"):
-                    ui.button(
-                        "Meta",
-                        on_click=_open_meta_from_slot,
-                    ).props("flat dense").classes("text-xs text-slate-600")
                     link = ui.link("Öffnen", "#").classes("text-sm text-sky-600")
                     link.on("click", _open_document_from_slot)
                     ui.button(
