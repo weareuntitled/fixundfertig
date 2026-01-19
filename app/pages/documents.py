@@ -477,21 +477,17 @@ def render_documents(session, comp: Company) -> None:
         items = _sort_documents(_filter_documents(_load_documents()))
         selected_ids.clear()
         _update_action_buttons()
-        meta_map = _load_meta_map({int(doc.id or 0) for doc in items})
 
         with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
             rows = []
             for doc in items:
-                invoice_date = _document_invoice_date(doc)
-                currency = doc.currency or ""
-                net_amount = _document_amount(doc, "net_amount")
-                tax_amount = _document_amount(doc, "tax_amount")
-                gross_amount = _document_amount(doc, "gross_amount")
+                doc_id = int(doc.id or 0)
+                created_at = _doc_created_at(doc)
                 rows.append(
                     {
-                        "id": int(row.get("id") or 0),
-                        "date": created_at[:10],
-                        "filename": row.get("original_filename") or row.get("title") or "Dokument",
+                        "id": doc_id,
+                        "date": created_at.strftime("%Y-%m-%d") if created_at != datetime.min else "",
+                        "filename": doc.original_filename or doc.title or "Dokument",
                         "doc_number": doc.doc_number or "-",
                         "vendor": doc.vendor or "-",
                         "amount": float(doc.amount_total or 0),
@@ -500,7 +496,7 @@ def render_documents(session, comp: Company) -> None:
                         "amount_display": _format_amount_value(doc.amount_total, doc.currency),
                         "amount_net_display": _format_amount_value(doc.amount_net, doc.currency),
                         "amount_tax_display": _format_amount_value(doc.amount_tax, doc.currency),
-                        "open_url": f"/api/documents/{row.get('id')}/file",
+                        "open_url": f"/api/documents/{doc_id}/file",
                     }
                 )
 
@@ -530,8 +526,8 @@ def render_documents(session, comp: Company) -> None:
                     return None
                 return props.get("row")
 
-            with table.add_slot("body-cell-net_amount") as slot:
-                ui.label().bind_text_from(slot, "props.row.net_display", strict=False).classes("text-right")
+            with table.add_slot("body-cell-amount") as slot:
+                ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-amount_net") as slot:
                 ui.label().bind_text_from(slot, "props.row.amount_net_display", strict=False).classes("text-right")
@@ -547,7 +543,6 @@ def render_documents(session, comp: Company) -> None:
                         return
                     _open_meta(int(row["id"]))
 
-            with table.add_slot("body-cell-actions") as slot:
                 def _open_delete_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row:
@@ -565,6 +560,11 @@ def render_documents(session, comp: Company) -> None:
                 with ui.row().classes("justify-end gap-2"):
                     link = ui.link("Öffnen", "#").classes("text-sm text-sky-600")
                     link.on("click", _open_document_from_slot)
+                    ui.button(
+                        "",
+                        icon="info",
+                        on_click=_open_meta_from_slot,
+                    ).props("flat dense").classes("text-slate-600")
                     ui.button(
                         "",
                         icon="delete",
