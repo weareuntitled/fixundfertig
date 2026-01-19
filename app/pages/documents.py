@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import csv
+import io
 import hashlib
 import mimetypes
 import os
 import tempfile
+import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -74,9 +76,6 @@ def render_documents(session, comp: Company) -> None:
         value = getattr(doc, "invoice_date", None)
         return value or ""
 
-    def _document_amount(doc: Document, field: str) -> float | None:
-        return getattr(doc, field, None)
-
     def _sort_documents(items: list[Document]) -> list[Document]:
         return sorted(items, key=_doc_created_at, reverse=True)
 
@@ -119,6 +118,12 @@ def render_documents(session, comp: Company) -> None:
         options = {year: year for year in sorted(years, reverse=True)}
         return options
 
+    def _safe_export_filename(name: str) -> str:
+        cleaned = (name or "").strip() or "document"
+        cleaned = os.path.basename(cleaned)
+        cleaned = cleaned.replace("/", "_").replace("\\", "_").replace(":", "_")
+        return cleaned or "document"
+
     def _export_documents(selected_ids: set[int]) -> None:
         if not selected_ids:
             ui.notify("Bitte Dokumente auswählen.", color="orange")
@@ -127,66 +132,73 @@ def render_documents(session, comp: Company) -> None:
         if not items:
             ui.notify("Keine Dokumente zum Export.", color="orange")
             return
-        headers = [
-            "Datum",
-            "Dokument",
-            "Händler",
-            "Händler-Adresse",
-            "PLZ",
-            "Stadt",
-            "Netto",
-            "MwSt",
-            "Brutto",
-            "Währung",
-            "Steuer-Typ",
-            "Typ",
-            "Beschreibung",
-            "ID",
-        ]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", encoding="utf-8", newline="") as temp:
-            writer = csv.writer(temp, delimiter=";")
+        csv_buffer = io.StringIO()
+        writer = csv.writer(csv_buffer, delimiter=";", lineterminator="\n")
+        writer.writerow(
+            [
+                "Datum",
+                "Dokument",
+                "Belegnummer",
+                "Vendor",
+                "Betrag",
+                "Netto",
+                "Steuer",
+                "Währung",
+                "Beschreibung",
+                "ID",
+            ]
+        )
+        for doc in items:
+            invoice_date = _document_invoice_date(doc)
             writer.writerow(
                 [
-                    "Datum",
-                    "Dokument",
-                    "Belegnummer",
-                    "Vendor",
-                    "Betrag",
-                    "Netto",
-                    "Steuer",
-                    "Währung",
-                    "Beschreibung",
-                    "ID",
+                    invoice_date,
+                    doc.original_filename or doc.title or "Dokument",
+                    doc.doc_number or "",
+                    doc.vendor or "",
+                    f"{doc.amount_total:.2f}" if doc.amount_total is not None else "",
+                    f"{doc.amount_net:.2f}" if doc.amount_net is not None else "",
+                    f"{doc.amount_tax:.2f}" if doc.amount_tax is not None else "",
+                    doc.currency or "",
+                    doc.description or "",
+                    str(doc.id or ""),
                 ]
             )
+
+        date_stamp = datetime.now().strftime("%Y%m%d")
+        zip_name = f"documents_{date_stamp}.zip"
+        temp_dir = tempfile.mkdtemp(prefix="documents_export_")
+        zip_path = os.path.join(temp_dir, zip_name)
+        missing_files = 0
+
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"documents_{date_stamp}.csv", csv_buffer.getvalue())
+            storage = blob_storage()
             for doc in items:
-                invoice_date = _document_invoice_date(doc)
-                vendor_name = getattr(doc, "vendor_name", None) or ""
-                vendor_address_line1 = getattr(doc, "vendor_address_line1", None) or ""
-                vendor_postal_code = getattr(doc, "vendor_postal_code", None) or ""
-                vendor_city = getattr(doc, "vendor_city", None) or ""
-                currency = doc.currency or ""
-                tax_treatment = getattr(doc, "tax_treatment", None) or ""
-                document_type = getattr(doc, "document_type", None) or ""
-                net_amount = _document_amount(doc, "net_amount")
-                tax_amount = _document_amount(doc, "tax_amount")
-                gross_amount = _document_amount(doc, "gross_amount")
-                writer.writerow(
-                    [
-                        invoice_date,
-                        doc.original_filename or doc.title or "Dokument",
-                        doc.doc_number or "",
-                        doc.vendor or "",
-                        f"{doc.amount_total:.2f}" if doc.amount_total is not None else "",
-                        f"{doc.amount_net:.2f}" if doc.amount_net is not None else "",
-                        f"{doc.amount_tax:.2f}" if doc.amount_tax is not None else "",
-                        doc.currency or "",
-                        doc.description or "",
-                        str(doc.id or ""),
-                    ]
-                )
-        ui.download(temp.name)
-        ui.notify("Export bereit.", color="green")
+                storage_key = getattr(doc, "storage_key", "") or ""
+                storage_path = resolve_document_path(doc.storage_path)
+                data = b""
+                if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+                    if storage.exists(storage_key):
+                        data = storage.get_bytes(storage_key)
+                elif storage_path and os.path.exists(storage_path):
+                    try:
+                        with open(storage_path, "rb") as file:
+                            data = file.read()
+                    except OSError:
+                        data = b""
+
+                if not data:
+                    missing_files += 1
+                    continue
+
+                filename = _safe_export_filename(doc.original_filename or doc.title or f"dokument_{doc.id}")
+                zf.writestr(f"{int(doc.id or 0)}_{filename}", data)
+
+        ui.download(zip_path)
+        if missing_files:
+            ui.notify(f"{missing_files} Dateien fehlten im Export.", color="orange")
+        ui.notify("ZIP-Export bereit.", color="green")
 
     async def _read_upload_bytes(upload_file) -> bytes:
         temp_file = tempfile.NamedTemporaryFile(delete=False)
