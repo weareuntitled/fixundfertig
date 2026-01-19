@@ -5,6 +5,7 @@ import io
 import hashlib
 import mimetypes
 import os
+import json
 import tempfile
 import zipfile
 from datetime import datetime, timedelta
@@ -13,7 +14,9 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from ._shared import *
-from data import Document, DocumentMeta
+from data import Document, DocumentMeta, WebhookEvent
+from sqlmodel import delete
+from data import WebhookEvent
 from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
@@ -344,25 +347,42 @@ def render_documents(session, comp: Company) -> None:
     selected_ids: set[int] = set()
     export_button = None
     upload_button = None
+    debug_button = None
+    reset_button = None
 
     def _update_action_buttons() -> None:
         if export_button and upload_button:
             has_selection = bool(selected_ids)
             export_button.visible = has_selection
             upload_button.visible = not has_selection
+        if debug_button:
+            debug_button.visible = bool(selected_ids)
+
+    def _debug_log_selection() -> None:
+        payload = {"selected_ids": sorted(selected_ids)}
+        ui.run_javascript(f"console.log('documents_debug', {json.dumps(payload)});")
+
+    def _open_reset_events() -> None:
+        reset_dialog.open()
 
     @ui.refreshable
     def render_filters():
         with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
             ui.label("Dokumente").classes(C_PAGE_TITLE)
             ui.space()
-            nonlocal export_button, upload_button
+            nonlocal export_button, upload_button, debug_button, reset_button
             export_button = ui.button(
                 "Export",
                 icon="download",
                 on_click=lambda: _export_documents(selected_ids),
             ).classes(C_BTN_SEC)
             upload_button = ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
+            debug_button = ui.button("Debug", icon="terminal", on_click=_debug_log_selection).classes(C_BTN_SEC)
+            reset_button = ui.button(
+                "Events reset",
+                icon="delete_sweep",
+                on_click=_open_reset_events,
+            ).classes(C_BTN_SEC)
             _update_action_buttons()
 
         with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
@@ -414,6 +434,24 @@ def render_documents(session, comp: Company) -> None:
                 ).props("dense type=date").classes(C_INPUT + " w-32")
 
     delete_id = {"value": None}
+    with ui.dialog() as reset_dialog:
+        with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
+            ui.label("Webhook-Events zurücksetzen").classes(C_SECTION_TITLE)
+            ui.label(
+                "Damit werden alle gespeicherten n8n-Events gelöscht, um Duplikate erneut senden zu können."
+            ).classes("text-sm text-slate-600")
+            with ui.row().classes("justify-end gap-2 mt-3 w-full"):
+                ui.button("Abbrechen", on_click=reset_dialog.close).classes(C_BTN_SEC)
+
+                def _confirm_reset():
+                    with get_session() as s:
+                        s.exec(delete(WebhookEvent))
+                        s.commit()
+                    ui.notify("Webhook-Events gelöscht.", color="green")
+                    reset_dialog.close()
+
+                ui.button("Reset", on_click=_confirm_reset).classes("bg-rose-600 text-white hover:bg-rose-700")
+
     with ui.dialog() as delete_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
             ui.label("Dokument löschen").classes(C_SECTION_TITLE)
@@ -482,6 +520,15 @@ def render_documents(session, comp: Company) -> None:
         flags_area.value = meta_state["flags"]
         meta_dialog.open()
 
+    def _format_size(size_bytes: int) -> str:
+        if size_bytes <= 0:
+            return "-"
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        if size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
     def _format_amount_value(amount: float | None, currency: str | None) -> str:
         if amount is None:
             return "-"
@@ -501,11 +548,16 @@ def render_documents(session, comp: Company) -> None:
             for doc in items:
                 doc_id = int(doc.id or 0)
                 created_at = _doc_created_at(doc)
+                size_bytes = int(doc.size_bytes or doc.size or 0)
                 rows.append(
                     {
                         "id": doc_id,
                         "date": created_at.strftime("%Y-%m-%d") if created_at != datetime.min else "",
                         "filename": doc.original_filename or doc.title or "Dokument",
+                        "size_bytes": size_bytes,
+                        "size_display": _format_size(size_bytes),
+                        "size_warning": 0 < size_bytes < 1024,
+                        "mime": doc.mime or doc.mime_type or "-",
                         "doc_number": doc.doc_number or "-",
                         "vendor": doc.vendor or "-",
                         "amount": float(doc.amount_total or 0),
@@ -521,6 +573,8 @@ def render_documents(session, comp: Company) -> None:
             columns = [
                 {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
                 {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
+                {"name": "size_bytes", "label": "Größe", "field": "size_bytes", "sortable": True, "align": "right"},
+                {"name": "mime", "label": "Mime", "field": "mime", "sortable": True, "align": "left"},
                 {"name": "doc_number", "label": "Belegnr", "field": "doc_number", "sortable": True, "align": "left"},
                 {"name": "vendor", "label": "Vendor", "field": "vendor", "sortable": True, "align": "left"},
                 {"name": "amount", "label": "Betrag", "field": "amount", "sortable": True, "align": "right"},
@@ -552,6 +606,13 @@ def render_documents(session, comp: Company) -> None:
 
             with table.add_slot("body-cell-amount_tax") as slot:
                 ui.label().bind_text_from(slot, "props.row.amount_tax_display", strict=False).classes("text-right")
+
+            with table.add_slot("body-cell-size_bytes") as slot:
+                with ui.row().classes("items-center justify-end gap-1"):
+                    ui.label().bind_text_from(slot, "props.row.size_display", strict=False).classes("text-right")
+                    warn_icon = ui.icon("warning").classes("text-amber-500 text-xs")
+                    warn_icon.bind_visibility_from(slot, "props.row.size_warning", strict=False)
+                    warn_icon.tooltip("Sehr kleine Datei (< 1 KB).")
 
             with table.add_slot("body-cell-actions") as slot:
                 def _open_meta_from_slot() -> None:
