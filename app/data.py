@@ -198,28 +198,24 @@ class Document(SQLModel, table=True):
     # Metadata
     source: str = "MANUAL"
     doc_type: str = ""
+    document_type: str = ""
     
     # Extracted Content
     title: str = ""
     description: str = ""
     vendor: str = ""
     vendor_name: str = ""
-    vendor_street: str = ""
-    vendor_zip: str = ""
+    vendor_address_line1: str = ""
+    vendor_postal_code: str = ""
     vendor_city: str = ""
-    vendor_country: str = ""
-    vendor_tax_id: str = ""
-    vendor_vat_id: str = ""
     doc_date: Optional[str] = None
-    amount_total: Optional[float] = None
-    amount_net: Optional[float] = None
-    amount_vat: Optional[float] = None
-    amount_gross: Optional[float] = None
-    currency: Optional[str] = None
-    invoice_number: str = ""
     invoice_date: Optional[str] = None
+    amount_total: Optional[float] = None
+    net_amount: Optional[float] = None
+    tax_amount: Optional[float] = None
+    gross_amount: Optional[float] = None
+    currency: Optional[str] = None
     tax_treatment: str = ""
-    document_type: str = ""
     keywords_json: str = "[]"
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -407,21 +403,17 @@ def ensure_document_schema():
             "sha256",
             "source",
             "doc_type",
+            "document_type",
             "storage_path",
             "title",
             "description",
             "vendor",
             "vendor_name",
-            "vendor_street",
-            "vendor_zip",
+            "vendor_address_line1",
+            "vendor_postal_code",
             "vendor_city",
-            "vendor_country",
-            "vendor_tax_id",
-            "vendor_vat_id",
             "currency",
-            "invoice_number",
             "tax_treatment",
-            "document_type",
             "keywords_json",
         ]:
             if col not in columns:
@@ -435,6 +427,9 @@ def ensure_document_schema():
         if "amount_gross" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_gross REAL")
         if "doc_date" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_date TEXT")
         if "invoice_date" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN invoice_date TEXT")
+        if "net_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN net_amount REAL")
+        if "tax_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN tax_amount REAL")
+        if "gross_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN gross_amount REAL")
         
         if "storage_key" in columns and "storage_path" in columns:
             conn.exec_driver_sql("UPDATE document SET storage_key = storage_path WHERE (storage_key IS NULL OR storage_key = '') AND storage_path IS NOT NULL AND storage_path != ''")
