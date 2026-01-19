@@ -19,7 +19,8 @@ from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from nicegui import ui, app
+from nicegui import ui, app, helpers
+from nicegui.storage import Storage, PseudoPersistentDict, request_contextvar
 from sqlmodel import select
 
 from env import load_env
@@ -65,7 +66,7 @@ if _cachetools_spec is not None:
 else:
     _invoice_pdf_cache: dict[_CACHE_KEY_TYPE, tuple[float, bytes]] = {}
 
-_DOCUMENT_STORAGE_ROOT = Path("/app/storage")
+_DOCUMENT_STORAGE_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage")
 _logger = logging.getLogger(__name__)
 
 
@@ -328,17 +329,18 @@ async def n8n_ingest(request: Request):
         description_value = (extracted.get("summary") or payload.get("summary") or "").strip()
         keywords_value = extracted.get("keywords") or payload.get("keywords")
 
-        storage_info = save_upload_bytes(company_id, safe_name, file_bytes, mime_type)
+        sha256 = hashlib.sha256(file_bytes).hexdigest()
+        size_bytes = len(file_bytes)
         document = build_document_record(
             company_id,
             original_filename,
-            mime_type=storage_info["mime"],
-            size_bytes=storage_info["size"],
-            sha256=storage_info["sha256"],
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+            sha256=sha256,
             source="n8n",
             doc_type=ext,
-            storage_key=storage_info["storage_key"],
-            storage_path=storage_info["path"],
+            storage_key="pending",
+            storage_path="",
             title=title_value,
             description=description_value,
             vendor=vendor_value,
@@ -356,11 +358,22 @@ async def n8n_ingest(request: Request):
         storage_path = _build_document_storage_path(
             company_id,
             int(document.id or 0),
-            original_filename,
+            safe_name,
             document.created_at,
         )
         document.storage_path = storage_path
         document.storage_key = storage_path
+
+        resolved_path = _resolve_document_storage_path(storage_path)
+        if resolved_path is None:
+            session.rollback()
+            raise HTTPException(status_code=500, detail="Invalid storage path")
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            resolved_path.write_bytes(file_bytes)
+        except OSError as exc:
+            session.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
         session.commit()
         session.refresh(document)
 
@@ -555,7 +568,6 @@ async def n8n_upload(
             amount_tax=amount_tax_value,
             currency=currency_value,
             keywords_json=normalize_keywords(keywords_value),
-            amount_net=net_amount_value,
             amount_vat=vat_amount_value,
             amount_gross=gross_amount_value,
             invoice_number=invoice_number_value,
@@ -1327,9 +1339,15 @@ def settings_page():
 # 1. Secret laden
 storage_secret = os.getenv("STORAGE_SECRET")
 if not storage_secret:
-     # Optional: Warnung, oder wir setzen einen Fallback nur zum Testen, 
-     # aber besser ist es, das in der .env zu haben.
-     print("WARNUNG: STORAGE_SECRET nicht gesetzt!")
+    storage_secret = "dev-secret"
+    print("WARNUNG: STORAGE_SECRET nicht gesetzt!")
+Storage.secret = storage_secret
+if helpers.is_pytest():
+    _dummy_request = type("DummyRequest", (), {"session": {"id": "pytest"}})()
+    request_contextvar.set(_dummy_request)
+    if "pytest" not in app.storage._users:
+        app.storage._users["pytest"] = PseudoPersistentDict()
+        app.storage._users["pytest"].initialize_sync()
 
 # 2. Der Start-Block
 if __name__ in {"__main__", "__mp_main__"}:
