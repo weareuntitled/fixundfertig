@@ -204,16 +204,12 @@ class Document(SQLModel, table=True):
     title: str = ""
     description: str = ""
     vendor: str = ""
-    vendor_name: str = ""
-    vendor_address_line1: str = ""
-    vendor_postal_code: str = ""
-    vendor_city: str = ""
+    doc_number: str = ""
     doc_date: Optional[str] = None
     invoice_date: Optional[str] = None
     amount_total: Optional[float] = None
-    net_amount: Optional[float] = None
-    tax_amount: Optional[float] = None
-    gross_amount: Optional[float] = None
+    amount_net: Optional[float] = None
+    amount_tax: Optional[float] = None
     currency: Optional[str] = None
     tax_treatment: str = ""
     keywords_json: str = "[]"
@@ -403,17 +399,12 @@ def ensure_document_schema():
             "sha256",
             "source",
             "doc_type",
-            "document_type",
             "storage_path",
             "title",
             "description",
             "vendor",
-            "vendor_name",
-            "vendor_address_line1",
-            "vendor_postal_code",
-            "vendor_city",
+            "doc_number",
             "currency",
-            "tax_treatment",
             "keywords_json",
         ]:
             if col not in columns:
@@ -423,8 +414,7 @@ def ensure_document_schema():
         if "size_bytes" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size_bytes INTEGER DEFAULT 0")
         if "amount_total" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_total REAL")
         if "amount_net" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_net REAL")
-        if "amount_vat" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_vat REAL")
-        if "amount_gross" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_gross REAL")
+        if "amount_tax" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_tax REAL")
         if "doc_date" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_date TEXT")
         if "invoice_date" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN invoice_date TEXT")
         if "net_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN net_amount REAL")
