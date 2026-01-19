@@ -349,6 +349,7 @@ def render_documents(session, comp: Company) -> None:
     upload_button = None
     debug_button = None
     reset_button = None
+    delete_all_button = None
 
     def _update_action_buttons() -> None:
         if export_button and upload_button:
@@ -365,12 +366,48 @@ def render_documents(session, comp: Company) -> None:
     def _open_reset_events() -> None:
         reset_dialog.open()
 
+    def _open_delete_all() -> None:
+        delete_all_dialog.open()
+
+    def _coerce_float(value: object) -> float | None:
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _document_size_bytes(doc: Document) -> int:
+        size_value = doc.size_bytes or doc.size or 0
+        try:
+            size = int(size_value or 0)
+        except (TypeError, ValueError):
+            size = 0
+        if size > 0:
+            return size
+        storage_key = (doc.storage_key or doc.storage_path or "").strip()
+        if storage_key.startswith("storage/"):
+            storage_key = storage_key.removeprefix("storage/").lstrip("/")
+        storage_path = resolve_document_path(doc.storage_path)
+        if storage_path and os.path.exists(storage_path):
+            try:
+                return int(os.path.getsize(storage_path))
+            except OSError:
+                return 0
+        if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+            try:
+                data = blob_storage().get_bytes(storage_key)
+                return len(data)
+            except Exception:
+                return 0
+        return 0
+
     @ui.refreshable
     def render_filters():
         with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
             ui.label("Dokumente").classes(C_PAGE_TITLE)
             ui.space()
-            nonlocal export_button, upload_button, debug_button, reset_button
+            nonlocal export_button, upload_button, debug_button, reset_button, delete_all_button
             export_button = ui.button(
                 "Export",
                 icon="download",
@@ -383,6 +420,11 @@ def render_documents(session, comp: Company) -> None:
                 icon="delete_sweep",
                 on_click=_open_reset_events,
             ).classes(C_BTN_SEC)
+            delete_all_button = ui.button(
+                "Alles löschen",
+                icon="delete_forever",
+                on_click=_open_delete_all,
+            ).classes("bg-rose-600 text-white hover:bg-rose-700")
             _update_action_buttons()
 
         with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
@@ -434,6 +476,53 @@ def render_documents(session, comp: Company) -> None:
                 ).props("dense type=date").classes(C_INPUT + " w-32")
 
     delete_id = {"value": None}
+    with ui.dialog() as delete_all_dialog:
+        with ui.card().classes(C_CARD + " p-5 w-[560px] max-w-[92vw]"):
+            ui.label("Alle Dokumente löschen").classes(C_SECTION_TITLE)
+            ui.label(
+                "Das löscht alle Dokumente inkl. Dateien und Metadaten des aktiven Unternehmens."
+            ).classes("text-sm text-slate-600")
+            with ui.row().classes("justify-end gap-2 mt-3 w-full"):
+                ui.button("Abbrechen", on_click=delete_all_dialog.close).classes(C_BTN_SEC)
+
+                def _confirm_delete_all():
+                    with get_session() as s:
+                        documents = s.exec(
+                            select(Document).where(Document.company_id == int(comp.id or 0))
+                        ).all()
+                        for document in documents:
+                            meta = s.exec(
+                                select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
+                            ).first()
+                            storage_key = (document.storage_key or document.storage_path or "").strip()
+                            if storage_key.startswith("storage/"):
+                                storage_key = storage_key.removeprefix("storage/").lstrip("/")
+                            storage_path = resolve_document_path(document.storage_path)
+                            if storage_path and os.path.exists(storage_path):
+                                try:
+                                    os.remove(storage_path)
+                                except OSError:
+                                    pass
+                            if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+                                try:
+                                    blob_storage().delete(storage_key)
+                                except Exception:
+                                    pass
+                            if storage_path:
+                                try:
+                                    os.rmdir(os.path.dirname(storage_path))
+                                except OSError:
+                                    pass
+                            if meta:
+                                s.delete(meta)
+                            s.delete(document)
+                        s.commit()
+                    ui.notify("Alle Dokumente gelöscht.", color="green")
+                    delete_all_dialog.close()
+                    render_list.refresh()
+
+                ui.button("Alle löschen", on_click=_confirm_delete_all).classes("bg-rose-600 text-white hover:bg-rose-700")
+
     with ui.dialog() as reset_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
             ui.label("Webhook-Events zurücksetzen").classes(C_SECTION_TITLE)
@@ -548,7 +637,10 @@ def render_documents(session, comp: Company) -> None:
             for doc in items:
                 doc_id = int(doc.id or 0)
                 created_at = _doc_created_at(doc)
-                size_bytes = int(doc.size_bytes or doc.size or 0)
+                size_bytes = _document_size_bytes(doc)
+                amount_total = _coerce_float(doc.amount_total)
+                amount_net = _coerce_float(doc.amount_net)
+                amount_tax = _coerce_float(doc.amount_tax)
                 rows.append(
                     {
                         "id": doc_id,
@@ -560,12 +652,12 @@ def render_documents(session, comp: Company) -> None:
                         "mime": doc.mime or doc.mime_type or "-",
                         "doc_number": doc.doc_number or "-",
                         "vendor": doc.vendor or "-",
-                        "amount": float(doc.amount_total or 0),
-                        "amount_net": float(doc.amount_net or 0),
-                        "amount_tax": float(doc.amount_tax or 0),
-                        "amount_display": _format_amount_value(doc.amount_total, doc.currency),
-                        "amount_net_display": _format_amount_value(doc.amount_net, doc.currency),
-                        "amount_tax_display": _format_amount_value(doc.amount_tax, doc.currency),
+                        "amount": float(amount_total or 0),
+                        "amount_net": float(amount_net or 0),
+                        "amount_tax": float(amount_tax or 0),
+                        "amount_display": _format_amount_value(amount_total, doc.currency),
+                        "amount_net_display": _format_amount_value(amount_net, doc.currency),
+                        "amount_tax_display": _format_amount_value(amount_tax, doc.currency),
                         "open_url": f"/api/documents/{doc_id}/file",
                     }
                 )
