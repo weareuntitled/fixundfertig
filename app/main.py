@@ -114,6 +114,7 @@ def _resolve_document_storage_path(storage_path: str | None) -> Path | None:
 
 load_env()
 app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
+ui.add_head_html("<script>var False=false;var True=true;var None=null;</script>")
 
 
 def _require_api_auth() -> None:
