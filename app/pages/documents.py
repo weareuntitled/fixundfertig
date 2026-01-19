@@ -68,14 +68,11 @@ def render_documents(session, comp: Company) -> None:
             return datetime.min
 
     def _document_invoice_date(doc: Document) -> str:
-        value = getattr(doc, "invoice_date", None) or doc.doc_date
+        value = getattr(doc, "invoice_date", None)
         return value or ""
 
-    def _document_amount(doc: Document, field: str, fallback: float | None = None) -> float | None:
-        value = getattr(doc, field, None)
-        if value is None:
-            return fallback
-        return value
+    def _document_amount(doc: Document, field: str) -> float | None:
+        return getattr(doc, field, None)
 
     def _sort_documents(items: list[Document]) -> list[Document]:
         return sorted(items, key=_doc_created_at, reverse=True)
@@ -148,16 +145,16 @@ def render_documents(session, comp: Company) -> None:
             writer.writerow(headers)
             for doc in items:
                 invoice_date = _document_invoice_date(doc)
-                vendor_name = (getattr(doc, "vendor_name", None) or doc.vendor or "")
+                vendor_name = getattr(doc, "vendor_name", None) or ""
                 vendor_address_line1 = getattr(doc, "vendor_address_line1", None) or ""
                 vendor_postal_code = getattr(doc, "vendor_postal_code", None) or ""
                 vendor_city = getattr(doc, "vendor_city", None) or ""
                 currency = doc.currency or ""
                 tax_treatment = getattr(doc, "tax_treatment", None) or ""
-                document_type = (getattr(doc, "document_type", None) or doc.doc_type or "")
+                document_type = getattr(doc, "document_type", None) or ""
                 net_amount = _document_amount(doc, "net_amount")
                 tax_amount = _document_amount(doc, "tax_amount")
-                gross_amount = _document_amount(doc, "gross_amount", fallback=doc.amount_total)
+                gross_amount = _document_amount(doc, "gross_amount")
                 writer.writerow(
                     [
                         invoice_date,
@@ -436,19 +433,19 @@ def render_documents(session, comp: Company) -> None:
                 currency = doc.currency or ""
                 net_amount = _document_amount(doc, "net_amount")
                 tax_amount = _document_amount(doc, "tax_amount")
-                gross_amount = _document_amount(doc, "gross_amount", fallback=doc.amount_total)
+                gross_amount = _document_amount(doc, "gross_amount")
                 rows.append(
                     {
                         "id": int(doc.id or 0),
                         "date": invoice_date,
-                        "vendor_name": (getattr(doc, "vendor_name", None) or doc.vendor or "-"),
+                        "vendor_name": getattr(doc, "vendor_name", None) or "-",
                         "net_amount": float(net_amount or 0),
                         "net_display": _format_amount(net_amount, currency),
                         "tax_amount": float(tax_amount or 0),
                         "tax_display": _format_amount(tax_amount, currency),
                         "gross_amount": float(gross_amount or 0),
                         "gross_display": _format_amount(gross_amount, currency),
-                        "document_type": (getattr(doc, "document_type", None) or doc.doc_type or ""),
+                        "document_type": getattr(doc, "document_type", None) or "",
                     }
                 )
 
