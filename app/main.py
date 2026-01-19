@@ -231,10 +231,11 @@ def address_autocomplete(q: str = "", country: str = "DE"):
 async def n8n_ingest(request: Request):
     raw_body = await request.body()
     timestamp_header = (request.headers.get("X-Timestamp") or "").strip()
-    signature = (request.headers.get("X-Signature") or "").strip()
+    secret_header = (request.headers.get("X-N8N-Secret") or "").strip()
+    event_id_header = (request.headers.get("X-Event-Id") or "").strip()
 
-    if not timestamp_header or not signature:
-        raise HTTPException(status_code=401, detail="Missing signature headers")
+    if not timestamp_header or not secret_header or not event_id_header:
+        raise HTTPException(status_code=401, detail="Missing auth headers")
 
     try:
         timestamp = int(timestamp_header)
@@ -257,7 +258,7 @@ async def n8n_ingest(request: Request):
     if not isinstance(extracted, dict):
         extracted = {}
 
-    event_id = str(payload.get("event_id") or "").strip()
+    event_id = event_id_header or str(payload.get("event_id") or "").strip()
     company_id_raw = payload.get("company_id")
     file_base64 = payload.get("file_base64")
     if not event_id or not company_id_raw or not file_base64:
@@ -277,11 +278,8 @@ async def n8n_ingest(request: Request):
         secret = (getattr(company, "n8n_secret", "") or "").strip()
         if not secret:
             raise HTTPException(status_code=403, detail="Missing n8n secret")
-
-        signed_payload = f"{timestamp_header}.".encode("utf-8") + raw_body
-        expected_signature = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected_signature, signature):
-            raise HTTPException(status_code=401, detail="Invalid signature")
+        if not hmac.compare_digest(secret, secret_header):
+            raise HTTPException(status_code=401, detail="Invalid secret")
 
         existing_event = session.exec(
             select(WebhookEvent).where(WebhookEvent.event_id == event_id)
