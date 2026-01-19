@@ -103,6 +103,8 @@ def _build_document_storage_path(
 def _resolve_document_storage_path(storage_path: str | None) -> Path | None:
     if not storage_path:
         return None
+    if storage_path.startswith("storage/"):
+        storage_path = storage_path.removeprefix("storage/").lstrip("/")
     candidate = Path(storage_path)
     if not candidate.is_absolute():
         candidate = _DOCUMENT_STORAGE_ROOT / candidate
@@ -827,6 +829,8 @@ def document_file(document_id: int) -> Response:
 
         storage_path = _resolve_document_storage_path(document.storage_path)
         storage_key = (document.storage_key or document.storage_path or "").strip()
+        if storage_key.startswith("storage/"):
+            storage_key = storage_key.removeprefix("storage/").lstrip("/")
         content_type = document.mime or "application/octet-stream"
         if content_type.endswith("/pdf"):
             disposition = "inline"
@@ -872,6 +876,8 @@ def delete_document(document_id: int) -> dict:
 
         storage_path = _resolve_document_storage_path(document.storage_path)
         storage_key = (document.storage_key or document.storage_path or "").strip()
+        if storage_key.startswith("storage/"):
+            storage_key = storage_key.removeprefix("storage/").lstrip("/")
         if storage_path and storage_path.exists():
             try:
                 storage_path.unlink()

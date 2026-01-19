@@ -432,6 +432,8 @@ def render_documents(session, comp: Company) -> None:
                                 select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
                             ).first()
                             storage_key = (document.storage_key or document.storage_path or "").strip()
+                            if storage_key.startswith("storage/"):
+                                storage_key = storage_key.removeprefix("storage/").lstrip("/")
                             storage_path = resolve_document_path(document.storage_path)
                             if storage_path and os.path.exists(storage_path):
                                 try:
