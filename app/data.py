@@ -206,6 +206,18 @@ class Document(SQLModel, table=True):
     doc_date: Optional[str] = None
     amount_total: Optional[float] = None
     currency: Optional[str] = None
+    gross_amount: Optional[float] = None
+    net_amount: Optional[float] = None
+    vat_amount: Optional[float] = None
+    vendor_name: Optional[str] = None
+    vendor_address_line1: Optional[str] = None
+    vendor_postal_code: Optional[str] = None
+    vendor_city: Optional[str] = None
+    vendor_country: Optional[str] = None
+    invoice_number: Optional[str] = None
+    invoice_date: Optional[str] = None
+    tax_treatment: Optional[str] = None
+    document_type: Optional[str] = None
     keywords_json: str = "[]"
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -394,6 +406,18 @@ def ensure_document_schema():
         if "size_bytes" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN size_bytes INTEGER DEFAULT 0")
         if "amount_total" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_total REAL")
         if "doc_date" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_date TEXT")
+        if "gross_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN gross_amount REAL")
+        if "net_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN net_amount REAL")
+        if "vat_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN vat_amount REAL")
+        if "vendor_name" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN vendor_name TEXT")
+        if "vendor_address_line1" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN vendor_address_line1 TEXT")
+        if "vendor_postal_code" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN vendor_postal_code TEXT")
+        if "vendor_city" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN vendor_city TEXT")
+        if "vendor_country" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN vendor_country TEXT")
+        if "invoice_number" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN invoice_number TEXT")
+        if "invoice_date" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN invoice_date TEXT")
+        if "tax_treatment" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN tax_treatment TEXT")
+        if "document_type" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN document_type TEXT")
         
         if "storage_key" in columns and "storage_path" in columns:
             conn.exec_driver_sql("UPDATE document SET storage_key = storage_path WHERE (storage_key IS NULL OR storage_key = '') AND storage_path IS NOT NULL AND storage_path != ''")
