@@ -11,7 +11,7 @@ import re
 import mimetypes
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest, urlopen
@@ -1034,11 +1034,26 @@ def _page_title(page: str | None) -> str:
     }
     return titles.get(page or "", "Invoices")
 
+def _n8n_documents_today_count() -> int:
+    start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    try:
+        with get_session() as session:
+            stmt = select(Document.id).where(
+                Document.source == "N8N",
+                Document.created_at >= start,
+                Document.created_at < end,
+            )
+            return len(session.exec(stmt).all())
+    except Exception:
+        return 0
+
 
 def layout_wrapper(content_func):
     identifier = app.storage.user.get("auth_user")
     initials = _avatar_initials(identifier)
     company_name = _active_company_name()
+    n8n_today_count = _n8n_documents_today_count()
 
     with ui.element("div").classes("w-full min-h-screen bg-white"):
         with ui.row().classes("w-full min-h-screen h-screen items-stretch"):
@@ -1091,10 +1106,13 @@ def layout_wrapper(content_func):
                     ui.navigate.to("/login")
 
                 with ui.row().classes(
-                    "w-full h-16 items-center justify-between px-6 border-b border-slate-200 bg-white sticky top-0 z-50"
+                    "w-full h-16 items-center px-6 border-b border-slate-200 bg-white sticky top-0 z-50"
                 ):
                     ui.element("div").classes("flex-1")
-                    with ui.row().classes("items-center gap-2"):
+                    ui.label(f"[ 🧾 {n8n_today_count} BELEGE HEUTE ]").classes(
+                        "rounded-full bg-blue-50 text-emerald-700 border border-emerald-200 px-3 py-1 text-xs font-semibold"
+                    )
+                    with ui.row().classes("flex-1 items-center justify-end gap-2"):
                         avatar_menu = ui.menu().classes("min-w-[220px]")
                         with ui.avatar().classes(
                             "bg-slate-800 text-white rounded-full cursor-pointer shadow-sm hover:shadow-md transition"
