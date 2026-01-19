@@ -44,7 +44,7 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
-from services.blob_storage import build_document_key
+from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
     build_display_title,
@@ -103,6 +103,8 @@ def _build_document_storage_path(
 def _resolve_document_storage_path(storage_path: str | None) -> Path | None:
     if not storage_path:
         return None
+    if storage_path.startswith("storage/"):
+        storage_path = storage_path.removeprefix("storage/").lstrip("/")
     candidate = Path(storage_path)
     if not candidate.is_absolute():
         candidate = _DOCUMENT_STORAGE_ROOT / candidate
@@ -826,14 +828,9 @@ def document_file(document_id: int) -> Response:
             raise HTTPException(status_code=403, detail="Forbidden")
 
         storage_path = _resolve_document_storage_path(document.storage_path)
-        if not storage_path or not storage_path.exists():
-            _logger.warning(
-                "Document file missing for document_id=%s storage_path=%s",
-                document_id,
-                document.storage_path,
-            )
-            raise HTTPException(status_code=404, detail="File not found")
-
+        storage_key = (document.storage_key or document.storage_path or "").strip()
+        if storage_key.startswith("storage/"):
+            storage_key = storage_key.removeprefix("storage/").lstrip("/")
         content_type = document.mime or "application/octet-stream"
         if content_type.endswith("/pdf"):
             disposition = "inline"
@@ -842,7 +839,23 @@ def document_file(document_id: int) -> Response:
         headers = {
             "Content-Disposition": f'{disposition}; filename="{document.original_filename or "document"}"'
         }
-        return FileResponse(str(storage_path), media_type=content_type, headers=headers)
+
+        if storage_path and storage_path.exists():
+            return FileResponse(str(storage_path), media_type=content_type, headers=headers)
+
+        if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+            storage = blob_storage()
+            if storage.exists(storage_key):
+                data = storage.get_bytes(storage_key)
+                return Response(content=data, media_type=content_type, headers=headers)
+
+        _logger.warning(
+            "Document file missing for document_id=%s storage_path=%s storage_key=%s",
+            document_id,
+            document.storage_path,
+            document.storage_key,
+        )
+        raise HTTPException(status_code=404, detail="File not found")
 
 
 @app.delete("/api/documents/{document_id}")
@@ -862,10 +875,18 @@ def delete_document(document_id: int) -> dict:
             raise HTTPException(status_code=403, detail="Forbidden")
 
         storage_path = _resolve_document_storage_path(document.storage_path)
+        storage_key = (document.storage_key or document.storage_path or "").strip()
+        if storage_key.startswith("storage/"):
+            storage_key = storage_key.removeprefix("storage/").lstrip("/")
         if storage_path and storage_path.exists():
             try:
                 storage_path.unlink()
             except OSError:
+                pass
+        if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+            try:
+                blob_storage().delete(storage_key)
+            except Exception:
                 pass
 
         meta = session.exec(
