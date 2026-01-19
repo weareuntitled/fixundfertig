@@ -745,14 +745,10 @@ async def document_upload(
             document.storage_key = storage_path
             document.storage_path = storage_path
 
-            resolved_path = _resolve_document_storage_path(storage_path)
-            if resolved_path is None:
-                session.rollback()
-                raise HTTPException(status_code=500, detail="Invalid storage path")
-            resolved_path.parent.mkdir(parents=True, exist_ok=True)
+            storage = blob_storage()
             try:
-                resolved_path.write_bytes(contents)
-            except OSError as exc:
+                storage.put_bytes(storage_path, contents, mime_type)
+            except Exception as exc:
                 session.rollback()
                 raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
             session.commit()
