@@ -325,9 +325,7 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end w-full mt-4 gap-2"):
                 ui.button(
                     "Speichern",
-                    on_click=lambda: upload_input.upload()
-                    if upload_input.value
-                    else ui.notify("Bitte Datei auswählen.", color="orange"),
+                    on_click=lambda: upload_input.run_method("upload"),
                 ).classes(C_BTN_PRIM)
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
@@ -513,12 +511,12 @@ def render_documents(session, comp: Company) -> None:
             table = ui.table(columns=columns, rows=rows, row_key="id", selection="multiple").classes("w-full")
 
             def _on_selection(event) -> None:
-                selected_rows = event.value or []
+                selected_rows = event.selection or []
                 selected_ids.clear()
                 selected_ids.update({int(item.get("id") or 0) for item in selected_rows})
                 _update_action_buttons()
 
-            table.on("selection", _on_selection)
+            table.on_select(_on_selection)
 
             def _row_from_slot(slot_obj):
                 props = getattr(slot_obj, "props", None)
