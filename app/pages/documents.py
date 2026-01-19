@@ -119,18 +119,111 @@ def render_documents(session, comp: Company) -> None:
         if not items:
             ui.notify("Keine Dokumente zum Export.", color="orange")
             return
+        meta_map = _load_meta_map({int(doc.id or 0) for doc in items})
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", encoding="utf-8", newline="") as temp:
             writer = csv.writer(temp, delimiter=";")
-            writer.writerow(["Datum", "Dokument", "Vendor", "Betrag", "Währung", "Beschreibung", "ID"])
+            writer.writerow(
+                [
+                    "Rechnungsdatum",
+                    "Vendor",
+                    "Netto",
+                    "USt",
+                    "Brutto",
+                    "Währung",
+                    "Dokumenttyp",
+                    "Vendor Adresse",
+                    "Vendor Straße",
+                    "Vendor PLZ",
+                    "Vendor Stadt",
+                    "Vendor Land",
+                    "Vendor Steuernummer",
+                    "Vendor USt-Id",
+                    "Dokument",
+                    "Beschreibung",
+                    "ID",
+                ]
+            )
             for doc in items:
-                created_at = _doc_created_at(doc).date().isoformat() if _doc_created_at(doc) != datetime.min else ""
+                payload = meta_map.get(int(doc.id or 0), {})
+                extracted = _extract_payload(payload)
+                invoice_date = _string_value(
+                    _value_from_sources(payload, extracted, "invoice_date", "doc_date")
+                    or doc.doc_date
+                    or (_doc_created_at(doc).date().isoformat() if _doc_created_at(doc) != datetime.min else "")
+                )
+                vendor_name = _string_value(
+                    _vendor_value(payload, extracted, ["vendor_name", "vendor", "supplier_name", "supplier"], ["name"])
+                    or doc.vendor
+                )
+                currency = _string_value(
+                    _value_from_sources(payload, extracted, "currency", "currency_code") or doc.currency
+                )
+                net_amount = _parse_amount(
+                    _value_from_sources(payload, extracted, "net_amount", "amount_net", "net")
+                )
+                vat_amount = _parse_amount(
+                    _value_from_sources(payload, extracted, "vat_amount", "amount_vat", "tax_amount", "vat")
+                )
+                gross_amount = _parse_amount(
+                    _value_from_sources(payload, extracted, "gross_amount", "amount_total", "total", "gross")
+                )
+                if gross_amount is None and doc.amount_total is not None:
+                    gross_amount = float(doc.amount_total)
+                if net_amount is None and gross_amount is not None and vat_amount is not None:
+                    net_amount = gross_amount - vat_amount
+                if vat_amount is None and gross_amount is not None and net_amount is not None:
+                    vat_amount = gross_amount - net_amount
+                document_type = _string_value(
+                    _value_from_sources(payload, extracted, "document_type", "doc_type", "type") or doc.doc_type
+                )
+                vendor_address = _string_value(
+                    _vendor_value(payload, extracted, ["vendor_address", "address"], ["address", "address_line1"])
+                )
+                vendor_street = _string_value(
+                    _vendor_value(payload, extracted, ["vendor_street", "street"], ["street", "address_line1"])
+                )
+                vendor_zip = _string_value(
+                    _vendor_value(payload, extracted, ["vendor_zip", "postal_code", "zip"], ["zip", "postal_code"])
+                )
+                vendor_city = _string_value(
+                    _vendor_value(payload, extracted, ["vendor_city", "city"], ["city"])
+                )
+                vendor_country = _string_value(
+                    _vendor_value(payload, extracted, ["vendor_country", "country"], ["country"])
+                )
+                vendor_tax_id = _string_value(
+                    _vendor_value(
+                        payload,
+                        extracted,
+                        ["vendor_tax_id", "tax_id", "tax_number"],
+                        ["tax_id", "tax_number"],
+                    )
+                )
+                vendor_vat_id = _string_value(
+                    _vendor_value(
+                        payload,
+                        extracted,
+                        ["vendor_vat_id", "vat_id", "vat_number", "ust_id", "ustid"],
+                        ["vat_id", "vat_number", "ust_id", "ustid"],
+                    )
+                )
                 writer.writerow(
                     [
-                        created_at,
+                        invoice_date,
+                        vendor_name,
+                        f"{net_amount:.2f}" if net_amount is not None else "",
+                        f"{vat_amount:.2f}" if vat_amount is not None else "",
+                        f"{gross_amount:.2f}" if gross_amount is not None else "",
+                        currency,
+                        document_type,
+                        vendor_address,
+                        vendor_street,
+                        vendor_zip,
+                        vendor_city,
+                        vendor_country,
+                        vendor_tax_id,
+                        vendor_vat_id,
                         doc.original_filename or doc.title or "Dokument",
-                        doc.vendor or "",
-                        f"{doc.amount_total:.2f}" if doc.amount_total is not None else "",
-                        doc.currency or "",
                         doc.description or "",
                         str(doc.id or ""),
                     ]
@@ -418,42 +511,145 @@ def render_documents(session, comp: Company) -> None:
         flags_area.value = meta_state["flags"]
         meta_dialog.open()
 
-    def _format_amount(doc: Document) -> str:
-        if doc.amount_total is None:
+    def _parse_meta_payload(meta: DocumentMeta | None) -> dict:
+        if not meta or not meta.raw_payload_json:
+            return {}
+        try:
+            payload = json.loads(meta.raw_payload_json)
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _extract_payload(payload: dict) -> dict:
+        extracted = payload.get("extracted") if isinstance(payload, dict) else None
+        return extracted if isinstance(extracted, dict) else {}
+
+    def _load_meta_map(doc_ids: set[int]) -> dict[int, dict]:
+        if not doc_ids:
+            return {}
+        metas = session.exec(select(DocumentMeta).where(DocumentMeta.document_id.in_(list(doc_ids)))).all()
+        return {int(meta.document_id): _parse_meta_payload(meta) for meta in metas}
+
+    def _value_from_sources(payload: dict, extracted: dict, *keys: str) -> object:
+        for source in (extracted, payload):
+            if not isinstance(source, dict):
+                continue
+            for key in keys:
+                value = source.get(key)
+                if value not in (None, ""):
+                    return value
+        return None
+
+    def _vendor_info(payload: dict, extracted: dict) -> dict:
+        for source in (extracted, payload):
+            if not isinstance(source, dict):
+                continue
+            vendor_value = source.get("vendor")
+            if isinstance(vendor_value, dict):
+                return vendor_value
+        return {}
+
+    def _vendor_value(payload: dict, extracted: dict, keys: list[str], vendor_keys: list[str]) -> object:
+        vendor_info = _vendor_info(payload, extracted)
+        for key in vendor_keys:
+            value = vendor_info.get(key)
+            if value not in (None, ""):
+                return value
+        return _value_from_sources(payload, extracted, *keys)
+
+    def _parse_amount(value: object) -> float | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        try:
+            raw = str(value).strip()
+            if raw.count(",") == 1 and raw.count(".") == 0:
+                raw = raw.replace(",", ".")
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def _string_value(value: object) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def _format_amount_value(amount: float | None, currency: str) -> str:
+        if amount is None:
             return "-"
-        currency = (doc.currency or "").strip()
+        currency = (currency or "").strip()
         if currency:
-            return f"{doc.amount_total:.2f} {currency}"
-        return f"{doc.amount_total:.2f}"
+            return f"{amount:.2f} {currency}"
+        return f"{amount:.2f}"
 
     @ui.refreshable
     def render_list():
         items = _sort_documents(_filter_documents(_load_documents()))
         selected_ids.clear()
         _update_action_buttons()
+        meta_map = _load_meta_map({int(doc.id or 0) for doc in items})
 
         with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
             rows = []
             for doc in items:
                 row = serialize_document(doc)
-                created_at = row.get("created_at", "")
+                payload = meta_map.get(int(doc.id or 0), {})
+                extracted = _extract_payload(payload)
+                invoice_date = _string_value(
+                    _value_from_sources(payload, extracted, "invoice_date", "doc_date")
+                    or doc.doc_date
+                    or (row.get("created_at", "")[:10] if row.get("created_at", "") else "")
+                )
+                vendor_name = _string_value(
+                    _vendor_value(payload, extracted, ["vendor_name", "vendor", "supplier_name", "supplier"], ["name"])
+                    or doc.vendor
+                    or "-"
+                )
+                currency = _string_value(
+                    _value_from_sources(payload, extracted, "currency", "currency_code") or doc.currency
+                )
+                net_amount = _parse_amount(
+                    _value_from_sources(payload, extracted, "net_amount", "amount_net", "net")
+                )
+                vat_amount = _parse_amount(
+                    _value_from_sources(payload, extracted, "vat_amount", "amount_vat", "tax_amount", "vat")
+                )
+                gross_amount = _parse_amount(
+                    _value_from_sources(payload, extracted, "gross_amount", "amount_total", "total", "gross")
+                )
+                if gross_amount is None and doc.amount_total is not None:
+                    gross_amount = float(doc.amount_total)
+                if net_amount is None and gross_amount is not None and vat_amount is not None:
+                    net_amount = gross_amount - vat_amount
+                if vat_amount is None and gross_amount is not None and net_amount is not None:
+                    vat_amount = gross_amount - net_amount
+                document_type = _string_value(
+                    _value_from_sources(payload, extracted, "document_type", "doc_type", "type") or doc.doc_type or "-"
+                )
                 rows.append(
                     {
                         "id": int(row.get("id") or 0),
-                        "date": created_at[:10],
-                        "filename": row.get("original_filename") or row.get("title") or "Dokument",
-                        "vendor": doc.vendor or "-",
-                        "amount": float(doc.amount_total or 0),
-                        "amount_display": _format_amount(doc),
+                        "invoice_date": invoice_date,
+                        "vendor_name": vendor_name,
+                        "net_amount": net_amount if net_amount is not None else 0.0,
+                        "vat_amount": vat_amount if vat_amount is not None else 0.0,
+                        "gross_amount": gross_amount if gross_amount is not None else 0.0,
+                        "net_amount_display": _format_amount_value(net_amount, currency),
+                        "vat_amount_display": _format_amount_value(vat_amount, currency),
+                        "gross_amount_display": _format_amount_value(gross_amount, currency),
+                        "document_type": document_type or "-",
                         "open_url": f"/api/documents/{row.get('id')}/file",
                     }
                 )
 
             columns = [
-                {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
-                {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
-                {"name": "vendor", "label": "Vendor", "field": "vendor", "sortable": True, "align": "left"},
-                {"name": "amount", "label": "Betrag", "field": "amount", "sortable": True, "align": "right"},
+                {"name": "invoice_date", "label": "Rechnungsdatum", "field": "invoice_date", "sortable": True, "align": "left"},
+                {"name": "vendor_name", "label": "Vendor", "field": "vendor_name", "sortable": True, "align": "left"},
+                {"name": "net_amount", "label": "Netto", "field": "net_amount", "sortable": True, "align": "right"},
+                {"name": "vat_amount", "label": "USt", "field": "vat_amount", "sortable": True, "align": "right"},
+                {"name": "gross_amount", "label": "Brutto", "field": "gross_amount", "sortable": True, "align": "right"},
+                {"name": "document_type", "label": "Typ", "field": "document_type", "sortable": True, "align": "left"},
                 {"name": "actions", "label": "", "field": "actions", "sortable": False, "align": "right"},
             ]
             table = ui.table(columns=columns, rows=rows, row_key="id", selection="multiple").classes("w-full")
@@ -472,8 +668,14 @@ def render_documents(session, comp: Company) -> None:
                     return None
                 return props.get("row")
 
-            with table.add_slot("body-cell-amount") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
+            with table.add_slot("body-cell-net_amount") as slot:
+                ui.label().bind_text_from(slot, "props.row.net_amount_display", strict=False).classes("text-right")
+
+            with table.add_slot("body-cell-vat_amount") as slot:
+                ui.label().bind_text_from(slot, "props.row.vat_amount_display", strict=False).classes("text-right")
+
+            with table.add_slot("body-cell-gross_amount") as slot:
+                ui.label().bind_text_from(slot, "props.row.gross_amount_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-actions") as slot:
                 def _open_meta_from_slot() -> None:
