@@ -8,6 +8,8 @@ import os
 import json
 import tempfile
 import zipfile
+import logging
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -24,6 +26,8 @@ from services.documents import (
     resolve_document_path,
     validate_document_upload,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def render_documents(session, comp: Company) -> None:
@@ -686,9 +690,13 @@ def render_documents(session, comp: Company) -> None:
 
             def _row_from_slot(slot_obj):
                 props = getattr(slot_obj, "props", None)
-                if not isinstance(props, dict):
-                    return None
-                return props.get("row")
+                if isinstance(props, dict):
+                    return props.get("row")
+                if isinstance(props, Mapping):
+                    return props.get("row")
+                if hasattr(props, "get"):
+                    return props.get("row")
+                return getattr(props, "row", None)
 
             with table.add_slot("body-cell-amount") as slot:
                 ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
@@ -710,6 +718,12 @@ def render_documents(session, comp: Company) -> None:
                 def _open_meta_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row:
+                        props = getattr(slot, "props", None)
+                        logger.warning(
+                            "Dokumentslot ohne Row für Meta: props_type=%s row=%s",
+                            type(props).__name__,
+                            row,
+                        )
                         ui.notify("Dokument nicht verfügbar.", type="warning")
                         return
                     _open_meta(int(row["id"]))
@@ -717,6 +731,12 @@ def render_documents(session, comp: Company) -> None:
                 def _open_delete_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row:
+                        props = getattr(slot, "props", None)
+                        logger.warning(
+                            "Dokumentslot ohne Row für Löschen: props_type=%s row=%s",
+                            type(props).__name__,
+                            row,
+                        )
                         ui.notify("Dokument nicht verfügbar.", type="warning")
                         return
                     _open_delete(int(row["id"]))
@@ -724,6 +744,12 @@ def render_documents(session, comp: Company) -> None:
                 def _open_document_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row or not row.get("id"):
+                        props = getattr(slot, "props", None)
+                        logger.warning(
+                            "Dokumentslot ohne ID: props_type=%s row=%s",
+                            type(props).__name__,
+                            row,
+                        )
                         ui.notify("Dokument nicht verfügbar.", type="warning")
                         return
                     ui.run_javascript(f"window.open('/api/documents/{int(row['id'])}/file')")
