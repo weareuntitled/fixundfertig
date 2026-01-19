@@ -42,7 +42,6 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
-from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
     build_display_title,
@@ -359,6 +358,15 @@ def _parse_optional_float(value: object) -> float | None:
         return None
 
 
+def _payload_text(payload: dict, key: str) -> str:
+    value = payload.get(key)
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
 @app.post("/api/webhooks/n8n/upload")
 async def n8n_upload(
     file: UploadFile = File(...),
@@ -387,9 +395,9 @@ async def n8n_upload(
         raise HTTPException(status_code=400, detail="Invalid payload_json")
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid payload_json")
-    extracted = payload.get("extracted") or {}
-    if not isinstance(extracted, dict):
-        extracted = {}
+    vendor_details = payload.get("vendor_details")
+    if not isinstance(vendor_details, dict):
+        vendor_details = {}
 
     raw_filename = (
         file_name
@@ -420,23 +428,40 @@ async def n8n_upload(
             "png": "image/png",
         }.get(ext, "application/octet-stream")
 
-    vendor_value = (vendor or extracted.get("vendor") or payload.get("vendor") or "").strip()
-    doc_date_value = (doc_date or extracted.get("doc_date") or payload.get("doc_date") or "").strip() or None
-    amount_value = _parse_optional_float(
-        amount_total if amount_total is not None else extracted.get("amount_total") or payload.get("amount_total")
+    gross_amount_value = _parse_optional_float(payload.get("gross_amount"))
+    net_amount_value = _parse_optional_float(payload.get("net_amount"))
+    vat_amount_value = _parse_optional_float(payload.get("vat_amount"))
+    vendor_name_value = (
+        _payload_text(payload, "vendor_name")
+        or _payload_text(vendor_details, "name")
+        or (vendor or "").strip()
     )
-    currency_value = (currency or extracted.get("currency") or payload.get("currency") or "").strip() or None
-    keywords_value = keywords or extracted.get("keywords") or payload.get("keywords")
-    title_value = (title or extracted.get("title") or payload.get("title") or "").strip()
+    vendor_street_value = _payload_text(payload, "vendor_street") or _payload_text(vendor_details, "street")
+    vendor_zip_value = _payload_text(payload, "vendor_zip") or _payload_text(vendor_details, "zip")
+    vendor_city_value = _payload_text(payload, "vendor_city") or _payload_text(vendor_details, "city")
+    vendor_country_value = _payload_text(payload, "vendor_country") or _payload_text(vendor_details, "country")
+    vendor_tax_id_value = _payload_text(payload, "vendor_tax_id") or _payload_text(vendor_details, "tax_id")
+    vendor_vat_id_value = _payload_text(payload, "vendor_vat_id") or _payload_text(vendor_details, "vat_id")
+    invoice_number_value = _payload_text(payload, "invoice_number")
+    invoice_date_value = _payload_text(payload, "invoice_date") or None
+    currency_value = (_payload_text(payload, "currency") or (currency or "").strip()) or None
+    tax_treatment_value = _payload_text(payload, "tax_treatment")
+    document_type_value = _payload_text(payload, "document_type")
+    amount_value = gross_amount_value
+    if amount_value is None:
+        amount_value = _parse_optional_float(amount_total)
+    keywords_value = keywords or payload.get("keywords")
+    title_value = (title or _payload_text(payload, "title")).strip()
     if not title_value:
         title_value = build_display_title(
-            vendor_value,
-            doc_date_value,
+            vendor_name_value,
+            invoice_date_value,
             amount_value,
             currency_value,
             safe_name,
         )
-    description_value = (description or extracted.get("summary") or payload.get("summary") or "").strip()
+    description_value = (description or _payload_text(payload, "summary")).strip()
+    doc_date_value = invoice_date_value
 
     with get_session() as session:
         company = session.get(Company, company_id)
@@ -481,20 +506,51 @@ async def n8n_upload(
             sha256=sha256,
             title=title_value,
             description=description_value,
-            vendor=vendor_value,
+            vendor=vendor_name_value,
             doc_date=doc_date_value,
             amount_total=amount_value,
             currency=currency_value,
             keywords_json=normalize_keywords(keywords_value),
+            amount_net=net_amount_value,
+            amount_vat=vat_amount_value,
+            amount_gross=gross_amount_value,
+            invoice_number=invoice_number_value,
+            invoice_date=invoice_date_value,
+            tax_treatment=tax_treatment_value,
+            document_type=document_type_value,
+            vendor_name=vendor_name_value,
+            vendor_street=vendor_street_value,
+            vendor_zip=vendor_zip_value,
+            vendor_city=vendor_city_value,
+            vendor_country=vendor_country_value,
+            vendor_tax_id=vendor_tax_id_value,
+            vendor_vat_id=vendor_vat_id_value,
         )
         session.add(document)
         session.commit()
         session.refresh(document)
 
-        storage_key = build_document_key(company_id, int(document.id or 0), safe_name)
-        blob_storage().put_bytes(storage_key, file_bytes, mime)
-        document.storage_key = storage_key
-        document.storage_path = storage_key
+        date_for_path = datetime.utcnow()
+        if invoice_date_value:
+            try:
+                date_for_path = datetime.fromisoformat(invoice_date_value)
+            except ValueError:
+                date_for_path = datetime.utcnow()
+        storage_relative = (
+            f"companies/{company_id}/documents/{date_for_path:%Y}/{date_for_path:%m}/"
+            f"{int(document.id or 0)}/{safe_name}"
+        )
+        storage_absolute = os.path.join("/app/storage", storage_relative)
+        os.makedirs(os.path.dirname(storage_absolute), exist_ok=True)
+        try:
+            with open(storage_absolute, "wb") as handle:
+                handle.write(file_bytes)
+        except OSError as exc:
+            session.delete(document)
+            session.commit()
+            raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
+        document.storage_key = storage_relative
+        document.storage_path = storage_relative
         session.add(document)
         session.commit()
 
