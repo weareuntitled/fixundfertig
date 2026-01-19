@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import logging
 import re
 import mimetypes
 import os
@@ -42,20 +43,16 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
+from services.blob_storage import build_document_key
 from services.documents import (
     build_document_record,
     build_display_title,
     document_matches_filters,
-    document_storage_path,
-    ensure_document_dir,
     normalize_keywords,
-    resolve_document_path,
     safe_filename,
-    set_document_storage_path,
     serialize_document,
     validate_document_upload,
 )
-from storage.service import save_upload_bytes
 
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAXSIZE = 256
@@ -66,6 +63,9 @@ if _cachetools_spec is not None:
     _invoice_pdf_cache = TTLCache(maxsize=_CACHE_MAXSIZE, ttl=_CACHE_TTL_SECONDS)
 else:
     _invoice_pdf_cache: dict[_CACHE_KEY_TYPE, tuple[float, bytes]] = {}
+
+_DOCUMENT_STORAGE_ROOT = Path("/app/storage")
+_logger = logging.getLogger(__name__)
 
 
 def _get_cached_pdf(cache_key: _CACHE_KEY_TYPE) -> bytes | None:
@@ -86,6 +86,29 @@ def _store_cached_pdf(cache_key: _CACHE_KEY_TYPE, payload: bytes) -> None:
         _invoice_pdf_cache[cache_key] = payload
         return
     _invoice_pdf_cache[cache_key] = (time.monotonic() + _CACHE_TTL_SECONDS, payload)
+
+
+def _build_document_storage_path(
+    company_id: int,
+    document_id: int,
+    filename: str,
+    created_at: datetime | None,
+) -> str:
+    timestamp = created_at if isinstance(created_at, datetime) else datetime.utcnow()
+    return build_document_key(company_id, document_id, filename, now=timestamp)
+
+
+def _resolve_document_storage_path(storage_path: str | None) -> Path | None:
+    if not storage_path:
+        return None
+    candidate = Path(storage_path)
+    if not candidate.is_absolute():
+        candidate = _DOCUMENT_STORAGE_ROOT / candidate
+    resolved = candidate.resolve()
+    root = _DOCUMENT_STORAGE_ROOT.resolve()
+    if not str(resolved).startswith(f"{root}{os.sep}"):
+        return None
+    return resolved
 
 load_env()
 app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
@@ -289,18 +312,29 @@ async def n8n_ingest(request: Request):
             source="n8n",
             doc_type=ext,
         )
-        document.storage_path = storage_info["path"]
         session.add(document)
+        session.flush()
+
+        storage_path = _build_document_storage_path(
+            company_id,
+            int(document.id or 0),
+            original_filename,
+            document.created_at,
+        )
+        document.storage_path = storage_path
+        document.storage_key = storage_path
         session.commit()
         session.refresh(document)
 
-        set_document_storage_path(document)
-        ensure_document_dir(company_id, int(document.id))
-        storage_path = resolve_document_path(document.storage_path)
-        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+        resolved_path = _resolve_document_storage_path(document.storage_path)
+        if resolved_path is None:
+            session.delete(document)
+            session.commit()
+            raise HTTPException(status_code=500, detail="Invalid storage path")
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            with open(storage_path, "wb") as handle:
+            with open(resolved_path, "wb") as handle:
                 handle.write(file_bytes)
         except OSError as exc:
             session.delete(document)
@@ -527,31 +561,28 @@ async def n8n_upload(
             vendor_vat_id=vendor_vat_id_value,
         )
         session.add(document)
-        session.commit()
-        session.refresh(document)
+        session.flush()
 
-        date_for_path = datetime.utcnow()
-        if invoice_date_value:
-            try:
-                date_for_path = datetime.fromisoformat(invoice_date_value)
-            except ValueError:
-                date_for_path = datetime.utcnow()
-        storage_relative = (
-            f"companies/{company_id}/documents/{date_for_path:%Y}/{date_for_path:%m}/"
-            f"{int(document.id or 0)}/{safe_name}"
+        storage_path = _build_document_storage_path(
+            company_id,
+            int(document.id or 0),
+            safe_name,
+            document.created_at,
         )
-        storage_absolute = os.path.join("/app/storage", storage_relative)
-        os.makedirs(os.path.dirname(storage_absolute), exist_ok=True)
+        document.storage_key = storage_path
+        document.storage_path = storage_path
+
+        resolved_path = _resolve_document_storage_path(storage_path)
+        if resolved_path is None:
+            session.rollback()
+            raise HTTPException(status_code=500, detail="Invalid storage path")
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with open(storage_absolute, "wb") as handle:
-                handle.write(file_bytes)
+            resolved_path.write_bytes(file_bytes)
         except OSError as exc:
-            session.delete(document)
-            session.commit()
+            session.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
-        document.storage_key = storage_relative
-        document.storage_path = storage_relative
-        session.add(document)
+
         session.commit()
 
         return JSONResponse(
@@ -638,13 +669,29 @@ async def document_upload(
             session.add(document)
             session.flush()
 
-            storage_key = build_document_key(int(company.id), int(document.id), filename)
-            document.storage_key = storage_key
-            document.storage_path = storage_key
+            storage_path = _build_document_storage_path(
+                int(company.id),
+                int(document.id),
+                filename,
+                document.created_at,
+            )
+            document.storage_key = storage_path
+            document.storage_path = storage_path
 
-            blob_storage().put_bytes(storage_key, contents, mime_type)
+            resolved_path = _resolve_document_storage_path(storage_path)
+            if resolved_path is None:
+                session.rollback()
+                raise HTTPException(status_code=500, detail="Invalid storage path")
+            resolved_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                resolved_path.write_bytes(contents)
+            except OSError as exc:
+                session.rollback()
+                raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
             session.commit()
             session.refresh(document)
+        except HTTPException:
+            raise
         except Exception:
             session.rollback()
             raise HTTPException(status_code=500, detail="Upload failed")
@@ -713,13 +760,13 @@ def document_file(document_id: int) -> Response:
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        storage_path = os.path.join("/app/storage", document.storage_path or "")
-        if not document.storage_path or not os.path.exists(storage_path):
-            message = f"Document file not found at {storage_path}"
-            if getattr(app, "logger", None):
-                app.logger.warning(message)
-            else:
-                print(message)
+        storage_path = _resolve_document_storage_path(document.storage_path)
+        if not storage_path or not storage_path.exists():
+            _logger.warning(
+                "Document file missing for document_id=%s storage_path=%s",
+                document_id,
+                document.storage_path,
+            )
             raise HTTPException(status_code=404, detail="File not found")
 
         content_type = document.mime or "application/octet-stream"
@@ -730,7 +777,7 @@ def document_file(document_id: int) -> Response:
         headers = {
             "Content-Disposition": f'{disposition}; filename="{document.original_filename or "document"}"'
         }
-        return FileResponse(storage_path, media_type=content_type, headers=headers)
+        return FileResponse(str(storage_path), media_type=content_type, headers=headers)
 
 
 @app.delete("/api/documents/{document_id}")
@@ -749,10 +796,10 @@ def delete_document(document_id: int) -> dict:
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        storage_path = document_storage_path(int(document.company_id), document.storage_key)
-        if storage_path and os.path.exists(storage_path):
+        storage_path = _resolve_document_storage_path(document.storage_path)
+        if storage_path and storage_path.exists():
             try:
-                os.remove(storage_path)
+                storage_path.unlink()
             except OSError:
                 pass
 
