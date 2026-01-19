@@ -425,6 +425,7 @@ def render_documents(session, comp: Company) -> None:
         items = _sort_documents(_filter_documents(_load_documents()))
         selected_ids.clear()
         _update_action_buttons()
+        meta_map = _load_meta_map({int(doc.id or 0) for doc in items})
 
         with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
             rows = []
