@@ -39,6 +39,7 @@ def render_documents(session, comp: Company) -> None:
         "date_from": "",
         "date_to": "",
     }
+    debug_enabled = os.getenv("FF_DEBUG") == "1"
     upload_state = {
         "vendor": "",
         "doc_number": "",
@@ -941,6 +942,23 @@ def render_documents(session, comp: Company) -> None:
                         doc_id_display = document_id if document_id is not None else "unbekannt"
                         ui.notify(f"Fehler beim Öffnen des Dokuments (Dokument-ID: {doc_id_display})", color="red")
 
+                def _log_row_debug_from_slot() -> None:
+                    row = _row_from_slot(slot)
+                    if not row or not row.get("id"):
+                        props = getattr(slot, "props", None)
+                        logger.warning(
+                            "Dokumentslot ohne Row für Debug: props_type=%s row=%s",
+                            type(props).__name__,
+                            row,
+                        )
+                        ui.notify("Dokument nicht verfügbar.", type="warning")
+                        return
+                    row_payload = json.dumps(row, default=str)
+                    logger.info(
+                        "DOC_ROW_DEBUG",
+                        extra={"doc_id": int(row.get("id") or 0), "row": row_payload},
+                    )
+
                 with ui.row().classes("justify-end gap-2"):
                     link = ui.link("Öffnen", "#").classes("text-sm text-sky-600")
                     link.on("click", _open_document_from_slot)
@@ -954,6 +972,12 @@ def render_documents(session, comp: Company) -> None:
                         icon="delete",
                         on_click=_open_delete_from_slot,
                     ).props("flat dense").classes("text-rose-600")
+                    if debug_enabled:
+                        ui.button(
+                            "",
+                            icon="bug_report",
+                            on_click=_log_row_debug_from_slot,
+                        ).props("flat dense").classes("text-amber-600")
 
     render_filters()
     render_list()
