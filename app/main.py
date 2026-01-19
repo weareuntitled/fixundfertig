@@ -657,8 +657,13 @@ def document_file(document_id: int) -> Response:
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        storage_path = document_storage_path(int(document.company_id), document.storage_key)
-        if not storage_path or not os.path.exists(storage_path):
+        storage_path = os.path.join("/app/storage", document.storage_path or "")
+        if not document.storage_path or not os.path.exists(storage_path):
+            message = f"Document file not found at {storage_path}"
+            if getattr(app, "logger", None):
+                app.logger.warning(message)
+            else:
+                print(message)
             raise HTTPException(status_code=404, detail="File not found")
 
         content_type = document.mime or "application/octet-stream"
