@@ -431,11 +431,17 @@ def render_documents(session, comp: Company) -> None:
                             meta = s.exec(
                                 select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
                             ).first()
+                            storage_key = (document.storage_key or document.storage_path or "").strip()
                             storage_path = resolve_document_path(document.storage_path)
                             if storage_path and os.path.exists(storage_path):
                                 try:
                                     os.remove(storage_path)
                                 except OSError:
+                                    pass
+                            if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+                                try:
+                                    blob_storage().delete(storage_key)
+                                except Exception:
                                     pass
                             if storage_path:
                                 try:
