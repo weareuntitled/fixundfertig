@@ -198,6 +198,7 @@ class Document(SQLModel, table=True):
     # Metadata
     source: str = "MANUAL"
     doc_type: str = ""
+    document_type: str = ""
     
     # Extracted Content
     title: str = ""
@@ -205,10 +206,12 @@ class Document(SQLModel, table=True):
     vendor: str = ""
     doc_number: str = ""
     doc_date: Optional[str] = None
+    invoice_date: Optional[str] = None
     amount_total: Optional[float] = None
     amount_net: Optional[float] = None
     amount_tax: Optional[float] = None
     currency: Optional[str] = None
+    tax_treatment: str = ""
     keywords_json: str = "[]"
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -413,6 +416,10 @@ def ensure_document_schema():
         if "amount_net" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_net REAL")
         if "amount_tax" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN amount_tax REAL")
         if "doc_date" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN doc_date TEXT")
+        if "invoice_date" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN invoice_date TEXT")
+        if "net_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN net_amount REAL")
+        if "tax_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN tax_amount REAL")
+        if "gross_amount" not in columns: conn.exec_driver_sql("ALTER TABLE document ADD COLUMN gross_amount REAL")
         
         if "storage_key" in columns and "storage_path" in columns:
             conn.exec_driver_sql("UPDATE document SET storage_key = storage_path WHERE (storage_key IS NULL OR storage_key = '') AND storage_path IS NOT NULL AND storage_path != ''")

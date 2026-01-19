@@ -7,11 +7,12 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import logging
 import re
 import mimetypes
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest, urlopen
@@ -42,7 +43,7 @@ from pages import (
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
-from services.blob_storage import blob_storage, build_document_key
+from services.blob_storage import build_document_key
 from services.documents import (
     build_document_record,
     build_display_title,
@@ -53,7 +54,6 @@ from services.documents import (
     serialize_document,
     validate_document_upload,
 )
-from storage.service import save_upload_bytes
 
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAXSIZE = 256
@@ -64,6 +64,9 @@ if _cachetools_spec is not None:
     _invoice_pdf_cache = TTLCache(maxsize=_CACHE_MAXSIZE, ttl=_CACHE_TTL_SECONDS)
 else:
     _invoice_pdf_cache: dict[_CACHE_KEY_TYPE, tuple[float, bytes]] = {}
+
+_DOCUMENT_STORAGE_ROOT = Path("/app/storage")
+_logger = logging.getLogger(__name__)
 
 
 def _get_cached_pdf(cache_key: _CACHE_KEY_TYPE) -> bytes | None:
@@ -84,6 +87,29 @@ def _store_cached_pdf(cache_key: _CACHE_KEY_TYPE, payload: bytes) -> None:
         _invoice_pdf_cache[cache_key] = payload
         return
     _invoice_pdf_cache[cache_key] = (time.monotonic() + _CACHE_TTL_SECONDS, payload)
+
+
+def _build_document_storage_path(
+    company_id: int,
+    document_id: int,
+    filename: str,
+    created_at: datetime | None,
+) -> str:
+    timestamp = created_at if isinstance(created_at, datetime) else datetime.utcnow()
+    return build_document_key(company_id, document_id, filename, now=timestamp)
+
+
+def _resolve_document_storage_path(storage_path: str | None) -> Path | None:
+    if not storage_path:
+        return None
+    candidate = Path(storage_path)
+    if not candidate.is_absolute():
+        candidate = _DOCUMENT_STORAGE_ROOT / candidate
+    resolved = candidate.resolve()
+    root = _DOCUMENT_STORAGE_ROOT.resolve()
+    if not str(resolved).startswith(f"{root}{os.sep}"):
+        return None
+    return resolved
 
 load_env()
 app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
@@ -325,6 +351,16 @@ async def n8n_ingest(request: Request):
         )
         document.keywords_json = normalize_keywords(keywords_value)
         session.add(document)
+        session.flush()
+
+        storage_path = _build_document_storage_path(
+            company_id,
+            int(document.id or 0),
+            original_filename,
+            document.created_at,
+        )
+        document.storage_path = storage_path
+        document.storage_key = storage_path
         session.commit()
         session.refresh(document)
 
@@ -369,6 +405,15 @@ def _parse_optional_float(value: object) -> float | None:
         return None
 
 
+def _payload_text(payload: dict, key: str) -> str:
+    value = payload.get(key)
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
 @app.post("/api/webhooks/n8n/upload")
 async def n8n_upload(
     file: UploadFile = File(...),
@@ -400,9 +445,9 @@ async def n8n_upload(
         raise HTTPException(status_code=400, detail="Invalid payload_json")
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid payload_json")
-    extracted = payload.get("extracted") or {}
-    if not isinstance(extracted, dict):
-        extracted = {}
+    vendor_details = payload.get("vendor_details")
+    if not isinstance(vendor_details, dict):
+        vendor_details = {}
 
     raw_filename = (
         file_name
@@ -450,13 +495,14 @@ async def n8n_upload(
     title_value = (title or extracted.get("title") or payload.get("title") or "").strip()
     if not title_value:
         title_value = build_display_title(
-            vendor_value,
-            doc_date_value,
+            vendor_name_value,
+            invoice_date_value,
             amount_value,
             currency_value,
             safe_name,
         )
-    description_value = (description or extracted.get("summary") or payload.get("summary") or "").strip()
+    description_value = (description or _payload_text(payload, "summary")).strip()
+    doc_date_value = invoice_date_value
 
     with get_session() as session:
         company = session.get(Company, company_id)
@@ -509,16 +555,44 @@ async def n8n_upload(
             amount_tax=amount_tax_value,
             currency=currency_value,
             keywords_json=normalize_keywords(keywords_value),
+            amount_net=net_amount_value,
+            amount_vat=vat_amount_value,
+            amount_gross=gross_amount_value,
+            invoice_number=invoice_number_value,
+            invoice_date=invoice_date_value,
+            tax_treatment=tax_treatment_value,
+            document_type=document_type_value,
+            vendor_name=vendor_name_value,
+            vendor_street=vendor_street_value,
+            vendor_zip=vendor_zip_value,
+            vendor_city=vendor_city_value,
+            vendor_country=vendor_country_value,
+            vendor_tax_id=vendor_tax_id_value,
+            vendor_vat_id=vendor_vat_id_value,
         )
         session.add(document)
-        session.commit()
-        session.refresh(document)
+        session.flush()
 
-        storage_key = build_document_key(company_id, int(document.id or 0), safe_name)
-        blob_storage().put_bytes(storage_key, file_bytes, mime)
-        document.storage_key = storage_key
-        document.storage_path = storage_key
-        session.add(document)
+        storage_path = _build_document_storage_path(
+            company_id,
+            int(document.id or 0),
+            safe_name,
+            document.created_at,
+        )
+        document.storage_key = storage_path
+        document.storage_path = storage_path
+
+        resolved_path = _resolve_document_storage_path(storage_path)
+        if resolved_path is None:
+            session.rollback()
+            raise HTTPException(status_code=500, detail="Invalid storage path")
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            resolved_path.write_bytes(file_bytes)
+        except OSError as exc:
+            session.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
+
         session.commit()
 
         return JSONResponse(
@@ -644,13 +718,29 @@ async def document_upload(
             session.add(document)
             session.flush()
 
-            storage_key = build_document_key(int(company.id), int(document.id), filename)
-            document.storage_key = storage_key
-            document.storage_path = storage_key
+            storage_path = _build_document_storage_path(
+                int(company.id),
+                int(document.id),
+                filename,
+                document.created_at,
+            )
+            document.storage_key = storage_path
+            document.storage_path = storage_path
 
-            blob_storage().put_bytes(storage_key, contents, mime_type)
+            resolved_path = _resolve_document_storage_path(storage_path)
+            if resolved_path is None:
+                session.rollback()
+                raise HTTPException(status_code=500, detail="Invalid storage path")
+            resolved_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                resolved_path.write_bytes(contents)
+            except OSError as exc:
+                session.rollback()
+                raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
             session.commit()
             session.refresh(document)
+        except HTTPException:
+            raise
         except Exception:
             session.rollback()
             raise HTTPException(status_code=500, detail="Upload failed")
@@ -719,8 +809,13 @@ def document_file(document_id: int) -> Response:
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        storage_path = document_storage_path(int(document.company_id), document.storage_key)
-        if not storage_path or not os.path.exists(storage_path):
+        storage_path = _resolve_document_storage_path(document.storage_path)
+        if not storage_path or not storage_path.exists():
+            _logger.warning(
+                "Document file missing for document_id=%s storage_path=%s",
+                document_id,
+                document.storage_path,
+            )
             raise HTTPException(status_code=404, detail="File not found")
 
         content_type = document.mime or "application/octet-stream"
@@ -731,7 +826,7 @@ def document_file(document_id: int) -> Response:
         headers = {
             "Content-Disposition": f'{disposition}; filename="{document.original_filename or "document"}"'
         }
-        return FileResponse(storage_path, media_type=content_type, headers=headers)
+        return FileResponse(str(storage_path), media_type=content_type, headers=headers)
 
 
 @app.delete("/api/documents/{document_id}")
@@ -750,10 +845,10 @@ def delete_document(document_id: int) -> dict:
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        storage_path = document_storage_path(int(document.company_id), document.storage_key)
-        if storage_path and os.path.exists(storage_path):
+        storage_path = _resolve_document_storage_path(document.storage_path)
+        if storage_path and storage_path.exists():
             try:
-                os.remove(storage_path)
+                storage_path.unlink()
             except OSError:
                 pass
 
@@ -1035,11 +1130,26 @@ def _page_title(page: str | None) -> str:
     }
     return titles.get(page or "", "Invoices")
 
+def _n8n_documents_today_count() -> int:
+    start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    try:
+        with get_session() as session:
+            stmt = select(Document.id).where(
+                Document.source == "N8N",
+                Document.created_at >= start,
+                Document.created_at < end,
+            )
+            return len(session.exec(stmt).all())
+    except Exception:
+        return 0
+
 
 def layout_wrapper(content_func):
     identifier = app.storage.user.get("auth_user")
     initials = _avatar_initials(identifier)
     company_name = _active_company_name()
+    n8n_today_count = _n8n_documents_today_count()
 
     with ui.element("div").classes("w-full min-h-screen bg-white"):
         with ui.row().classes("w-full min-h-screen h-screen items-stretch"):
@@ -1092,10 +1202,13 @@ def layout_wrapper(content_func):
                     ui.navigate.to("/login")
 
                 with ui.row().classes(
-                    "w-full h-16 items-center justify-between px-6 border-b border-slate-200 bg-white sticky top-0 z-50"
+                    "w-full h-16 items-center px-6 border-b border-slate-200 bg-white sticky top-0 z-50"
                 ):
                     ui.element("div").classes("flex-1")
-                    with ui.row().classes("items-center gap-2"):
+                    ui.label(f"[ 🧾 {n8n_today_count} BELEGE HEUTE ]").classes(
+                        "rounded-full bg-blue-50 text-emerald-700 border border-emerald-200 px-3 py-1 text-xs font-semibold"
+                    )
+                    with ui.row().classes("flex-1 items-center justify-end gap-2"):
                         avatar_menu = ui.menu().classes("min-w-[220px]")
                         with ui.avatar().classes(
                             "bg-slate-800 text-white rounded-full cursor-pointer shadow-sm hover:shadow-md transition"
