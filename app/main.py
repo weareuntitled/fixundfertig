@@ -24,6 +24,7 @@ from nicegui.storage import Storage, PseudoPersistentDict, request_contextvar
 from sqlmodel import select
 
 from env import load_env
+from logging_setup import setup_logging
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
@@ -67,7 +68,7 @@ else:
     _invoice_pdf_cache: dict[_CACHE_KEY_TYPE, tuple[float, bytes]] = {}
 
 _DOCUMENT_STORAGE_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage")
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 _N8N_MIN_PAYLOAD_BYTES = 32
 
 
@@ -170,6 +171,7 @@ def _validate_n8n_file_signature(file_bytes: bytes, mime_type: str, ext: str) ->
         raise HTTPException(status_code=400, detail="File content is not a valid JPEG")
 
 load_env()
+setup_logging()
 app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
 ui.add_head_html(
     "<script>window.False=false;window.True=true;window.None=null;</script>",
@@ -345,7 +347,7 @@ async def n8n_ingest(request: Request):
         try:
             file_bytes, mime_from_prefix = _parse_n8n_file_payload(file_base64)
         except HTTPException as exc:
-            _logger.warning(
+            logger.warning(
                 "n8n ingest rejected payload event_id=%s company_id=%s reason=%s",
                 event_id,
                 company_id_raw,
@@ -910,7 +912,7 @@ def document_file(document_id: int) -> Response:
                 data = storage.get_bytes(storage_key)
                 return Response(content=data, media_type=content_type, headers=headers)
 
-        _logger.warning(
+        logger.warning(
             "Document file missing for document_id=%s storage_path=%s storage_key=%s resolved_path=%s",
             document_id,
             document.storage_path,
