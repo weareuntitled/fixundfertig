@@ -41,6 +41,12 @@ n8n
 
 ## 🗄️ Database Schema & Data Models
 
+## 🧾 n8n Dokumenten-Ingest Debugging
+
+Eine praxisnahe Debugging- und Fehlerbehandlungs-Referenz für den n8n-Ingest,
+inkl. UI-Debug-Buttons und Event-Reset findet sich hier:
+`docs/n8n_ingest_debugging.md`.【F:docs/n8n_ingest_debugging.md†L1-L74】
+
 ### Storage engine
 - **SQLite** via SQLModel with a local file at `storage/database.db`. Tables are created automatically at startup with **schema “ensure_” functions** to add missing columns when upgrading older databases.【F:data.py†L174-L355】
 
@@ -412,4 +418,3 @@ This ensures payload integrity and prevents replay attacks via timestamp checks 
 
 - **Invoice finalization** uses `finalize_invoice_logic()` to build PDF bytes immediately and persist them into the invoice record (`pdf_bytes`).【F:logic.py†L143-L178】
 - **Address autocomplete** is implemented in `main.py` + `pages/_shared.py`, calling OpenStreetMap’s Nominatim API and returning structured address parts.【F:main.py†L88-L147】【F:pages/_shared.py†L121-L214】
-

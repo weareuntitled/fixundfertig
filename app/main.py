@@ -68,6 +68,7 @@ else:
 
 _DOCUMENT_STORAGE_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage")
 _logger = logging.getLogger(__name__)
+_N8N_MIN_PAYLOAD_BYTES = 32
 
 
 def _get_cached_pdf(cache_key: _CACHE_KEY_TYPE) -> bytes | None:
@@ -113,6 +114,60 @@ def _resolve_document_storage_path(storage_path: str | None) -> Path | None:
     if not str(resolved).startswith(f"{root}{os.sep}"):
         return None
     return resolved
+
+
+def _parse_n8n_file_payload(file_base64: object) -> tuple[bytes, str]:
+    raw_value = str(file_base64 or "").strip()
+    if not raw_value:
+        raise HTTPException(status_code=400, detail="Missing file_base64 payload")
+    if "filesystem-v2" in raw_value:
+        raise HTTPException(status_code=400, detail="Invalid file_base64 payload")
+
+    mime_from_prefix = ""
+    payload = raw_value
+    if raw_value.startswith("data:"):
+        if "," not in raw_value:
+            raise HTTPException(status_code=400, detail="Invalid file_base64 prefix")
+        header, payload = raw_value.split(",", 1)
+        if ";base64" not in header:
+            raise HTTPException(status_code=400, detail="Invalid file_base64 prefix")
+        mime_from_prefix = header[5:header.index(";base64")].strip()
+    elif "," in raw_value and "base64" in raw_value.split(",", 1)[0]:
+        raise HTTPException(status_code=400, detail="Invalid file_base64 prefix")
+
+    if "filesystem-v2" in payload:
+        raise HTTPException(status_code=400, detail="Invalid file_base64 payload")
+
+    try:
+        file_bytes = base64.b64decode(payload, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid file_base64 payload") from exc
+    if len(file_bytes) < _N8N_MIN_PAYLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="Decoded file is too small")
+    return file_bytes, mime_from_prefix
+
+
+def _validate_n8n_file_signature(file_bytes: bytes, mime_type: str, ext: str) -> None:
+    expected = ""
+    if mime_type.startswith("image/"):
+        expected = mime_type
+    elif ext in {"pdf", "png", "jpg", "jpeg"}:
+        expected = {
+            "pdf": "application/pdf",
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+        }[ext]
+
+    if not expected:
+        return
+
+    if expected == "application/pdf" and not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="File content is not a valid PDF")
+    if expected == "image/png" and not file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(status_code=400, detail="File content is not a valid PNG")
+    if expected == "image/jpeg" and not file_bytes.startswith(b"\xff\xd8"):
+        raise HTTPException(status_code=400, detail="File content is not a valid JPEG")
 
 load_env()
 app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
@@ -287,32 +342,40 @@ async def n8n_ingest(request: Request):
         if existing_event:
             raise HTTPException(status_code=409, detail="Duplicate event")
 
-        file_payload = str(file_base64)
-        if "," in file_payload and "base64" in file_payload.split(",", 1)[0]:
-            file_payload = file_payload.split(",", 1)[1]
         try:
-            file_bytes = base64.b64decode(file_payload, validate=True)
-        except Exception:
-            try:
-                file_bytes = base64.b64decode(file_payload)
-            except Exception:
-                raise HTTPException(status_code=400, detail="Invalid file_base64")
+            file_bytes, mime_from_prefix = _parse_n8n_file_payload(file_base64)
+        except HTTPException as exc:
+            _logger.warning(
+                "n8n ingest rejected payload event_id=%s company_id=%s reason=%s",
+                event_id,
+                company_id_raw,
+                exc.detail,
+            )
+            raise
 
         file_name = (payload.get("file_name") or payload.get("filename") or "").strip()
         if not file_name:
-            file_name = f"document_{event_id}.bin"
+            if mime_from_prefix == "application/pdf":
+                file_name = f"document_{event_id}.pdf"
+            elif mime_from_prefix == "image/png":
+                file_name = f"document_{event_id}.png"
+            elif mime_from_prefix == "image/jpeg":
+                file_name = f"document_{event_id}.jpg"
+            else:
+                file_name = f"document_{event_id}.bin"
         original_filename = file_name
         safe_name = safe_filename(file_name)
 
         ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
         if ext == "jpeg":
             ext = "jpg"
-        mime_type = {
+        mime_type = mime_from_prefix or {
             "pdf": "application/pdf",
             "jpg": "image/jpeg",
             "png": "image/png",
             "txt": "text/plain",
         }.get(ext, "application/octet-stream")
+        _validate_n8n_file_signature(file_bytes, mime_type, ext)
 
         vendor_value = (extracted.get("vendor") or payload.get("vendor") or "").strip()
         doc_date_value = (extracted.get("doc_date") or payload.get("doc_date") or "").strip() or None
@@ -333,7 +396,11 @@ async def n8n_ingest(request: Request):
         description_value = (extracted.get("summary") or payload.get("summary") or "").strip()
         keywords_value = extracted.get("keywords") or payload.get("keywords")
 
-        sha256 = hashlib.sha256(file_bytes).hexdigest()
+        provided_sha256 = (payload.get("sha256") or extracted.get("sha256") or "").strip()
+        if re.fullmatch(r"[A-Fa-f0-9]{64}", provided_sha256):
+            sha256 = provided_sha256.lower()
+        else:
+            sha256 = hashlib.sha256(file_bytes).hexdigest()
         size_bytes = len(file_bytes)
         document = build_document_record(
             company_id,
@@ -826,7 +893,7 @@ def document_file(document_id: int) -> Response:
         if storage_key.startswith("storage/"):
             storage_key = storage_key.removeprefix("storage/").lstrip("/")
         content_type = document.mime or "application/octet-stream"
-        if content_type.endswith("/pdf"):
+        if content_type.endswith("/pdf") or content_type.startswith("image/"):
             disposition = "inline"
         else:
             disposition = "attachment"
@@ -844,10 +911,11 @@ def document_file(document_id: int) -> Response:
                 return Response(content=data, media_type=content_type, headers=headers)
 
         _logger.warning(
-            "Document file missing for document_id=%s storage_path=%s storage_key=%s",
+            "Document file missing for document_id=%s storage_path=%s storage_key=%s resolved_path=%s",
             document_id,
             document.storage_path,
             document.storage_key,
+            str(storage_path) if storage_path else None,
         )
         raise HTTPException(status_code=404, detail="File not found")
 
