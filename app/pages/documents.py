@@ -325,7 +325,7 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end w-full mt-4 gap-2"):
                 ui.button(
                     "Speichern",
-                    on_click=upload_input.upload,
+                    on_click=lambda: upload_input.run_method("upload"),
                 ).classes(C_BTN_PRIM)
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
