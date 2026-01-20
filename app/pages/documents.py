@@ -844,13 +844,16 @@ def render_documents(session, comp: Company) -> None:
                 return getattr(props, "row", None)
 
             with table.add_slot("body-cell-amount") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
+                with ui.row().classes("w-full h-full items-center justify-end"):
+                    ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-amount_net") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_net_display", strict=False).classes("text-right")
+                with ui.row().classes("w-full h-full items-center justify-end"):
+                    ui.label().bind_text_from(slot, "props.row.amount_net_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-amount_tax") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_tax_display", strict=False).classes("text-right")
+                with ui.row().classes("w-full h-full items-center justify-end"):
+                    ui.label().bind_text_from(slot, "props.row.amount_tax_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-size_bytes") as slot:
                 with ui.row().classes("items-center justify-end gap-1"):
