@@ -531,9 +531,9 @@ async def n8n_upload(
         raise HTTPException(status_code=400, detail="Invalid payload_json")
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid payload_json")
-    vendor_details = payload.get("vendor_details")
-    if not isinstance(vendor_details, dict):
-        vendor_details = {}
+    extracted = payload.get("extracted") or {}
+    if not isinstance(extracted, dict):
+        extracted = {}
 
     raw_filename = (
         file_name
@@ -566,7 +566,14 @@ async def n8n_upload(
 
     vendor_value = (vendor or extracted.get("vendor") or payload.get("vendor") or "").strip()
     doc_number_value = (doc_number or extracted.get("doc_number") or payload.get("doc_number") or "").strip()
-    doc_date_value = (doc_date or extracted.get("doc_date") or payload.get("doc_date") or "").strip() or None
+    invoice_date_value = (extracted.get("invoice_date") or payload.get("invoice_date") or "").strip() or None
+    doc_date_value = (
+        doc_date
+        or extracted.get("doc_date")
+        or payload.get("doc_date")
+        or invoice_date_value
+        or ""
+    ).strip() or None
     amount_value = _parse_optional_float(
         amount_total if amount_total is not None else extracted.get("amount_total") or payload.get("amount_total")
     )
@@ -581,14 +588,15 @@ async def n8n_upload(
     title_value = (title or extracted.get("title") or payload.get("title") or "").strip()
     if not title_value:
         title_value = build_display_title(
-            vendor_name_value,
-            invoice_date_value,
+            vendor_value,
+            doc_date_value or invoice_date_value,
             amount_value,
             currency_value,
             safe_name,
         )
     description_value = (description or _payload_text(payload, "summary")).strip()
-    doc_date_value = invoice_date_value
+    document_type_value = (extracted.get("document_type") or payload.get("document_type") or "").strip()
+    tax_treatment_value = (extracted.get("tax_treatment") or payload.get("tax_treatment") or "").strip()
 
     with get_session() as session:
         company = session.get(Company, company_id)
@@ -641,19 +649,9 @@ async def n8n_upload(
             amount_tax=amount_tax_value,
             currency=currency_value,
             keywords_json=normalize_keywords(keywords_value),
-            amount_vat=vat_amount_value,
-            amount_gross=gross_amount_value,
-            invoice_number=invoice_number_value,
             invoice_date=invoice_date_value,
             tax_treatment=tax_treatment_value,
             document_type=document_type_value,
-            vendor_name=vendor_name_value,
-            vendor_street=vendor_street_value,
-            vendor_zip=vendor_zip_value,
-            vendor_city=vendor_city_value,
-            vendor_country=vendor_country_value,
-            vendor_tax_id=vendor_tax_id_value,
-            vendor_vat_id=vendor_vat_id_value,
         )
         session.add(document)
         session.flush()

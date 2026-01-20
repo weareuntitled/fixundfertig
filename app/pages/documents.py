@@ -24,6 +24,7 @@ from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     build_document_record,
     document_matches_filters,
+    normalize_keywords,
     resolve_document_path,
     validate_document_upload,
 )
@@ -49,6 +50,7 @@ def render_documents(session, comp: Company) -> None:
         "amount_tax": None,
         "currency": "",
         "description": "",
+        "keywords": "",
     }
 
     def _load_documents() -> list[Document]:
@@ -82,8 +84,15 @@ def render_documents(session, comp: Company) -> None:
             return datetime.min
 
     def _document_invoice_date(doc: Document) -> str:
-        value = getattr(doc, "invoice_date", None)
+        value = getattr(doc, "doc_date", None) or getattr(doc, "invoice_date", None)
         return value or ""
+
+    def _document_display_date(doc: Document) -> str:
+        doc_date = _document_invoice_date(doc)
+        if doc_date:
+            return doc_date
+        created_at = _doc_created_at(doc)
+        return created_at.strftime("%Y-%m-%d") if created_at != datetime.min else ""
 
     def _sort_documents(items: list[Document]) -> list[Document]:
         return sorted(items, key=_doc_created_at, reverse=True)
@@ -260,19 +269,14 @@ def render_documents(session, comp: Company) -> None:
             sha256 = hashlib.sha256(data).hexdigest()
 
             doc_date = upload_state["doc_date"] or None
-            amount_total = upload_state["amount_total"]
-            if amount_total in ("", None):
-                amount_total = None
-            amount_net = upload_state["amount_net"]
-            if amount_net in ("", None):
-                amount_net = None
-            amount_tax = upload_state["amount_tax"]
-            if amount_tax in ("", None):
-                amount_tax = None
+            amount_total = _coerce_float(upload_state["amount_total"])
+            amount_net = _coerce_float(upload_state["amount_net"])
+            amount_tax = _coerce_float(upload_state["amount_tax"])
             currency = upload_state["currency"].strip() if upload_state["currency"] else ""
             vendor = upload_state["vendor"].strip() if upload_state["vendor"] else ""
             doc_number = upload_state["doc_number"].strip() if upload_state["doc_number"] else ""
             description = upload_state["description"].strip() if upload_state["description"] else ""
+            keywords = upload_state["keywords"].strip() if upload_state["keywords"] else ""
 
             with get_session() as s:
                 try:
@@ -292,6 +296,7 @@ def render_documents(session, comp: Company) -> None:
                         currency=currency,
                         description=description,
                     )
+                    document.keywords_json = normalize_keywords(keywords)
                     document.mime = mime_type
                     document.size = size_bytes
                     document.sha256 = sha256
@@ -370,6 +375,10 @@ def render_documents(session, comp: Company) -> None:
             ui.textarea(
                 "Beschreibung",
                 on_change=lambda e: upload_state.__setitem__("description", e.value or ""),
+            ).classes(C_INPUT + " w-full")
+            ui.input(
+                "Tags (kommagetrennt)",
+                on_change=lambda e: upload_state.__setitem__("keywords", e.value or ""),
             ).classes(C_INPUT + " w-full")
             upload_input = ui.upload(
                 on_upload=_handle_upload,
@@ -791,6 +800,19 @@ def render_documents(session, comp: Company) -> None:
             return f"{amount:.2f} {currency}"
         return f"{amount:.2f}"
 
+    def _format_tags(value: str | None) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            return "-"
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = [item.strip() for item in raw.split(",") if item.strip()]
+        if isinstance(parsed, list):
+            items = [str(item).strip() for item in parsed if str(item).strip()]
+            return ", ".join(items) if items else "-"
+        return str(parsed).strip() or "-"
+
     @ui.refreshable
     def render_list():
         items = _sort_documents(_filter_documents(_load_documents()))
@@ -819,7 +841,7 @@ def render_documents(session, comp: Company) -> None:
                 rows.append(
                     {
                         "id": doc_id,
-                        "date": created_at.strftime("%Y-%m-%d") if created_at != datetime.min else "",
+                        "date": _document_display_date(doc),
                         "filename": doc.original_filename or doc.title or "Dokument",
                         "size_bytes": size_bytes,
                         "size_display": _format_size(size_bytes),
@@ -827,6 +849,7 @@ def render_documents(session, comp: Company) -> None:
                         "mime": doc.mime or doc.mime_type or "-",
                         "doc_number": doc.doc_number or "-",
                         "vendor": doc.vendor or "-",
+                        "tags": _format_tags(doc.keywords_json),
                         "amount": amount_total,
                         "amount_net": amount_net,
                         "amount_tax": amount_tax,
@@ -844,6 +867,7 @@ def render_documents(session, comp: Company) -> None:
                 {"name": "mime", "label": "Mime", "field": "mime", "sortable": True, "align": "left"},
                 {"name": "doc_number", "label": "Belegnr", "field": "doc_number", "sortable": True, "align": "left"},
                 {"name": "vendor", "label": "Vendor", "field": "vendor", "sortable": True, "align": "left"},
+                {"name": "tags", "label": "Tags", "field": "tags", "sortable": True, "align": "left"},
                 {"name": "amount", "label": "Betrag", "field": "amount", "sortable": True, "align": "right"},
                 {"name": "amount_net", "label": "Netto", "field": "amount_net", "sortable": True, "align": "right"},
                 {"name": "amount_tax", "label": "Steuer", "field": "amount_tax", "sortable": True, "align": "right"},
