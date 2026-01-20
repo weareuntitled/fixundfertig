@@ -26,7 +26,7 @@ from sqlmodel import select
 from env import load_env
 from logging_setup import setup_logging
 from auth_guard import clear_auth_session, require_auth
-from data import Company, Customer, Document, DocumentMeta, Invoice, WebhookEvent, get_session
+from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
 from styles import C_CONTAINER
 from invoice_numbering import build_invoice_filename
@@ -41,11 +41,13 @@ from pages import (
     render_expenses,
     render_documents,
     render_settings,
+    render_invites,
     render_ledger,
     render_exports,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
 from services.blob_storage import blob_storage, build_document_key
+from services.auth import OWNER_EMAIL
 from services.documents import (
     build_document_record,
     build_display_title,
@@ -1256,6 +1258,16 @@ def _active_company_name() -> str | None:
         return name.strip() or None
 
 
+def _is_owner_user() -> bool:
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if not user_id:
+            return False
+        user = session.get(User, int(user_id))
+        email = (user.email or "").strip().lower() if user else ""
+        return email == OWNER_EMAIL
+
+
 def _page_title(page: str | None) -> str:
     titles = {
         "dashboard": "Dashboard",
@@ -1292,6 +1304,7 @@ def layout_wrapper(content_func):
     initials = _avatar_initials(identifier)
     company_name = _active_company_name()
     n8n_today_count = _n8n_documents_today_count()
+    is_owner = _is_owner_user()
 
     with ui.element("div").classes("w-full min-h-screen bg-white"):
         with ui.row().classes("w-full min-h-screen h-screen items-stretch"):
@@ -1335,6 +1348,8 @@ def layout_wrapper(content_func):
                     ],
                 )
                 nav_section("CRM", [("Customers", "customers", "groups")])
+                if is_owner:
+                    nav_section("Access", [("Einladungen", "invites", "mail")])
 
             # Main content
             with ui.column().classes("flex-1 w-full bg-white relative"):
@@ -1448,6 +1463,8 @@ def index():
                     render_expenses(session, comp)
                 elif page == "ledger":
                     render_ledger(session, comp)
+                elif page == "invites":
+                    render_invites(session, comp)
                 elif page == "exports":
                     render_exports(session, comp)
                 else:
