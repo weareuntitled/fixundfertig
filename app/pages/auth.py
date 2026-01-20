@@ -8,8 +8,10 @@ from starlette.requests import Request
 
 from services.auth import (
     create_user_pending,
+    get_owner_email,
     is_identifier_allowed,
     login_user,
+    send_owner_verification_email,
     request_password_reset,
     reset_password,
     verify_email,
@@ -22,6 +24,7 @@ TITLE_TEXT = "text-2xl font-semibold text-slate-900 text-center"
 SUBTITLE_TEXT = "text-sm text-slate-500 text-center"
 INPUT_CLASSES = "w-full"
 PRIMARY_BUTTON = "w-full bg-slate-900 text-white rounded-lg hover:bg-slate-800"
+SECONDARY_BUTTON = "w-full border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50"
 CARD_CLASSES = "w-full max-w-[400px] bg-white rounded-xl shadow-lg border border-slate-200 p-6"
 BG_CLASSES = "min-h-screen w-full bg-slate-50 flex items-center justify-center px-4"
 logger = logging.getLogger(__name__)
@@ -52,6 +55,11 @@ def _error_label() -> ui.label:
 
 
 def _set_error(label: ui.label, message: str) -> None:
+    label.text = message
+    label.set_visibility(bool(message))
+
+
+def _set_success(label: ui.label, message: str) -> None:
     label.text = message
     label.set_visibility(bool(message))
 
@@ -91,11 +99,14 @@ def login_page():
             password_input = ui.input("Password").props("outlined dense type=password").classes(INPUT_CLASSES)
             password_error = _error_label()
         status_error = _error_label()
+        status_success = ui.label("").classes("text-sm text-emerald-600")
+        status_success.set_visibility(False)
 
         def handle_login() -> None:
             _set_error(identifier_error, "")
             _set_error(password_error, "")
             _set_error(status_error, "")
+            _set_success(status_success, "")
             identifier = (identifier_input.value or "").strip()
             password = password_input.value or ""
             if not identifier:
@@ -121,10 +132,33 @@ def login_page():
             finally:
                 login_button.loading = False
 
+        def handle_owner_verification() -> None:
+            _set_error(status_error, "")
+            _set_success(status_success, "")
+            identifier = (identifier_input.value or "").strip().lower()
+            owner_email = get_owner_email()
+            if not owner_email:
+                _set_error(status_error, "Owner email ist nicht konfiguriert.")
+                return
+            if identifier != owner_email:
+                _set_error(status_error, "Bitte die OWNER_EMAIL eingeben.")
+                return
+            owner_button.loading = True
+            try:
+                message = send_owner_verification_email()
+                _set_success(status_success, message)
+            except Exception as exc:
+                _set_error(status_error, str(exc))
+            finally:
+                owner_button.loading = False
+
         login_button = ui.button("Log in", on_click=handle_login).props("loading=false").classes(PRIMARY_BUTTON)
         with ui.row().classes("w-full justify-between"):
             ui.link("Forgot password?", "/forgot").classes(LINK_TEXT)
             ui.link("Create account", "/signup").classes(LINK_TEXT)
+        owner_button = ui.button("Owner-Verifizierungslink senden", on_click=handle_owner_verification).props(
+            "loading=false"
+        ).classes(SECONDARY_BUTTON)
 
 
 @ui.page("/signup")
