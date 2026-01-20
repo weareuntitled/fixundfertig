@@ -12,6 +12,7 @@ from .exports import render_exports
 from .invoice_create import render_invoice_create
 from .invoice_detail import render_invoice_detail
 from .invoices import render_invoices
+from .invites import render_invites
 from .ledger import render_ledger
 from .settings import render_settings
 
