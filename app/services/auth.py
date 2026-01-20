@@ -31,6 +31,10 @@ def _owner_password() -> str:
     return os.getenv("OWNER_PASSWORD", "")
 
 
+def get_owner_email() -> str:
+    return _owner_email()
+
+
 def ensure_owner_user() -> None:
     owner_email = _owner_email()
     owner_password = _owner_password()

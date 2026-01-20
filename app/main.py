@@ -47,7 +47,7 @@ from pages import (
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
 from services.blob_storage import blob_storage, build_document_key
-from services.auth import OWNER_EMAIL, ensure_owner_user
+from services.auth import ensure_owner_user, get_owner_email
 from services.documents import (
     build_document_record,
     build_display_title,
@@ -1266,7 +1266,7 @@ def _is_owner_user() -> bool:
             return False
         user = session.get(User, int(user_id))
         email = (user.email or "").strip().lower() if user else ""
-        return email == OWNER_EMAIL
+        return email == get_owner_email()
 
 
 def _page_title(page: str | None) -> str:
