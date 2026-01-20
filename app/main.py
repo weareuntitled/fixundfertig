@@ -47,7 +47,7 @@ from pages import (
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
 from services.blob_storage import blob_storage, build_document_key
-from services.auth import OWNER_EMAIL
+from services.auth import OWNER_EMAIL, ensure_owner_user
 from services.documents import (
     build_document_record,
     build_display_title,
@@ -181,6 +181,7 @@ ui.add_head_html(
     "<script>window.False=false;window.True=true;window.None=null;</script>",
     shared=True,
 )
+ensure_owner_user()
 
 
 def _require_api_auth() -> None:
