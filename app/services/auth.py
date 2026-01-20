@@ -15,10 +15,6 @@ from services.email import send_email
 VERIFY_TOKEN_TTL = timedelta(hours=24)
 RESET_TOKEN_TTL = timedelta(hours=2)
 logger = logging.getLogger(__name__)
-OWNER_EMAIL = os.getenv("OWNER_EMAIL", "").strip().lower()
-OWNER_PASSWORD = os.getenv("OWNER_PASSWORD", "")
-
-
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
@@ -28,11 +24,11 @@ def _normalize_email(email: str | None) -> str:
 
 
 def _owner_email() -> str:
-    return OWNER_EMAIL
+    return os.getenv("OWNER_EMAIL", "").strip().lower()
 
 
 def _owner_password() -> str:
-    return OWNER_PASSWORD
+    return os.getenv("OWNER_PASSWORD", "")
 
 
 def ensure_owner_user() -> None:

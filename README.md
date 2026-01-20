@@ -56,6 +56,8 @@ On startup, the app will create or update the owner account using these values a
 as active + email-verified for immediate login. If either variable is missing, the bootstrap
 step is skipped (no owner is created).【F:app/services/auth.py†L18-L60】【F:app/main.py†L177-L188】
 
+The app loads environment values from `.env` in the repo root (`/workspace/fixundfertig/.env`) or `app/.env` via `load_env()` before the UI starts, so placing `OWNER_EMAIL` and `OWNER_PASSWORD` there works out of the box.【F:app/env.py†L1-L33】【F:app/main.py†L177-L184】
+
 ### How invite-only access is enforced
 - **Signup**: blocked unless the email is invited or matches `OWNER_EMAIL`.【F:app/services/auth.py†L64-L163】
 - **Login**: blocked unless the user’s email is invited or matches `OWNER_EMAIL`.【F:app/services/auth.py†L298-L309】【F:app/pages/auth.py†L95-L120】
