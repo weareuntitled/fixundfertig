@@ -200,8 +200,20 @@ def ensure_document_dir(company_id: int, document_id: int | None = None) -> str:
 def resolve_document_path(storage_path: str | None) -> str:
     if not storage_path:
         return ""
-    if os.path.isabs(storage_path) or storage_path.startswith("storage/"):
-        return storage_path
+    if os.path.isabs(storage_path):
+        for marker in (f"{os.sep}companies{os.sep}", f"{os.sep}documents{os.sep}"):
+            if marker in storage_path:
+                storage_path = storage_path.split(marker, 1)[1]
+                storage_path = f"{marker.strip(os.sep)}{os.sep}{storage_path}".lstrip(os.sep)
+                break
+        else:
+            marker = f"{os.sep}storage{os.sep}"
+            if marker in storage_path:
+                storage_path = storage_path.split(marker, 1)[1]
+            else:
+                return storage_path
+    if storage_path.startswith("storage/"):
+        storage_path = storage_path.removeprefix("storage/").lstrip("/")
     if storage_path.startswith("companies/") or storage_path.startswith("documents/"):
         root = (os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage").strip()
         return os.path.join(root, storage_path)
