@@ -51,6 +51,7 @@ from services.documents import (
     build_display_title,
     document_matches_filters,
     document_storage_path,
+    resolve_document_path,
     normalize_keywords,
     safe_filename,
     serialize_document,
@@ -103,11 +104,10 @@ def _build_document_storage_path(
 
 
 def _resolve_document_storage_path(storage_path: str | None) -> Path | None:
-    if not storage_path:
+    resolved_path = resolve_document_path(storage_path)
+    if not resolved_path:
         return None
-    if storage_path.startswith("storage/"):
-        storage_path = storage_path.removeprefix("storage/").lstrip("/")
-    candidate = Path(storage_path)
+    candidate = Path(resolved_path)
     if not candidate.is_absolute():
         candidate = _DOCUMENT_STORAGE_ROOT / candidate
     resolved = candidate.resolve()
