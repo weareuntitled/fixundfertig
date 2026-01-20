@@ -109,7 +109,9 @@ def _resolve_document_storage_path(storage_path: str | None) -> Path | None:
         return None
     candidate = Path(resolved_path)
     if not candidate.is_absolute():
-        candidate = _DOCUMENT_STORAGE_ROOT / candidate
+        root_name = _DOCUMENT_STORAGE_ROOT.name
+        if not (candidate.parts and candidate.parts[0] == root_name):
+            candidate = _DOCUMENT_STORAGE_ROOT / candidate
     resolved = candidate.resolve()
     root = _DOCUMENT_STORAGE_ROOT.resolve()
     if not str(resolved).startswith(f"{root}{os.sep}"):
@@ -143,8 +145,6 @@ def _parse_n8n_file_payload(file_base64: object) -> tuple[bytes, str]:
         file_bytes = base64.b64decode(payload, validate=True)
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid file_base64 payload") from exc
-    if len(file_bytes) < _N8N_MIN_PAYLOAD_BYTES:
-        raise HTTPException(status_code=400, detail="Decoded file is too small")
     return file_bytes, mime_from_prefix
 
 
@@ -162,6 +162,8 @@ def _validate_n8n_file_signature(file_bytes: bytes, mime_type: str, ext: str) ->
 
     if not expected:
         return
+    if len(file_bytes) < _N8N_MIN_PAYLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="Decoded file is too small")
 
     if expected == "application/pdf" and not file_bytes.startswith(b"%PDF"):
         raise HTTPException(status_code=400, detail="File content is not a valid PDF")
@@ -288,10 +290,11 @@ def address_autocomplete(q: str = "", country: str = "DE"):
 async def n8n_ingest(request: Request):
     raw_body = await request.body()
     timestamp_header = (request.headers.get("X-Timestamp") or "").strip()
-    secret_header = (request.headers.get("X-N8N-Secret") or "").strip()
+    secret_header = (request.headers.get("X-N8N-Secret") or request.headers.get("X-API-KEY") or "").strip()
+    signature_header = (request.headers.get("X-Signature") or "").strip()
     event_id_header = (request.headers.get("X-Event-Id") or "").strip()
 
-    if not timestamp_header or not secret_header or not event_id_header:
+    if not timestamp_header:
         raise HTTPException(status_code=401, detail="Missing auth headers")
 
     try:
@@ -335,8 +338,16 @@ async def n8n_ingest(request: Request):
         secret = (getattr(company, "n8n_secret", "") or "").strip()
         if not secret:
             raise HTTPException(status_code=403, detail="Missing n8n secret")
-        if not hmac.compare_digest(secret, secret_header):
-            raise HTTPException(status_code=401, detail="Invalid secret")
+        if signature_header:
+            signature_input = f"{timestamp}.".encode("utf-8") + raw_body
+            expected_signature = hmac.new(secret.encode("utf-8"), signature_input, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected_signature, signature_header):
+                raise HTTPException(status_code=401, detail="Invalid signature")
+        else:
+            if not secret_header or not event_id_header:
+                raise HTTPException(status_code=401, detail="Missing auth headers")
+            if not hmac.compare_digest(secret, secret_header):
+                raise HTTPException(status_code=401, detail="Invalid secret")
 
         existing_event = session.exec(
             select(WebhookEvent).where(WebhookEvent.event_id == event_id)

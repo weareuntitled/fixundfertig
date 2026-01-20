@@ -149,6 +149,7 @@ def build_document_record(
     amount_net: float | None = None,
     amount_tax: float | None = None,
     currency: str | None = None,
+    keywords_json: str | None = None,
 ) -> Document:
     storage_key = storage_key or ""
     source_value = source.value if isinstance(source, DocumentSource) else (source or "")
@@ -174,6 +175,7 @@ def build_document_record(
         amount_net=amount_net,
         amount_tax=amount_tax,
         currency=currency,
+        keywords_json=keywords_json or "[]",
     )
 
 
