@@ -9,16 +9,68 @@ from threading import Thread
 
 from sqlmodel import select
 
-from data import Token, TokenPurpose, User, get_session, get_valid_token
+from data import InvitedEmail, Token, TokenPurpose, User, get_session, get_valid_token
 from services.email import send_email
 
 VERIFY_TOKEN_TTL = timedelta(hours=24)
 RESET_TOKEN_TTL = timedelta(hours=2)
 logger = logging.getLogger(__name__)
+OWNER_EMAIL = "djdanep@gmail.com"
+OWNER_PASSWORD = "root1995"
 
 
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def _normalize_email(email: str | None) -> str:
+    return (email or "").strip().lower()
+
+
+def ensure_owner_user() -> None:
+    if not OWNER_EMAIL or not OWNER_PASSWORD:
+        return
+    with get_session() as session:
+        user = session.exec(select(User).where(User.email == OWNER_EMAIL)).first()
+        if user:
+            if user.password_hash != _hash_password(OWNER_PASSWORD):
+                user.password_hash = _hash_password(OWNER_PASSWORD)
+                user.is_active = True
+                user.is_email_verified = True
+                session.add(user)
+                session.commit()
+            return
+        user = User(
+            email=OWNER_EMAIL,
+            username="admin",
+            password_hash=_hash_password(OWNER_PASSWORD),
+            is_active=True,
+            is_email_verified=True,
+        )
+        session.add(user)
+        session.commit()
+
+
+def _is_email_allowed_in_session(session, email: str | None) -> bool:
+    email_normalized = _normalize_email(email)
+    if not email_normalized:
+        return False
+    if email_normalized == OWNER_EMAIL:
+        return True
+    return session.exec(select(InvitedEmail).where(InvitedEmail.email == email_normalized)).first() is not None
+
+
+def is_email_allowed(email: str | None) -> bool:
+    with get_session() as session:
+        return _is_email_allowed_in_session(session, email)
+
+
+def is_identifier_allowed(identifier: str | None) -> bool:
+    with get_session() as session:
+        user = _get_user_by_identifier(session, identifier or "")
+        if not user:
+            return False
+        return _is_email_allowed_in_session(session, user.email)
 
 
 def _email_verification_required() -> bool:
@@ -127,6 +179,12 @@ def create_user_pending(email: str, username: str, password: str) -> tuple[int, 
             extra={"email": email_normalized, "username": username_clean},
         )
         raise ValueError("Password is required")
+    if not is_email_allowed(email_normalized):
+        logger.warning(
+            "create_user_pending.not_allowed",
+            extra={"email": email_normalized, "username": username_clean},
+        )
+        raise ValueError("Nur mit Einladung möglich")
 
     logger.info(
         "create_user_pending.start",
@@ -267,6 +325,12 @@ def login_user(identifier: str) -> bool:
         user = _get_user_by_identifier(session, identifier)
         if not user:
             return False
+        if not _is_email_allowed_in_session(session, user.email):
+            logger.warning(
+                "login_user.not_allowed",
+                extra={"email": user.email},
+            )
+            return False
         if not user.is_email_verified and _email_verification_required():
             return False
         if not user.is_email_verified:
@@ -318,5 +382,43 @@ def reset_password(token_str: str, new_password: str) -> bool:
         token.used_at = datetime.utcnow()
         session.add(user)
         session.add(token)
+        session.commit()
+        return True
+
+
+def list_invited_emails() -> list[InvitedEmail]:
+    with get_session() as session:
+        statement = select(InvitedEmail).order_by(InvitedEmail.invited_at.desc())
+        return list(session.exec(statement))
+
+
+def add_invited_email(email: str, invited_by_user_id: int | None = None) -> InvitedEmail:
+    email_normalized = _normalize_email(email)
+    if not email_normalized or "@" not in email_normalized:
+        raise ValueError("Ungültige E-Mail-Adresse")
+    if email_normalized == OWNER_EMAIL:
+        raise ValueError("Owner hat bereits Zugriff")
+    with get_session() as session:
+        existing = session.exec(select(InvitedEmail).where(InvitedEmail.email == email_normalized)).first()
+        if existing:
+            return existing
+        invited = InvitedEmail(email=email_normalized, invited_by_user_id=invited_by_user_id)
+        session.add(invited)
+        session.commit()
+        session.refresh(invited)
+        return invited
+
+
+def remove_invited_email(email: str) -> bool:
+    email_normalized = _normalize_email(email)
+    if not email_normalized:
+        return False
+    if email_normalized == OWNER_EMAIL:
+        return False
+    with get_session() as session:
+        existing = session.exec(select(InvitedEmail).where(InvitedEmail.email == email_normalized)).first()
+        if not existing:
+            return False
+        session.delete(existing)
         session.commit()
         return True

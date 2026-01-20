@@ -57,6 +57,18 @@ class Token(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     user: Optional["User"] = Relationship(back_populates="tokens")
 
+class InvitedEmail(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True, unique=True)
+    invited_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    invited_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @validator("email", pre=True)
+    def normalize_email(cls, value):
+        if value is None:
+            return value
+        return value.strip().lower()
+
 class Company(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: Optional[int] = Field(default=None, foreign_key="user.id")
@@ -381,6 +393,18 @@ def ensure_audit_log_schema():
             ")"
         )
 ensure_audit_log_schema()
+
+def ensure_invited_email_schema():
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS invitedemail ("
+            "id INTEGER PRIMARY KEY,"
+            "email TEXT UNIQUE,"
+            "invited_by_user_id INTEGER,"
+            "invited_at TEXT DEFAULT (datetime('now'))"
+            ")"
+        )
+ensure_invited_email_schema()
 
 def ensure_document_schema():
     with engine.begin() as conn:
