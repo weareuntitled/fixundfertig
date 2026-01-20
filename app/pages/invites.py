@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nicegui import ui
+from nicegui import app, ui
 
 from ._shared import (
     C_BTN_PRIM,
@@ -12,7 +12,7 @@ from ._shared import (
     get_current_user_id,
     get_session,
 )
-from services.auth import OWNER_EMAIL, add_invited_email, list_invited_emails, remove_invited_email
+from services.auth import add_invited_email, get_owner_email, list_invited_emails, remove_invited_email
 
 
 def _resolve_user_email(user_id: int | None) -> str:
@@ -30,7 +30,7 @@ def render_invites(session, _comp) -> None:
         return
 
     current_email = _resolve_user_email(int(user_id))
-    if current_email != OWNER_EMAIL:
+    if current_email != get_owner_email():
         ui.notify("Nur der Owner kann Einladungen verwalten.", color="orange")
         app.storage.user["page"] = "dashboard"
         ui.navigate.to("/")
