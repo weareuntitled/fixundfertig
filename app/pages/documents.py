@@ -132,6 +132,7 @@ def render_documents(session, comp: Company) -> None:
         cleaned = cleaned.replace("/", "_").replace("\\", "_").replace(":", "_")
         return cleaned or "document"
 
+    @ui_handler("documents.export")
     def _export_documents(selected_ids: set[int]) -> None:
         if not selected_ids:
             ui.notify("Bitte Dokumente auswählen.", color="orange")
@@ -219,6 +220,7 @@ def render_documents(session, comp: Company) -> None:
             if temp_path.exists():
                 temp_path.unlink()
 
+    @ui_handler("documents.upload")
     async def _handle_upload(event) -> None:
         if not comp.id:
             ui.notify("Kein aktives Unternehmen.", color="red")
@@ -364,13 +366,16 @@ def render_documents(session, comp: Company) -> None:
         if debug_button:
             debug_button.visible = bool(selected_ids)
 
+    @ui_handler("documents.debug")
     def _debug_log_selection() -> None:
         payload = {"selected_ids": sorted(selected_ids)}
         ui.run_javascript(f"console.log('documents_debug', {json.dumps(payload)});")
 
+    @ui_handler("documents.dialog.reset_events.open")
     def _open_reset_events() -> None:
         reset_dialog.open()
 
+    @ui_handler("documents.dialog.delete_all.open")
     def _open_delete_all() -> None:
         delete_all_dialog.open()
 
@@ -490,6 +495,7 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=delete_all_dialog.close).classes(C_BTN_SEC)
 
+                @ui_handler("documents.dialog.delete_all.confirm")
                 def _confirm_delete_all():
                     with get_session() as s:
                         documents = s.exec(
@@ -537,6 +543,7 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=reset_dialog.close).classes(C_BTN_SEC)
 
+                @ui_handler("documents.dialog.reset_events.confirm")
                 def _confirm_reset():
                     with get_session() as s:
                         s.exec(delete(WebhookEvent))
@@ -553,6 +560,7 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=delete_dialog.close).classes(C_BTN_SEC)
 
+                @ui_handler("documents.dialog.delete.confirm")
                 def _confirm_delete():
                     if not delete_id["value"]:
                         delete_dialog.close()
@@ -592,10 +600,12 @@ def render_documents(session, comp: Company) -> None:
 
                 ui.button("Löschen", on_click=_confirm_delete).classes("bg-rose-600 text-white hover:bg-rose-700")
 
+    @ui_handler("documents.dialog.delete.open")
     def _open_delete(doc_id: int) -> None:
         delete_id["value"] = doc_id
         delete_dialog.open()
 
+    @ui_handler("documents.dialog.meta.open")
     def _open_meta(doc_id: int) -> None:
         with get_session() as s:
             meta = s.exec(select(DocumentMeta).where(DocumentMeta.document_id == doc_id)).first()
@@ -700,13 +710,16 @@ def render_documents(session, comp: Company) -> None:
                 return getattr(props, "row", None)
 
             with table.add_slot("body-cell-amount") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
+                with ui.row().classes("w-full h-full items-center justify-end"):
+                    ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-amount_net") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_net_display", strict=False).classes("text-right")
+                with ui.row().classes("w-full h-full items-center justify-end"):
+                    ui.label().bind_text_from(slot, "props.row.amount_net_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-amount_tax") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_tax_display", strict=False).classes("text-right")
+                with ui.row().classes("w-full h-full items-center justify-end"):
+                    ui.label().bind_text_from(slot, "props.row.amount_tax_display", strict=False).classes("text-right")
 
             with table.add_slot("body-cell-size_bytes") as slot:
                 with ui.row().classes("items-center justify-end gap-1"):
@@ -716,6 +729,7 @@ def render_documents(session, comp: Company) -> None:
                     warn_icon.tooltip("Sehr kleine Datei (< 1 KB).")
 
             with table.add_slot("body-cell-actions") as slot:
+                @ui_handler("documents.row.meta.open")
                 def _open_meta_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row:
@@ -729,6 +743,7 @@ def render_documents(session, comp: Company) -> None:
                         return
                     _open_meta(int(row["id"]))
 
+                @ui_handler("documents.row.delete.open")
                 def _open_delete_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row:
@@ -742,6 +757,7 @@ def render_documents(session, comp: Company) -> None:
                         return
                     _open_delete(int(row["id"]))
 
+                @ui_handler("documents.row.document.open")
                 def _open_document_from_slot() -> None:
                     row = _row_from_slot(slot)
                     if not row or not row.get("id"):

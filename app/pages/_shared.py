@@ -9,6 +9,9 @@ import os
 import base64
 import json
 import time
+import logging
+import functools
+import inspect
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -75,6 +78,34 @@ from logic import (
 # -------------------------
 # Helpers
 # -------------------------
+
+logger = logging.getLogger(__name__)
+
+
+def ui_handler(context: str, *, notify_message: str = "Aktion fehlgeschlagen.") -> callable:
+    def decorator(func: callable) -> callable:
+        if inspect.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception:
+                    logger.exception("UI handler failed: %s", context, extra={"context": context})
+                    ui.notify(notify_message, color="red")
+
+            return async_wrapper
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception:
+                logger.exception("UI handler failed: %s", context, extra={"context": context})
+                ui.notify(notify_message, color="red")
+
+        return wrapper
+
+    return decorator
 
 def get_current_user_id(session) -> int | None:
     identifier = app.storage.user.get("auth_user")
