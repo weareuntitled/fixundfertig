@@ -8,6 +8,7 @@ from starlette.requests import Request
 
 from services.auth import (
     create_user_pending,
+    is_identifier_allowed,
     login_user,
     request_password_reset,
     reset_password,
@@ -107,6 +108,9 @@ def login_page():
             try:
                 if not verify_password(identifier, password):
                     _set_error(status_error, "Invalid credentials")
+                    return
+                if not is_identifier_allowed(identifier):
+                    _set_error(status_error, "Nur mit Einladung möglich")
                     return
                 if login_user(identifier):
                     app.storage.user["auth_user"] = identifier

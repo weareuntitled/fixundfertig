@@ -41,6 +41,32 @@ n8n
 
 ## 🗄️ Database Schema & Data Models
 
+## 🔐 Invite-only Access & Owner Bootstrap
+
+FixundFertig runs with an invite-only login/registration flow. Access is limited to:
+- the **owner account** configured via environment variables, and
+- email addresses explicitly added in the **Einladungen** UI by the owner.
+
+### Required environment variables
+Set these variables in your runtime environment (Docker, systemd, or `.env` if applicable):
+- `OWNER_EMAIL`: the admin/owner email address (e.g. `djdanep@gmail.com`).
+- `OWNER_PASSWORD`: the admin/owner password.
+
+On startup, the app will create or update the owner account using these values and mark it
+as active + email-verified for immediate login. If either variable is missing, the bootstrap
+step is skipped (no owner is created).【F:app/services/auth.py†L18-L60】【F:app/main.py†L177-L188】
+
+The app loads environment values from `.env` in the repo root (`/workspace/fixundfertig/.env`) or `app/.env` via `load_env()` before the UI starts, so placing `OWNER_EMAIL` and `OWNER_PASSWORD` there works out of the box.【F:app/env.py†L1-L33】【F:app/main.py†L177-L184】
+
+### How invite-only access is enforced
+- **Signup**: blocked unless the email is invited or matches `OWNER_EMAIL`.【F:app/services/auth.py†L64-L163】
+- **Login**: blocked unless the user’s email is invited or matches `OWNER_EMAIL`.【F:app/services/auth.py†L298-L309】【F:app/pages/auth.py†L95-L120】
+- **Session guard**: if a user is removed from the allowlist, active sessions are cleared and redirected to login.【F:app/auth_guard.py†L6-L13】
+
+### Owner UI entry point
+The owner sees a sidebar entry **Access → Einladungen** which provides invite management:
+add/remove emails and view the active list. Non-owner users cannot access this page.【F:app/main.py†L1302-L1353】【F:app/pages/invites.py†L26-L89】
+
 ## 🧾 n8n Dokumenten-Ingest Debugging
 
 Eine praxisnahe Debugging- und Fehlerbehandlungs-Referenz für den n8n-Ingest,
