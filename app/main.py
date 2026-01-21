@@ -21,6 +21,7 @@ from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Req
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from nicegui import ui, app, helpers
 from nicegui.storage import Storage, PseudoPersistentDict, request_contextvar
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from sqlmodel import select
 
 from env import load_env
@@ -73,6 +74,109 @@ else:
 _DOCUMENT_STORAGE_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage")
 logger = logging.getLogger(__name__)
 _N8N_MIN_PAYLOAD_BYTES = 32
+_N8N_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_N8N_MONEY_PATTERN = re.compile(r"^-?\d+\.\d{2}$")
+
+
+class N8NExtractedPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    vendor: str | None = None
+    doc_date: str | None = None
+    amount_total: str | None = None
+    amount_net: str | None = None
+    amount_tax: str | None = None
+    currency: str | None = None
+    doc_number: str | None = None
+    title: str | None = None
+    summary: str | None = None
+    keywords: list[str] | str | None = None
+    line_items: list[object] | None = None
+    compliance_flags: list[object] | None = None
+    sha256: str | None = None
+
+    @field_validator(
+        "vendor",
+        "doc_date",
+        "currency",
+        "doc_number",
+        "title",
+        "summary",
+        "sha256",
+        mode="before",
+    )
+    @classmethod
+    def _strip_optional_strings(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def _strip_keywords(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    @field_validator("doc_date")
+    @classmethod
+    def _validate_doc_date(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("doc_date must be a string")
+        if not _N8N_DATE_PATTERN.fullmatch(value):
+            raise ValueError("doc_date must be YYYY-MM-DD")
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError("doc_date must be YYYY-MM-DD") from exc
+        return value
+
+    @field_validator("currency")
+    @classmethod
+    def _validate_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("currency must be a string")
+        normalized = value.strip().upper()
+        if len(normalized) != 3:
+            raise ValueError("currency must be 3 letters")
+        return normalized
+
+    @field_validator("amount_total", "amount_net", "amount_tax", mode="before")
+    @classmethod
+    def _validate_amounts(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        if isinstance(value, (int, float)):
+            value = f"{value:.2f}"
+        if not isinstance(value, str):
+            raise ValueError("amount must be a string")
+        stripped = value.strip()
+        if not _N8N_MONEY_PATTERN.fullmatch(stripped):
+            raise ValueError("amount must have 2 decimals")
+        return stripped
+
+
+class N8NIngestPayload(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={"required": ["company_id", "file_base64"]},
+    )
+
+    company_id: int | None = None
+    file_base64: str | None = None
+    event_id: str | None = None
+    file_name: str | None = None
+    extracted: N8NExtractedPayload | None = None
 
 
 def _get_cached_pdf(cache_key: _CACHE_KEY_TYPE) -> bytes | None:
@@ -289,7 +393,15 @@ def address_autocomplete(q: str = "", country: str = "DE"):
     return [_format_nominatim_result(item) for item in payload]
 
 
-@app.post("/api/webhooks/n8n/ingest")
+N8N_INGEST_OPENAPI = {
+    "requestBody": {
+        "required": True,
+        "content": {"application/json": {"schema": N8NIngestPayload.model_json_schema()}},
+    }
+}
+
+
+@app.post("/api/webhooks/n8n/ingest", openapi_extra=N8N_INGEST_OPENAPI)
 async def n8n_ingest(request: Request):
     raw_body = await request.body()
     timestamp_header = (request.headers.get("X-Timestamp") or "").strip()
@@ -317,14 +429,13 @@ async def n8n_ingest(request: Request):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid payload structure")
 
-    extracted = payload.get("extracted") or {}
-    if not isinstance(extracted, dict):
-        extracted = {}
+    extracted_payload = _resolve_extracted_payload(payload)
+    extracted = _validate_extracted_payload(extracted_payload)
 
     event_id = event_id_header or str(payload.get("event_id") or "").strip()
     company_id_raw = payload.get("company_id")
     file_base64 = payload.get("file_base64")
-    if not event_id or not company_id_raw or not file_base64:
+    if not event_id or company_id_raw is None or file_base64 is None:
         raise HTTPException(status_code=400, detail="Missing required payload fields")
 
     try:
@@ -393,14 +504,14 @@ async def n8n_ingest(request: Request):
         }.get(ext, "application/octet-stream")
         _validate_n8n_file_signature(file_bytes, mime_type, ext)
 
-        vendor_value = (extracted.get("vendor") or payload.get("vendor") or "").strip()
-        doc_date_value = (extracted.get("doc_date") or payload.get("doc_date") or "").strip() or None
-        amount_value = _parse_optional_float(extracted.get("amount_total") or payload.get("amount_total"))
-        amount_net_value = _parse_optional_float(extracted.get("amount_net") or payload.get("amount_net"))
-        amount_tax_value = _parse_optional_float(extracted.get("amount_tax") or payload.get("amount_tax"))
-        currency_value = (extracted.get("currency") or payload.get("currency") or "").strip() or None
-        doc_number_value = (extracted.get("doc_number") or payload.get("doc_number") or "").strip()
-        title_value = (extracted.get("title") or payload.get("title") or "").strip()
+        vendor_value = (extracted.get("vendor") or "").strip()
+        doc_date_value = (extracted.get("doc_date") or "").strip() or None
+        amount_value = _parse_optional_float(extracted.get("amount_total"))
+        amount_net_value = _parse_optional_float(extracted.get("amount_net"))
+        amount_tax_value = _parse_optional_float(extracted.get("amount_tax"))
+        currency_value = (extracted.get("currency") or "").strip() or None
+        doc_number_value = (extracted.get("doc_number") or "").strip()
+        title_value = (extracted.get("title") or "").strip()
         if not title_value:
             title_value = build_display_title(
                 vendor_value,
@@ -409,10 +520,10 @@ async def n8n_ingest(request: Request):
                 currency_value,
                 safe_name,
             )
-        description_value = (extracted.get("summary") or payload.get("summary") or "").strip()
-        keywords_value = extracted.get("keywords") or payload.get("keywords")
+        description_value = (extracted.get("summary") or "").strip()
+        keywords_value = extracted.get("keywords")
 
-        provided_sha256 = (payload.get("sha256") or extracted.get("sha256") or "").strip()
+        provided_sha256 = (extracted.get("sha256") or "").strip()
         if re.fullmatch(r"[A-Fa-f0-9]{64}", provided_sha256):
             sha256 = provided_sha256.lower()
         else:
@@ -512,6 +623,58 @@ def _payload_text(payload: dict, key: str) -> str:
     if isinstance(value, str):
         return value.strip()
     return str(value).strip()
+
+
+def _build_legacy_extracted_payload(payload: dict) -> dict:
+    legacy_keys = (
+        "vendor",
+        "doc_date",
+        "amount_total",
+        "amount_net",
+        "amount_tax",
+        "currency",
+        "doc_number",
+        "title",
+        "summary",
+        "keywords",
+        "line_items",
+        "compliance_flags",
+        "sha256",
+    )
+    extracted: dict = {}
+    for key in legacy_keys:
+        if key not in payload:
+            continue
+        value = payload.get(key)
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                continue
+        if value is None:
+            continue
+        extracted[key] = value
+    return extracted
+
+
+def _resolve_extracted_payload(payload: dict) -> dict:
+    if "extracted" in payload:
+        extracted_raw = payload.get("extracted")
+        if extracted_raw is None:
+            return _build_legacy_extracted_payload(payload)
+        if not isinstance(extracted_raw, dict):
+            raise HTTPException(status_code=400, detail="Invalid extracted payload")
+        return extracted_raw
+    return _build_legacy_extracted_payload(payload)
+
+
+def _validate_extracted_payload(extracted: dict) -> dict:
+    if not extracted:
+        return {}
+    try:
+        validated = N8NExtractedPayload.model_validate(extracted)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail="Invalid extracted payload") from exc
+    return validated.model_dump(exclude_none=True)
 
 
 @app.post("/api/webhooks/n8n/upload")

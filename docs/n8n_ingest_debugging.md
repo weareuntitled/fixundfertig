@@ -16,11 +16,21 @@ rohen Payload-Daten an `DocumentMeta`. Die Datei wird anschließend über
 **Headers (Pflicht):**
 - `X-Timestamp`: Unix-Timestamp (Sekunden)
 - `X-N8N-Secret`: Secret des Unternehmens
-- `X-Event-Id`: eindeutige Event-ID (Duplikate werden abgelehnt)
+- `X-Event-Id`: eindeutige Event-ID (Duplikate werden abgelehnt, Header gewinnt vor Payload)
 
 **Payload (Pflicht):**
 - `company_id`
 - `file_base64`
+
+**Payload (optional):**
+- `event_id` (nur nötig, wenn `X-Event-Id` fehlt)
+- `file_name`
+- `extracted` (Objekt mit Extraktionsdaten, inkl. `line_items` und `compliance_flags`)
+
+**Hinweis zur Rückwärtskompatibilität:**  
+Legacy-Clients dürfen weiterhin Felder wie `vendor`, `doc_date`, `amount_total`, usw.
+auf Root-Ebene senden. Diese werden nur dann in `extracted` übernommen, wenn kein
+`extracted`-Objekt vorhanden ist.
 
 ## file_base64-Format (strict)
 
@@ -51,6 +61,12 @@ Akzeptiert wird:
    - JPEG: `FF D8`
 
 Fehlschläge werden mit **HTTP 400** zurückgegeben und serverseitig geloggt.
+
+4. **Extraktionsfelder (optional)**  
+   Falls `extracted` gesetzt ist, werden folgende Formate geprüft:
+   - `doc_date`: `YYYY-MM-DD`
+   - `amount_*`: String mit zwei Dezimalstellen (`123.45`)
+   - `currency`: exakt 3 Zeichen (z. B. `EUR`)
 
 ## Debugging in der UI
 
