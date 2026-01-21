@@ -61,6 +61,21 @@ def ensure_owner_user() -> None:
         session.commit()
 
 
+def send_owner_verification_email() -> str:
+    owner_email = _owner_email()
+    if not owner_email:
+        raise ValueError("Owner email is not configured")
+    ensure_owner_user()
+    with get_session() as session:
+        user = session.exec(select(User).where(User.email == owner_email)).first()
+        if not user:
+            raise ValueError("Owner user not found")
+        if not _email_verification_required():
+            return "E-Mail-Verifizierung ist deaktiviert."
+        create_verify_email_token(user.id)
+    return "Verifizierungslink gesendet."
+
+
 def _is_email_allowed_in_session(session, email: str | None) -> bool:
     email_normalized = _normalize_email(email)
     if not email_normalized:
