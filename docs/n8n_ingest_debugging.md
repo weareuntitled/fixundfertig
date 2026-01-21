@@ -16,11 +16,21 @@ rohen Payload-Daten an `DocumentMeta`. Die Datei wird anschließend über
 **Headers (Pflicht):**
 - `X-Timestamp`: Unix-Timestamp (Sekunden)
 - `X-N8N-Secret`: Secret des Unternehmens
-- `X-Event-Id`: eindeutige Event-ID (Duplikate werden abgelehnt)
+- `X-Event-Id`: eindeutige Event-ID (Duplikate werden abgelehnt, Header gewinnt vor Payload)
 
 **Payload (Pflicht):**
 - `company_id`
 - `file_base64`
+
+**Payload (optional):**
+- `event_id` (nur nötig, wenn `X-Event-Id` fehlt)
+- `file_name`
+- `extracted` (Objekt mit Extraktionsdaten, inkl. `line_items` und `compliance_flags`)
+
+**Hinweis zur Rückwärtskompatibilität:**  
+Legacy-Clients dürfen weiterhin Felder wie `vendor`, `doc_date`, `amount_total`, usw.
+auf Root-Ebene senden. Diese werden nur dann in `extracted` übernommen, wenn kein
+`extracted`-Objekt vorhanden ist.
 
 ## file_base64-Format (strict)
 
@@ -33,6 +43,112 @@ Akzeptiert wird:
 - Werte mit `filesystem-v2`
 - Präfixe, die nicht `data:<mime>;base64,` entsprechen
 - Nicht-Base64-Strings
+
+## Payload erstellen (ausführliche Anleitung)
+
+Die **kanonische Payload** enthält nur die Felder auf Root-Ebene, die wirklich
+gebraucht werden. Extrahierte Metadaten liegen **immer** unter `extracted`.
+
+### 1) Minimale Payload (nur Pflichtfelder)
+
+```json
+{
+  "company_id": 123,
+  "file_base64": "JVBERi0xLjQKJ...."
+}
+```
+
+Wenn `X-Event-Id` als Header fehlt, muss zusätzlich `event_id` im Body gesetzt
+werden.
+
+### 2) Kanonische Payload mit `extracted`
+
+```json
+{
+  "company_id": 123,
+  "event_id": "evt-2024-0001",
+  "file_name": "rechnung_2024-01.pdf",
+  "file_base64": "data:application/pdf;base64,JVBERi0xLjQKJ....",
+  "extracted": {
+    "vendor": "ACME GmbH",
+    "doc_date": "2024-01-31",
+    "doc_number": "INV-001",
+    "amount_total": "123.45",
+    "amount_net": "100.00",
+    "amount_tax": "23.45",
+    "currency": "EUR",
+    "summary": "Bürobedarf Januar",
+    "keywords": ["büro", "bedarf", "januar"],
+    "line_items": [
+      {"description": "Papier A4", "quantity": 2, "price": "10.00"}
+    ],
+    "compliance_flags": [
+      {"code": "VAT_MISMATCH", "severity": "warning"}
+    ]
+  }
+}
+```
+
+### 3) Legacy-Payload (nur für alte Clients)
+
+Legacy-Clients dürfen weiterhin Root-Felder wie `vendor` oder `doc_date` senden.
+Diese werden **nur dann** verwendet, wenn `extracted` fehlt.
+
+```json
+{
+  "company_id": 123,
+  "event_id": "evt-legacy-0001",
+  "file_base64": "JVBERi0xLjQKJ....",
+  "vendor": "Alt GmbH",
+  "doc_date": "2024-02-01",
+  "amount_total": "50.00",
+  "currency": "EUR"
+}
+```
+
+### 4) Gemischte Payload (nicht empfohlen)
+
+Wenn `extracted` vorhanden ist, werden gleichnamige Root-Felder ignoriert.
+
+```json
+{
+  "company_id": 123,
+  "event_id": "evt-mixed-0001",
+  "file_base64": "JVBERi0xLjQKJ....",
+  "vendor": "Ignoriert",
+  "extracted": {
+    "vendor": "Verwendet",
+    "doc_date": "2024-03-05",
+    "amount_total": "10.00",
+    "currency": "CHF"
+  }
+}
+```
+
+### 5) Header (Pflicht)
+
+Beispiel-Header für HMAC-Signatur (empfohlen):
+
+```
+X-Timestamp: <unix-timestamp>
+X-Signature: <hex-signatur>
+```
+
+Alternative (Legacy): `X-N8N-Secret` + `X-Event-Id`.
+
+### 6) Validierungsregeln für `extracted`
+
+- `doc_date`: `YYYY-MM-DD` (z. B. `2024-01-31`)
+- `amount_*`: String mit genau **2 Dezimalstellen** (`"123.45"`)
+- `currency`: exakt **3 Zeichen** (z. B. `EUR`)
+- Leere Strings vermeiden: Feld besser **weglassen** als `""` senden.
+
+### 7) Tipps zum Base64-String
+
+- Bei PDFs/Bildern möglichst Data-URI verwenden:
+  `data:application/pdf;base64,<payload>`
+- Keine Whitespaces im Base64-String.
+- Datei muss > 32 Bytes sein (Mindestgröße).
 
 ## Validierungen im Ingest
 
@@ -51,6 +167,12 @@ Akzeptiert wird:
    - JPEG: `FF D8`
 
 Fehlschläge werden mit **HTTP 400** zurückgegeben und serverseitig geloggt.
+
+4. **Extraktionsfelder (optional)**  
+   Falls `extracted` gesetzt ist, werden folgende Formate geprüft:
+   - `doc_date`: `YYYY-MM-DD`
+   - `amount_*`: String mit zwei Dezimalstellen (`123.45`)
+   - `currency`: exakt 3 Zeichen (z. B. `EUR`)
 
 ## Debugging in der UI
 

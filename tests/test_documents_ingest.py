@@ -44,6 +44,18 @@ def _reset_session(data_module, tmp_path: Path) -> None:
     data_module.SessionLocal = SessionLocal
 
 
+def _sign_payload(payload: dict, secret: str) -> tuple[bytes, dict]:
+    raw_body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    timestamp = str(int(time.time()))
+    signature = hmac.new(
+        secret.encode("utf-8"),
+        f"{timestamp}.".encode("utf-8") + raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+    headers = {"Content-Type": "application/json", "X-Timestamp": timestamp, "X-Signature": signature}
+    return raw_body, headers
+
+
 def test_save_upload_bytes_writes_file(tmp_path: Path) -> None:
     payload = b"ingest-test-bytes"
     destination = tmp_path / "uploads" / "file.bin"
@@ -127,6 +139,127 @@ def test_webhook_success_stores_file_and_meta(tmp_path: Path, monkeypatch) -> No
     assert storage_path
     assert Path(storage_path).exists()
     assert Path(storage_path).read_bytes() == file_bytes
+
+
+def test_webhook_legacy_payload_maps_to_extracted(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _reset_storage_root(tmp_path)
+    data_module, main_module, _documents_module = _load_app_modules()
+    _reset_session(data_module, tmp_path)
+
+    with data_module.get_session() as session:
+        company = data_module.Company(name="Legacy Co", n8n_enabled=True, n8n_secret="secret")
+        session.add(company)
+        session.commit()
+        session.refresh(company)
+
+    payload = {
+        "event_id": "evt-legacy",
+        "company_id": int(company.id or 0),
+        "file_base64": base64.b64encode(b"legacy-bytes").decode("utf-8"),
+        "vendor": "Legacy Vendor",
+        "doc_date": "2024-01-31",
+        "amount_total": "123.45",
+        "amount_net": "100.00",
+        "amount_tax": "23.45",
+        "currency": "EUR",
+        "doc_number": "INV-001",
+    }
+    raw_body, headers = _sign_payload(payload, "secret")
+
+    client = TestClient(main_module.app)
+    resp = client.post("/api/webhooks/n8n/ingest", content=raw_body, headers=headers)
+    assert resp.status_code == 200
+
+    with data_module.get_session() as session:
+        document = session.exec(select(data_module.Document)).first()
+
+    assert document is not None
+    assert document.vendor == "Legacy Vendor"
+    assert document.doc_date == "2024-01-31"
+    assert document.amount_total == 123.45
+    assert document.amount_net == 100.0
+    assert document.amount_tax == 23.45
+    assert document.currency == "EUR"
+    assert document.doc_number == "INV-001"
+
+
+def test_webhook_extracted_payload_only(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _reset_storage_root(tmp_path)
+    data_module, main_module, _documents_module = _load_app_modules()
+    _reset_session(data_module, tmp_path)
+
+    with data_module.get_session() as session:
+        company = data_module.Company(name="Extracted Co", n8n_enabled=True, n8n_secret="secret")
+        session.add(company)
+        session.commit()
+        session.refresh(company)
+
+    payload = {
+        "event_id": "evt-extracted-only",
+        "company_id": int(company.id or 0),
+        "file_base64": base64.b64encode(b"extracted-bytes").decode("utf-8"),
+        "extracted": {
+            "vendor": "Extracted Vendor",
+            "doc_date": "2024-02-15",
+            "amount_total": "55.50",
+            "currency": "USD",
+        },
+    }
+    raw_body, headers = _sign_payload(payload, "secret")
+
+    client = TestClient(main_module.app)
+    resp = client.post("/api/webhooks/n8n/ingest", content=raw_body, headers=headers)
+    assert resp.status_code == 200
+
+    with data_module.get_session() as session:
+        document = session.exec(select(data_module.Document)).first()
+
+    assert document is not None
+    assert document.vendor == "Extracted Vendor"
+    assert document.doc_date == "2024-02-15"
+    assert document.amount_total == 55.5
+    assert document.currency == "USD"
+
+
+def test_webhook_mixed_payload_prefers_extracted(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _reset_storage_root(tmp_path)
+    data_module, main_module, _documents_module = _load_app_modules()
+    _reset_session(data_module, tmp_path)
+
+    with data_module.get_session() as session:
+        company = data_module.Company(name="Mixed Co", n8n_enabled=True, n8n_secret="secret")
+        session.add(company)
+        session.commit()
+        session.refresh(company)
+
+    payload = {
+        "event_id": "evt-mixed",
+        "company_id": int(company.id or 0),
+        "file_base64": base64.b64encode(b"mixed-bytes").decode("utf-8"),
+        "vendor": "Legacy Vendor",
+        "doc_date": "2024-01-01",
+        "extracted": {
+            "vendor": "Preferred Vendor",
+            "doc_date": "2024-03-05",
+            "amount_total": "10.00",
+            "currency": "CHF",
+        },
+    }
+    raw_body, headers = _sign_payload(payload, "secret")
+
+    client = TestClient(main_module.app)
+    resp = client.post("/api/webhooks/n8n/ingest", content=raw_body, headers=headers)
+    assert resp.status_code == 200
+
+    with data_module.get_session() as session:
+        document = session.exec(select(data_module.Document)).first()
+
+    assert document is not None
+    assert document.vendor == "Preferred Vendor"
+    assert document.doc_date == "2024-03-05"
 
 
 def test_manual_upload_sets_storage_key(tmp_path: Path, monkeypatch) -> None:
