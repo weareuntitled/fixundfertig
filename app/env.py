@@ -15,11 +15,14 @@ def load_env() -> None:
     candidates = [
         base_dir / ".env",
         base_dir.parent / ".env",
+        Path("/app/.env"),
     ]
 
+    loaded_path: Path | None = None
     for path in candidates:
         if not path.exists():
             continue
+        loaded_path = path
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
@@ -38,4 +41,7 @@ def load_env() -> None:
                 or (value.startswith("'") and value.endswith("'"))
             ):
                 value = value[1:-1]
-            os.environ.setdefault(key, value)
+            os.environ[key] = value
+
+    if os.getenv("FF_DEBUG") == "1" and loaded_path is not None:
+        print(f"DEBUG: Environment loaded from {loaded_path}")
