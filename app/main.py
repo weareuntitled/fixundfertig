@@ -60,6 +60,7 @@ from pages._shared import get_current_user_id, get_primary_company, list_compani
 from services.blob_storage import blob_storage, build_document_key
 from services.auth import ensure_owner_user, get_owner_email
 from services.documents import (
+    backfill_document_fields,
     build_document_record,
     build_display_title,
     document_matches_filters,
@@ -1059,6 +1060,7 @@ def list_documents(
                 return datetime.min
 
         filtered.sort(key=_sort_key, reverse=True)
+        backfill_document_fields(session, filtered)
         return [serialize_document(doc) for doc in filtered]
 
 

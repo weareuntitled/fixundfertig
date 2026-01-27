@@ -11,9 +11,11 @@ from typing import Iterable
 
 from fastapi import HTTPException
 
-from data import Document
+from data import Document, DocumentMeta
 from models.document import DocumentSource, safe_filename as model_safe_filename
+from services.blob_storage import blob_storage
 from services.storage import company_document_dir, company_documents_dir, ensure_company_dirs
+from sqlmodel import Session, select
 
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
 MAX_DOCUMENT_SIZE_BYTES = 15 * 1024 * 1024
@@ -227,6 +229,238 @@ def set_document_storage_path(document: Document) -> None:
         document.storage_path = document.storage_key
 
 
+def _coerce_float(value: object) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_payload_float(value: object) -> float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, dict):
+        for key in ("value", "amount", "total", "gross", "net", "tax"):
+            if key in value:
+                return _coerce_payload_float(value.get(key))
+        for nested_value in value.values():
+            parsed = _coerce_payload_float(nested_value)
+            if parsed is not None:
+                return parsed
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        cleaned = re.sub(r"[^\d,.\-]", "", cleaned)
+        if "," in cleaned and "." in cleaned:
+            if cleaned.rfind(",") > cleaned.rfind("."):
+                cleaned = cleaned.replace(".", "").replace(",", ".")
+            else:
+                cleaned = cleaned.replace(",", "")
+        elif "," in cleaned:
+            cleaned = cleaned.replace(",", ".")
+        return _coerce_float(cleaned)
+    return _coerce_float(value)
+
+
+def _extract_meta_payload(meta: DocumentMeta | None) -> dict:
+    if not meta or not meta.raw_payload_json:
+        return {}
+    try:
+        payload = json.loads(meta.raw_payload_json)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def resolve_document_meta_values(meta: DocumentMeta | None) -> dict[str, object]:
+    payload = _extract_meta_payload(meta)
+    extracted = payload.get("extracted") if isinstance(payload.get("extracted"), dict) else {}
+    source = extracted or payload
+    if not source:
+        return {}
+
+    def _resolve_payload_amount(*keys: str) -> float | None:
+        containers = [source, payload]
+        nested_keys = ("amounts", "totals", "total", "amount")
+        for container in containers:
+            if not isinstance(container, dict):
+                continue
+            for key in keys:
+                if key in container:
+                    return _coerce_payload_float(container.get(key))
+            for nested_key in nested_keys:
+                nested = container.get(nested_key)
+                if not isinstance(nested, dict):
+                    continue
+                for key in keys:
+                    if key in nested:
+                        return _coerce_payload_float(nested.get(key))
+        return None
+
+    def _resolve_payload_text(*keys: str) -> str:
+        containers = [source, payload]
+        nested_keys = ("amounts", "totals", "total", "amount")
+        for container in containers:
+            if not isinstance(container, dict):
+                continue
+            for key in keys:
+                if key in container and container.get(key) is not None:
+                    return str(container.get(key)).strip()
+            for nested_key in nested_keys:
+                nested = container.get(nested_key)
+                if not isinstance(nested, dict):
+                    continue
+                for key in keys:
+                    if key in nested and nested.get(key) is not None:
+                        return str(nested.get(key)).strip()
+        return ""
+
+    size_value = (
+        source.get("file_size")
+        or source.get("size_bytes")
+        or source.get("size")
+        or payload.get("file_size")
+        or payload.get("size_bytes")
+        or payload.get("size")
+    )
+    amount_total = _resolve_payload_amount(
+        "amount_total",
+        "gross_amount",
+        "amount_gross",
+        "total_gross",
+        "total_amount",
+        "amount",
+        "gross",
+        "brutto",
+        "amount_brutto",
+    )
+    amount_net = _resolve_payload_amount(
+        "amount_net",
+        "net_amount",
+        "total_net",
+        "net",
+        "netto",
+        "amount_netto",
+    )
+    amount_tax = _resolve_payload_amount(
+        "amount_tax",
+        "tax_amount",
+        "amount_vat",
+        "vat_amount",
+        "total_tax",
+        "tax",
+        "vat",
+        "ust",
+        "steuer",
+    )
+    currency_value = _resolve_payload_text("currency", "currency_code", "currency_iso")
+    return {
+        "vendor": (source.get("vendor") or "").strip(),
+        "doc_number": (source.get("doc_number") or "").strip(),
+        "amount_total": amount_total,
+        "amount_net": amount_net,
+        "amount_tax": amount_tax,
+        "currency": currency_value,
+        "keywords": source.get("keywords"),
+        "size_bytes": _coerce_int(size_value),
+    }
+
+
+def document_size_bytes(doc: Document) -> int:
+    size_value = doc.size_bytes or doc.size or 0
+    try:
+        size = int(size_value or 0)
+    except (TypeError, ValueError):
+        size = 0
+    if size > 0:
+        return size
+    storage_key = (doc.storage_key or doc.storage_path or "").strip()
+    if storage_key.startswith("storage/"):
+        storage_key = storage_key.removeprefix("storage/").lstrip("/")
+    storage_path = resolve_document_path(doc.storage_path)
+    if storage_path and os.path.exists(storage_path):
+        try:
+            return int(os.path.getsize(storage_path))
+        except OSError:
+            return 0
+    if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+        try:
+            data = blob_storage().get_bytes(storage_key)
+            return len(data)
+        except Exception:
+            return 0
+    return 0
+
+
+def backfill_document_fields(
+    session: Session,
+    documents: Iterable[Document],
+    *,
+    meta_map: dict[int, DocumentMeta] | None = None,
+) -> None:
+    doc_list = list(documents)
+    if not doc_list:
+        return
+    if meta_map is None:
+        doc_ids = [int(doc.id or 0) for doc in doc_list if doc.id]
+        if doc_ids:
+            metas = session.exec(
+                select(DocumentMeta).where(DocumentMeta.document_id.in_(doc_ids))
+            ).all()
+            meta_map = {int(meta.document_id): meta for meta in metas if meta}
+        else:
+            meta_map = {}
+    updated = False
+    for doc in doc_list:
+        doc_id = int(doc.id or 0)
+        meta_values = resolve_document_meta_values(meta_map.get(doc_id))
+        size_bytes = document_size_bytes(doc)
+        meta_size = meta_values.get("size_bytes")
+        if size_bytes <= 0 and isinstance(meta_size, int) and meta_size > 0:
+            size_bytes = meta_size
+        amount_total = doc.amount_total
+        amount_net = doc.amount_net
+        amount_tax = doc.amount_tax
+        if amount_total is None:
+            amount_total = meta_values.get("amount_total")
+        if amount_net is None:
+            amount_net = meta_values.get("amount_net")
+        if amount_tax is None:
+            amount_tax = meta_values.get("amount_tax")
+        currency_value = (doc.currency or meta_values.get("currency") or "").strip()
+        if size_bytes > 0 and (int(doc.size_bytes or 0) <= 0 or int(doc.size or 0) <= 0):
+            doc.size_bytes = size_bytes
+            doc.size = size_bytes
+            updated = True
+        if amount_total is not None and doc.amount_total is None:
+            doc.amount_total = _coerce_float(amount_total)
+            updated = True
+        if amount_net is not None and doc.amount_net is None:
+            doc.amount_net = _coerce_float(amount_net)
+            updated = True
+        if amount_tax is not None and doc.amount_tax is None:
+            doc.amount_tax = _coerce_float(amount_tax)
+            updated = True
+        if currency_value and not (doc.currency or "").strip():
+            doc.currency = currency_value
+            updated = True
+    if updated:
+        session.commit()
+
+
 def serialize_document(document: Document) -> dict:
     doc_source = document.source.value if isinstance(document.source, DocumentSource) else (document.source or "")
     doc_type = _extension(document.original_filename or "")
@@ -237,6 +471,7 @@ def serialize_document(document: Document) -> dict:
         "storage_key": document.storage_key or "",
         "mime": document.mime or "",
         "size": int(document.size or 0),
+        "size_bytes": int(document.size_bytes or document.size or 0),
         "sha256": document.sha256 or "",
         "source": doc_source,
         "title": document.title or "",
