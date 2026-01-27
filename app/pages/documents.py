@@ -862,6 +862,10 @@ def render_documents(session, comp: Company) -> None:
                     tags_value = _format_keywords(meta_keywords) if meta_keywords else tags_value
                 meta_currency = (meta_values.get("currency") or "").strip()
                 currency_value = (doc.currency or meta_currency or "").strip() or None
+                size_display = _format_size(size_bytes)
+                size_warning = 0 < size_bytes < 1024
+                if size_warning:
+                    size_display = f"{size_display} ⚠️"
                 logger.debug(
                     "document_row_keys",
                     extra={
@@ -878,8 +882,7 @@ def render_documents(session, comp: Company) -> None:
                         "date": display_date,
                         "filename": doc.original_filename or doc.title or "Dokument",
                         "size_bytes": size_bytes,
-                        "size_display": _format_size(size_bytes),
-                        "size_warning": 0 < size_bytes < 1024,
+                        "size_display": size_display,
                         "mime": doc.mime or doc.mime_type or "-",
                         "doc_number": doc_number_value,
                         "vendor": vendor_value,
@@ -897,14 +900,38 @@ def render_documents(session, comp: Company) -> None:
             columns = [
                 {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
                 {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
-                {"name": "size_bytes", "label": "Größe", "field": "size_bytes", "sortable": True, "align": "right"},
+                {
+                    "name": "size_display",
+                    "label": "Größe",
+                    "field": "size_display",
+                    "sortable": True,
+                    "align": "right",
+                },
                 {"name": "mime", "label": "Mime", "field": "mime", "sortable": True, "align": "left"},
                 {"name": "doc_number", "label": "Belegnr", "field": "doc_number", "sortable": True, "align": "left"},
                 {"name": "vendor", "label": "Vendor", "field": "vendor", "sortable": True, "align": "left"},
                 {"name": "tags", "label": "Tags", "field": "tags", "sortable": True, "align": "left"},
-                {"name": "amount", "label": "Betrag", "field": "amount", "sortable": True, "align": "right"},
-                {"name": "amount_net", "label": "Netto", "field": "amount_net", "sortable": True, "align": "right"},
-                {"name": "amount_tax", "label": "Steuer", "field": "amount_tax", "sortable": True, "align": "right"},
+                {
+                    "name": "amount_display",
+                    "label": "Betrag",
+                    "field": "amount_display",
+                    "sortable": True,
+                    "align": "right",
+                },
+                {
+                    "name": "amount_net_display",
+                    "label": "Netto",
+                    "field": "amount_net_display",
+                    "sortable": True,
+                    "align": "right",
+                },
+                {
+                    "name": "amount_tax_display",
+                    "label": "Steuer",
+                    "field": "amount_tax_display",
+                    "sortable": True,
+                    "align": "right",
+                },
             ]
             table = ui.table(columns=columns, rows=rows, row_key="id", selection="multiple").classes("w-full")
 
@@ -915,22 +942,6 @@ def render_documents(session, comp: Company) -> None:
                 _update_action_buttons()
 
             table.on_select(_on_selection)
-
-            with table.add_slot("body-cell-amount") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
-
-            with table.add_slot("body-cell-amount_net") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_net_display", strict=False).classes("text-right")
-
-            with table.add_slot("body-cell-amount_tax") as slot:
-                ui.label().bind_text_from(slot, "props.row.amount_tax_display", strict=False).classes("text-right")
-
-            with table.add_slot("body-cell-size_bytes") as slot:
-                with ui.row().classes("items-center justify-end gap-1"):
-                    ui.label().bind_text_from(slot, "props.row.size_display", strict=False).classes("text-right")
-                    warn_icon = ui.icon("warning").classes("text-amber-500 text-xs")
-                    warn_icon.bind_visibility_from(slot, "props.row.size_warning", strict=False)
-                    warn_icon.tooltip("Sehr kleine Datei (< 1 KB).")
 
     render_filters()
     render_list()
