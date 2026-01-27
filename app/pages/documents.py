@@ -22,9 +22,12 @@ from sqlmodel import delete
 from data import WebhookEvent
 from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
+    backfill_document_fields,
     build_document_record,
+    document_size_bytes,
     document_matches_filters,
     normalize_keywords,
+    resolve_document_meta_values,
     resolve_document_path,
     validate_document_upload,
 )
@@ -473,143 +476,6 @@ def render_documents(session, comp: Company) -> None:
         except (TypeError, ValueError):
             return None
 
-    def _coerce_int(value: object) -> int | None:
-        if value is None or value == "":
-            return None
-        try:
-            return int(float(value))
-        except (TypeError, ValueError):
-            return None
-
-    def _coerce_payload_float(value: object) -> float | None:
-        if value is None or value == "":
-            return None
-        if isinstance(value, dict):
-            for key in ("value", "amount", "total", "gross", "net", "tax"):
-                if key in value:
-                    return _coerce_payload_float(value.get(key))
-            for nested_value in value.values():
-                parsed = _coerce_payload_float(nested_value)
-                if parsed is not None:
-                    return parsed
-            return None
-        if isinstance(value, str):
-            cleaned = value.strip()
-            if not cleaned:
-                return None
-            cleaned = re.sub(r"[^\d,.\-]", "", cleaned)
-            if "," in cleaned and "." in cleaned:
-                if cleaned.rfind(",") > cleaned.rfind("."):
-                    cleaned = cleaned.replace(".", "").replace(",", ".")
-                else:
-                    cleaned = cleaned.replace(",", "")
-            elif "," in cleaned:
-                cleaned = cleaned.replace(",", ".")
-            return _coerce_float(cleaned)
-        return _coerce_float(value)
-
-    def _extract_meta_payload(meta: DocumentMeta | None) -> dict:
-        if not meta or not meta.raw_payload_json:
-            return {}
-        try:
-            payload = json.loads(meta.raw_payload_json)
-        except Exception:
-            return {}
-        return payload if isinstance(payload, dict) else {}
-
-    def _resolve_meta_values(meta: DocumentMeta | None) -> dict[str, object]:
-        payload = _extract_meta_payload(meta)
-        extracted = payload.get("extracted") if isinstance(payload.get("extracted"), dict) else {}
-        source = extracted or payload
-        if not source:
-            return {}
-
-        def _resolve_payload_amount(*keys: str) -> float | None:
-            containers = [source, payload]
-            nested_keys = ("amounts", "totals", "total", "amount")
-            for container in containers:
-                if not isinstance(container, dict):
-                    continue
-                for key in keys:
-                    if key in container:
-                        return _coerce_payload_float(container.get(key))
-                for nested_key in nested_keys:
-                    nested = container.get(nested_key)
-                    if not isinstance(nested, dict):
-                        continue
-                    for key in keys:
-                        if key in nested:
-                            return _coerce_payload_float(nested.get(key))
-            return None
-
-        def _resolve_payload_text(*keys: str) -> str:
-            containers = [source, payload]
-            nested_keys = ("amounts", "totals", "total", "amount")
-            for container in containers:
-                if not isinstance(container, dict):
-                    continue
-                for key in keys:
-                    if key in container and container.get(key) is not None:
-                        return str(container.get(key)).strip()
-                for nested_key in nested_keys:
-                    nested = container.get(nested_key)
-                    if not isinstance(nested, dict):
-                        continue
-                    for key in keys:
-                        if key in nested and nested.get(key) is not None:
-                            return str(nested.get(key)).strip()
-            return ""
-
-        size_value = (
-            source.get("file_size")
-            or source.get("size_bytes")
-            or source.get("size")
-            or payload.get("file_size")
-            or payload.get("size_bytes")
-            or payload.get("size")
-        )
-        amount_total = _resolve_payload_amount(
-            "amount_total",
-            "gross_amount",
-            "amount_gross",
-            "total_gross",
-            "total_amount",
-            "amount",
-            "gross",
-            "brutto",
-            "amount_brutto",
-        )
-        amount_net = _resolve_payload_amount(
-            "amount_net",
-            "net_amount",
-            "total_net",
-            "net",
-            "netto",
-            "amount_netto",
-        )
-        amount_tax = _resolve_payload_amount(
-            "amount_tax",
-            "tax_amount",
-            "amount_vat",
-            "vat_amount",
-            "total_tax",
-            "tax",
-            "vat",
-            "ust",
-            "steuer",
-        )
-        currency_value = _resolve_payload_text("currency", "currency_code", "currency_iso")
-        return {
-            "vendor": (source.get("vendor") or "").strip(),
-            "doc_number": (source.get("doc_number") or "").strip(),
-            "amount_total": amount_total,
-            "amount_net": amount_net,
-            "amount_tax": amount_tax,
-            "currency": currency_value,
-            "keywords": source.get("keywords"),
-            "size_bytes": _coerce_int(size_value),
-        }
-
     def _load_meta_map(doc_ids: list[int]) -> dict[int, DocumentMeta]:
         if not doc_ids:
             return {}
@@ -617,31 +483,6 @@ def render_documents(session, comp: Company) -> None:
             select(DocumentMeta).where(DocumentMeta.document_id.in_(doc_ids))
         ).all()
         return {int(meta.document_id): meta for meta in metas if meta}
-
-    def _document_size_bytes(doc: Document) -> int:
-        size_value = doc.size_bytes or doc.size or 0
-        try:
-            size = int(size_value or 0)
-        except (TypeError, ValueError):
-            size = 0
-        if size > 0:
-            return size
-        storage_key = (doc.storage_key or doc.storage_path or "").strip()
-        if storage_key.startswith("storage/"):
-            storage_key = storage_key.removeprefix("storage/").lstrip("/")
-        storage_path = resolve_document_path(doc.storage_path)
-        if storage_path and os.path.exists(storage_path):
-            try:
-                return int(os.path.getsize(storage_path))
-            except OSError:
-                return 0
-        if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
-            try:
-                data = blob_storage().get_bytes(storage_key)
-                return len(data)
-            except Exception:
-                return 0
-        return 0
 
     def _resolve_amounts(doc: Document) -> tuple[float | None, float | None, float | None]:
         amount_total = _coerce_float(doc.amount_total)
@@ -992,11 +833,12 @@ def render_documents(session, comp: Company) -> None:
         with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
             rows = []
             meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
+            backfill_document_fields(session, items, meta_map=meta_map)
             for doc in items:
                 doc_id = int(doc.id or 0)
                 display_date = _document_display_date(doc)
-                meta_values = _resolve_meta_values(meta_map.get(doc_id))
-                size_bytes = _document_size_bytes(doc)
+                meta_values = resolve_document_meta_values(meta_map.get(doc_id))
+                size_bytes = document_size_bytes(doc)
                 meta_size = meta_values.get("size_bytes")
                 if size_bytes <= 0 and isinstance(meta_size, int) and meta_size > 0:
                     size_bytes = meta_size
