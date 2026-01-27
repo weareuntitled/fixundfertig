@@ -12,10 +12,15 @@ import re
 import mimetypes
 import os
 import time
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest, urlopen
+
+_SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
+if _SRC_ROOT.exists():
+    sys.path.append(str(_SRC_ROOT))
 
 from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -45,6 +50,7 @@ from pages import (
     render_invites,
     render_ledger,
     render_exports,
+    render_todos,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
 from services.blob_storage import blob_storage, build_document_key
@@ -60,6 +66,7 @@ from services.documents import (
     serialize_document,
     validate_document_upload,
 )
+from src.presentation.ui.pages.home import render_home
 
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAXSIZE = 256
@@ -1434,6 +1441,7 @@ def _is_owner_user() -> bool:
 
 def _page_title(page: str | None) -> str:
     titles = {
+        "home": "Home",
         "dashboard": "Dashboard",
         "invoices": "Invoices",
         "documents": "Documents",
@@ -1486,7 +1494,7 @@ def layout_wrapper(content_func):
                     )
                     with ui.column().classes("gap-2 mt-1"):
                         for label, target, icon in items:
-                            active = app.storage.user.get("page", "invoices") == target
+                            active = app.storage.user.get("page", "home") == target
                             base = (
                                 "w-full justify-start normal-case px-4 py-2 rounded-full transition-all duration-150"
                             )
@@ -1501,7 +1509,7 @@ def layout_wrapper(content_func):
                                     ui.icon(icon).classes(icon_cls)
                                     ui.label(label)
 
-                nav_section("Workspace", [("Dashboard", "dashboard", "dashboard")])
+                nav_section("Workspace", [("Home", "home", "checklist"), ("Dashboard", "dashboard", "dashboard")])
                 nav_section(
                     "Billing",
                     [
@@ -1568,7 +1576,7 @@ def index():
         if not companies:
             get_primary_company(session, user_id)
 
-    page = app.storage.user.get("page", "invoices")
+    page = app.storage.user.get("page", "home")
 
     def content():
         with get_session() as session:
@@ -1610,8 +1618,12 @@ def index():
 
             # Normal pages in container
             with ui.column().classes(C_CONTAINER):
-                if page == "dashboard":
+                if page == "home":
+                    render_home()
+                elif page == "dashboard":
                     render_dashboard(session, comp)
+                elif page == "todos":
+                    render_todos(session, comp)
                 elif page == "customers":
                     render_customers(session, comp)
                 elif page == "customer_new":
