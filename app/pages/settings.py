@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import secrets
+import httpx
 import time
 
 from nicegui import app, ui
@@ -22,6 +23,7 @@ from ._shared import (
     use_address_autocomplete,
 )
 from auth_guard import clear_auth_session
+from integrations.n8n_client import post_to_n8n
 from services.companies import create_company, delete_company, list_companies, update_company
 from services.iban import lookup_bank_from_iban
 from services.storage import cleanup_company_logos, company_logo_path, delete_company_dirs, ensure_company_dirs
@@ -388,13 +390,39 @@ def render_settings(session, comp: Company) -> None:
                 ui.label("Webhooks für Automationen.").classes("text-sm text-slate-500")
 
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
-                    n8n_webhook_url = ui.input("n8n Webhook URL", value=comp.n8n_webhook_url).classes(C_INPUT)
+                    n8n_webhook_url_test = ui.input(
+                        "n8n Webhook URL (Test)",
+                        value=comp.n8n_webhook_url_test,
+                    ).classes(C_INPUT)
+                    n8n_webhook_url_prod = ui.input(
+                        "n8n Webhook URL (Production)",
+                        value=comp.n8n_webhook_url_prod or comp.n8n_webhook_url,
+                    ).classes(C_INPUT)
                     n8n_secret = ui.input("n8n Secret", value=comp.n8n_secret).classes(C_INPUT).props("type=password")
                     n8n_enabled = ui.switch("n8n aktivieren", value=bool(comp.n8n_enabled)).props("dense color=grey-8")
                     google_drive_folder_id = ui.input(
                         "Google Drive Ordner-ID",
                         value=comp.google_drive_folder_id,
                     ).classes(C_INPUT)
+
+                def _n8n_status_text() -> str:
+                    if not bool(n8n_enabled.value):
+                        return "Status: deaktiviert"
+                    if not (n8n_webhook_url_prod.value or "").strip():
+                        return "Status: aktiv, aber keine Production-Webhook-URL gesetzt"
+                    if not (n8n_secret.value or "").strip():
+                        return "Status: aktiv, aber kein Secret gesetzt"
+                    return "Status: aktiv und bereit"
+
+                n8n_status = ui.label(_n8n_status_text()).classes("text-xs text-slate-500")
+
+                def _update_n8n_status() -> None:
+                    n8n_status.set_text(_n8n_status_text())
+
+                n8n_webhook_url_test.on("change", lambda _: _update_n8n_status())
+                n8n_webhook_url_prod.on("change", lambda _: _update_n8n_status())
+                n8n_secret.on("change", lambda _: _update_n8n_status())
+                n8n_enabled.on("change", lambda _: _update_n8n_status())
 
                 def _copy_n8n_secret() -> None:
                     secret_value = (n8n_secret.value or "").strip()
@@ -403,6 +431,49 @@ def render_settings(session, comp: Company) -> None:
                         return
                     ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(secret_value)})")
                     ui.notify("Secret kopiert.", color="green")
+
+                def _test_n8n_webhook() -> None:
+                    if not bool(n8n_enabled.value):
+                        ui.notify("n8n ist deaktiviert.", color="orange")
+                        n8n_status.set_text(_n8n_status_text())
+                        return
+                    webhook_url = (n8n_webhook_url_test.value or "").strip()
+                    secret_value = (n8n_secret.value or "").strip()
+                    if not webhook_url or not secret_value:
+                        ui.notify("Test-Webhook-URL oder Secret fehlt.", color="orange")
+                        n8n_status.set_text(_n8n_status_text())
+                        return
+                    try:
+                        post_to_n8n(
+                            webhook_url=webhook_url,
+                            secret=secret_value,
+                            event="test",
+                            company_id=int(comp.id or 0),
+                            data={"message": "Webhook-Test", "ts": int(time.time())},
+                        )
+                    except httpx.HTTPStatusError as exc:
+                        status_code = exc.response.status_code if exc.response else None
+                        if status_code == 404:
+                            ui.notify(
+                                "Webhook-Test fehlgeschlagen: 404. Bitte die Test-Webhook-URL aus n8n verwenden.",
+                                color="orange",
+                            )
+                        elif status_code == 405:
+                            ui.notify(
+                                "Webhook-Test fehlgeschlagen: n8n akzeptiert keine POST-Requests. "
+                                "Bitte im n8n-Webhook die Methode auf POST stellen.",
+                                color="orange",
+                            )
+                        else:
+                            ui.notify(f"Webhook-Test fehlgeschlagen: {exc}", color="orange")
+                        n8n_status.set_text("Status: Test fehlgeschlagen")
+                        return
+                    except Exception as exc:
+                        ui.notify(f"Webhook-Test fehlgeschlagen: {exc}", color="orange")
+                        n8n_status.set_text("Status: Test fehlgeschlagen")
+                        return
+                    ui.notify("Webhook-Test gesendet.", color="green")
+                    n8n_status.set_text("Status: Test gesendet")
 
                 with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
                     ui.button(
@@ -413,6 +484,7 @@ def render_settings(session, comp: Company) -> None:
                         ),
                     ).classes(C_BTN_SEC)
                     ui.button("Secret kopieren", on_click=_copy_n8n_secret).classes(C_BTN_SEC)
+                    ui.button("Webhook testen", on_click=_test_n8n_webhook).classes(C_BTN_SEC)
 
             with ui.expansion("Account").classes("w-full"):
                 with ui.element("div").classes("space-y-4 pt-2"):
@@ -511,7 +583,9 @@ def render_settings(session, comp: Company) -> None:
             "smtp_port": int(smtp_port.value or 0) or 465,
             "smtp_user": smtp_user.value or "",
             "smtp_password": smtp_password.value or "",
-            "n8n_webhook_url": n8n_webhook_url.value or "",
+            "n8n_webhook_url": n8n_webhook_url_prod.value or "",
+            "n8n_webhook_url_test": n8n_webhook_url_test.value or "",
+            "n8n_webhook_url_prod": n8n_webhook_url_prod.value or "",
             "n8n_secret": n8n_secret.value or "",
             "n8n_enabled": bool(n8n_enabled.value),
             "google_drive_folder_id": google_drive_folder_id.value or "",
