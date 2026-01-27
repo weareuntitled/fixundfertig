@@ -68,6 +68,7 @@ from ui_components import (
 from logic import (
     finalize_invoice_logic,
     export_invoices_pdf_zip,
+    export_documents_zip,
     export_invoices_csv,
     export_invoice_items_csv,
     export_customers_csv,

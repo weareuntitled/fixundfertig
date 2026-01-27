@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import mimetypes
 import os
 import re
 import zipfile
@@ -11,8 +13,10 @@ from typing import Any, Dict, List, Optional
 
 from sqlmodel import Session, select
 
-from data import Company, Customer, Invoice, InvoiceItem, InvoiceStatus
+from data import Company, Customer, Document, Invoice, InvoiceItem, InvoiceStatus
 from renderer import render_invoice_to_pdf_bytes
+from services.blob_storage import blob_storage
+from services.documents import resolve_document_path
 
 
 def _safe_filename(name: str) -> str:
@@ -304,6 +308,150 @@ def export_invoices_pdf_zip(*args: Any, **kwargs: Any) -> bytes:
             title = str(getattr(inv, "title", "") or "Rechnung")
             fname = _safe_filename(f"{inv_no} {title}.pdf")
             zf.writestr(fname, pdf)
+
+    mem.seek(0)
+    return mem.read()
+
+
+def export_documents_zip(*args: Any, **kwargs: Any) -> bytes:
+    """
+    export_documents_zip(session, company_id, document_ids=None)
+    """
+    session: Optional[Session] = None
+    company_id: Optional[int] = None
+    document_ids: Optional[List[int]] = None
+
+    if args:
+        if isinstance(args[0], Session):
+            session = args[0]
+        if len(args) > 1 and isinstance(args[1], int):
+            company_id = int(args[1])
+        if len(args) > 2 and isinstance(args[2], list):
+            document_ids = [int(x) for x in args[2]]
+
+    session = session or kwargs.get("session")
+    company_id = company_id or kwargs.get("company_id") or kwargs.get("comp_id")
+    document_ids = document_ids or kwargs.get("document_ids") or kwargs.get("ids")
+
+    if session is None:
+        raise ValueError("export_documents_zip: session fehlt")
+    if company_id is None:
+        raise ValueError("export_documents_zip: company_id fehlt")
+
+    def _document_display_date(doc: Document) -> str:
+        doc_date = (getattr(doc, "doc_date", None) or "").strip()
+        invoice_date = (getattr(doc, "invoice_date", None) or "").strip()
+        if doc_date:
+            return doc_date
+        if invoice_date:
+            return invoice_date
+        created_at = getattr(doc, "created_at", None)
+        if isinstance(created_at, datetime):
+            return created_at.strftime("%Y-%m-%d")
+        return ""
+
+    def _parse_keywords(value: object) -> list[str]:
+        if value is None or value == "":
+            return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if not isinstance(value, str):
+            value = str(value)
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            parsed = value
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+        if isinstance(parsed, str):
+            return [piece.strip() for piece in parsed.split(",") if piece.strip()]
+        return [str(parsed).strip()] if str(parsed).strip() else []
+
+    def _format_keywords(value: str | None) -> str:
+        items = _parse_keywords(value or "")
+        return ", ".join(items) if items else "-"
+
+    def _resolve_amounts(doc: Document) -> tuple[float | None, float | None, float | None]:
+        amount_total = doc.amount_total if doc.amount_total is not None else doc.gross_amount
+        amount_net = doc.amount_net if doc.amount_net is not None else doc.net_amount
+        amount_tax = doc.amount_tax if doc.amount_tax is not None else doc.tax_amount
+        return amount_total, amount_net, amount_tax
+
+    stmt = select(Document).where(Document.company_id == int(company_id)).order_by(Document.id.desc())
+    if document_ids:
+        stmt = stmt.where(Document.id.in_([int(x) for x in document_ids]))
+    documents = list(session.exec(stmt).all())
+
+    storage = blob_storage()
+    rows: List[List[Any]] = []
+    files: List[tuple[int, str, bytes]] = []
+
+    for doc in documents:
+        filename = doc.original_filename or doc.filename or doc.title or f"dokument_{doc.id}"
+        safe_name = _safe_filename(filename)
+        mime_type = doc.mime_type or doc.mime or mimetypes.guess_type(filename)[0] or ""
+        summary = doc.description or doc.title or doc.doc_type or ""
+        amount_total, amount_net, amount_tax = _resolve_amounts(doc)
+        size_value = doc.size_bytes or doc.size or 0
+
+        storage_key = getattr(doc, "storage_key", "") or ""
+        storage_path = resolve_document_path(doc.storage_path)
+        data = b""
+        if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+            if storage.exists(storage_key):
+                data = storage.get_bytes(storage_key)
+        elif storage_path and os.path.exists(storage_path):
+            try:
+                with open(storage_path, "rb") as file:
+                    data = file.read()
+            except OSError:
+                data = b""
+
+        if data and not size_value:
+            size_value = len(data)
+
+        rows.append(
+            [
+                filename,
+                _document_display_date(doc),
+                size_value or "",
+                mime_type,
+                doc.doc_number or "",
+                doc.vendor or "",
+                _format_keywords(doc.keywords_json),
+                f"{amount_total:.2f}" if amount_total is not None else "",
+                f"{amount_net:.2f}" if amount_net is not None else "",
+                f"{amount_tax:.2f}" if amount_tax is not None else "",
+                summary,
+            ]
+        )
+
+        if data:
+            files.append((int(doc.id or 0), safe_name, data))
+
+    date_stamp = datetime.now().strftime("%Y%m%d")
+    csv_bytes = _csv_bytes(
+        rows,
+        [
+            "Datei",
+            "Datum",
+            "Dateigröße (Bytes)",
+            "MIME",
+            "Belegnummer",
+            "Vendor",
+            "Tags",
+            "Betrag",
+            "Netto",
+            "Steuer",
+            "Summary",
+        ],
+    )
+
+    mem = io.BytesIO()
+    with zipfile.ZipFile(mem, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"documents_{date_stamp}.csv", csv_bytes)
+        for doc_id, safe_name, data in files:
+            zf.writestr(f"{doc_id}_{safe_name}", data)
 
     mem.seek(0)
     return mem.read()

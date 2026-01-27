@@ -184,35 +184,39 @@ def render_documents(session, comp: Company) -> None:
         writer = csv.writer(csv_buffer, delimiter=";", lineterminator="\n")
         writer.writerow(
             [
+                "Datei",
                 "Datum",
-                "Dokument",
+                "Dateigröße (Bytes)",
+                "MIME",
                 "Belegnummer",
                 "Vendor",
+                "Tags",
                 "Betrag",
                 "Netto",
                 "Steuer",
-                "Währung",
-                "Beschreibung",
-                "Tags",
-                "ID",
+                "Summary",
             ]
         )
         for doc in items:
             doc_date = _document_display_date(doc)
             amount_total, amount_net, amount_tax = _resolve_amounts(doc)
+            filename = doc.original_filename or doc.filename or doc.title or "Dokument"
+            mime_type = doc.mime_type or doc.mime or ""
+            size_bytes = doc.size_bytes or doc.size or ""
+            summary = doc.description or doc.title or doc.doc_type or ""
             writer.writerow(
                 [
+                    filename,
                     doc_date,
-                    doc.original_filename or doc.title or "Dokument",
+                    size_bytes,
+                    mime_type,
                     doc.doc_number or "",
                     doc.vendor or "",
+                    _format_keywords(doc.keywords_json),
                     f"{amount_total:.2f}" if amount_total is not None else "",
                     f"{amount_net:.2f}" if amount_net is not None else "",
                     f"{amount_tax:.2f}" if amount_tax is not None else "",
-                    doc.currency or "",
-                    doc.description or "",
-                    _format_keywords(doc.keywords_json),
-                    str(doc.id or ""),
+                    summary,
                 ]
             )
 
