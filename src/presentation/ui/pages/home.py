@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from nicegui import ui
 
-from app.styles import C_BTN_PRIM, C_CARD, C_INPUT, C_PAGE_TITLE
+from styles import C_BTN_PRIM, C_CARD, C_INPUT, C_PAGE_TITLE
 from src.presentation.controllers.todo_controller import create_todo, list_todos
 from src.presentation.ui.viewmodels.todo_viewmodel import todos_to_viewmodels
 
