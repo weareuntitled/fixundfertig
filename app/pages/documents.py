@@ -302,6 +302,26 @@ def render_documents(session, comp: Company) -> None:
                     }
                 )
                 return
+            if not bool(comp.n8n_enabled):
+                ui.notify("n8n ist deaktiviert. Bitte in den Settings aktivieren.", color="orange")
+                if upload_status:
+                    upload_status.set_text("Status: n8n deaktiviert")
+                return
+            webhook_url = (comp.n8n_webhook_url_prod or comp.n8n_webhook_url or "").strip()
+            secret_value = (comp.n8n_secret or "").strip()
+            if not webhook_url or not secret_value:
+                ui.notify("n8n Production-Webhook-URL oder Secret fehlt.", color="orange")
+                if upload_status:
+                    upload_status.set_text("Status: Production-Webhook-URL oder Secret fehlt")
+                return
+            if "/webhook-test/" in webhook_url:
+                ui.notify(
+                    "n8n Versand fehlgeschlagen: Bitte die Production-Webhook-URL (/webhook/) verwenden, nicht /webhook-test/.",
+                    color="orange",
+                )
+                if upload_status:
+                    upload_status.set_text("Status: Production-Webhook-URL erforderlich")
+                return
 
             try:
                 data = await _read_upload_bytes(event.file)
