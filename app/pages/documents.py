@@ -4,6 +4,7 @@ import csv
 import io
 import hashlib
 import logging
+import re
 import mimetypes
 import os
 import json
@@ -483,9 +484,26 @@ def render_documents(session, comp: Company) -> None:
     def _coerce_payload_float(value: object) -> float | None:
         if value is None or value == "":
             return None
+        if isinstance(value, dict):
+            for key in ("value", "amount", "total", "gross", "net", "tax"):
+                if key in value:
+                    return _coerce_payload_float(value.get(key))
+            for nested_value in value.values():
+                parsed = _coerce_payload_float(nested_value)
+                if parsed is not None:
+                    return parsed
+            return None
         if isinstance(value, str):
             cleaned = value.strip()
-            if "," in cleaned and "." not in cleaned:
+            if not cleaned:
+                return None
+            cleaned = re.sub(r"[^\d,.\-]", "", cleaned)
+            if "," in cleaned and "." in cleaned:
+                if cleaned.rfind(",") > cleaned.rfind("."):
+                    cleaned = cleaned.replace(".", "").replace(",", ".")
+                else:
+                    cleaned = cleaned.replace(",", "")
+            elif "," in cleaned:
                 cleaned = cleaned.replace(",", ".")
             return _coerce_float(cleaned)
         return _coerce_float(value)
@@ -524,6 +542,24 @@ def render_documents(session, comp: Company) -> None:
                             return _coerce_payload_float(nested.get(key))
             return None
 
+        def _resolve_payload_text(*keys: str) -> str:
+            containers = [source, payload]
+            nested_keys = ("amounts", "totals", "total", "amount")
+            for container in containers:
+                if not isinstance(container, dict):
+                    continue
+                for key in keys:
+                    if key in container and container.get(key) is not None:
+                        return str(container.get(key)).strip()
+                for nested_key in nested_keys:
+                    nested = container.get(nested_key)
+                    if not isinstance(nested, dict):
+                        continue
+                    for key in keys:
+                        if key in nested and nested.get(key) is not None:
+                            return str(nested.get(key)).strip()
+            return ""
+
         size_value = (
             source.get("file_size")
             or source.get("size_bytes")
@@ -539,11 +575,17 @@ def render_documents(session, comp: Company) -> None:
             "total_gross",
             "total_amount",
             "amount",
+            "gross",
+            "brutto",
+            "amount_brutto",
         )
         amount_net = _resolve_payload_amount(
             "amount_net",
             "net_amount",
             "total_net",
+            "net",
+            "netto",
+            "amount_netto",
         )
         amount_tax = _resolve_payload_amount(
             "amount_tax",
@@ -551,14 +593,19 @@ def render_documents(session, comp: Company) -> None:
             "amount_vat",
             "vat_amount",
             "total_tax",
+            "tax",
+            "vat",
+            "ust",
+            "steuer",
         )
+        currency_value = _resolve_payload_text("currency", "currency_code", "currency_iso")
         return {
             "vendor": (source.get("vendor") or "").strip(),
             "doc_number": (source.get("doc_number") or "").strip(),
             "amount_total": amount_total,
             "amount_net": amount_net,
             "amount_tax": amount_tax,
-            "currency": (source.get("currency") or "").strip(),
+            "currency": currency_value,
             "keywords": source.get("keywords"),
             "size_bytes": _coerce_int(size_value),
         }
