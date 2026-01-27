@@ -6,12 +6,22 @@ from datetime import datetime
 # Auto generated page renderer
 
 def render_dashboard(session, comp: Company) -> None:
+    user = None
+    current_user_id = get_current_user_id(session)
+    if current_user_id:
+        user = session.get(User, current_user_id)
+    if user:
+        display_name = f"{user.first_name} {user.last_name}".strip()
+        greeting_name = display_name or user.email
+    else:
+        greeting_name = "there"
+
     def _open_new_invoice() -> None:
         app.storage.user["return_page"] = "dashboard"
         _open_invoice_editor(None)
 
     with ui.row().classes("w-full items-center justify-between mb-6 flex-col sm:flex-row gap-3"):
-        ui.label("Welcome back, Dr. Smith").classes("text-3xl font-bold tracking-tight text-slate-900")
+        ui.label(f"Welcome back, {greeting_name}").classes("text-3xl font-bold tracking-tight text-slate-900")
         ui.button("New invoice", icon="add", on_click=_open_new_invoice).classes(C_BTN_PRIM)
 
     invs = session.exec(
@@ -51,11 +61,6 @@ def render_dashboard(session, comp: Company) -> None:
             and start <= _parse_iso_date(inv.date) < end
         )
         month_totals.append(round(total, 2))
-
-    user = None
-    current_user_id = get_current_user_id(session)
-    if current_user_id:
-        user = session.get(User, current_user_id)
 
     with ui.element("div").classes("w-full grid grid-cols-12 gap-6 mb-6"):
         kpi_card("Umsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-500", "col-span-12 sm:col-span-6 lg:col-span-3")
