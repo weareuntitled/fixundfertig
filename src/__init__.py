@@ -1,1 +1,1 @@
-"""Package marker."""
+"""App entrypoint package."""

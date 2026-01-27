@@ -1,5 +1,1 @@
-"""Composition root exports."""
-
-from .container import AppContainer, create_app_container
-
-__all__ = ["AppContainer", "create_app_container"]
+"""Composition root package."""
