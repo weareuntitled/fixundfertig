@@ -235,7 +235,7 @@ Das Format basiert auf dem `post_to_n8n`-Client (HMAC über den JSON-Body).
 
 **Felder in den Settings:**  
 - **n8n Webhook URL (Test)** wird vom Button „Webhook testen“ genutzt.  
-- **n8n Webhook URL (Production)** wird für echte Uploads verwendet.
+- **n8n Webhook URL (Production)** wird für echte Uploads verwendet (fällt auf Test zurück, wenn Production fehlt).
 
 ### Empfang in n8n (Webhook Trigger)
 

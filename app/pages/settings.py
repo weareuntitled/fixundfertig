@@ -409,6 +409,8 @@ def render_settings(session, comp: Company) -> None:
                     if not bool(n8n_enabled.value):
                         return "Status: deaktiviert"
                     if not (n8n_webhook_url_prod.value or "").strip():
+                        if (n8n_webhook_url_test.value or "").strip():
+                            return "Status: aktiv, aber keine Production-Webhook-URL gesetzt (Test vorhanden)"
                         return "Status: aktiv, aber keine Production-Webhook-URL gesetzt"
                     if not (n8n_secret.value or "").strip():
                         return "Status: aktiv, aber kein Secret gesetzt"
@@ -436,13 +438,20 @@ def render_settings(session, comp: Company) -> None:
                     if not bool(n8n_enabled.value):
                         ui.notify("n8n ist deaktiviert.", color="orange")
                         n8n_status.set_text(_n8n_status_text())
+                        ui.run_javascript("console.log('n8n_test_debug', {step: 'n8n_disabled'});")
                         return
                     webhook_url = (n8n_webhook_url_test.value or "").strip()
                     secret_value = (n8n_secret.value or "").strip()
                     if not webhook_url or not secret_value:
                         ui.notify("Test-Webhook-URL oder Secret fehlt.", color="orange")
                         n8n_status.set_text(_n8n_status_text())
+                        ui.run_javascript(
+                            f"console.log('n8n_test_debug', {json.dumps({'step': 'missing_webhook_or_secret', 'has_webhook_url': bool(webhook_url), 'has_secret': bool(secret_value)})});"
+                        )
                         return
+                    ui.run_javascript(
+                        f"console.log('n8n_test_debug', {json.dumps({'step': 'sending_test', 'webhook_url': webhook_url})});"
+                    )
                     try:
                         post_to_n8n(
                             webhook_url=webhook_url,
@@ -453,6 +462,9 @@ def render_settings(session, comp: Company) -> None:
                         )
                     except httpx.HTTPStatusError as exc:
                         status_code = exc.response.status_code if exc.response else None
+                        ui.run_javascript(
+                            f"console.log('n8n_test_debug', {json.dumps({'step': 'test_failed_status', 'status_code': status_code})});"
+                        )
                         if status_code == 404:
                             ui.notify(
                                 "Webhook-Test fehlgeschlagen: 404. Bitte die Test-Webhook-URL aus n8n verwenden.",
@@ -471,9 +483,13 @@ def render_settings(session, comp: Company) -> None:
                     except Exception as exc:
                         ui.notify(f"Webhook-Test fehlgeschlagen: {exc}", color="orange")
                         n8n_status.set_text("Status: Test fehlgeschlagen")
+                        ui.run_javascript(
+                            f"console.log('n8n_test_debug', {json.dumps({'step': 'test_failed_exception', 'error': str(exc)})});"
+                        )
                         return
                     ui.notify("Webhook-Test gesendet.", color="green")
                     n8n_status.set_text("Status: Test gesendet")
+                    ui.run_javascript("console.log('n8n_test_debug', {step: 'test_success'});")
 
                 with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
                     ui.button(

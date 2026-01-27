@@ -46,6 +46,12 @@ def render_documents(session, comp: Company) -> None:
     }
     debug_enabled = os.getenv("FF_DEBUG") == "1"
     upload_status = None
+    debug_client_logs = True
+
+    def _log_client_debug(payload: dict) -> None:
+        if not debug_client_logs:
+            return
+        ui.run_javascript(f"console.log('n8n_upload_debug', {json.dumps(payload)});")
 
     def _load_documents() -> list[Document]:
         session.expire_all()
@@ -266,6 +272,35 @@ def render_documents(session, comp: Company) -> None:
         try:
             if not comp.id:
                 ui.notify("Kein aktives Unternehmen.", color="red")
+                _log_client_debug({"step": "missing_company"})
+                return
+            if not bool(comp.n8n_enabled):
+                ui.notify("n8n ist deaktiviert. Bitte in den Settings aktivieren.", color="orange")
+                if upload_status:
+                    upload_status.set_text("Status: n8n deaktiviert")
+                _log_client_debug({"step": "n8n_disabled"})
+                return
+            webhook_url = (comp.n8n_webhook_url_prod or comp.n8n_webhook_url or "").strip()
+            test_webhook_url = (comp.n8n_webhook_url_test or "").strip()
+            secret_value = (comp.n8n_secret or "").strip()
+            if not webhook_url and test_webhook_url:
+                webhook_url = test_webhook_url
+                ui.notify(
+                    "Hinweis: Production-Webhook-URL fehlt. Upload nutzt die Test-Webhook-URL.",
+                    color="orange",
+                )
+                _log_client_debug({"step": "fallback_to_test_url"})
+            if not webhook_url or not secret_value:
+                ui.notify("n8n Webhook-URL oder Secret fehlt.", color="orange")
+                if upload_status:
+                    upload_status.set_text("Status: Webhook-URL oder Secret fehlt")
+                _log_client_debug(
+                    {
+                        "step": "missing_webhook_or_secret",
+                        "has_webhook_url": bool(webhook_url),
+                        "has_secret": bool(secret_value),
+                    }
+                )
                 return
             if not bool(comp.n8n_enabled):
                 ui.notify("n8n ist deaktiviert. Bitte in den Settings aktivieren.", color="orange")
@@ -301,6 +336,7 @@ def render_documents(session, comp: Company) -> None:
                     ),
                 )
                 ui.notify("Fehler beim Upload (Dokument-ID: unbekannt)", color="red")
+                _log_client_debug({"step": "validation_failed", "filename": filename})
                 return
 
             if upload_status:
@@ -327,6 +363,15 @@ def render_documents(session, comp: Company) -> None:
             )
             if upload_status:
                 upload_status.set_text("Status: Sende an n8n...")
+            _log_client_debug(
+                {
+                    "step": "sending_to_n8n",
+                    "webhook_url": webhook_url,
+                    "filename": filename,
+                    "mime_type": mime_type,
+                    "size_bytes": size_bytes,
+                }
+            )
             try:
                 post_to_n8n(
                     webhook_url=webhook_url,
@@ -343,6 +388,7 @@ def render_documents(session, comp: Company) -> None:
                 if upload_status:
                     upload_status.set_text("Status: Gesendet. Warte auf n8n-Ingest...")
                 ui.notify("Datei an n8n gesendet.", color="green")
+                _log_client_debug({"step": "send_success"})
             except httpx.HTTPStatusError as exc:
                 logger.exception(
                     "N8N_WEBHOOK_FAILED",
@@ -357,6 +403,7 @@ def render_documents(session, comp: Company) -> None:
                 if upload_status:
                     upload_status.set_text("Status: Versand fehlgeschlagen")
                 status_code = exc.response.status_code if exc.response else None
+                _log_client_debug({"step": "send_failed_status", "status_code": status_code})
                 if status_code == 404:
                     ui.notify(
                         "n8n Versand fehlgeschlagen: 404. Bitte die Production-Webhook-URL (/webhook/) verwenden.",
@@ -384,6 +431,7 @@ def render_documents(session, comp: Company) -> None:
                 if upload_status:
                     upload_status.set_text("Status: Versand fehlgeschlagen")
                 ui.notify(f"n8n Versand fehlgeschlagen: {exc}", color="orange")
+                _log_client_debug({"step": "send_failed_exception", "error": str(exc)})
             render_list.refresh()
         except Exception:
             logger.exception(
