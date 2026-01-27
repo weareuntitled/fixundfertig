@@ -4,6 +4,46 @@
 
 ---
 
+## Architekturregeln
+
+1. **Lean bleiben:** Kleine, lokale Änderungen statt Refactors.
+2. **Ende-zu-Ende:** Jede Änderung muss über die GUI bedienbar und im laufenden UI verifizierbar sein.
+3. **Kein toter Code:** Keine UI ohne Backend-Pfad, kein Backend ohne UI-Einstieg.
+4. **Material-lean UI:** Minimal, clean, vorhandene Styles/Komponenten nutzen.
+5. **NiceGUI sanitize:** `ui.html(..., sanitize=True/False)` immer explizit setzen.
+6. **Standard NiceGUI Patterns:** `ui.refreshable`/einfaches State-Update bevorzugen.
+7. **Testbarkeit:** GUI-Hook/Statusanzeige für manuelle Tests, wenn nötig.
+8. **Keine Über-Architektur:** Keine neuen Systeme ohne echten Bedarf.
+9. **Sicherheit:** Fehler klar im UI anzeigen, keine sensiblen Leaks, geschützte Ressourcen prüfen.
+
+---
+
+## Startanleitung (lokal)
+
+### Installation
+
+Mit `uv`:
+```bash
+uv pip install -r requirements.txt
+```
+
+Mit `pip`:
+```bash
+pip install -r requirements.txt
+```
+
+### Starten
+
+```bash
+python -m src.main
+```
+
+oder
+
+```bash
+python src/main.py
+```
+
 ## 🧭 System Architecture
 
 ### High-level flow (runtime)
