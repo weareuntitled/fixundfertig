@@ -1,5 +1,14 @@
 """Run the FixundFertig NiceGUI app."""
 
+from pathlib import Path
+import sys
+
+_ROOT = Path(__file__).resolve().parent.parent
+_APP_ROOT = _ROOT / "app"
+for path in (_ROOT, _APP_ROOT):
+    if str(path) not in sys.path:
+        sys.path.append(str(path))
+
 from app import main as app_main
 from nicegui import ui
 
