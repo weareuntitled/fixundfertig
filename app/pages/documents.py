@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import base64
 import csv
 import io
-import hashlib
 import logging
 import re
 import mimetypes
@@ -21,13 +21,11 @@ from data import Document, DocumentMeta, WebhookEvent
 from sqlmodel import delete
 from data import WebhookEvent
 from integrations.n8n_client import post_to_n8n
-from services.blob_storage import blob_storage, build_document_key
+from services.blob_storage import blob_storage
 from services.documents import (
     backfill_document_fields,
-    build_document_record,
     document_size_bytes,
     document_matches_filters,
-    normalize_keywords,
     resolve_document_meta_values,
     resolve_document_path,
     validate_document_upload,
@@ -45,15 +43,7 @@ def render_documents(session, comp: Company) -> None:
         "date_to": "",
     }
     debug_enabled = os.getenv("FF_DEBUG") == "1"
-    vendor_input = None
-    doc_number_input = None
-    doc_date_input = None
-    amount_total_input = None
-    amount_net_input = None
-    amount_tax_input = None
-    currency_input = None
-    description_input = None
-    tags_input = None
+    upload_status = None
 
     def _load_documents() -> list[Document]:
         session.expire_all()
@@ -121,11 +111,6 @@ def render_documents(session, comp: Company) -> None:
     def _format_keywords(value: str | None) -> str:
         items = _parse_keywords(value or "")
         return ", ".join(items) if items else "-"
-
-    def _get_input_value(component, default=""):
-        if component is None:
-            return default
-        return getattr(component, "value", default)
 
     def _sort_documents(items: list[Document]) -> list[Document]:
         return sorted(items, key=_doc_created_at, reverse=True)
@@ -280,6 +265,18 @@ def render_documents(session, comp: Company) -> None:
             if not comp.id:
                 ui.notify("Kein aktives Unternehmen.", color="red")
                 return
+            if not bool(comp.n8n_enabled):
+                ui.notify("n8n ist deaktiviert. Bitte in den Settings aktivieren.", color="orange")
+                if upload_status:
+                    upload_status.set_text("Status: n8n deaktiviert")
+                return
+            webhook_url = (comp.n8n_webhook_url or "").strip()
+            secret_value = (comp.n8n_secret or "").strip()
+            if not webhook_url or not secret_value:
+                ui.notify("n8n Webhook URL oder Secret fehlt.", color="orange")
+                if upload_status:
+                    upload_status.set_text("Status: Webhook-URL oder Secret fehlt")
+                return
 
             try:
                 data = await _read_upload_bytes(event.file)
@@ -296,9 +293,8 @@ def render_documents(session, comp: Company) -> None:
                 ui.notify("Fehler beim Upload (Dokument-ID: unbekannt)", color="red")
                 return
 
-            ext = os.path.splitext(filename)[1].lower().lstrip(".")
-            if ext == "jpeg":
-                ext = "jpg"
+            if upload_status:
+                upload_status.set_text("Status: Datei geprüft")
 
             mime_type = (
                 getattr(event, "type", "")
@@ -306,60 +302,8 @@ def render_documents(session, comp: Company) -> None:
                 or mimetypes.guess_type(filename)[0]
                 or ""
             )
-            sha256 = hashlib.sha256(data).hexdigest()
-
-            doc_date = (_get_input_value(doc_date_input, "") or "").strip() or None
-            amount_total = _get_input_value(amount_total_input)
-            if amount_total in ("", None):
-                amount_total = None
-            amount_net = _get_input_value(amount_net_input)
-            if amount_net in ("", None):
-                amount_net = None
-            amount_tax = _get_input_value(amount_tax_input)
-            if amount_tax in ("", None):
-                amount_tax = None
-            currency = (_get_input_value(currency_input, "") or "").strip()
-            vendor = (_get_input_value(vendor_input, "") or "").strip()
-            doc_number = (_get_input_value(doc_number_input, "") or "").strip()
-            description = (_get_input_value(description_input, "") or "").strip()
-            keywords_value = _get_input_value(tags_input, "")
-            keywords_json = normalize_keywords(keywords_value)
-
-            with get_session() as s:
-                try:
-                    document = build_document_record(
-                        int(comp.id),
-                        filename,
-                        mime_type=mime_type,
-                        size_bytes=size_bytes,
-                        source="MANUAL",
-                        doc_type=ext,
-                        vendor=vendor,
-                        doc_number=doc_number,
-                        doc_date=doc_date,
-                        amount_total=amount_total,
-                        amount_net=amount_net,
-                        amount_tax=amount_tax,
-                        currency=currency,
-                        description=description,
-                        keywords_json=keywords_json,
-                    )
-                    document.mime = mime_type
-                    document.size = size_bytes
-                    document.sha256 = sha256
-                    s.add(document)
-                    s.flush()
-
-                    document_id = int(document.id)
-                    storage_key = build_document_key(int(comp.id), int(document.id), filename)
-                    document.storage_key = storage_key
-                    document.storage_path = storage_key
-
-                    blob_storage().put_bytes(storage_key, data, mime_type)
-                    s.commit()
-                except Exception:
-                    s.rollback()
-                    raise
+            file_b64 = base64.b64encode(data).decode("utf-8")
+            file_payload = f"data:{mime_type};base64,{file_b64}" if mime_type else file_b64
 
             logger.info(
                 "ACTION_SUCCESS",
@@ -371,44 +315,38 @@ def render_documents(session, comp: Company) -> None:
                     storage_path=storage_key,
                 ),
             )
-            ui.notify(f"Dokument gespeichert: {filename} ({size_bytes} Bytes)", color="green")
-            if comp.n8n_enabled and (comp.n8n_webhook_url or "").strip():
-                try:
-                    post_to_n8n(
-                        webhook_url=comp.n8n_webhook_url,
-                        secret=comp.n8n_secret,
-                        event="document_upload",
-                        company_id=int(comp.id),
-                        data={
-                            "document_id": document_id,
-                            "filename": filename,
-                            "mime_type": mime_type,
-                            "size_bytes": size_bytes,
-                            "vendor": vendor,
-                            "doc_number": doc_number,
-                            "doc_date": doc_date,
-                            "amount_total": amount_total,
-                            "amount_net": amount_net,
-                            "amount_tax": amount_tax,
-                            "currency": currency,
-                            "description": description,
-                            "keywords": keywords_json,
-                            "file_url": f"/api/documents/{document_id}/file",
-                        },
-                    )
-                    ui.notify("n8n Webhook gesendet.", color="green")
-                except Exception as exc:
-                    logger.exception(
-                        "N8N_WEBHOOK_FAILED",
-                        extra=_build_action_context(
-                            action,
-                            document_id=document_id,
-                            filename=filename,
-                            storage_key=storage_key,
-                            storage_path=storage_key,
-                        ),
-                    )
-                    ui.notify(f"n8n Webhook fehlgeschlagen: {exc}", color="orange")
+            if upload_status:
+                upload_status.set_text("Status: Sende an n8n...")
+            try:
+                post_to_n8n(
+                    webhook_url=webhook_url,
+                    secret=secret_value,
+                    event="document_upload",
+                    company_id=int(comp.id),
+                    data={
+                        "file_name": filename,
+                        "mime_type": mime_type,
+                        "size_bytes": size_bytes,
+                        "file_base64": file_payload,
+                    },
+                )
+                if upload_status:
+                    upload_status.set_text("Status: Gesendet. Warte auf n8n-Ingest...")
+                ui.notify("Datei an n8n gesendet.", color="green")
+            except Exception as exc:
+                logger.exception(
+                    "N8N_WEBHOOK_FAILED",
+                    extra=_build_action_context(
+                        action,
+                        document_id=document_id,
+                        filename=filename,
+                        storage_key=storage_key,
+                        storage_path=storage_key,
+                    ),
+                )
+                if upload_status:
+                    upload_status.set_text("Status: Versand fehlgeschlagen")
+                ui.notify(f"n8n Versand fehlgeschlagen: {exc}", color="orange")
             render_list.refresh()
         except Exception:
             logger.exception(
@@ -426,25 +364,20 @@ def render_documents(session, comp: Company) -> None:
 
     with ui.dialog() as upload_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[480px] max-w-[92vw]"):
-            ui.label("Upload").classes(C_SECTION_TITLE)
-            ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500 mb-2")
-            vendor_input = ui.input("Vendor / Verkäufer").classes(C_INPUT + " w-full")
-            doc_number_input = ui.input("Belegnummer").classes(C_INPUT + " w-full")
-            doc_date_input = ui.input("Belegdatum").props("type=date").classes(C_INPUT + " w-full")
-            amount_total_input = ui.number("Betrag").props("step=0.01").classes(C_INPUT + " w-full")
-            amount_net_input = ui.number("Netto").props("step=0.01").classes(C_INPUT + " w-full")
-            amount_tax_input = ui.number("Steuerbetrag").props("step=0.01").classes(C_INPUT + " w-full")
-            currency_input = ui.input("Währung").classes(C_INPUT + " w-full")
-            description_input = ui.textarea("Beschreibung").classes(C_INPUT + " w-full")
-            tags_input = ui.input("Tags (kommagetrennt)").classes(C_INPUT + " w-full")
+            ui.label("Upload an n8n").classes(C_SECTION_TITLE)
+            ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500")
+            ui.label("Die Datei wird an n8n gesendet und erscheint nach der Verarbeitung in der Liste.").classes(
+                "text-xs text-slate-500 mb-2"
+            )
             upload_input = ui.upload(
                 on_upload=_handle_upload,
                 auto_upload=False,
                 label="Datei wählen",
             ).classes("w-full")
+            upload_status = ui.label("Status: bereit zum Senden").classes("text-xs text-slate-500 mt-1")
             with ui.row().classes("justify-end w-full mt-4 gap-2"):
                 ui.button(
-                    "Speichern",
+                    "Senden an n8n",
                     on_click=lambda: upload_input.run_method("upload"),
                 ).classes(C_BTN_PRIM)
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
@@ -862,6 +795,18 @@ def render_documents(session, comp: Company) -> None:
             return f"{amount:.2f} {currency}"
         return f"{amount:.2f}"
 
+    def _format_source(source: str | None) -> str:
+        value = (source or "").strip().lower()
+        if value in {"manual", "manuell"}:
+            return "Manuell"
+        if value == "n8n":
+            return "n8n"
+        if value in {"mail", "email"}:
+            return "Mail"
+        if value:
+            return value.upper()
+        return "-"
+
     @ui.refreshable
     def render_list():
         items = _sort_documents(_filter_documents(_load_documents()))
@@ -919,6 +864,7 @@ def render_documents(session, comp: Company) -> None:
                         "id": doc_id,
                         "date": display_date,
                         "filename": doc.original_filename or doc.title or "Dokument",
+                        "source": _format_source(doc.source),
                         "size_bytes": size_bytes,
                         "size_display": size_display,
                         "mime": doc.mime or doc.mime_type or "-",
@@ -938,6 +884,7 @@ def render_documents(session, comp: Company) -> None:
             columns = [
                 {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
                 {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
+                {"name": "source", "label": "Quelle", "field": "source", "sortable": True, "align": "left"},
                 {
                     "name": "size_display",
                     "label": "Größe",
