@@ -18,9 +18,13 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest, urlopen
 
-_SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
-if _SRC_ROOT.exists():
-    sys.path.append(str(_SRC_ROOT))
+_SRC_ROOT_CANDIDATES = (
+    Path(__file__).resolve().parent.parent / "src",
+    Path(__file__).resolve().parent / "src",
+)
+for _src_root in _SRC_ROOT_CANDIDATES:
+    if _src_root.exists() and str(_src_root) not in sys.path:
+        sys.path.append(str(_src_root))
 
 from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
