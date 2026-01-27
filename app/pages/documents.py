@@ -96,9 +96,13 @@ def render_documents(session, comp: Company) -> None:
             return created_at.strftime("%Y-%m-%d")
         return ""
 
-    def _parse_keywords(value: str) -> list[str]:
-        if not value:
+    def _parse_keywords(value: object) -> list[str]:
+        if value is None or value == "":
             return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if not isinstance(value, str):
+            value = str(value)
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError:
@@ -403,6 +407,7 @@ def render_documents(session, comp: Company) -> None:
     export_button = None
     upload_button = None
     open_button = None
+    meta_button = None
     delete_button = None
     debug_button = None
     reset_button = None
@@ -413,9 +418,10 @@ def render_documents(session, comp: Company) -> None:
             has_selection = bool(selected_ids)
             export_button.visible = has_selection
             upload_button.visible = not has_selection
-        if open_button and delete_button:
+        if open_button and meta_button and delete_button:
             single_selection = len(selected_ids) == 1
             open_button.visible = single_selection
+            meta_button.visible = single_selection
             delete_button.visible = single_selection
         if debug_button:
             debug_button.visible = bool(selected_ids)
@@ -426,6 +432,13 @@ def render_documents(session, comp: Company) -> None:
             return
         doc_id = next(iter(selected_ids))
         ui.run_javascript(f"window.open('/api/documents/{doc_id}/file')")
+
+    def _open_selected_meta() -> None:
+        if len(selected_ids) != 1:
+            ui.notify("Bitte genau ein Dokument auswählen.", color="orange")
+            return
+        doc_id = next(iter(selected_ids))
+        _open_meta(doc_id)
 
     def _open_selected_delete() -> None:
         if len(selected_ids) != 1:
@@ -455,6 +468,14 @@ def render_documents(session, comp: Company) -> None:
         except (TypeError, ValueError):
             return None
 
+    def _coerce_int(value: object) -> int | None:
+        if value is None or value == "":
+            return None
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
+
     def _coerce_payload_float(value: object) -> float | None:
         if value is None or value == "":
             return None
@@ -477,7 +498,17 @@ def render_documents(session, comp: Company) -> None:
     def _resolve_meta_values(meta: DocumentMeta | None) -> dict[str, object]:
         payload = _extract_meta_payload(meta)
         extracted = payload.get("extracted") if isinstance(payload.get("extracted"), dict) else {}
+        if not extracted:
+            return {}
         source = extracted if extracted else payload
+        size_value = (
+            source.get("file_size")
+            or source.get("size_bytes")
+            or source.get("size")
+            or payload.get("file_size")
+            or payload.get("size_bytes")
+            or payload.get("size")
+        )
         return {
             "vendor": (source.get("vendor") or "").strip(),
             "doc_number": (source.get("doc_number") or "").strip(),
@@ -486,6 +517,7 @@ def render_documents(session, comp: Company) -> None:
             "amount_tax": _coerce_payload_float(source.get("amount_tax")),
             "currency": (source.get("currency") or "").strip(),
             "keywords": source.get("keywords"),
+            "size_bytes": _coerce_int(size_value),
         }
 
     def _load_meta_map(doc_ids: list[int]) -> dict[int, DocumentMeta]:
@@ -538,7 +570,7 @@ def render_documents(session, comp: Company) -> None:
         with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
             ui.label("Dokumente").classes(C_PAGE_TITLE)
             ui.space()
-            nonlocal export_button, upload_button, open_button, delete_button, debug_button, reset_button, delete_all_button
+            nonlocal export_button, upload_button, open_button, meta_button, delete_button, debug_button, reset_button, delete_all_button
             export_button = ui.button(
                 "Export",
                 icon="download",
@@ -546,6 +578,7 @@ def render_documents(session, comp: Company) -> None:
             ).classes(C_BTN_SEC)
             upload_button = ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
             open_button = ui.button("Öffnen", icon="open_in_new", on_click=_open_selected_document).classes(C_BTN_SEC)
+            meta_button = ui.button("Meta", icon="info", on_click=_open_selected_meta).classes(C_BTN_SEC)
             delete_button = ui.button(
                 "Löschen",
                 icon="delete",
@@ -872,21 +905,31 @@ def render_documents(session, comp: Company) -> None:
             for doc in items:
                 doc_id = int(doc.id or 0)
                 display_date = _document_display_date(doc)
-                size_bytes = _document_size_bytes(doc)
                 meta_values = _resolve_meta_values(meta_map.get(doc_id))
+                size_bytes = _document_size_bytes(doc)
+                meta_size = meta_values.get("size_bytes")
+                if size_bytes <= 0 and isinstance(meta_size, int) and meta_size > 0:
+                    size_bytes = meta_size
                 amount_total, amount_net, amount_tax = _resolve_amounts(doc)
-                if amount_total is None:
-                    amount_total = meta_values.get("amount_total")
-                if amount_net is None:
-                    amount_net = meta_values.get("amount_net")
-                if amount_tax is None:
-                    amount_tax = meta_values.get("amount_tax")
-                vendor_value = (doc.vendor or meta_values.get("vendor") or "").strip() or "-"
-                doc_number_value = (doc.doc_number or meta_values.get("doc_number") or "").strip() or "-"
+                meta_amount_total = meta_values.get("amount_total")
+                meta_amount_net = meta_values.get("amount_net")
+                meta_amount_tax = meta_values.get("amount_tax")
+                if amount_total is None and meta_amount_total is not None:
+                    amount_total = meta_amount_total
+                if amount_net is None and meta_amount_net is not None:
+                    amount_net = meta_amount_net
+                if amount_tax is None and meta_amount_tax is not None:
+                    amount_tax = meta_amount_tax
+                meta_vendor = (meta_values.get("vendor") or "").strip()
+                meta_doc_number = (meta_values.get("doc_number") or "").strip()
+                vendor_value = (doc.vendor or meta_vendor or "").strip() or "-"
+                doc_number_value = (doc.doc_number or meta_doc_number or "").strip() or "-"
                 tags_value = _format_keywords(doc.keywords_json)
                 if tags_value == "-":
-                    tags_value = _format_keywords(meta_values.get("keywords") or "")
-                currency_value = (doc.currency or meta_values.get("currency") or "").strip() or None
+                    meta_keywords = meta_values.get("keywords")
+                    tags_value = _format_keywords(meta_keywords) if meta_keywords else tags_value
+                meta_currency = (meta_values.get("currency") or "").strip()
+                currency_value = (doc.currency or meta_currency or "").strip() or None
                 logger.debug(
                     "document_row_keys",
                     extra={
@@ -894,7 +937,7 @@ def render_documents(session, comp: Company) -> None:
                         "amount_total": amount_total,
                         "amount_net": amount_net,
                         "amount_tax": amount_tax,
-                        "currency": doc.currency,
+                        "currency": currency_value,
                     },
                 )
                 rows.append(
