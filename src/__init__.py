@@ -1,1 +1,1 @@
-"""App entrypoint package."""
+"""Application entry package."""
