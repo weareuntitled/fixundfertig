@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Optional
 
-from src.domain.repositories.todo_repository import TodoRepository
+from domain.repositories.todo_repository import TodoRepository
 
 
 class InMemoryTodoRepository(TodoRepository):
