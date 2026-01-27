@@ -12,10 +12,15 @@ import re
 import mimetypes
 import os
 import time
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest, urlopen
+
+_SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
+if _SRC_ROOT.exists():
+    sys.path.append(str(_SRC_ROOT))
 
 from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -45,6 +50,7 @@ from pages import (
     render_invites,
     render_ledger,
     render_exports,
+    render_todos,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies
 from services.blob_storage import blob_storage, build_document_key
@@ -1501,7 +1507,13 @@ def layout_wrapper(content_func):
                                     ui.icon(icon).classes(icon_cls)
                                     ui.label(label)
 
-                nav_section("Workspace", [("Dashboard", "dashboard", "dashboard")])
+                nav_section(
+                    "Workspace",
+                    [
+                        ("Dashboard", "dashboard", "dashboard"),
+                        ("Todos", "todos", "checklist"),
+                    ],
+                )
                 nav_section(
                     "Billing",
                     [
@@ -1612,6 +1624,8 @@ def index():
             with ui.column().classes(C_CONTAINER):
                 if page == "dashboard":
                     render_dashboard(session, comp)
+                elif page == "todos":
+                    render_todos(session, comp)
                 elif page == "customers":
                     render_customers(session, comp)
                 elif page == "customer_new":
