@@ -272,12 +272,20 @@ def render_documents(session, comp: Company) -> None:
                 if upload_status:
                     upload_status.set_text("Status: n8n deaktiviert")
                 return
-            webhook_url = (comp.n8n_webhook_url or "").strip()
+            webhook_url = (comp.n8n_webhook_url_prod or comp.n8n_webhook_url or "").strip()
             secret_value = (comp.n8n_secret or "").strip()
             if not webhook_url or not secret_value:
-                ui.notify("n8n Webhook URL oder Secret fehlt.", color="orange")
+                ui.notify("n8n Production-Webhook-URL oder Secret fehlt.", color="orange")
                 if upload_status:
-                    upload_status.set_text("Status: Webhook-URL oder Secret fehlt")
+                    upload_status.set_text("Status: Production-Webhook-URL oder Secret fehlt")
+                return
+            if "/webhook-test/" in webhook_url:
+                ui.notify(
+                    "n8n Versand fehlgeschlagen: Bitte die Production-Webhook-URL (/webhook/) verwenden, nicht /webhook-test/.",
+                    color="orange",
+                )
+                if upload_status:
+                    upload_status.set_text("Status: Production-Webhook-URL erforderlich")
                 return
 
             try:
@@ -349,7 +357,12 @@ def render_documents(session, comp: Company) -> None:
                 if upload_status:
                     upload_status.set_text("Status: Versand fehlgeschlagen")
                 status_code = exc.response.status_code if exc.response else None
-                if status_code == 405:
+                if status_code == 404:
+                    ui.notify(
+                        "n8n Versand fehlgeschlagen: 404. Bitte die Production-Webhook-URL (/webhook/) verwenden.",
+                        color="orange",
+                    )
+                elif status_code == 405:
                     ui.notify(
                         "n8n Versand fehlgeschlagen: Webhook erwartet keine POST-Requests. "
                         "Bitte in n8n den Webhook auf POST stellen.",

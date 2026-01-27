@@ -94,6 +94,8 @@ class Company(SQLModel, table=True):
     smtp_password: str = ""
     default_sender_email: str = ""
     n8n_webhook_url: str = ""
+    n8n_webhook_url_test: str = ""
+    n8n_webhook_url_prod: str = ""
     n8n_secret: str = ""
     n8n_enabled: bool = False
     google_drive_folder_id: str = ""
@@ -293,6 +295,8 @@ def ensure_company_schema():
         if "n8n_enabled" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_enabled INTEGER DEFAULT 0")
         if "n8n_secret" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_secret TEXT DEFAULT ''")
         if "n8n_webhook_url" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_webhook_url TEXT DEFAULT ''")
+        if "n8n_webhook_url_test" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_webhook_url_test TEXT DEFAULT ''")
+        if "n8n_webhook_url_prod" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_webhook_url_prod TEXT DEFAULT ''")
         if "business_type" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN business_type TEXT DEFAULT 'Einzelunternehmen'")
         if "is_small_business" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN is_small_business INTEGER DEFAULT 0")
         if "smtp_server" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN smtp_server TEXT DEFAULT ''")

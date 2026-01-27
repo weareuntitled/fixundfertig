@@ -233,10 +233,15 @@ Body-Format (vereinfacht):
 
 Das Format basiert auf dem `post_to_n8n`-Client (HMAC über den JSON-Body).
 
+**Felder in den Settings:**  
+- **n8n Webhook URL (Test)** wird vom Button „Webhook testen“ genutzt.  
+- **n8n Webhook URL (Production)** wird für echte Uploads verwendet.
+
 ### Empfang in n8n (Webhook Trigger)
 
-1. **Webhook-Trigger** in n8n anlegen (Production URL) und diese URL in den
-   App-Settings als „n8n Webhook URL“ eintragen.
+1. **Webhook-Trigger** in n8n anlegen und die **Production URL** (Pfad
+   `/webhook/...`, nicht `/webhook-test/...`) in den App-Settings als
+   „n8n Webhook URL (Production)“ eintragen.
 2. **Secret** aus der App übernehmen (Header `X-API-KEY`).
 3. **HTTP-Methode auf POST stellen**, da die App JSON im Body sendet.
 4. Optional: Signatur im n8n-Workflow prüfen (HMAC SHA-256 auf den rohen Body).
