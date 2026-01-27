@@ -15,6 +15,7 @@ from .invoices import render_invoices
 from .invites import render_invites
 from .ledger import render_ledger
 from .settings import render_settings
+from .todos import render_todos
 
 # Import routes for side effects. Registers @ui.page decorators
 from . import auth
