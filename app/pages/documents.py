@@ -20,6 +20,7 @@ from ._shared import *
 from data import Document, DocumentMeta, WebhookEvent
 from sqlmodel import delete
 from data import WebhookEvent
+from integrations.n8n_client import post_to_n8n
 from services.blob_storage import blob_storage, build_document_key
 from services.documents import (
     backfill_document_fields,
@@ -371,6 +372,43 @@ def render_documents(session, comp: Company) -> None:
                 ),
             )
             ui.notify(f"Dokument gespeichert: {filename} ({size_bytes} Bytes)", color="green")
+            if comp.n8n_enabled and (comp.n8n_webhook_url or "").strip():
+                try:
+                    post_to_n8n(
+                        webhook_url=comp.n8n_webhook_url,
+                        secret=comp.n8n_secret,
+                        event="document_upload",
+                        company_id=int(comp.id),
+                        data={
+                            "document_id": document_id,
+                            "filename": filename,
+                            "mime_type": mime_type,
+                            "size_bytes": size_bytes,
+                            "vendor": vendor,
+                            "doc_number": doc_number,
+                            "doc_date": doc_date,
+                            "amount_total": amount_total,
+                            "amount_net": amount_net,
+                            "amount_tax": amount_tax,
+                            "currency": currency,
+                            "description": description,
+                            "keywords": keywords_json,
+                            "file_url": f"/api/documents/{document_id}/file",
+                        },
+                    )
+                    ui.notify("n8n Webhook gesendet.", color="green")
+                except Exception as exc:
+                    logger.exception(
+                        "N8N_WEBHOOK_FAILED",
+                        extra=_build_action_context(
+                            action,
+                            document_id=document_id,
+                            filename=filename,
+                            storage_key=storage_key,
+                            storage_path=storage_key,
+                        ),
+                    )
+                    ui.notify(f"n8n Webhook fehlgeschlagen: {exc}", color="orange")
             render_list.refresh()
         except Exception:
             logger.exception(

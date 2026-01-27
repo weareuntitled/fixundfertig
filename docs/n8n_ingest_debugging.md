@@ -197,6 +197,71 @@ Document file missing for document_id=... storage_path=... storage_key=... resol
 Damit kannst du nachvollziehen, ob die Datei im lokalen Storage oder im
 Blob-Storage gesucht wurde.
 
+## Outbound Webhook bei manuellem Upload (FixundFertig → n8n)
+
+Wenn ein Dokument **manuell** hochgeladen wird, sendet die App einen **Outbound Webhook**
+an die in den Settings konfigurierte n8n-URL (nur wenn n8n aktiviert ist). Der
+Status wird in den Settings angezeigt und kann per Button getestet werden. Diese
+UI-Hinweise helfen dir, die Verbindung „live“ zu verifizieren.【F:app/pages/documents.py†L364-L412】【F:app/pages/settings.py†L388-L457】
+
+### Gesendete Payload (Beispiel)
+
+Die App sendet JSON mit HMAC-Signatur. Header:
+
+```
+X-API-KEY: <n8n secret>
+X-Signature: <sha256 hmac>
+Content-Type: application/json
+```
+
+Body-Format (vereinfacht):
+
+```json
+{
+  "event": "document_upload",
+  "company_id": "123",
+  "ts": 1710000000,
+  "data": {
+    "document_id": 456,
+    "filename": "rechnung.pdf",
+    "mime_type": "application/pdf",
+    "size_bytes": 123456,
+    "vendor": "ACME GmbH",
+    "doc_number": "INV-001",
+    "doc_date": "2024-01-31",
+    "amount_total": 123.45,
+    "amount_net": 100.0,
+    "amount_tax": 23.45,
+    "currency": "EUR",
+    "description": "Bürobedarf Januar",
+    "keywords": ["büro", "bedarf"],
+    "file_url": "/api/documents/456/file"
+  }
+}
+```
+
+Das Format basiert auf dem `post_to_n8n`-Client (HMAC über den JSON-Body).【F:app/integrations/n8n_client.py†L10-L41】【F:app/pages/documents.py†L364-L412】
+
+### Empfang in n8n (Webhook Trigger)
+
+1. **Webhook-Trigger** in n8n anlegen (Production URL) und diese URL in den
+   App-Settings als „n8n Webhook URL“ eintragen.【F:app/pages/settings.py†L388-L457】
+2. **Secret** aus der App übernehmen (Header `X-API-KEY`).
+3. Optional: Signatur im n8n-Workflow prüfen (HMAC SHA-256 auf den rohen Body).
+
+### Weiterleitung in den bestehenden Ingest (Mail-Scraping-Flow)
+
+Wenn du den **gleichen Ingest** verwenden willst wie beim Mail-Scraping:
+
+1. In n8n aus dem `file_url` die Datei abrufen (HTTP Request → Download).
+2. Datei als Base64 kodieren.
+3. An den bestehenden Ingest-Endpunkt senden:  
+   `POST /api/webhooks/n8n/ingest` mit `company_id`, `event_id`, `file_base64` und
+   optional `extracted` (Metadaten).【F:app/main.py†L416-L619】
+
+Damit laufen **manuelle Uploads** über denselben Ingest-Pfad wie Mail-Scraping,
+inkl. Validierung und Speicherung im Dokumenten-Storage.【F:app/main.py†L416-L619】
+
 ## Manuelle Test-Checkliste (GUI)
 
 1. **Dokumente öffnen**  
