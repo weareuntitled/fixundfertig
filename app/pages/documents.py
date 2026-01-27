@@ -898,6 +898,15 @@ def render_documents(session, comp: Company) -> None:
                     return props.get("row")
                 return getattr(props, "row", None)
 
+            def _doc_id_from_slot(slot_obj) -> int | None:
+                row = _row_from_slot(slot_obj)
+                if not row or not row.get("id"):
+                    return None
+                try:
+                    return int(row["id"])
+                except (TypeError, ValueError):
+                    return None
+
             with table.add_slot("body-cell-amount") as slot:
                 ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
 
@@ -915,10 +924,10 @@ def render_documents(session, comp: Company) -> None:
                     warn_icon.tooltip("Sehr kleine Datei (< 1 KB).")
 
             with table.add_slot("body-cell-actions") as slot:
-                row = _row_from_slot(slot)
-
                 def _log_row_debug_from_slot() -> None:
-                    if not row or not row.get("id"):
+                    row = _row_from_slot(slot)
+                    doc_id = _doc_id_from_slot(slot)
+                    if doc_id is None:
                         props = getattr(slot, "props", None)
                         logger.warning(
                             "Dokumentslot ohne Row für Debug: props_type=%s row=%s",
@@ -927,8 +936,7 @@ def render_documents(session, comp: Company) -> None:
                         )
                         ui.notify("Dokument nicht verfügbar.", type="warning")
                         return
-                    doc_id = int(row["id"])
-                    open_url = row.get("open_url") or f"/api/documents/{doc_id}/file"
+                    open_url = (row or {}).get("open_url") or f"/api/documents/{doc_id}/file"
                     try:
                         with get_session() as s:
                             doc = s.get(Document, doc_id)
@@ -954,29 +962,49 @@ def render_documents(session, comp: Company) -> None:
                         )
                         ui.notify(f"Datei nicht gefunden (Dokument-ID {doc_id}).", color="red")
 
+                def _open_document_from_slot() -> None:
+                    doc_id = _doc_id_from_slot(slot)
+                    if doc_id is None:
+                        ui.notify("Dokument nicht verfügbar.", type="warning")
+                        return
+                    row = _row_from_slot(slot) or {}
+                    open_url = row.get("open_url") or f"/api/documents/{doc_id}/file"
+                    ui.run_javascript(f"window.open('{open_url}', '_blank')")
+
+                def _open_meta_from_slot() -> None:
+                    doc_id = _doc_id_from_slot(slot)
+                    if doc_id is None:
+                        ui.notify("Dokument nicht verfügbar.", type="warning")
+                        return
+                    _open_meta(doc_id)
+
+                def _open_delete_from_slot() -> None:
+                    doc_id = _doc_id_from_slot(slot)
+                    if doc_id is None:
+                        ui.notify("Dokument nicht verfügbar.", type="warning")
+                        return
+                    _open_delete(doc_id)
+
                 with ui.row().classes("justify-end gap-2"):
-                    if not row or not row.get("id"):
-                        ui.label("—").classes("text-xs text-slate-400")
-                    else:
-                        doc_id = int(row["id"])
-                        open_url = row.get("open_url") or f"/api/documents/{doc_id}/file"
-                        ui.link("Öffnen", open_url).props("target=_blank").classes("text-sm text-sky-600")
+                    ui.button("Öffnen", on_click=_open_document_from_slot).props("flat dense").classes(
+                        "text-sm text-sky-600"
+                    )
+                    ui.button(
+                        "",
+                        icon="info",
+                        on_click=_open_meta_from_slot,
+                    ).props("flat dense").classes("text-slate-600")
+                    ui.button(
+                        "",
+                        icon="delete",
+                        on_click=_open_delete_from_slot,
+                    ).props("flat dense").classes("text-rose-600")
+                    if debug_enabled:
                         ui.button(
                             "",
-                            icon="info",
-                            on_click=lambda doc_id=doc_id: _open_meta(doc_id),
-                        ).props("flat dense").classes("text-slate-600")
-                        ui.button(
-                            "",
-                            icon="delete",
-                            on_click=lambda doc_id=doc_id: _open_delete(doc_id),
-                        ).props("flat dense").classes("text-rose-600")
-                        if debug_enabled:
-                            ui.button(
-                                "",
-                                icon="bug_report",
-                                on_click=_log_row_debug_from_slot,
-                            ).props("flat dense").classes("text-amber-600")
+                            icon="bug_report",
+                            on_click=_log_row_debug_from_slot,
+                        ).props("flat dense").classes("text-amber-600")
 
     render_filters()
     render_list()
