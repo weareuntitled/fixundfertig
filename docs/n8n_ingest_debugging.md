@@ -238,7 +238,8 @@ Das Format basiert auf dem `post_to_n8n`-Client (HMAC über den JSON-Body).
 1. **Webhook-Trigger** in n8n anlegen (Production URL) und diese URL in den
    App-Settings als „n8n Webhook URL“ eintragen.
 2. **Secret** aus der App übernehmen (Header `X-API-KEY`).
-3. Optional: Signatur im n8n-Workflow prüfen (HMAC SHA-256 auf den rohen Body).
+3. **HTTP-Methode auf POST stellen**, da die App JSON im Body sendet.
+4. Optional: Signatur im n8n-Workflow prüfen (HMAC SHA-256 auf den rohen Body).
 
 ### Weiterleitung in den bestehenden Ingest (Mail-Scraping-Flow)
 

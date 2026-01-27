@@ -20,6 +20,8 @@ from ._shared import *
 from data import Document, DocumentMeta, WebhookEvent
 from sqlmodel import delete
 from data import WebhookEvent
+import httpx
+
 from integrations.n8n_client import post_to_n8n
 from services.blob_storage import blob_storage
 from services.documents import (
@@ -333,6 +335,28 @@ def render_documents(session, comp: Company) -> None:
                 if upload_status:
                     upload_status.set_text("Status: Gesendet. Warte auf n8n-Ingest...")
                 ui.notify("Datei an n8n gesendet.", color="green")
+            except httpx.HTTPStatusError as exc:
+                logger.exception(
+                    "N8N_WEBHOOK_FAILED",
+                    extra=_build_action_context(
+                        action,
+                        document_id=document_id,
+                        filename=filename,
+                        storage_key=storage_key,
+                        storage_path=storage_key,
+                    ),
+                )
+                if upload_status:
+                    upload_status.set_text("Status: Versand fehlgeschlagen")
+                status_code = exc.response.status_code if exc.response else None
+                if status_code == 405:
+                    ui.notify(
+                        "n8n Versand fehlgeschlagen: Webhook erwartet keine POST-Requests. "
+                        "Bitte in n8n den Webhook auf POST stellen.",
+                        color="orange",
+                    )
+                else:
+                    ui.notify(f"n8n Versand fehlgeschlagen: {exc}", color="orange")
             except Exception as exc:
                 logger.exception(
                     "N8N_WEBHOOK_FAILED",

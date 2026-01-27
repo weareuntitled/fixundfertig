@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import secrets
+import httpx
 import time
 
 from nicegui import app, ui
@@ -442,6 +443,18 @@ def render_settings(session, comp: Company) -> None:
                             company_id=int(comp.id or 0),
                             data={"message": "Webhook-Test", "ts": int(time.time())},
                         )
+                    except httpx.HTTPStatusError as exc:
+                        status_code = exc.response.status_code if exc.response else None
+                        if status_code == 405:
+                            ui.notify(
+                                "Webhook-Test fehlgeschlagen: n8n akzeptiert keine POST-Requests. "
+                                "Bitte im n8n-Webhook die Methode auf POST stellen.",
+                                color="orange",
+                            )
+                        else:
+                            ui.notify(f"Webhook-Test fehlgeschlagen: {exc}", color="orange")
+                        n8n_status.set_text("Status: Test fehlgeschlagen")
+                        return
                     except Exception as exc:
                         ui.notify(f"Webhook-Test fehlgeschlagen: {exc}", color="orange")
                         n8n_status.set_text("Status: Test fehlgeschlagen")
