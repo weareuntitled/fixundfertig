@@ -10,7 +10,6 @@ import json
 import tempfile
 import zipfile
 import logging
-from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -97,9 +96,13 @@ def render_documents(session, comp: Company) -> None:
             return created_at.strftime("%Y-%m-%d")
         return ""
 
-    def _parse_keywords(value: str) -> list[str]:
-        if not value:
+    def _parse_keywords(value: object) -> list[str]:
+        if value is None or value == "":
             return []
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if not isinstance(value, str):
+            value = str(value)
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError:
@@ -404,6 +407,7 @@ def render_documents(session, comp: Company) -> None:
     export_button = None
     upload_button = None
     open_button = None
+    meta_button = None
     delete_button = None
     debug_button = None
     reset_button = None
@@ -414,9 +418,10 @@ def render_documents(session, comp: Company) -> None:
             has_selection = bool(selected_ids)
             export_button.visible = has_selection
             upload_button.visible = not has_selection
-        if open_button and delete_button:
+        if open_button and meta_button and delete_button:
             single_selection = len(selected_ids) == 1
             open_button.visible = single_selection
+            meta_button.visible = single_selection
             delete_button.visible = single_selection
         if debug_button:
             debug_button.visible = bool(selected_ids)
@@ -427,6 +432,13 @@ def render_documents(session, comp: Company) -> None:
             return
         doc_id = next(iter(selected_ids))
         ui.run_javascript(f"window.open('/api/documents/{doc_id}/file')")
+
+    def _open_selected_meta() -> None:
+        if len(selected_ids) != 1:
+            ui.notify("Bitte genau ein Dokument auswählen.", color="orange")
+            return
+        doc_id = next(iter(selected_ids))
+        _open_meta(doc_id)
 
     def _open_selected_delete() -> None:
         if len(selected_ids) != 1:
@@ -455,6 +467,66 @@ def render_documents(session, comp: Company) -> None:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    def _coerce_int(value: object) -> int | None:
+        if value is None or value == "":
+            return None
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
+
+    def _coerce_payload_float(value: object) -> float | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if "," in cleaned and "." not in cleaned:
+                cleaned = cleaned.replace(",", ".")
+            return _coerce_float(cleaned)
+        return _coerce_float(value)
+
+    def _extract_meta_payload(meta: DocumentMeta | None) -> dict:
+        if not meta or not meta.raw_payload_json:
+            return {}
+        try:
+            payload = json.loads(meta.raw_payload_json)
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _resolve_meta_values(meta: DocumentMeta | None) -> dict[str, object]:
+        payload = _extract_meta_payload(meta)
+        extracted = payload.get("extracted") if isinstance(payload.get("extracted"), dict) else {}
+        if not extracted:
+            return {}
+        source = extracted if extracted else payload
+        size_value = (
+            source.get("file_size")
+            or source.get("size_bytes")
+            or source.get("size")
+            or payload.get("file_size")
+            or payload.get("size_bytes")
+            or payload.get("size")
+        )
+        return {
+            "vendor": (source.get("vendor") or "").strip(),
+            "doc_number": (source.get("doc_number") or "").strip(),
+            "amount_total": _coerce_payload_float(source.get("amount_total")),
+            "amount_net": _coerce_payload_float(source.get("amount_net")),
+            "amount_tax": _coerce_payload_float(source.get("amount_tax")),
+            "currency": (source.get("currency") or "").strip(),
+            "keywords": source.get("keywords"),
+            "size_bytes": _coerce_int(size_value),
+        }
+
+    def _load_meta_map(doc_ids: list[int]) -> dict[int, DocumentMeta]:
+        if not doc_ids:
+            return {}
+        metas = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id.in_(doc_ids))
+        ).all()
+        return {int(meta.document_id): meta for meta in metas if meta}
 
     def _document_size_bytes(doc: Document) -> int:
         size_value = doc.size_bytes or doc.size or 0
@@ -498,7 +570,7 @@ def render_documents(session, comp: Company) -> None:
         with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
             ui.label("Dokumente").classes(C_PAGE_TITLE)
             ui.space()
-            nonlocal export_button, upload_button, open_button, delete_button, debug_button, reset_button, delete_all_button
+            nonlocal export_button, upload_button, open_button, meta_button, delete_button, debug_button, reset_button, delete_all_button
             export_button = ui.button(
                 "Export",
                 icon="download",
@@ -506,6 +578,7 @@ def render_documents(session, comp: Company) -> None:
             ).classes(C_BTN_SEC)
             upload_button = ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
             open_button = ui.button("Öffnen", icon="open_in_new", on_click=_open_selected_document).classes(C_BTN_SEC)
+            meta_button = ui.button("Meta", icon="info", on_click=_open_selected_meta).classes(C_BTN_SEC)
             delete_button = ui.button(
                 "Löschen",
                 icon="delete",
@@ -828,11 +901,35 @@ def render_documents(session, comp: Company) -> None:
 
         with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
             rows = []
+            meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
             for doc in items:
                 doc_id = int(doc.id or 0)
                 display_date = _document_display_date(doc)
+                meta_values = _resolve_meta_values(meta_map.get(doc_id))
                 size_bytes = _document_size_bytes(doc)
+                meta_size = meta_values.get("size_bytes")
+                if size_bytes <= 0 and isinstance(meta_size, int) and meta_size > 0:
+                    size_bytes = meta_size
                 amount_total, amount_net, amount_tax = _resolve_amounts(doc)
+                meta_amount_total = meta_values.get("amount_total")
+                meta_amount_net = meta_values.get("amount_net")
+                meta_amount_tax = meta_values.get("amount_tax")
+                if amount_total is None and meta_amount_total is not None:
+                    amount_total = meta_amount_total
+                if amount_net is None and meta_amount_net is not None:
+                    amount_net = meta_amount_net
+                if amount_tax is None and meta_amount_tax is not None:
+                    amount_tax = meta_amount_tax
+                meta_vendor = (meta_values.get("vendor") or "").strip()
+                meta_doc_number = (meta_values.get("doc_number") or "").strip()
+                vendor_value = (doc.vendor or meta_vendor or "").strip() or "-"
+                doc_number_value = (doc.doc_number or meta_doc_number or "").strip() or "-"
+                tags_value = _format_keywords(doc.keywords_json)
+                if tags_value == "-":
+                    meta_keywords = meta_values.get("keywords")
+                    tags_value = _format_keywords(meta_keywords) if meta_keywords else tags_value
+                meta_currency = (meta_values.get("currency") or "").strip()
+                currency_value = (doc.currency or meta_currency or "").strip() or None
                 logger.debug(
                     "document_row_keys",
                     extra={
@@ -840,7 +937,7 @@ def render_documents(session, comp: Company) -> None:
                         "amount_total": amount_total,
                         "amount_net": amount_net,
                         "amount_tax": amount_tax,
-                        "currency": doc.currency,
+                        "currency": currency_value,
                     },
                 )
                 rows.append(
@@ -852,15 +949,15 @@ def render_documents(session, comp: Company) -> None:
                         "size_display": _format_size(size_bytes),
                         "size_warning": 0 < size_bytes < 1024,
                         "mime": doc.mime or doc.mime_type or "-",
-                        "doc_number": doc.doc_number or "-",
-                        "vendor": doc.vendor or "-",
-                        "tags": _format_keywords(doc.keywords_json),
+                        "doc_number": doc_number_value,
+                        "vendor": vendor_value,
+                        "tags": tags_value,
                         "amount": amount_total,
                         "amount_net": amount_net,
                         "amount_tax": amount_tax,
-                        "amount_display": _format_amount_value(amount_total, doc.currency),
-                        "amount_net_display": _format_amount_value(amount_net, doc.currency),
-                        "amount_tax_display": _format_amount_value(amount_tax, doc.currency),
+                        "amount_display": _format_amount_value(amount_total, currency_value),
+                        "amount_net_display": _format_amount_value(amount_net, currency_value),
+                        "amount_tax_display": _format_amount_value(amount_tax, currency_value),
                         "open_url": f"/api/documents/{doc_id}/file",
                     }
                 )
@@ -876,7 +973,6 @@ def render_documents(session, comp: Company) -> None:
                 {"name": "amount", "label": "Betrag", "field": "amount", "sortable": True, "align": "right"},
                 {"name": "amount_net", "label": "Netto", "field": "amount_net", "sortable": True, "align": "right"},
                 {"name": "amount_tax", "label": "Steuer", "field": "amount_tax", "sortable": True, "align": "right"},
-                {"name": "actions", "label": "", "field": "actions", "sortable": False, "align": "right"},
             ]
             table = ui.table(columns=columns, rows=rows, row_key="id", selection="multiple").classes("w-full")
 
@@ -887,16 +983,6 @@ def render_documents(session, comp: Company) -> None:
                 _update_action_buttons()
 
             table.on_select(_on_selection)
-
-            def _row_from_slot(slot_obj):
-                props = getattr(slot_obj, "props", None)
-                if isinstance(props, dict):
-                    return props.get("row")
-                if isinstance(props, Mapping):
-                    return props.get("row")
-                if hasattr(props, "get"):
-                    return props.get("row")
-                return getattr(props, "row", None)
 
             with table.add_slot("body-cell-amount") as slot:
                 ui.label().bind_text_from(slot, "props.row.amount_display", strict=False).classes("text-right")
@@ -913,70 +999,6 @@ def render_documents(session, comp: Company) -> None:
                     warn_icon = ui.icon("warning").classes("text-amber-500 text-xs")
                     warn_icon.bind_visibility_from(slot, "props.row.size_warning", strict=False)
                     warn_icon.tooltip("Sehr kleine Datei (< 1 KB).")
-
-            with table.add_slot("body-cell-actions") as slot:
-                row = _row_from_slot(slot)
-
-                def _log_row_debug_from_slot() -> None:
-                    if not row or not row.get("id"):
-                        props = getattr(slot, "props", None)
-                        logger.warning(
-                            "Dokumentslot ohne Row für Debug: props_type=%s row=%s",
-                            type(props).__name__,
-                            row,
-                        )
-                        ui.notify("Dokument nicht verfügbar.", type="warning")
-                        return
-                    doc_id = int(row["id"])
-                    open_url = row.get("open_url") or f"/api/documents/{doc_id}/file"
-                    try:
-                        with get_session() as s:
-                            doc = s.get(Document, doc_id)
-                        if not doc:
-                            raise FileNotFoundError("Document not found")
-                        storage_key = (doc.storage_key or doc.storage_path or "").strip()
-                        storage_path = resolve_document_path(doc.storage_path)
-                        if storage_path and os.path.exists(storage_path):
-                            ui.run_javascript(f"window.open('{open_url}')")
-                            return
-                        if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
-                            if blob_storage().exists(storage_key):
-                                ui.run_javascript(f"window.open('{open_url}')")
-                                return
-                        raise FileNotFoundError("Document file missing")
-                    except Exception:
-                        logger.exception(
-                            "Fehler beim Öffnen des Dokuments: document_id=%s storage_key=%s storage_path=%s open_url=%s",
-                            doc_id,
-                            storage_key if "storage_key" in locals() else None,
-                            storage_path if "storage_path" in locals() else None,
-                            open_url,
-                        )
-                        ui.notify(f"Datei nicht gefunden (Dokument-ID {doc_id}).", color="red")
-
-                with ui.row().classes("justify-end gap-2"):
-                    if not row or not row.get("id"):
-                        ui.label("—").classes("text-xs text-slate-400")
-                    else:
-                        doc_id = int(row["id"])
-                        open_url = row.get("open_url") or f"/api/documents/{doc_id}/file"
-                        ui.link("Öffnen", open_url).props("target=_blank").classes("text-sm text-sky-600")
-                        ui.button(
-                            "",
-                            icon="info",
-                            on_click=lambda doc_id=doc_id: _open_meta(doc_id),
-                        ).props("flat dense").classes("text-slate-600")
-                        ui.button(
-                            "",
-                            icon="delete",
-                            on_click=lambda doc_id=doc_id: _open_delete(doc_id),
-                        ).props("flat dense").classes("text-rose-600")
-                        if debug_enabled:
-                            ui.button(
-                                "",
-                                icon="bug_report",
-                                on_click=_log_row_debug_from_slot,
-                            ).props("flat dense").classes("text-amber-600")
 
     render_filters()
     render_list()
