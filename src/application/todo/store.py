@@ -27,4 +27,10 @@ def add_todo(title: str) -> TodoItem:
 
 
 def list_todos() -> list[TodoItem]:
-    return list(_REPOSITORY.list())
+    return list(_TODO_ITEMS)
+
+
+def reset_todos() -> None:
+    _TODO_ITEMS.clear()
+    global _NEXT_ID
+    _NEXT_ID = count(1)

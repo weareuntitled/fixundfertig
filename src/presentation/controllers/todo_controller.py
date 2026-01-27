@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-_TODOS: list[dict[str, int | str]] = []
-_NEXT_ID = 1
+from application.contracts.todo_dtos import CreateTodoRequest
+from application.todo.commands.create_todo import CreateTodoCommand
+from application.todo.queries.list_todos import ListTodosQuery
+
+_COMMAND = CreateTodoCommand()
+_QUERY = ListTodosQuery()
 
 
 def create_todo(title: str) -> dict[str, int | str]:
-    global _NEXT_ID
-    todo = {"id": _NEXT_ID, "title": title}
-    _TODOS.append(todo)
-    _NEXT_ID += 1
-    return todo
+    todo = _COMMAND.execute(CreateTodoRequest(title=title))
+    return {"id": todo.id, "title": todo.title}
 
 
 def list_todos() -> list[dict[str, int | str]]:
-    return list(_TODOS)
+    return [{"id": todo.id, "title": todo.title} for todo in _QUERY.execute()]
