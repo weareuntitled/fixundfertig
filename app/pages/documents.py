@@ -498,9 +498,28 @@ def render_documents(session, comp: Company) -> None:
     def _resolve_meta_values(meta: DocumentMeta | None) -> dict[str, object]:
         payload = _extract_meta_payload(meta)
         extracted = payload.get("extracted") if isinstance(payload.get("extracted"), dict) else {}
-        if not extracted:
+        source = extracted or payload
+        if not source:
             return {}
-        source = extracted if extracted else payload
+
+        def _resolve_payload_amount(*keys: str) -> float | None:
+            containers = [source, payload]
+            nested_keys = ("amounts", "totals", "total", "amount")
+            for container in containers:
+                if not isinstance(container, dict):
+                    continue
+                for key in keys:
+                    if key in container:
+                        return _coerce_payload_float(container.get(key))
+                for nested_key in nested_keys:
+                    nested = container.get(nested_key)
+                    if not isinstance(nested, dict):
+                        continue
+                    for key in keys:
+                        if key in nested:
+                            return _coerce_payload_float(nested.get(key))
+            return None
+
         size_value = (
             source.get("file_size")
             or source.get("size_bytes")
@@ -509,12 +528,32 @@ def render_documents(session, comp: Company) -> None:
             or payload.get("size_bytes")
             or payload.get("size")
         )
+        amount_total = _resolve_payload_amount(
+            "amount_total",
+            "gross_amount",
+            "amount_gross",
+            "total_gross",
+            "total_amount",
+            "amount",
+        )
+        amount_net = _resolve_payload_amount(
+            "amount_net",
+            "net_amount",
+            "total_net",
+        )
+        amount_tax = _resolve_payload_amount(
+            "amount_tax",
+            "tax_amount",
+            "amount_vat",
+            "vat_amount",
+            "total_tax",
+        )
         return {
             "vendor": (source.get("vendor") or "").strip(),
             "doc_number": (source.get("doc_number") or "").strip(),
-            "amount_total": _coerce_payload_float(source.get("amount_total")),
-            "amount_net": _coerce_payload_float(source.get("amount_net")),
-            "amount_tax": _coerce_payload_float(source.get("amount_tax")),
+            "amount_total": amount_total,
+            "amount_net": amount_net,
+            "amount_tax": amount_tax,
             "currency": (source.get("currency") or "").strip(),
             "keywords": source.get("keywords"),
             "size_bytes": _coerce_int(size_value),
