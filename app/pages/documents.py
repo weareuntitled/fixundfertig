@@ -270,6 +270,7 @@ def render_documents(session, comp: Company) -> None:
         storage_key = None
         filename = getattr(event, "name", "") or getattr(event.file, "name", "") or "upload"
         try:
+            _log_client_debug({"step": "upload_clicked", "filename": filename})
             if not comp.id:
                 ui.notify("Kein aktives Unternehmen.", color="red")
                 _log_client_debug({"step": "missing_company"})
@@ -302,31 +303,15 @@ def render_documents(session, comp: Company) -> None:
                     }
                 )
                 return
-            if not bool(comp.n8n_enabled):
-                ui.notify("n8n ist deaktiviert. Bitte in den Settings aktivieren.", color="orange")
-                if upload_status:
-                    upload_status.set_text("Status: n8n deaktiviert")
-                return
-            webhook_url = (comp.n8n_webhook_url_prod or comp.n8n_webhook_url or "").strip()
-            secret_value = (comp.n8n_secret or "").strip()
-            if not webhook_url or not secret_value:
-                ui.notify("n8n Production-Webhook-URL oder Secret fehlt.", color="orange")
-                if upload_status:
-                    upload_status.set_text("Status: Production-Webhook-URL oder Secret fehlt")
-                return
-            if "/webhook-test/" in webhook_url:
-                ui.notify(
-                    "n8n Versand fehlgeschlagen: Bitte die Production-Webhook-URL (/webhook/) verwenden, nicht /webhook-test/.",
-                    color="orange",
-                )
-                if upload_status:
-                    upload_status.set_text("Status: Production-Webhook-URL erforderlich")
-                return
 
             try:
+                _log_client_debug({"step": "reading_file", "filename": filename})
                 data = await _read_upload_bytes(event.file)
                 size_bytes = len(data)
+                _log_client_debug({"step": "file_read_complete", "size_bytes": size_bytes})
+                _log_client_debug({"step": "validating_file", "size_bytes": size_bytes})
                 validate_document_upload(filename, size_bytes)
+                _log_client_debug({"step": "validation_ok"})
             except HTTPException:
                 logger.exception(
                     "ACTION_FAILED",
@@ -348,8 +333,11 @@ def render_documents(session, comp: Company) -> None:
                 or mimetypes.guess_type(filename)[0]
                 or ""
             )
+            _log_client_debug({"step": "mime_resolved", "mime_type": mime_type})
             file_b64 = base64.b64encode(data).decode("utf-8")
+            _log_client_debug({"step": "base64_encoded", "size_b64": len(file_b64)})
             file_payload = f"data:{mime_type};base64,{file_b64}" if mime_type else file_b64
+            _log_client_debug({"step": "payload_ready", "payload_prefix": file_payload[:32]})
 
             logger.info(
                 "ACTION_SUCCESS",
@@ -446,6 +434,7 @@ def render_documents(session, comp: Company) -> None:
             )
             doc_id_display = document_id if document_id is not None else "unbekannt"
             ui.notify(f"Fehler beim Upload (Dokument-ID: {doc_id_display})", color="red")
+            _log_client_debug({"step": "upload_failed_unhandled"})
 
     with ui.dialog() as upload_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[480px] max-w-[92vw]"):
