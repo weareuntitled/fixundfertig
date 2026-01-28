@@ -361,6 +361,7 @@ def render_documents(session, comp: Company) -> None:
                 }
             )
             try:
+                _log_client_debug({"step": "post_call_started"})
                 post_to_n8n(
                     webhook_url=webhook_url,
                     secret=secret_value,
@@ -373,6 +374,7 @@ def render_documents(session, comp: Company) -> None:
                         "file_base64": file_payload,
                     },
                 )
+                _log_client_debug({"step": "post_call_finished"})
                 if upload_status:
                     upload_status.set_text("Status: Gesendet. Warte auf n8n-Ingest...")
                 ui.notify("Datei an n8n gesendet.", color="green")
@@ -435,9 +437,12 @@ def render_documents(session, comp: Company) -> None:
             doc_id_display = document_id if document_id is not None else "unbekannt"
             ui.notify(f"Fehler beim Upload (Dokument-ID: {doc_id_display})", color="red")
             _log_client_debug({"step": "upload_failed_unhandled"})
+        finally:
+            _log_client_debug({"step": "upload_handler_done"})
 
     def _trigger_upload() -> None:
-        _log_client_debug({"step": "send_button_clicked"})
+        has_file = bool(getattr(upload_input, "value", None))
+        _log_client_debug({"step": "send_button_clicked", "has_file": has_file})
         upload_input.run_method("upload")
         _log_client_debug({"step": "upload_method_called"})
 
