@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import base64
 import csv
 import io
-import hashlib
 import logging
 import re
 import mimetypes
@@ -20,13 +20,14 @@ from ._shared import *
 from data import Document, DocumentMeta, WebhookEvent
 from sqlmodel import delete
 from data import WebhookEvent
-from services.blob_storage import blob_storage, build_document_key
+import httpx
+
+from integrations.n8n_client import post_to_n8n
+from services.blob_storage import blob_storage
 from services.documents import (
     backfill_document_fields,
-    build_document_record,
     document_size_bytes,
     document_matches_filters,
-    normalize_keywords,
     resolve_document_meta_values,
     resolve_document_path,
     validate_document_upload,
@@ -44,15 +45,13 @@ def render_documents(session, comp: Company) -> None:
         "date_to": "",
     }
     debug_enabled = os.getenv("FF_DEBUG") == "1"
-    vendor_input = None
-    doc_number_input = None
-    doc_date_input = None
-    amount_total_input = None
-    amount_net_input = None
-    amount_tax_input = None
-    currency_input = None
-    description_input = None
-    tags_input = None
+    upload_status = None
+    debug_client_logs = True
+
+    def _log_client_debug(payload: dict) -> None:
+        if not debug_client_logs:
+            return
+        ui.run_javascript(f"console.log('n8n_upload_debug', {json.dumps(payload)});")
 
     def _load_documents() -> list[Document]:
         session.expire_all()
@@ -120,11 +119,6 @@ def render_documents(session, comp: Company) -> None:
     def _format_keywords(value: str | None) -> str:
         items = _parse_keywords(value or "")
         return ", ".join(items) if items else "-"
-
-    def _get_input_value(component, default=""):
-        if component is None:
-            return default
-        return getattr(component, "value", default)
 
     def _sort_documents(items: list[Document]) -> list[Document]:
         return sorted(items, key=_doc_created_at, reverse=True)
@@ -276,14 +270,48 @@ def render_documents(session, comp: Company) -> None:
         storage_key = None
         filename = getattr(event, "name", "") or getattr(event.file, "name", "") or "upload"
         try:
+            _log_client_debug({"step": "upload_clicked", "filename": filename})
             if not comp.id:
                 ui.notify("Kein aktives Unternehmen.", color="red")
+                _log_client_debug({"step": "missing_company"})
+                return
+            if not bool(comp.n8n_enabled):
+                ui.notify("n8n ist deaktiviert. Bitte in den Settings aktivieren.", color="orange")
+                if upload_status:
+                    upload_status.set_text("Status: n8n deaktiviert")
+                _log_client_debug({"step": "n8n_disabled"})
+                return
+            webhook_url = (comp.n8n_webhook_url_prod or comp.n8n_webhook_url or "").strip()
+            test_webhook_url = (comp.n8n_webhook_url_test or "").strip()
+            secret_value = (comp.n8n_secret or "").strip()
+            if not webhook_url and test_webhook_url:
+                webhook_url = test_webhook_url
+                ui.notify(
+                    "Hinweis: Production-Webhook-URL fehlt. Upload nutzt die Test-Webhook-URL.",
+                    color="orange",
+                )
+                _log_client_debug({"step": "fallback_to_test_url"})
+            if not webhook_url or not secret_value:
+                ui.notify("n8n Webhook-URL oder Secret fehlt.", color="orange")
+                if upload_status:
+                    upload_status.set_text("Status: Webhook-URL oder Secret fehlt")
+                _log_client_debug(
+                    {
+                        "step": "missing_webhook_or_secret",
+                        "has_webhook_url": bool(webhook_url),
+                        "has_secret": bool(secret_value),
+                    }
+                )
                 return
 
             try:
+                _log_client_debug({"step": "reading_file", "filename": filename})
                 data = await _read_upload_bytes(event.file)
                 size_bytes = len(data)
+                _log_client_debug({"step": "file_read_complete", "size_bytes": size_bytes})
+                _log_client_debug({"step": "validating_file", "size_bytes": size_bytes})
                 validate_document_upload(filename, size_bytes)
+                _log_client_debug({"step": "validation_ok"})
             except HTTPException:
                 logger.exception(
                     "ACTION_FAILED",
@@ -293,11 +321,11 @@ def render_documents(session, comp: Company) -> None:
                     ),
                 )
                 ui.notify("Fehler beim Upload (Dokument-ID: unbekannt)", color="red")
+                _log_client_debug({"step": "validation_failed", "filename": filename})
                 return
 
-            ext = os.path.splitext(filename)[1].lower().lstrip(".")
-            if ext == "jpeg":
-                ext = "jpg"
+            if upload_status:
+                upload_status.set_text("Status: Datei geprüft")
 
             mime_type = (
                 getattr(event, "type", "")
@@ -305,60 +333,11 @@ def render_documents(session, comp: Company) -> None:
                 or mimetypes.guess_type(filename)[0]
                 or ""
             )
-            sha256 = hashlib.sha256(data).hexdigest()
-
-            doc_date = (_get_input_value(doc_date_input, "") or "").strip() or None
-            amount_total = _get_input_value(amount_total_input)
-            if amount_total in ("", None):
-                amount_total = None
-            amount_net = _get_input_value(amount_net_input)
-            if amount_net in ("", None):
-                amount_net = None
-            amount_tax = _get_input_value(amount_tax_input)
-            if amount_tax in ("", None):
-                amount_tax = None
-            currency = (_get_input_value(currency_input, "") or "").strip()
-            vendor = (_get_input_value(vendor_input, "") or "").strip()
-            doc_number = (_get_input_value(doc_number_input, "") or "").strip()
-            description = (_get_input_value(description_input, "") or "").strip()
-            keywords_value = _get_input_value(tags_input, "")
-            keywords_json = normalize_keywords(keywords_value)
-
-            with get_session() as s:
-                try:
-                    document = build_document_record(
-                        int(comp.id),
-                        filename,
-                        mime_type=mime_type,
-                        size_bytes=size_bytes,
-                        source="MANUAL",
-                        doc_type=ext,
-                        vendor=vendor,
-                        doc_number=doc_number,
-                        doc_date=doc_date,
-                        amount_total=amount_total,
-                        amount_net=amount_net,
-                        amount_tax=amount_tax,
-                        currency=currency,
-                        description=description,
-                        keywords_json=keywords_json,
-                    )
-                    document.mime = mime_type
-                    document.size = size_bytes
-                    document.sha256 = sha256
-                    s.add(document)
-                    s.flush()
-
-                    document_id = int(document.id)
-                    storage_key = build_document_key(int(comp.id), int(document.id), filename)
-                    document.storage_key = storage_key
-                    document.storage_path = storage_key
-
-                    blob_storage().put_bytes(storage_key, data, mime_type)
-                    s.commit()
-                except Exception:
-                    s.rollback()
-                    raise
+            _log_client_debug({"step": "mime_resolved", "mime_type": mime_type})
+            file_b64 = base64.b64encode(data).decode("utf-8")
+            _log_client_debug({"step": "base64_encoded", "size_b64": len(file_b64)})
+            file_payload = f"data:{mime_type};base64,{file_b64}" if mime_type else file_b64
+            _log_client_debug({"step": "payload_ready", "payload_prefix": file_payload[:32]})
 
             logger.info(
                 "ACTION_SUCCESS",
@@ -370,7 +349,77 @@ def render_documents(session, comp: Company) -> None:
                     storage_path=storage_key,
                 ),
             )
-            ui.notify(f"Dokument gespeichert: {filename} ({size_bytes} Bytes)", color="green")
+            if upload_status:
+                upload_status.set_text("Status: Sende an n8n...")
+            _log_client_debug(
+                {
+                    "step": "sending_to_n8n",
+                    "webhook_url": webhook_url,
+                    "filename": filename,
+                    "mime_type": mime_type,
+                    "size_bytes": size_bytes,
+                }
+            )
+            try:
+                post_to_n8n(
+                    webhook_url=webhook_url,
+                    secret=secret_value,
+                    event="document_upload",
+                    company_id=int(comp.id),
+                    data={
+                        "file_name": filename,
+                        "mime_type": mime_type,
+                        "size_bytes": size_bytes,
+                        "file_base64": file_payload,
+                    },
+                )
+                if upload_status:
+                    upload_status.set_text("Status: Gesendet. Warte auf n8n-Ingest...")
+                ui.notify("Datei an n8n gesendet.", color="green")
+                _log_client_debug({"step": "send_success"})
+            except httpx.HTTPStatusError as exc:
+                logger.exception(
+                    "N8N_WEBHOOK_FAILED",
+                    extra=_build_action_context(
+                        action,
+                        document_id=document_id,
+                        filename=filename,
+                        storage_key=storage_key,
+                        storage_path=storage_key,
+                    ),
+                )
+                if upload_status:
+                    upload_status.set_text("Status: Versand fehlgeschlagen")
+                status_code = exc.response.status_code if exc.response else None
+                _log_client_debug({"step": "send_failed_status", "status_code": status_code})
+                if status_code == 404:
+                    ui.notify(
+                        "n8n Versand fehlgeschlagen: 404. Bitte die Production-Webhook-URL (/webhook/) verwenden.",
+                        color="orange",
+                    )
+                elif status_code == 405:
+                    ui.notify(
+                        "n8n Versand fehlgeschlagen: Webhook erwartet keine POST-Requests. "
+                        "Bitte in n8n den Webhook auf POST stellen.",
+                        color="orange",
+                    )
+                else:
+                    ui.notify(f"n8n Versand fehlgeschlagen: {exc}", color="orange")
+            except Exception as exc:
+                logger.exception(
+                    "N8N_WEBHOOK_FAILED",
+                    extra=_build_action_context(
+                        action,
+                        document_id=document_id,
+                        filename=filename,
+                        storage_key=storage_key,
+                        storage_path=storage_key,
+                    ),
+                )
+                if upload_status:
+                    upload_status.set_text("Status: Versand fehlgeschlagen")
+                ui.notify(f"n8n Versand fehlgeschlagen: {exc}", color="orange")
+                _log_client_debug({"step": "send_failed_exception", "error": str(exc)})
             render_list.refresh()
         except Exception:
             logger.exception(
@@ -385,29 +434,31 @@ def render_documents(session, comp: Company) -> None:
             )
             doc_id_display = document_id if document_id is not None else "unbekannt"
             ui.notify(f"Fehler beim Upload (Dokument-ID: {doc_id_display})", color="red")
+            _log_client_debug({"step": "upload_failed_unhandled"})
+
+    def _trigger_upload() -> None:
+        _log_client_debug({"step": "send_button_clicked"})
+        upload_input.run_method("upload")
+        _log_client_debug({"step": "upload_method_called"})
 
     with ui.dialog() as upload_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[480px] max-w-[92vw]"):
-            ui.label("Upload").classes(C_SECTION_TITLE)
-            ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500 mb-2")
-            vendor_input = ui.input("Vendor / Verkäufer").classes(C_INPUT + " w-full")
-            doc_number_input = ui.input("Belegnummer").classes(C_INPUT + " w-full")
-            doc_date_input = ui.input("Belegdatum").props("type=date").classes(C_INPUT + " w-full")
-            amount_total_input = ui.number("Betrag").props("step=0.01").classes(C_INPUT + " w-full")
-            amount_net_input = ui.number("Netto").props("step=0.01").classes(C_INPUT + " w-full")
-            amount_tax_input = ui.number("Steuerbetrag").props("step=0.01").classes(C_INPUT + " w-full")
-            currency_input = ui.input("Währung").classes(C_INPUT + " w-full")
-            description_input = ui.textarea("Beschreibung").classes(C_INPUT + " w-full")
-            tags_input = ui.input("Tags (kommagetrennt)").classes(C_INPUT + " w-full")
+            ui.label("Upload an n8n").classes(C_SECTION_TITLE)
+            ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500")
+            ui.label("Die Datei wird an n8n gesendet und erscheint nach der Verarbeitung in der Liste.").classes(
+                "text-xs text-slate-500 mb-2"
+            )
             upload_input = ui.upload(
                 on_upload=_handle_upload,
                 auto_upload=False,
                 label="Datei wählen",
             ).classes("w-full")
+            upload_input.on("change", lambda _: _log_client_debug({"step": "file_selected"}))
+            upload_status = ui.label("Status: bereit zum Senden").classes("text-xs text-slate-500 mt-1")
             with ui.row().classes("justify-end w-full mt-4 gap-2"):
                 ui.button(
-                    "Speichern",
-                    on_click=lambda: upload_input.run_method("upload"),
+                    "Senden an n8n",
+                    on_click=_trigger_upload,
                 ).classes(C_BTN_PRIM)
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
@@ -824,6 +875,18 @@ def render_documents(session, comp: Company) -> None:
             return f"{amount:.2f} {currency}"
         return f"{amount:.2f}"
 
+    def _format_source(source: str | None) -> str:
+        value = (source or "").strip().lower()
+        if value in {"manual", "manuell"}:
+            return "Manuell"
+        if value == "n8n":
+            return "n8n"
+        if value in {"mail", "email"}:
+            return "Mail"
+        if value:
+            return value.upper()
+        return "-"
+
     @ui.refreshable
     def render_list():
         items = _sort_documents(_filter_documents(_load_documents()))
@@ -881,6 +944,7 @@ def render_documents(session, comp: Company) -> None:
                         "id": doc_id,
                         "date": display_date,
                         "filename": doc.original_filename or doc.title or "Dokument",
+                        "source": _format_source(doc.source),
                         "size_bytes": size_bytes,
                         "size_display": size_display,
                         "mime": doc.mime or doc.mime_type or "-",
@@ -900,6 +964,7 @@ def render_documents(session, comp: Company) -> None:
             columns = [
                 {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
                 {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
+                {"name": "source", "label": "Quelle", "field": "source", "sortable": True, "align": "left"},
                 {
                     "name": "size_display",
                     "label": "Größe",
