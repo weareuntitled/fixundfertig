@@ -436,6 +436,11 @@ def render_documents(session, comp: Company) -> None:
             ui.notify(f"Fehler beim Upload (Dokument-ID: {doc_id_display})", color="red")
             _log_client_debug({"step": "upload_failed_unhandled"})
 
+    def _trigger_upload() -> None:
+        _log_client_debug({"step": "send_button_clicked"})
+        upload_input.run_method("upload")
+        _log_client_debug({"step": "upload_method_called"})
+
     with ui.dialog() as upload_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[480px] max-w-[92vw]"):
             ui.label("Upload an n8n").classes(C_SECTION_TITLE)
@@ -448,11 +453,12 @@ def render_documents(session, comp: Company) -> None:
                 auto_upload=False,
                 label="Datei wählen",
             ).classes("w-full")
+            upload_input.on("change", lambda _: _log_client_debug({"step": "file_selected"}))
             upload_status = ui.label("Status: bereit zum Senden").classes("text-xs text-slate-500 mt-1")
             with ui.row().classes("justify-end w-full mt-4 gap-2"):
                 ui.button(
                     "Senden an n8n",
-                    on_click=lambda: upload_input.run_method("upload"),
+                    on_click=_trigger_upload,
                 ).classes(C_BTN_PRIM)
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
