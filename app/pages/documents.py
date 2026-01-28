@@ -338,6 +338,7 @@ def render_documents(session, comp: Company) -> None:
             _log_client_debug({"step": "base64_encoded", "size_b64": len(file_b64)})
             file_payload = f"data:{mime_type};base64,{file_b64}" if mime_type else file_b64
             _log_client_debug({"step": "payload_ready", "payload_prefix": file_payload[:32]})
+            _log_client_debug({"step": "pre_send_stage"})
 
             logger.info(
                 "ACTION_SUCCESS",
@@ -349,8 +350,10 @@ def render_documents(session, comp: Company) -> None:
                     storage_path=storage_key,
                 ),
             )
+            _log_client_debug({"step": "action_logged"})
             if upload_status:
                 upload_status.set_text("Status: Sende an n8n...")
+            _log_client_debug({"step": "status_set_sending"})
             _log_client_debug(
                 {
                     "step": "sending_to_n8n",
