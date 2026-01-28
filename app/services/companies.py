@@ -38,6 +38,8 @@ ALLOWED_COMPANY_FIELDS = {
     "smtp_password",
     "default_sender_email",
     "n8n_webhook_url",
+    "n8n_webhook_url_test",
+    "n8n_webhook_url_prod",
     "n8n_secret",
     "n8n_enabled",
     "google_drive_folder_id",
