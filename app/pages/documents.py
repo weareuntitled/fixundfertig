@@ -17,6 +17,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from ._shared import *
+from styles import C_BADGE_BLUE, C_BADGE_GREEN, C_BADGE_YELLOW
 from data import Document, DocumentMeta, WebhookEvent
 from sqlmodel import delete
 from data import WebhookEvent
@@ -470,54 +471,46 @@ def render_documents(session, comp: Company) -> None:
                 ).classes(C_BTN_PRIM)
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
-    selected_ids: set[int] = set()
-    export_button = None
-    upload_button = None
-    open_button = None
-    meta_button = None
-    delete_button = None
-    debug_button = None
-    reset_button = None
-    delete_all_button = None
+    menu_state = {"visible": False, "x": 0, "y": 0, "doc_id": None, "open_url": ""}
 
-    def _update_action_buttons() -> None:
-        if export_button and upload_button:
-            has_selection = bool(selected_ids)
-            export_button.visible = has_selection
-            upload_button.visible = not has_selection
-        if open_button and meta_button and delete_button:
-            single_selection = len(selected_ids) == 1
-            open_button.visible = single_selection
-            meta_button.visible = single_selection
-            delete_button.visible = single_selection
-        if debug_button:
-            debug_button.visible = bool(selected_ids)
+    def _hide_context_menu() -> None:
+        menu_state["visible"] = False
+        menu_overlay.style("display: none")
+        context_menu.style("display: none")
 
-    def _open_selected_document() -> None:
-        if len(selected_ids) != 1:
-            ui.notify("Bitte genau ein Dokument auswählen.", color="orange")
-            return
-        doc_id = next(iter(selected_ids))
-        ui.run_javascript(f"window.open('/api/documents/{doc_id}/file')")
+    def _show_context_menu(x: int, y: int, doc_id: int, open_url: str) -> None:
+        menu_state["visible"] = True
+        menu_state["x"] = x
+        menu_state["y"] = y
+        menu_state["doc_id"] = doc_id
+        menu_state["open_url"] = open_url
+        context_menu.style(f"display: block; top: {y}px; left: {x}px;")
+        menu_overlay.style("display: block")
 
-    def _open_selected_meta() -> None:
-        if len(selected_ids) != 1:
-            ui.notify("Bitte genau ein Dokument auswählen.", color="orange")
-            return
-        doc_id = next(iter(selected_ids))
-        _open_meta(doc_id)
+    def _preview_document() -> None:
+        open_url = menu_state.get("open_url")
+        _hide_context_menu()
+        if open_url:
+            ui.run_javascript(f"window.open('{open_url}', '_blank')")
 
-    def _open_selected_delete() -> None:
-        if len(selected_ids) != 1:
-            ui.notify("Bitte genau ein Dokument auswählen.", color="orange")
-            return
-        doc_id = next(iter(selected_ids))
-        _open_delete(doc_id)
+    def _download_document() -> None:
+        open_url = menu_state.get("open_url")
+        _hide_context_menu()
+        if open_url:
+            ui.run_javascript(
+                "const link=document.createElement('a');"
+                f"link.href='{open_url}';"
+                "link.download='';"
+                "document.body.appendChild(link);"
+                "link.click();"
+                "link.remove();"
+            )
 
-    @ui_handler("documents.debug")
-    def _debug_log_selection() -> None:
-        payload = {"selected_ids": sorted(selected_ids)}
-        ui.run_javascript(f"console.log('documents_debug', {json.dumps(payload)});")
+    def _delete_document() -> None:
+        doc_id = menu_state.get("doc_id")
+        _hide_context_menu()
+        if doc_id:
+            _open_delete(int(doc_id))
 
     @ui_handler("documents.dialog.reset_events.open")
     def _open_reset_events() -> None:
@@ -557,83 +550,94 @@ def render_documents(session, comp: Company) -> None:
 
     @ui.refreshable
     def render_filters():
-        with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
-            ui.label("Dokumente").classes(C_PAGE_TITLE)
-            ui.space()
-            nonlocal export_button, upload_button, open_button, meta_button, delete_button, debug_button, reset_button, delete_all_button
-            export_button = ui.button(
-                "Export",
-                icon="download",
-                on_click=lambda: _export_documents(selected_ids),
-            ).classes(C_BTN_SEC)
-            upload_button = ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
-            open_button = ui.button("Öffnen", icon="open_in_new", on_click=_open_selected_document).classes(C_BTN_SEC)
-            meta_button = ui.button("Meta", icon="info", on_click=_open_selected_meta).classes(C_BTN_SEC)
-            delete_button = ui.button(
-                "Löschen",
-                icon="delete",
-                on_click=_open_selected_delete,
-            ).classes("bg-rose-600 text-white hover:bg-rose-700")
-            debug_button = ui.button("Debug", icon="terminal", on_click=_debug_log_selection).classes(C_BTN_SEC)
-            reset_button = ui.button(
-                "Events reset",
-                icon="delete_sweep",
-                on_click=_open_reset_events,
-            ).classes(C_BTN_SEC)
-            delete_all_button = ui.button(
-                "Alles löschen",
-                icon="delete_forever",
-                on_click=_open_delete_all,
-            ).classes("bg-rose-600 text-white hover:bg-rose-700")
-            _update_action_buttons()
+        def _set_period(value: str) -> None:
+            state["period"] = value
+            render_filters.refresh()
+            render_list.refresh()
 
-        with ui.row().classes("w-full items-center gap-3 flex-wrap mb-2"):
-            ui.input(
-                placeholder="Suche",
-                value=state["search"],
-                on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
-            ).props("dense").classes(C_INPUT + " w-64")
+        with ui.row().classes("w-full items-center justify-between gap-6 flex-wrap"):
+            with ui.row().classes("items-center gap-4"):
+                ui.label("Dokumente").classes("text-3xl font-bold text-slate-900")
+                ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
 
-        with ui.row().classes("w-full items-center gap-2 flex-wrap mb-3"):
-            ui.label("Zeitraum").classes("text-xs text-slate-500")
-            ui.button(
-                "Letzte Woche",
-                on_click=lambda: (state.__setitem__("period", "last_week"), render_filters.refresh(), render_list.refresh()),
-            ).props("outline").classes(C_BTN_SEC + " text-xs")
-            ui.button(
-                "Letzter Monat",
-                on_click=lambda: (state.__setitem__("period", "last_month"), render_filters.refresh(), render_list.refresh()),
-            ).props("outline").classes(C_BTN_SEC + " text-xs")
-            ui.button(
-                "Letzte 3 Monate",
-                on_click=lambda: (state.__setitem__("period", "last_3_months"), render_filters.refresh(), render_list.refresh()),
-            ).props("outline").classes(C_BTN_SEC + " text-xs")
-            ui.button(
-                "Jahr",
-                on_click=lambda: (state.__setitem__("period", "year"), render_filters.refresh(), render_list.refresh()),
-            ).props("outline").classes(C_BTN_SEC + " text-xs")
-            ui.button(
-                "Individuell",
-                on_click=lambda: (state.__setitem__("period", "custom"), render_filters.refresh(), render_list.refresh()),
-            ).props("outline").classes(C_BTN_SEC + " text-xs")
-            if state["period"] == "year":
+            with ui.row().classes("items-center gap-3 flex-wrap"):
+                with ui.element("div").classes(
+                    "flex items-center bg-white border border-slate-200 rounded-full p-1 shadow-sm"
+                ):
+                    for label, value in [("Week", "last_week"), ("Month", "last_month"), ("Year", "year")]:
+                        is_active = state["period"] == value
+                        button_classes = (
+                            "px-4 py-1.5 text-sm font-medium rounded-full transition-all"
+                        )
+                        if is_active:
+                            button_classes += " bg-blue-600 text-white shadow-sm"
+                        else:
+                            button_classes += " text-slate-600 hover:text-slate-900"
+                        ui.button(
+                            label,
+                            on_click=lambda _, v=value: _set_period(v),
+                        ).props("flat").classes(button_classes)
+
                 ui.select(
                     _year_options(_load_documents()),
-                    label="Jahr",
                     value=state["year"],
-                    on_change=lambda e: (state.__setitem__("year", e.value or ""), render_list.refresh()),
-                ).props("dense").classes(C_INPUT + " w-28")
-            if state["period"] == "custom":
+                    on_change=lambda e: (
+                        state.__setitem__("year", e.value or str(datetime.now().year)),
+                        render_summary.refresh(),
+                    ),
+                ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
+
                 ui.input(
-                    "Von",
-                    value=state["date_from"],
-                    on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh()),
-                ).props("dense type=date").classes(C_INPUT + " w-32")
-                ui.input(
-                    "Bis",
-                    value=state["date_to"],
-                    on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh()),
-                ).props("dense type=date").classes(C_INPUT + " w-32")
+                    placeholder="Suche",
+                    value=state["search"],
+                    on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
+                ).props("dense").classes(C_INPUT + " w-64 rounded-full bg-white shadow-sm")
+
+    @ui.refreshable
+    def render_summary():
+        year_value = str(state.get("year") or datetime.now().year)
+        items = _load_documents()
+        total_docs = 0
+        total_amount = 0.0
+        total_tax = 0.0
+        for doc in items:
+            display_date = _document_display_date(doc)
+            doc_year = ""
+            if display_date:
+                doc_year = str(display_date)[:4]
+            if not doc_year or not doc_year.isdigit():
+                doc_year = str(_doc_created_at(doc).year)
+            if doc_year != year_value:
+                continue
+            total_docs += 1
+            amount_total, _, amount_tax = _resolve_amounts(doc)
+            if amount_total:
+                total_amount += float(amount_total)
+            if amount_tax:
+                total_tax += float(amount_tax)
+
+        with ui.row().classes("w-full gap-4 flex-wrap"):
+            kpi_card(
+                f"Dokumente ({year_value})",
+                f"{total_docs}",
+                "description",
+                "text-blue-600",
+                classes="flex-1 min-w-[220px]",
+            )
+            kpi_card(
+                "Gesamtsumme",
+                _format_amount_eur(total_amount),
+                "payments",
+                "text-emerald-600",
+                classes="flex-1 min-w-[220px]",
+            )
+            kpi_card(
+                "Steuern gesichert",
+                _format_amount_eur(total_tax),
+                "receipt_long",
+                "text-amber-600",
+                classes="flex-1 min-w-[220px]",
+            )
 
     delete_id = {"value": None}
     with ui.dialog() as delete_all_dialog:
@@ -866,6 +870,27 @@ def render_documents(session, comp: Company) -> None:
             )
             ui.notify(f"Fehler beim Öffnen der Metadaten (Dokument-ID: {doc_id})", color="red")
 
+    menu_overlay = ui.element("div").classes("fixed inset-0 z-40").style("display: none")
+    menu_overlay.on("click", lambda _: _hide_context_menu())
+
+    context_menu = ui.element("div").classes(
+        "fixed bg-white rounded-lg shadow-xl border border-slate-100 w-48 z-50 py-2"
+    ).style("display: none")
+    with context_menu:
+        ui.button(
+            "👁️ Vorschau",
+            on_click=_preview_document,
+        ).classes("block w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700")
+        ui.button(
+            "⬇️ Download",
+            on_click=_download_document,
+        ).classes("block w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700")
+        ui.element("div").classes("border-t border-slate-100 my-1")
+        ui.button(
+            "🗑️ Löschen",
+            on_click=_delete_document,
+        ).classes("block w-full text-left px-4 py-2 hover:bg-rose-50 text-rose-600")
+
     def _format_size(size_bytes: int) -> str:
         if size_bytes <= 0:
             return "-"
@@ -883,6 +908,9 @@ def render_documents(session, comp: Company) -> None:
             return f"{amount:.2f} {currency}"
         return f"{amount:.2f}"
 
+    def _format_amount_eur(amount: float) -> str:
+        return f"{amount:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+
     def _format_source(source: str | None) -> str:
         value = (source or "").strip().lower()
         if value in {"manual", "manuell"}:
@@ -895,16 +923,55 @@ def render_documents(session, comp: Company) -> None:
             return value.upper()
         return "-"
 
+    def _resolve_status(doc: Document, amount_total: float | None, vendor: str | None) -> tuple[str, str]:
+        if amount_total is not None or (vendor or "").strip():
+            return "Verarbeitet", C_BADGE_GREEN
+        if (doc.source or "").strip().lower() in {"mail", "email"}:
+            return "Eingang", C_BADGE_BLUE
+        return "Neu", C_BADGE_YELLOW
+
+    def _resolve_file_icon(mime: str, filename: str) -> tuple[str, str]:
+        lower_mime = (mime or "").lower()
+        lower_name = (filename or "").lower()
+        if "pdf" in lower_mime or lower_name.endswith(".pdf"):
+            return "picture_as_pdf", "text-rose-500 bg-rose-50 border border-rose-100"
+        if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
+            return "image", "text-emerald-500 bg-emerald-50 border border-emerald-100"
+        return "insert_drive_file", "text-slate-500 bg-slate-100 border border-slate-200"
+
     @ui.refreshable
     def render_list():
+        _hide_context_menu()
         items = _sort_documents(_filter_documents(_load_documents()))
-        selected_ids.clear()
-        _update_action_buttons()
-
-        with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
-            rows = []
+        with ui.card().classes(
+            C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-none border-slate-200 bg-white backdrop-blur-0"
+        ):
             meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
             backfill_document_fields(session, items, meta_map=meta_map)
+
+            with ui.row().classes(
+                "w-full px-6 py-3 text-xs font-semibold tracking-wide text-slate-500 border-b border-slate-100"
+            ):
+                ui.label("Datei").classes("w-[34%]")
+                ui.label("Tags").classes("w-[16%]")
+                ui.label("Status").classes("w-[12%]")
+                ui.label("Datum").classes("w-[12%]")
+                ui.label("Größe").classes("w-[10%] text-right")
+                ui.label("Quelle").classes("w-[16%]")
+
+            if not items:
+                ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-slate-500")
+                return
+
+            def _open_context_menu(event, doc_id: int, open_url: str) -> None:
+                coords = event.args or {}
+                x = int(coords.get("pageX") or coords.get("clientX") or 0)
+                y = int(coords.get("pageY") or coords.get("clientY") or 0)
+                if x == 0 and y == 0:
+                    x = 220
+                    y = 220
+                _show_context_menu(x, y, doc_id, open_url)
+
             for doc in items:
                 doc_id = int(doc.id or 0)
                 display_date = _document_display_date(doc)
@@ -913,108 +980,53 @@ def render_documents(session, comp: Company) -> None:
                 meta_size = meta_values.get("size_bytes")
                 if size_bytes <= 0 and isinstance(meta_size, int) and meta_size > 0:
                     size_bytes = meta_size
-                amount_total, amount_net, amount_tax = _resolve_amounts(doc)
+                amount_total, _, _ = _resolve_amounts(doc)
                 meta_amount_total = meta_values.get("amount_total")
-                meta_amount_net = meta_values.get("amount_net")
-                meta_amount_tax = meta_values.get("amount_tax")
                 if amount_total is None and meta_amount_total is not None:
                     amount_total = meta_amount_total
-                if amount_net is None and meta_amount_net is not None:
-                    amount_net = meta_amount_net
-                if amount_tax is None and meta_amount_tax is not None:
-                    amount_tax = meta_amount_tax
                 meta_vendor = (meta_values.get("vendor") or "").strip()
-                meta_doc_number = (meta_values.get("doc_number") or "").strip()
-                vendor_value = (doc.vendor or meta_vendor or "").strip() or "-"
-                doc_number_value = (doc.doc_number or meta_doc_number or "").strip() or "-"
+                vendor_value = (doc.vendor or meta_vendor or "").strip()
                 tags_value = _format_keywords(doc.keywords_json)
                 if tags_value == "-":
                     meta_keywords = meta_values.get("keywords")
                     tags_value = _format_keywords(meta_keywords) if meta_keywords else tags_value
-                meta_currency = (meta_values.get("currency") or "").strip()
-                currency_value = (doc.currency or meta_currency or "").strip() or None
                 size_display = _format_size(size_bytes)
                 size_warning = 0 < size_bytes < 1024
                 if size_warning:
                     size_display = f"{size_display} ⚠️"
-                logger.debug(
-                    "document_row_keys",
-                    extra={
-                        "doc_id": doc_id,
-                        "amount_total": amount_total,
-                        "amount_net": amount_net,
-                        "amount_tax": amount_tax,
-                        "currency": currency_value,
-                    },
-                )
-                rows.append(
-                    {
-                        "id": doc_id,
-                        "date": display_date,
-                        "filename": doc.original_filename or doc.title or "Dokument",
-                        "source": _format_source(doc.source),
-                        "size_bytes": size_bytes,
-                        "size_display": size_display,
-                        "mime": doc.mime or doc.mime_type or "-",
-                        "doc_number": doc_number_value,
-                        "vendor": vendor_value,
-                        "tags": tags_value,
-                        "amount": amount_total,
-                        "amount_net": amount_net,
-                        "amount_tax": amount_tax,
-                        "amount_display": _format_amount_value(amount_total, currency_value),
-                        "amount_net_display": _format_amount_value(amount_net, currency_value),
-                        "amount_tax_display": _format_amount_value(amount_tax, currency_value),
-                        "open_url": f"/api/documents/{doc_id}/file",
-                    }
-                )
+                filename = doc.original_filename or doc.title or "Dokument"
+                mime_value = doc.mime or doc.mime_type or ""
+                open_url = f"/api/documents/{doc_id}/file"
+                status_label, badge_class = _resolve_status(doc, amount_total, vendor_value)
+                icon_name, icon_classes = _resolve_file_icon(mime_value, filename)
+                with ui.row().classes(
+                    "w-full px-6 py-2.5 items-center gap-4 border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                ).on(
+                    "contextmenu",
+                    lambda e, i=doc_id, u=open_url: _open_context_menu(e, i, u),
+                    js_handler="(e) => { e.preventDefault(); emit({pageX: e.pageX, pageY: e.pageY, clientX: e.clientX, clientY: e.clientY}); }",
+                ):
+                    with ui.element("div").classes("flex items-center gap-3 w-[34%]"):
+                        with ui.element("div").classes(
+                            f"w-9 h-9 rounded-md flex items-center justify-center {icon_classes}"
+                        ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6)"):
+                            ui.icon(icon_name).classes("text-base")
+                        ui.link(filename, open_url, new_tab=True).classes(
+                            "text-blue-600 font-medium hover:underline"
+                        )
+                    with ui.element("div").classes("w-[16%]"):
+                        ui.label(tags_value).classes(
+                            "text-sm text-slate-500 truncate"
+                        ).tooltip(tags_value if tags_value != "-" else "")
+                    with ui.element("div").classes("w-[12%]"):
+                        ui.label(status_label).classes(badge_class)
+                    ui.label(display_date or "-").classes("w-[12%] text-sm text-slate-600")
+                    ui.label(size_display).classes("w-[10%] text-right text-sm text-slate-600")
+                    ui.label(_format_source(doc.source)).classes("w-[16%] text-sm text-slate-600")
 
-            columns = [
-                {"name": "date", "label": "Datum", "field": "date", "sortable": True, "align": "left"},
-                {"name": "filename", "label": "Datei", "field": "filename", "sortable": True, "align": "left"},
-                {"name": "source", "label": "Quelle", "field": "source", "sortable": True, "align": "left"},
-                {
-                    "name": "size_display",
-                    "label": "Größe",
-                    "field": "size_display",
-                    "sortable": True,
-                    "align": "right",
-                },
-                {"name": "mime", "label": "Mime", "field": "mime", "sortable": True, "align": "left"},
-                {"name": "doc_number", "label": "Belegnr", "field": "doc_number", "sortable": True, "align": "left"},
-                {"name": "vendor", "label": "Vendor", "field": "vendor", "sortable": True, "align": "left"},
-                {"name": "tags", "label": "Tags", "field": "tags", "sortable": True, "align": "left"},
-                {
-                    "name": "amount_display",
-                    "label": "Betrag",
-                    "field": "amount_display",
-                    "sortable": True,
-                    "align": "right",
-                },
-                {
-                    "name": "amount_net_display",
-                    "label": "Netto",
-                    "field": "amount_net_display",
-                    "sortable": True,
-                    "align": "right",
-                },
-                {
-                    "name": "amount_tax_display",
-                    "label": "Steuer",
-                    "field": "amount_tax_display",
-                    "sortable": True,
-                    "align": "right",
-                },
-            ]
-            table = ui.table(columns=columns, rows=rows, row_key="id", selection="multiple").classes("w-full")
-
-            def _on_selection(event) -> None:
-                selected_rows = event.selection or []
-                selected_ids.clear()
-                selected_ids.update({int(item.get("id") or 0) for item in selected_rows})
-                _update_action_buttons()
-
-            table.on_select(_on_selection)
-
-    render_filters()
-    render_list()
+    with ui.element("div").classes(
+        "w-full bg-[#F5F7FA] rounded-xl p-6 border border-slate-100"
+    ):
+        render_filters()
+        render_summary()
+        render_list()
