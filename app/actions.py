@@ -1,7 +1,8 @@
 from datetime import datetime
+import os
 from sqlmodel import select
 
-from data import Invoice, InvoiceItem, InvoiceStatus, get_session, log_audit_action
+from data import AuditLog, Invoice, InvoiceItem, InvoiceRevision, InvoiceStatus, get_session, log_audit_action
 
 STATUS_AUDIT_ACTIONS = {
     InvoiceStatus.SENT: "INVOICE_SENT",
@@ -95,6 +96,56 @@ def delete_draft(invoice_id):
             session.delete(item)
         session.delete(inv)
         session.commit()
+    return True, ""
+
+def _resolve_invoice_pdf_path(filename: str | None) -> str:
+    if not filename:
+        return ""
+    if os.path.isabs(filename) or str(filename).startswith("storage/"):
+        return filename
+    return f"storage/invoices/{filename}"
+
+def delete_invoice(invoice_id: int) -> tuple[bool, str]:
+    with get_session() as session:
+        inv = session.get(Invoice, int(invoice_id))
+        if not inv:
+            return False, "Rechnung nicht gefunden"
+
+        related_invoices = session.exec(
+            select(Invoice).where(Invoice.related_invoice_id == int(inv.id))
+        ).all()
+        for related in related_invoices:
+            related.related_invoice_id = None
+            session.add(related)
+
+        items = session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == inv.id)).all()
+        revisions = session.exec(select(InvoiceRevision).where(InvoiceRevision.invoice_id == inv.id)).all()
+        audit_logs = session.exec(select(AuditLog).where(AuditLog.invoice_id == inv.id)).all()
+
+        pdf_paths = []
+        if inv.pdf_filename:
+            pdf_paths.append(_resolve_invoice_pdf_path(inv.pdf_filename))
+        for revision in revisions:
+            if revision.pdf_filename_previous:
+                pdf_paths.append(_resolve_invoice_pdf_path(revision.pdf_filename_previous))
+
+        for item in items:
+            session.delete(item)
+        for revision in revisions:
+            session.delete(revision)
+        for log_entry in audit_logs:
+            session.delete(log_entry)
+        session.delete(inv)
+        session.commit()
+
+    for path in pdf_paths:
+        if not path:
+            continue
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass
     return True, ""
 
 def cancel_invoice(invoice_id):
