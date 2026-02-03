@@ -3,7 +3,7 @@
 # =========================
 
 # --- STYLE SYSTEM (Clean admin look) ---
-C_BG = "bg-[#F9FAFB] text-slate-900 min-h-screen"
+C_BG = "bg-gradient-to-br from-slate-50 to-slate-100 text-slate-900 min-h-screen"
 C_CONTAINER = "w-full max-w-6xl mx-auto px-6 py-8 gap-6"
 C_FONT_STACK = '"Inter", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif'
 C_NUMERIC = "tabular-nums"
@@ -12,6 +12,7 @@ APP_FONT_CSS = f"""
 <style>
   :root, body, .q-body {{
     font-family: {C_FONT_STACK};
+    letter-spacing: -0.01em;
   }}
 </style>
 """
