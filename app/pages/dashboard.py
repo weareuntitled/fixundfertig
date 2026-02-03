@@ -177,10 +177,10 @@ def render_dashboard(session, comp: Company) -> None:
                 with ui.row().classes("gap-4"):
                     with ui.column().classes("gap-1"):
                         ui.label("Kunden").classes("text-xs font-semibold text-slate-500 uppercase tracking-wide")
-                        ui.label(f"{len(customers):,}").classes("text-xl font-semibold text-slate-800")
+                        ui.label(f"{len(customers):,}").classes(f"text-xl font-semibold text-slate-800 {C_NUMERIC}")
                     with ui.column().classes("gap-1"):
                         ui.label("Offene Rechnungen").classes("text-xs font-semibold text-slate-500 uppercase tracking-wide")
-                        ui.label(f"{sum(1 for inv in invs if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.FINALIZED)):,}").classes("text-xl font-semibold text-slate-800")
+                        ui.label(f"{sum(1 for inv in invs if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.FINALIZED)):,}").classes(f"text-xl font-semibold text-slate-800 {C_NUMERIC}")
                 ui.separator()
                 ui.label("Assistent: Nächste Schritte").classes("text-sm font-semibold text-slate-700")
                 with ui.column().classes("gap-2 text-sm text-slate-600"):

@@ -38,7 +38,7 @@ from logging_setup import setup_logging
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import C_CONTAINER, C_INPUT
+from styles import APP_FONT_CSS, C_CONTAINER
 from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
@@ -297,6 +297,7 @@ ui.add_head_html(
     "<script>window.False=false;window.True=true;window.None=null;</script>",
     shared=True,
 )
+ui.add_head_html(APP_FONT_CSS, shared=True)
 ensure_owner_user()
 
 

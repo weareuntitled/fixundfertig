@@ -53,6 +53,7 @@ from styles import (
     C_BADGE_GREEN,
     C_CONTAINER,
     C_GLASS_CARD,
+    C_NUMERIC,
 )
 
 from ui_components import (
