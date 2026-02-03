@@ -20,11 +20,11 @@ C_BTN_SEC = "!bg-white !text-slate-700 border border-slate-200 hover:border-slat
 C_INPUT = "border-slate-200 bg-white rounded-lg text-sm px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-blue-600/20 focus-visible:border-blue-600 w-full transition-all"
 
 # Badges
-C_BADGE_GREEN = "bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+C_BADGE_GREEN = "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 C_BADGE_BLUE = "bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 C_BADGE_GRAY = "bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-C_BADGE_YELLOW = "bg-amber-50 text-amber-800 border border-amber-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-C_BADGE_RED = "bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+C_BADGE_YELLOW = "bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+C_BADGE_RED = "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 
 # Typography
 C_PAGE_TITLE = "text-2xl font-semibold text-slate-900 tracking-tight"

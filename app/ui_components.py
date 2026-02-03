@@ -3,9 +3,10 @@ from contextlib import contextmanager
 from nicegui import ui
 from data import InvoiceStatus
 from styles import (
-    C_BADGE_BLUE,
     C_BADGE_GRAY,
     C_BADGE_GREEN,
+    C_BADGE_RED,
+    C_BADGE_YELLOW,
     C_BTN_PRIM,
     C_BTN_SEC,
     C_CARD,
@@ -28,12 +29,13 @@ def format_invoice_status(status: str) -> str:
 
 def invoice_status_badge(status: str) -> str:
     if status == InvoiceStatus.DRAFT: return C_BADGE_GRAY
-    if status == InvoiceStatus.OPEN: return C_BADGE_BLUE
-    if status == InvoiceStatus.SENT: return C_BADGE_GRAY
+    if status == InvoiceStatus.OPEN: return C_BADGE_YELLOW
+    if status == InvoiceStatus.SENT: return C_BADGE_YELLOW
     if status == InvoiceStatus.PAID: return C_BADGE_GREEN
-    if status == InvoiceStatus.FINALIZED: return C_BADGE_BLUE
+    if status == InvoiceStatus.FINALIZED: return C_BADGE_YELLOW
     if status == InvoiceStatus.CANCELLED: return C_BADGE_GRAY
     if status == "Bezahlt": return C_BADGE_GREEN
+    if status == "Overdue": return C_BADGE_RED
     return C_BADGE_GRAY
 
 def kpi_card(
