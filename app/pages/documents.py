@@ -586,6 +586,7 @@ def render_documents(session, comp: Company) -> None:
                     on_change=lambda e: (
                         state.__setitem__("year", e.value or str(datetime.now().year)),
                         render_summary.refresh(),
+                        render_list.refresh(),
                     ),
                 ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
 
