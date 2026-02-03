@@ -885,16 +885,19 @@ def render_documents(session, comp: Company) -> None:
     def render_list():
         _hide_context_menu()
         items = _sort_documents(_filter_documents(_load_documents()))
-        with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
+        with ui.card().classes(
+            C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-none border-slate-200 bg-white backdrop-blur-0"
+        ):
             meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
             backfill_document_fields(session, items, meta_map=meta_map)
 
             with ui.row().classes(
-                "w-full px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-100"
+                "w-full px-6 py-3 text-xs font-semibold tracking-wide text-slate-500 border-b border-slate-100"
             ):
-                ui.label("Datei").classes("w-[42%]")
-                ui.label("Status").classes("w-[16%]")
-                ui.label("Datum").classes("w-[16%]")
+                ui.label("Datei").classes("w-[34%]")
+                ui.label("Tags").classes("w-[16%]")
+                ui.label("Status").classes("w-[12%]")
+                ui.label("Datum").classes("w-[12%]")
                 ui.label("Größe").classes("w-[10%] text-right")
                 ui.label("Quelle").classes("w-[16%]")
 
@@ -925,6 +928,10 @@ def render_documents(session, comp: Company) -> None:
                     amount_total = meta_amount_total
                 meta_vendor = (meta_values.get("vendor") or "").strip()
                 vendor_value = (doc.vendor or meta_vendor or "").strip()
+                tags_value = _format_keywords(doc.keywords_json)
+                if tags_value == "-":
+                    meta_keywords = meta_values.get("keywords")
+                    tags_value = _format_keywords(meta_keywords) if meta_keywords else tags_value
                 size_display = _format_size(size_bytes)
                 size_warning = 0 < size_bytes < 1024
                 if size_warning:
@@ -935,26 +942,32 @@ def render_documents(session, comp: Company) -> None:
                 status_label, badge_class = _resolve_status(doc, amount_total, vendor_value)
                 icon_name, icon_classes = _resolve_file_icon(mime_value, filename)
                 with ui.row().classes(
-                    "w-full px-6 py-4 items-center gap-4 border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                    "w-full px-6 py-2.5 items-center gap-4 border-b border-slate-100 hover:bg-slate-50 transition-colors"
                 ).on(
                     "contextmenu",
                     lambda e, i=doc_id, u=open_url: _open_context_menu(e, i, u),
                     js_handler="(e) => { e.preventDefault(); emit({pageX: e.pageX, pageY: e.pageY, clientX: e.clientX, clientY: e.clientY}); }",
                 ):
-                    with ui.element("div").classes("flex items-center gap-3 w-[42%]"):
+                    with ui.element("div").classes("flex items-center gap-3 w-[34%]"):
                         with ui.element("div").classes(
-                            f"w-10 h-10 rounded-xl flex items-center justify-center {icon_classes}"
+                            f"w-9 h-9 rounded-md flex items-center justify-center {icon_classes}"
                         ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6)"):
-                            ui.icon(icon_name).classes("text-lg")
+                            ui.icon(icon_name).classes("text-base")
                         ui.link(filename, open_url, new_tab=True).classes(
                             "text-blue-600 font-medium hover:underline"
                         )
                     with ui.element("div").classes("w-[16%]"):
+                        ui.label(tags_value).classes(
+                            "text-sm text-slate-500 truncate"
+                        ).tooltip(tags_value if tags_value != "-" else "")
+                    with ui.element("div").classes("w-[12%]"):
                         ui.label(status_label).classes(badge_class)
-                    ui.label(display_date or "-").classes("w-[16%] text-sm text-slate-600")
+                    ui.label(display_date or "-").classes("w-[12%] text-sm text-slate-600")
                     ui.label(size_display).classes("w-[10%] text-right text-sm text-slate-600")
                     ui.label(_format_source(doc.source)).classes("w-[16%] text-sm text-slate-600")
 
-    with ui.element("div").classes("w-full bg-[#F5F7FA] rounded-2xl p-6 shadow-sm border border-slate-100"):
+    with ui.element("div").classes(
+        "w-full bg-[#F5F7FA] rounded-xl p-6 border border-slate-100"
+    ):
         render_filters()
         render_list()
