@@ -578,11 +578,66 @@ def render_documents(session, comp: Company) -> None:
                             on_click=lambda _, v=value: _set_period(v),
                         ).props("flat").classes(button_classes)
 
+                ui.select(
+                    _year_options(_load_documents()),
+                    value=state["year"],
+                    on_change=lambda e: (
+                        state.__setitem__("year", e.value or str(datetime.now().year)),
+                        render_summary.refresh(),
+                    ),
+                ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
+
                 ui.input(
                     placeholder="Suche",
                     value=state["search"],
                     on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
                 ).props("dense").classes(C_INPUT + " w-64 rounded-full bg-white shadow-sm")
+
+    @ui.refreshable
+    def render_summary():
+        year_value = str(state.get("year") or datetime.now().year)
+        items = _load_documents()
+        total_docs = 0
+        total_amount = 0.0
+        total_tax = 0.0
+        for doc in items:
+            display_date = _document_display_date(doc)
+            doc_year = ""
+            if display_date:
+                doc_year = str(display_date)[:4]
+            if not doc_year or not doc_year.isdigit():
+                doc_year = str(_doc_created_at(doc).year)
+            if doc_year != year_value:
+                continue
+            total_docs += 1
+            amount_total, _, amount_tax = _resolve_amounts(doc)
+            if amount_total:
+                total_amount += float(amount_total)
+            if amount_tax:
+                total_tax += float(amount_tax)
+
+        with ui.row().classes("w-full gap-4 flex-wrap"):
+            kpi_card(
+                f"Dokumente ({year_value})",
+                f"{total_docs}",
+                "description",
+                "text-blue-600",
+                classes="flex-1 min-w-[220px]",
+            )
+            kpi_card(
+                "Gesamtsumme",
+                _format_amount_eur(total_amount),
+                "payments",
+                "text-emerald-600",
+                classes="flex-1 min-w-[220px]",
+            )
+            kpi_card(
+                "Steuern gesichert",
+                _format_amount_eur(total_tax),
+                "receipt_long",
+                "text-amber-600",
+                classes="flex-1 min-w-[220px]",
+            )
 
     delete_id = {"value": None}
     with ui.dialog() as delete_all_dialog:
@@ -853,6 +908,9 @@ def render_documents(session, comp: Company) -> None:
             return f"{amount:.2f} {currency}"
         return f"{amount:.2f}"
 
+    def _format_amount_eur(amount: float) -> str:
+        return f"{amount:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+
     def _format_source(source: str | None) -> str:
         value = (source or "").strip().lower()
         if value in {"manual", "manuell"}:
@@ -970,4 +1028,5 @@ def render_documents(session, comp: Company) -> None:
         "w-full bg-[#F5F7FA] rounded-xl p-6 border border-slate-100"
     ):
         render_filters()
+        render_summary()
         render_list()
