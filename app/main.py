@@ -1488,7 +1488,7 @@ def layout_wrapper(content_func):
         with ui.row().classes("w-full min-h-screen h-screen items-stretch"):
             # Sidebar
             with ui.column().classes(
-                "w-64 min-h-screen h-screen self-stretch bg-slate-50 border-r border-slate-200 px-4 py-6 gap-6"
+                "w-[260px] min-h-screen h-screen self-stretch bg-white border-r border-slate-200 px-4 py-6 gap-6"
             ):
                 with ui.row().classes("items-center gap-2 px-2"):
                     ui.label("FixundFertig").classes("text-lg font-bold text-slate-700")
@@ -1502,14 +1502,14 @@ def layout_wrapper(content_func):
                         for label, target, icon in items:
                             active = app.storage.user.get("page", "home") == target
                             base = (
-                                "w-full justify-start normal-case px-4 py-2 rounded-full transition-all duration-150"
+                                "w-full justify-start normal-case px-4 py-2 rounded-r-lg border-l-2 transition-all duration-150"
                             )
                             cls = (
-                                f"{base} text-slate-900 bg-white shadow-sm"
+                                f"{base} text-slate-900 bg-primary/10 border-primary"
                                 if active
-                                else f"{base} text-slate-600 hover:text-slate-900 hover:bg-white/80"
+                                else f"{base} text-slate-700 border-transparent hover:text-slate-900 hover:bg-slate-50"
                             )
-                            icon_cls = "text-sm text-slate-700" if active else "text-sm text-slate-400"
+                            icon_cls = "text-sm text-primary" if active else "text-sm text-slate-700"
                             with ui.button(on_click=lambda t=target: set_page(t)).props("flat").classes(cls):
                                 with ui.row().classes("items-center gap-2"):
                                     ui.icon(icon).classes(icon_cls)
