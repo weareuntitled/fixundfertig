@@ -149,7 +149,7 @@ def render_dashboard(session, comp: Company) -> None:
             trend_color=invoice_trend[2],
         )
 
-        with ui.card().classes(C_GLASS_CARD + " p-6 col-span-12 lg:col-span-8"):
+        with ui.card().classes(C_CARD + " p-6 col-span-12 lg:col-span-8"):
             ui.label("Umsatzverlauf").classes(C_SECTION_TITLE + " mb-4")
             ui.echart({
                 "tooltip": {"trigger": "axis"},
@@ -167,7 +167,7 @@ def render_dashboard(session, comp: Company) -> None:
                 }],
             }).classes("w-full h-64")
 
-        with ui.card().classes(C_GLASS_CARD + " p-6 col-span-12 lg:col-span-4"):
+        with ui.card().classes(C_CARD + " p-6 col-span-12 lg:col-span-4"):
             ui.label("Profil & Assistent").classes(C_SECTION_TITLE + " mb-4")
             with ui.column().classes("gap-4"):
                 ui.label(comp.name or "Unternehmen").classes("text-lg font-semibold text-slate-900")

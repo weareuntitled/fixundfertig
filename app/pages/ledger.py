@@ -77,7 +77,8 @@ def render_ledger(session, comp: Company) -> None:
         )
     items.sort(key=lambda x: x["sort_date"], reverse=True)
 
-    state = {"type": "ALL", "status": "ALL", "date_from": "", "date_to": "", "search": ""}
+    initial_search = app.storage.user.pop("ledger_search_query", "")
+    state = {"type": "ALL", "status": "ALL", "date_from": "", "date_to": "", "search": initial_search}
 
     def apply_filters(data):
         filtered = []
