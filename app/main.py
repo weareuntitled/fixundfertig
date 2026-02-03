@@ -1484,6 +1484,7 @@ def layout_wrapper(content_func):
     company_name = _active_company_name()
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
+    current_page = app.storage.user.get("page", "home")
 
     with ui.element("div").classes(f"w-full min-h-screen {C_BG}"):
         with ui.row().classes("w-full min-h-screen items-start"):
