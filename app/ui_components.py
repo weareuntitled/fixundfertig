@@ -36,14 +36,40 @@ def invoice_status_badge(status: str) -> str:
     if status == "Bezahlt": return C_BADGE_GREEN
     return C_BADGE_GRAY
 
-def kpi_card(label, value, icon, color, classes: str = ""):
-    card_classes = f"{C_CARD} {C_CARD_HOVER} p-4 flex flex-row items-center justify-between {classes}".strip()
+def kpi_card(
+    label,
+    value,
+    icon,
+    color,
+    classes: str = "",
+    trend_text: str | None = None,
+    trend_direction: str | None = None,
+    trend_color: str | None = None,
+):
+    card_classes = f"{C_CARD} {C_CARD_HOVER} p-4 {classes}".strip()
+    icon_map = {"up": "arrow_upward", "down": "arrow_downward", "flat": "arrow_forward"}
+    direction = (trend_direction or "").lower()
+    trend_icon = icon_map.get(direction)
+    if trend_color:
+        trend_color_class = trend_color
+    elif direction == "up":
+        trend_color_class = "text-emerald-500"
+    elif direction == "down":
+        trend_color_class = "text-rose-500"
+    else:
+        trend_color_class = "text-slate-500"
+
     with ui.card().classes(card_classes):
-        with ui.column().classes('gap-1'):
-            ui.label(label).classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
-            ui.label(value).classes('text-2xl font-bold text-slate-800')
-        with ui.element("div").classes("rounded-full bg-white/80 shadow-inner px-3 py-2"):
-            ui.icon(icon).classes(f"text-2xl {color}")
+        with ui.column().classes("gap-2 items-start"):
+            with ui.element("div").classes("h-10 w-10 rounded-full bg-slate-100/80 shadow-inner flex items-center justify-center"):
+                ui.icon(icon).classes(f"text-xl {color}")
+            ui.label(label).classes("text-[11px] font-semibold text-slate-400 uppercase tracking-[0.2em]")
+            ui.label(value).classes("text-[32px] font-bold text-slate-900 leading-none")
+            if trend_text:
+                with ui.row().classes("items-center gap-1"):
+                    if trend_icon:
+                        ui.icon(trend_icon).classes(f"text-base {trend_color_class}")
+                    ui.label(trend_text).classes(f"text-xs font-semibold {trend_color_class}")
 
 @contextmanager
 def settings_card(title: str | None = None, classes: str = ""):
