@@ -38,7 +38,7 @@ from logging_setup import setup_logging
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import APP_FONT_CSS, C_CONTAINER, C_INPUT
+from styles import APP_FONT_CSS, C_BG, C_CONTAINER, C_INPUT
 from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
@@ -1486,44 +1486,42 @@ def layout_wrapper(content_func):
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "home")
 
-    with ui.element("div").classes(
-        "w-full min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 text-slate-900"
-    ):
-        with ui.row().classes("w-full min-h-screen items-stretch relative"):
-            # Floating sidebar
+    with ui.element("div").classes(f"w-full min-h-screen {C_BG}"):
+        with ui.row().classes("w-full min-h-screen items-start"):
+            # Sidebar
             with ui.column().classes(
-                "fixed left-6 top-6 bottom-6 w-20 rounded-[28px] bg-white/80 backdrop-blur-md "
-                "border border-white/70 shadow-xl items-center py-6 gap-4 z-40"
+                "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white/80 backdrop-blur-md "
+                "border border-white/60 shadow-lg items-center py-6 gap-5 z-40"
             ):
-                with ui.element("div").classes(
-                    "w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-lg font-semibold"
-                ):
-                    ui.label("F")
-                ui.separator().classes("w-10 opacity-40")
+                ui.label("FF").classes(
+                    "w-11 h-11 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-sm font-semibold"
+                )
 
-                def nav_icon(label: str, target: str, icon: str) -> None:
-                    active = current_page == target
+                def nav_item(label: str, target: str, icon: str) -> None:
+                    active = app.storage.user.get("page", "home") == target
                     base = "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150"
                     cls = (
-                        f"{base} text-indigo-600 bg-white shadow-[0_0_18px_rgba(99,102,241,0.45)] ring-1 ring-indigo-200"
+                        f"{base} bg-white text-blue-600 shadow-[0_0_18px_rgba(59,130,246,0.45)] ring-1 ring-blue-200"
                         if active
                         else f"{base} text-slate-500 hover:text-slate-900 hover:bg-white/70"
                     )
                     with ui.button(icon=icon, on_click=lambda t=target: set_page(t)).props("flat round").classes(cls):
                         ui.tooltip(label)
 
-                nav_icon("Home", "home", "checklist")
-                nav_icon("Dashboard", "dashboard", "dashboard")
-                nav_icon("Invoices", "invoices", "receipt_long")
-                nav_icon("Documents", "documents", "description")
-                nav_icon("Ledger", "ledger", "account_balance")
-                nav_icon("Exports", "exports", "file_download")
-                nav_icon("Customers", "customers", "groups")
+                nav_item("Home", "home", "checklist")
+                nav_item("Dashboard", "dashboard", "dashboard")
+                ui.element("div").classes("w-8 h-px bg-slate-200/70")
+                nav_item("Invoices", "invoices", "receipt_long")
+                nav_item("Documents", "documents", "description")
+                nav_item("Ledger", "ledger", "account_balance")
+                nav_item("Exports", "exports", "file_download")
+                ui.element("div").classes("w-8 h-px bg-slate-200/70")
+                nav_item("Customers", "customers", "groups")
                 if is_owner:
-                    nav_icon("Einladungen", "invites", "mail")
+                    nav_item("Einladungen", "invites", "mail")
 
             # Main content
-            with ui.column().classes("flex-1 w-full relative pl-28"):
+            with ui.column().classes("flex-1 w-full relative pl-28 pr-6 pb-8"):
 
                 def handle_logout() -> None:
                     clear_auth_session()
@@ -1534,37 +1532,37 @@ def layout_wrapper(content_func):
                     app.storage.user["page"] = "ledger"
                     ui.navigate.to("/")
 
-                with ui.row().classes("w-full items-center justify-end px-6 pt-6 pb-4 gap-3"):
+                with ui.row().classes("w-full items-center gap-4 pt-6 pb-2 sticky top-0 z-30"):
+                    with ui.row().classes("flex-1 items-center gap-4"):
+                        ui.input(
+                            "Search Transactions",
+                            on_change=lambda e: open_ledger_search(e.value or ""),
+                        ).props("dense").classes(C_INPUT + " rounded-full bg-white/80 shadow-sm w-72")
                     ui.label(f"[ 🧾 {n8n_today_count} BELEGE HEUTE ]").classes(
-                        "rounded-full bg-white/70 text-emerald-700 border border-emerald-200 px-3 py-1 text-xs font-semibold"
+                        "rounded-full bg-white/80 text-emerald-700 border border-emerald-200 px-3 py-1 text-xs font-semibold shadow-sm"
                     )
-                    ui.button(icon="search", on_click=lambda: open_ledger_search("")).props("flat round").classes(
-                        "text-slate-500 hover:text-slate-700"
-                    )
-                    ui.button(icon="notifications").props("flat round").classes("text-slate-500 hover:text-slate-700")
-                    ui.button(
-                        "New Invoice",
-                        on_click=lambda: _open_invoice_editor(None),
-                    ).classes(
-                        "!bg-indigo-600 !text-white hover:bg-indigo-700 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition-all"
-                    )
-                    with ui.avatar().classes(
-                        "bg-slate-900 text-white rounded-full cursor-pointer shadow-sm hover:shadow-md transition"
-                    ) as avatar:
-                        ui.label(initials).classes("text-sm font-semibold")
-                        with ui.menu().props("anchor=bottom right self=top right").classes(
-                            "min-w-[220px] rounded-xl"
-                        ) as avatar_menu:
-                            if identifier:
-                                ui.label(identifier).classes("text-xs text-slate-500 px-3 pt-2")
-                            if company_name:
-                                ui.label(company_name).classes("text-sm text-slate-700 px-3 pb-2")
-                            ui.separator().classes("my-1")
-                            ui.item("Settings", on_click=lambda: ui.navigate.to("/settings"))
-                            ui.item("Logout", on_click=handle_logout).classes("text-red-600")
-                    avatar.on("click", avatar_menu.open)
+                    with ui.row().classes("flex-1 items-center justify-end gap-2"):
+                        ui.button(icon="notifications").props("flat round").classes("text-slate-500 hover:text-slate-700")
+                        ui.button(
+                            "New Invoice",
+                            on_click=lambda: _open_invoice_editor(None),
+                        ).classes(
+                            "!bg-slate-900 !text-white hover:bg-slate-800 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition-all"
+                        )
+                        with ui.button().props("flat round").classes(
+                            "bg-slate-900 text-white hover:bg-slate-800 rounded-full shadow-sm w-10 h-10"
+                        ):
+                            ui.label(initials).classes("text-xs font-semibold")
+                            with ui.menu().classes("min-w-[220px]"):
+                                if identifier:
+                                    ui.label(identifier).classes("text-xs text-slate-500 px-3 pt-2")
+                                if company_name:
+                                    ui.label(company_name).classes("text-sm text-slate-700 px-3 pb-2")
+                                ui.separator().classes("my-1")
+                                ui.item("Settings", on_click=lambda: ui.navigate.to("/settings"))
+                                ui.item("Logout", on_click=handle_logout).classes("text-red-600")
 
-                with ui.element("div").classes("w-full px-6 pb-10"):
+                with ui.element("div").classes("w-full pt-4"):
                     content_func()
 
 
