@@ -36,7 +36,7 @@ from data import (
 )
 
 from renderer import render_invoice_to_pdf_bytes
-from actions import cancel_invoice, create_correction, delete_draft, update_status_logic
+from actions import cancel_invoice, create_correction, delete_draft, delete_invoice, update_status_logic
 from invoice_numbering import build_invoice_filename
 
 from styles import (

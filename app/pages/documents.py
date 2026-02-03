@@ -660,9 +660,9 @@ def render_documents(session, comp: Company) -> None:
                             for document in documents:
                                 current_document_id = int(document.id or 0) or None
                                 current_filename = document.original_filename or document.title or None
-                                meta = s.exec(
+                                meta_entries = s.exec(
                                     select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
-                                ).first()
+                                ).all()
                                 storage_key = (document.storage_key or document.storage_path or "").strip()
                                 if storage_key.startswith("storage/"):
                                     storage_key = storage_key.removeprefix("storage/").lstrip("/")
@@ -684,7 +684,7 @@ def render_documents(session, comp: Company) -> None:
                                         os.rmdir(os.path.dirname(storage_path))
                                     except OSError:
                                         pass
-                                if meta:
+                                for meta in meta_entries:
                                     s.delete(meta)
                                 s.delete(document)
                             s.commit()
@@ -758,9 +758,9 @@ def render_documents(session, comp: Company) -> None:
                             document = s.get(Document, int(delete_id["value"]))
                             if document:
                                 filename = document.original_filename or document.title or None
-                                meta = s.exec(
+                                meta_entries = s.exec(
                                     select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
-                                ).first()
+                                ).all()
                                 storage_key = (document.storage_key or document.storage_path or "").strip()
                                 if storage_key.startswith("storage/"):
                                     storage_key = storage_key.removeprefix("storage/").lstrip("/")
@@ -780,7 +780,7 @@ def render_documents(session, comp: Company) -> None:
                                         os.rmdir(os.path.dirname(storage_path))
                                     except OSError:
                                         pass
-                                if meta:
+                                for meta in meta_entries:
                                     s.delete(meta)
                                 s.delete(document)
                                 s.commit()

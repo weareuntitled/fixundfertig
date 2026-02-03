@@ -78,6 +78,41 @@ def render_invoices(session, comp: Company) -> None:
         except Exception as e:
             ui.notify(f"Fehler: {e}", color="red")
 
+    delete_state = {"id": None, "label": ""}
+
+    with ui.dialog() as delete_dialog:
+        with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
+            ui.label("Rechnung löschen").classes(C_SECTION_TITLE)
+            delete_label = ui.label("Willst du diese Rechnung wirklich löschen?").classes("text-sm text-slate-600")
+            with ui.row().classes("justify-end gap-2 mt-3 w-full"):
+                ui.button("Abbrechen", on_click=delete_dialog.close).classes(C_BTN_SEC)
+
+                def _confirm_delete():
+                    if not delete_state["id"]:
+                        delete_dialog.close()
+                        return
+                    try:
+                        ok, err = delete_invoice(int(delete_state["id"]))
+                        if not ok:
+                            ui.notify(err, color="red")
+                        else:
+                            ui.notify("Rechnung gelöscht", color="green")
+                            delete_dialog.close()
+                            ui.navigate.to("/")
+                    except Exception as e:
+                        ui.notify(f"Fehler: {e}", color="red")
+
+                ui.button("Löschen", on_click=_confirm_delete).classes("bg-rose-600 text-white hover:bg-rose-700")
+
+    def open_delete(inv: Invoice) -> None:
+        delete_state["id"] = int(inv.id)
+        label_parts = [f"#{inv.nr}" if inv.nr else "Rechnung"]
+        name = cust_name(inv)
+        if name:
+            label_parts.append(name)
+        delete_label.text = "Willst du diese Rechnung wirklich löschen? " + " ".join(label_parts)
+        delete_dialog.open()
+
     with ui.element("div").classes("grid grid-cols-10 gap-4 w-full"):
         # Left column
         with ui.column().classes("col-span-10 lg:col-span-7 gap-3"):
@@ -128,6 +163,7 @@ def render_invoices(session, comp: Company) -> None:
                                                         ui.menu_item("Als bezahlt markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.PAID))
                                                     if inv.status != InvoiceStatus.CANCELLED:
                                                         ui.menu_item("Stornieren", on_click=lambda x=inv: do_cancel(x))
+                                                    ui.menu_item("Löschen", on_click=lambda x=inv: open_delete(x))
 
         # Right column
         with ui.column().classes("col-span-10 lg:col-span-3 gap-4"):
@@ -150,7 +186,7 @@ def render_invoices(session, comp: Company) -> None:
                                 ui.label(cust_name(d)).classes("text-sm text-slate-900")
                             with ui.row().classes("gap-2"):
                                 ui.button("Edit", on_click=lambda x=d: _open_invoice_editor(int(x.id))).props("flat dense no-parent-event").classes("text-slate-600")
-                                ui.button("Löschen", on_click=lambda x=d: (delete_draft(int(x.id)), ui.navigate.to("/"))).props("flat dense no-parent-event").classes("text-rose-600")
+                                ui.button("Löschen", on_click=lambda x=d: open_delete(x)).props("flat dense no-parent-event").classes("text-rose-600")
 
             # Reminders
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
