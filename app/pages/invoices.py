@@ -130,8 +130,11 @@ def render_invoices(session, comp: Company) -> None:
                             with ui.row().classes(C_TABLE_ROW):
                                 ui.label("Noch keine Rechnungen vorhanden").classes("text-sm text-slate-500")
                         else:
-                            for inv in finals:
-                                with ui.row().classes(C_TABLE_ROW + " group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0"):
+                            for idx, inv in enumerate(finals):
+                                row_bg = "bg-white" if idx % 2 == 0 else "bg-[#F3F4F6]"
+                                with ui.row().classes(
+                                    C_TABLE_ROW + f" {row_bg} h-16 group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0"
+                                ):
                                     with ui.row().classes("flex-1 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 cursor-pointer w-full").on(
                                         "click", lambda _, x=inv: _open_invoice_detail(int(x.id))
                                     ):
@@ -151,9 +154,16 @@ def render_invoices(session, comp: Company) -> None:
 
                                     with ui.column().classes("w-full sm:w-44 gap-2 sm:items-end"):
                                         ui.label("Aktionen").classes("sm:hidden text-[10px] uppercase text-slate-400")
-                                        with ui.row().classes("w-full sm:w-44 justify-start sm:justify-end gap-2"):
-                                            ui.button("Download", on_click=lambda x=inv: run_download(x)).props("flat dense no-parent-event").classes("text-slate-600")
-                                            ui.button("Senden", on_click=lambda x=inv: run_send(x)).props("flat dense no-parent-event").classes("text-slate-600")
+                                        with ui.row().classes("w-full sm:w-44 justify-end gap-2"):
+                                            ui.button(icon="visibility", on_click=lambda x=inv: _open_invoice_detail(int(x.id))).props(
+                                                "flat dense no-parent-event"
+                                            ).classes("text-slate-500 hover:text-slate-900")
+                                            ui.button(icon="download", on_click=lambda x=inv: run_download(x)).props(
+                                                "flat dense no-parent-event"
+                                            ).classes("text-slate-500 hover:text-slate-900")
+                                            ui.button(icon="mail", on_click=lambda x=inv: run_send(x)).props(
+                                                "flat dense no-parent-event"
+                                            ).classes("text-slate-500 hover:text-slate-900")
 
                                             with ui.button(icon="more_vert").props("flat dense no-parent-event").classes("text-slate-600"):
                                                 with ui.menu().props("auto-close no-parent-event"):
