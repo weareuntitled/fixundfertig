@@ -12,6 +12,7 @@ APP_FONT_CSS = f"""
 <style>
   :root, body, .q-body {{
     font-family: {C_FONT_STACK};
+    letter-spacing: -0.01em;
   }}
 </style>
 """
