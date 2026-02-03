@@ -3,14 +3,24 @@
 # =========================
 
 # --- STYLE SYSTEM (Clean admin look) ---
-C_BG = "bg-slate-50 text-slate-900 min-h-screen"
+C_BG = "bg-[#F9FAFB] text-slate-900 min-h-screen"
 C_CONTAINER = "w-full max-w-6xl mx-auto px-6 py-8 gap-6"
+C_FONT_STACK = '"Inter", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif'
+C_NUMERIC = "tabular-nums"
+
+APP_FONT_CSS = f"""
+<style>
+  :root, body, .q-body {{
+    font-family: {C_FONT_STACK};
+  }}
+</style>
+"""
 
 # Panels / cards
-C_CARD = "bg-white/70 border border-white/60 rounded-xl shadow-sm backdrop-blur-lg ring-1 ring-slate-200/60"
-C_CARD_HOVER = "hover:border-slate-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-150"
-C_GLASS_CARD = "bg-white/50 border border-white/50 rounded-2xl shadow-sm backdrop-blur-lg ring-1 ring-slate-200/40"
-C_GLASS_CARD_HOVER = "hover:border-slate-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-150"
+C_CARD = "bg-white border border-[#E5E7EB] rounded-xl"
+C_CARD_HOVER = "hover:border-slate-300 hover:-translate-y-0.5 transition-all duration-150"
+C_GLASS_CARD = "bg-white border border-[#E5E7EB] rounded-2xl"
+C_GLASS_CARD_HOVER = "hover:border-slate-300 hover:-translate-y-0.5 transition-all duration-150"
 
 # Buttons
 C_BTN_PRIM = "!bg-blue-600 !text-white hover:bg-blue-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-600/25"
@@ -20,11 +30,11 @@ C_BTN_SEC = "!bg-white !text-slate-700 border border-slate-200 hover:border-slat
 C_INPUT = "border-slate-200 bg-white rounded-lg text-sm px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-blue-600/20 focus-visible:border-blue-600 w-full transition-all"
 
 # Badges
-C_BADGE_GREEN = "bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+C_BADGE_GREEN = "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 C_BADGE_BLUE = "bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 C_BADGE_GRAY = "bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-C_BADGE_YELLOW = "bg-amber-50 text-amber-800 border border-amber-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-C_BADGE_RED = "bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+C_BADGE_YELLOW = "bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+C_BADGE_RED = "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 
 # Typography
 C_PAGE_TITLE = "text-2xl font-semibold text-slate-900 tracking-tight"
