@@ -38,7 +38,7 @@ from logging_setup import setup_logging
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import C_CONTAINER
+from styles import C_CONTAINER, C_INPUT
 from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
@@ -56,7 +56,7 @@ from pages import (
     render_exports,
     render_todos,
 )
-from pages._shared import get_current_user_id, get_primary_company, list_companies
+from pages._shared import get_current_user_id, get_primary_company, list_companies, _open_invoice_editor
 from services.blob_storage import blob_storage, build_document_key
 from services.auth import ensure_owner_user, get_owner_email
 from services.documents import (
@@ -1536,14 +1536,30 @@ def layout_wrapper(content_func):
                     clear_auth_session()
                     ui.navigate.to("/login")
 
+                def open_ledger_search(query: str) -> None:
+                    app.storage.user["ledger_search_query"] = (query or "").strip()
+                    app.storage.user["page"] = "ledger"
+                    ui.navigate.to("/")
+
                 with ui.row().classes(
                     "w-full h-16 items-center px-6 border-b border-slate-200 bg-white sticky top-0 z-50"
                 ):
-                    ui.element("div").classes("flex-1")
+                    with ui.row().classes("flex-1 items-center gap-4"):
+                        ui.input(
+                            "Search Transactions",
+                            on_change=lambda e: open_ledger_search(e.value or ""),
+                        ).props("dense").classes(C_INPUT + " rounded-full bg-slate-50 w-72")
                     ui.label(f"[ 🧾 {n8n_today_count} BELEGE HEUTE ]").classes(
                         "rounded-full bg-blue-50 text-emerald-700 border border-emerald-200 px-3 py-1 text-xs font-semibold"
                     )
                     with ui.row().classes("flex-1 items-center justify-end gap-2"):
+                        ui.button(icon="notifications").props("flat round").classes("text-slate-500 hover:text-slate-700")
+                        ui.button(
+                            "New Invoice",
+                            on_click=lambda: _open_invoice_editor(None),
+                        ).classes(
+                            "!bg-indigo-600 !text-white hover:bg-indigo-700 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all"
+                        )
                         avatar_menu = ui.menu().classes("min-w-[220px]")
                         with ui.avatar().classes(
                             "bg-slate-800 text-white rounded-full cursor-pointer shadow-sm hover:shadow-md transition"
