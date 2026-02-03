@@ -143,7 +143,7 @@ def render_invoices(session, comp: Company) -> None:
                                             ui.label(cust_name(inv)).classes("text-sm text-slate-900")
                                         with ui.column().classes("w-full sm:w-28 gap-1 sm:items-end"):
                                             ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-slate-400")
-                                            ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes("text-sm font-mono text-slate-800 sm:text-right")
+                                            ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes(f"text-sm font-mono text-slate-800 sm:text-right {C_NUMERIC}")
                                         with ui.column().classes("w-full sm:w-28 gap-1 sm:items-end"):
                                             ui.label("Status").classes("sm:hidden text-[10px] uppercase text-slate-400")
                                             with ui.row().classes("sm:justify-end"):
@@ -206,4 +206,4 @@ def render_invoices(session, comp: Company) -> None:
                                 ui.label("Overdue").classes("bg-amber-50 text-amber-800 border border-amber-100 px-2 py-0.5 rounded-full text-xs font-medium")
                                 ui.label(f"#{r.nr}" if r.nr else "Rechnung").classes("text-xs font-mono text-slate-700")
                                 ui.label(cust_name(r)).classes("text-sm text-slate-900")
-                            ui.label(f"{float(r.total_brutto or 0):,.2f} €").classes("text-sm font-mono text-slate-700")
+                            ui.label(f"{float(r.total_brutto or 0):,.2f} €").classes(f"text-sm font-mono text-slate-700 {C_NUMERIC}")
