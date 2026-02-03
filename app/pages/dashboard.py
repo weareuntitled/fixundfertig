@@ -62,11 +62,92 @@ def render_dashboard(session, comp: Company) -> None:
         )
         month_totals.append(round(total, 2))
 
+    def sum_invoices(start: datetime, end: datetime, statuses: tuple[InvoiceStatus, ...]) -> float:
+        return sum(
+            float(inv.total_brutto or 0)
+            for inv in invs
+            if inv.status in statuses and start <= _parse_iso_date(inv.date) < end
+        )
+
+    def sum_expenses(start: datetime, end: datetime) -> float:
+        return sum(
+            float(exp.amount or 0)
+            for exp in exps
+            if start <= _parse_iso_date(exp.date) < end
+        )
+
+    def count_invoices(start: datetime, end: datetime) -> int:
+        return sum(1 for inv in invs if start <= _parse_iso_date(inv.date) < end)
+
+    def build_trend(current: float, previous: float) -> tuple[str, str, str]:
+        if previous == 0:
+            percent = 0 if current == 0 else 100
+        else:
+            percent = ((current - previous) / previous) * 100
+        direction = "up" if percent > 0 else "down" if percent < 0 else "flat"
+        color = "text-emerald-500" if direction == "up" else "text-rose-500" if direction == "down" else "text-slate-500"
+        return f"{abs(percent):.0f}% vs last month", direction, color
+
+    previous_month_start = shift_month(month_start, -1)
+    next_month_start = shift_month(month_start, 1)
+    revenue_trend = build_trend(
+        sum_invoices(month_start, next_month_start, (InvoiceStatus.PAID, InvoiceStatus.FINALIZED)),
+        sum_invoices(previous_month_start, month_start, (InvoiceStatus.PAID, InvoiceStatus.FINALIZED)),
+    )
+    expense_trend = build_trend(
+        sum_expenses(month_start, next_month_start),
+        sum_expenses(previous_month_start, month_start),
+    )
+    open_trend = build_trend(
+        sum_invoices(month_start, next_month_start, (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.FINALIZED)),
+        sum_invoices(previous_month_start, month_start, (InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.FINALIZED)),
+    )
+    invoice_trend = build_trend(
+        count_invoices(month_start, next_month_start),
+        count_invoices(previous_month_start, month_start),
+    )
+
     with ui.element("div").classes("w-full grid grid-cols-12 gap-6 mb-6"):
-        kpi_card("Umsatz", f"{umsatz:,.2f} €", "trending_up", "text-emerald-500", "col-span-12 sm:col-span-6 lg:col-span-3")
-        kpi_card("Ausgaben", f"{kosten:,.2f} €", "trending_down", "text-rose-500", "col-span-12 sm:col-span-6 lg:col-span-3")
-        kpi_card("Offen", f"{offen:,.2f} €", "schedule", "text-blue-500", "col-span-12 sm:col-span-6 lg:col-span-3")
-        kpi_card("Rechnungen", f"{len(invs):,}", "receipt_long", "text-slate-500", "col-span-12 sm:col-span-6 lg:col-span-3")
+        kpi_card(
+            "Umsatz",
+            f"{umsatz:,.2f} €",
+            "trending_up",
+            "text-emerald-500",
+            "col-span-12 sm:col-span-6 lg:col-span-3",
+            trend_text=revenue_trend[0],
+            trend_direction=revenue_trend[1],
+            trend_color=revenue_trend[2],
+        )
+        kpi_card(
+            "Ausgaben",
+            f"{kosten:,.2f} €",
+            "trending_down",
+            "text-rose-500",
+            "col-span-12 sm:col-span-6 lg:col-span-3",
+            trend_text=expense_trend[0],
+            trend_direction=expense_trend[1],
+            trend_color=expense_trend[2],
+        )
+        kpi_card(
+            "Offen",
+            f"{offen:,.2f} €",
+            "schedule",
+            "text-blue-500",
+            "col-span-12 sm:col-span-6 lg:col-span-3",
+            trend_text=open_trend[0],
+            trend_direction=open_trend[1],
+            trend_color=open_trend[2],
+        )
+        kpi_card(
+            "Rechnungen",
+            f"{len(invs):,}",
+            "receipt_long",
+            "text-slate-500",
+            "col-span-12 sm:col-span-6 lg:col-span-3",
+            trend_text=invoice_trend[0],
+            trend_direction=invoice_trend[1],
+            trend_color=invoice_trend[2],
+        )
 
         with ui.card().classes(C_GLASS_CARD + " p-6 col-span-12 lg:col-span-8"):
             ui.label("Umsatzverlauf").classes(C_SECTION_TITLE + " mb-4")

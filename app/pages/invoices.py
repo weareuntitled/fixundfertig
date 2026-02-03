@@ -203,7 +203,7 @@ def render_invoices(session, comp: Company) -> None:
                             with ui.row().classes("gap-2 items-center cursor-pointer").on(
                                 "click", lambda _, x=r: _open_invoice_detail(int(x.id))
                             ):
-                                ui.label("Overdue").classes("bg-amber-50 text-amber-800 border border-amber-100 px-2 py-0.5 rounded-full text-xs font-medium")
+                                ui.label("Overdue").classes(invoice_status_badge("Overdue"))
                                 ui.label(f"#{r.nr}" if r.nr else "Rechnung").classes("text-xs font-mono text-slate-700")
                                 ui.label(cust_name(r)).classes("text-sm text-slate-900")
                             ui.label(f"{float(r.total_brutto or 0):,.2f} €").classes(f"text-sm font-mono text-slate-700 {C_NUMERIC}")
