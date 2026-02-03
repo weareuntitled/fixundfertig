@@ -5,6 +5,10 @@ from pathlib import Path
 from types import ModuleType
 import sys
 
+from application.todo.commands.create_todo import CreateTodoCommand
+from application.todo.queries.list_todos import ListTodosQuery
+from application.todo.store import reset_todos
+
 
 @dataclass(frozen=True)
 class AppContainer:
@@ -12,6 +16,8 @@ class AppContainer:
     commands: ModuleType
     queries: ModuleType
     controller: ModuleType
+    create_todo_command: CreateTodoCommand
+    list_todos_query: ListTodosQuery
 
 
 def _find_app_root() -> Path:
@@ -38,4 +44,13 @@ def create_app_container() -> AppContainer:
     from pages import _shared as queries
     import main as controller
 
-    return AppContainer(repo=data, commands=logic, queries=queries, controller=controller)
+    reset_todos()
+
+    return AppContainer(
+        repo=data,
+        commands=logic,
+        queries=queries,
+        controller=controller,
+        create_todo_command=CreateTodoCommand(),
+        list_todos_query=ListTodosQuery(),
+    )

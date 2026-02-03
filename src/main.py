@@ -12,6 +12,8 @@ for path in (_ROOT, _APP_ROOT):
 from app import main as app_main
 from nicegui import ui
 
+app = app_main.app
+
 
 def run() -> None:
     ui.run(
