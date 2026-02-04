@@ -39,10 +39,13 @@ APP_FONT_CSS = f"""
     background: #2f3338;
   }}
   .q-field__control:after {{
-    background: var(--brand-primary);
+    background: var(--brand-accent);
+  }}
+  .q-field--focused .q-field__control:before {{
+    background: #2f3338;
   }}
   .q-field--focused .q-field__control:after {{
-    background: var(--brand-primary);
+    background: var(--brand-accent);
   }}
   .q-field--outlined .q-field__control {{
     background: #0f172a;
@@ -50,8 +53,12 @@ APP_FONT_CSS = f"""
   .q-field--outlined .q-field__control:before {{
     border-color: #2f3338;
   }}
-  .q-field--outlined.q-field--focused .q-field__control:before {{
-    border-color: var(--brand-primary-2);
+  .q-field--outlined .q-field__control:after {{
+    border-color: var(--brand-accent);
+  }}
+  .q-field--outlined.q-field--focused .q-field__control:before,
+  .q-field--outlined.q-field--focused .q-field__control:after {{
+    border-color: var(--brand-accent);
   }}
   .q-field__native, .q-field__prefix, .q-field__suffix {{
     color: #e5e7eb;
@@ -74,7 +81,10 @@ APP_FONT_CSS = f"""
     color: var(--brand-primary);
   }}
   .q-item__section--main {{
-    color: inherit;
+    color: #e5e7eb;
+  }}
+  .q-item__section--main .q-item__label--caption {{
+    color: #9ca3af;
   }}
   .q-btn .q-focus-helper {{
     background: color-mix(in srgb, var(--brand-primary-2) 25%, transparent);
