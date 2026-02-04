@@ -1072,16 +1072,14 @@ def render_documents(session, comp: Company) -> None:
                 "w-full px-6 py-3 items-center justify-between border-b border-neutral-800 bg-neutral-950/60"
             ):
                 with ui.row().classes("items-center gap-3 flex-wrap"):
-                    # FIXED: Added props options-dense and specific background classes for the popup
+                    # FIXED: Added popup-content-class to force dark menu background
                     ui.select(
                         year_options,
                         value=state["year"],
                         label="Jahr",
                         on_change=lambda e: _set_year(e.value or str(datetime.now().year)),
-                    ).props("dense options-dense behavior=menu").classes(
+                    ).props("dense options-dense behavior=menu popup-content-class='bg-neutral-900 text-neutral-200 border border-neutral-800'").classes(
                         C_INPUT + " w-28 bg-neutral-900 shadow-sm"
-                    ).style(
-                        "--q-color-primary: #a3a3a3;"  # Ensure dropdown text contrast
                     )
 
                 with ui.row().classes("items-center gap-2 flex-wrap"):
@@ -1109,13 +1107,12 @@ def render_documents(session, comp: Company) -> None:
 
             # --- LIST HEADER ---
             with ui.row().classes(
-                "w-full px-4 py-3 items-center border-b border-neutral-800 bg-neutral-900/50 text-xs font-semibold tracking-wider text-neutral-400 uppercase"
+                "w-full px-4 py-3 items-center border-b border-neutral-800 bg-neutral-900/50 text-xs font-semibold tracking-wider text-neutral-400 uppercase flex-nowrap"
             ):
-                # Note: No 'gap' classes here, strict width based
                 select_all_checkbox = ui.checkbox(
                     value=all_selected,
                     on_change=lambda e, i=items: _toggle_select_all(i, bool(e.value)),
-                ).props("dense size=xs").classes(col_w["check"])
+                ).props("dense size=xs").classes(col_w["check"] + " shrink-0")
                 selection_ui["select_all"] = select_all_checkbox
                 
                 ui.label("Datei").classes(col_w["file"])
@@ -1173,9 +1170,10 @@ def render_documents(session, comp: Company) -> None:
                 icon_name, icon_classes = _resolve_file_icon(mime_value, filename)
                 
                 # Row Styles
+                # FIXED: Added 'flex-nowrap' here to prevent the button from wrapping
                 row_classes = (
                     "w-full px-4 py-3 items-center border-b border-neutral-800/50 "
-                    "hover:bg-neutral-800/40 transition-colors text-sm group"
+                    "hover:bg-neutral-800/40 transition-colors text-sm group flex-nowrap"
                 )
                 if highlight_document_id == doc_id:
                      row_classes += " bg-amber-500/5 border-l-2 border-l-amber-500 pl-[14px]"
@@ -1188,12 +1186,13 @@ def render_documents(session, comp: Company) -> None:
                     ).props("dense size=xs").classes(col_w["check"] + " shrink-0")
 
                     # 2. File Info
-                    with ui.row().classes(col_w["file"] + " items-center gap-3 overflow-hidden pr-2"):
+                    with ui.row().classes(col_w["file"] + " items-center gap-3 overflow-hidden pr-2 flex-nowrap"):
                         with ui.element("div").classes(
                             f"w-8 h-8 shrink-0 rounded flex items-center justify-center {icon_classes}"
                         ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05)"):
                             ui.icon(icon_name).classes("text-sm")
                         
+                        # min-w-0 required for flex truncation
                         with ui.column().classes("gap-0.5 min-w-0 flex-1"):
                             ui.link(filename, open_url, new_tab=True).classes(
                                 "text-neutral-200 font-medium leading-tight truncate hover:text-amber-400 hover:underline block w-full"
@@ -1204,10 +1203,10 @@ def render_documents(session, comp: Company) -> None:
                                 ui.label(_format_source(doc.source))
 
                     # 3. Date
-                    ui.label(display_date or "-").classes(col_w["date"] + " text-neutral-400 font-mono text-xs")
+                    ui.label(display_date or "-").classes(col_w["date"] + " text-neutral-400 font-mono text-xs shrink-0")
 
                     # 4. Tags
-                    with ui.row().classes(col_w["tags"] + " gap-1 flex-wrap"):
+                    with ui.row().classes(col_w["tags"] + " gap-1 flex-wrap h-6 overflow-hidden"):
                         tag_items = _parse_keywords(tags_value) if tags_value != "-" else []
                         if tag_items:
                             for tag in tag_items[:2]:
@@ -1221,19 +1220,20 @@ def render_documents(session, comp: Company) -> None:
 
                     # 5. Amounts
                     def _amt_lbl(val, width):
-                         ui.label(val).classes(width + " text-right font-mono text-neutral-300 tracking-tight")
+                         ui.label(val).classes(width + " text-right font-mono text-neutral-300 tracking-tight shrink-0")
                     _amt_lbl(_format_amount_value(amount_total, currency_value) if amount_total else "-", col_w["amt"])
                     _amt_lbl(_format_amount_value(amount_net, currency_value) if amount_net else "-", col_w["amt"])
                     _amt_lbl(_format_amount_value(amount_tax, currency_value) if amount_tax else "-", col_w["amt"])
 
                     # 6. Status
-                    with ui.element("div").classes(col_w["status"] + " pl-2"):
+                    with ui.element("div").classes(col_w["status"] + " pl-2 shrink-0"):
                          ui.label(status_label).classes(badge_class + " text-[10px] px-2 py-0.5 rounded-full font-medium border border-white/5")
 
-                    # 7. Action Button
-                    with ui.element("div").classes(col_w["action"] + " flex justify-end"):
-                        # FIXED: Added 'stop' to prevent row clicks, 'z-10' for layering
-                        with ui.button(icon="more_vert").props("round flat dense stop").classes("text-neutral-500 hover:text-white transition-colors z-10"):
+                    # 7. Action Button (The "...")
+                    # FIXED: Added 'flex justify-end' and 'shrink-0' to lock position
+                    with ui.element("div").classes(col_w["action"] + " flex justify-end shrink-0"):
+                        # 'stop' stops click propagation (so clicking menu doesn't select row)
+                        with ui.button(icon="more_vert").props("round flat dense stop").classes("text-neutral-500 hover:text-white transition-colors"):
                             with ui.menu().props("auto-close").classes("bg-neutral-900 border border-neutral-800 text-neutral-200"):
                                 ui.menu_item("Bearbeiten", on_click=lambda _, d=doc_id: _open_meta(int(d)))
                                 ui.menu_item("Vorschau", on_click=lambda _, u=open_url: _preview_document(u))

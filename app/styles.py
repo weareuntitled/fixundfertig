@@ -22,149 +22,58 @@ APP_FONT_CSS = f"""
     --surface-2: #1c2024;
     --text-muted: #94a3b8;
   }}
-  a {{
-    color: var(--brand-primary);
+  a {{ color: var(--brand-primary); }}
+  a.q-link {{ color: inherit; }}
+  ::selection {{ background: color-mix(in srgb, var(--brand-primary) 70%, transparent); color: #0a0b0d; }}
+
+  /* --- QUASAR OVERRIDES FOR DARK MODE --- */
+  
+  /* Fields & Inputs */
+  .q-field__label {{ color: #94a3b8 !important; font-weight: 400; }}
+  .q-field--focused .q-field__label {{ color: var(--brand-primary) !important; font-weight: 600; }}
+  
+  .q-field__control {{ transition: box-shadow 0.2s ease, border-color 0.2s ease !important; }}
+  .q-field--outlined .q-field__control {{ background: #1f2937 !important; border-radius: 0.375rem; }}
+  .q-field--outlined .q-field__control:before {{ border-color: #334155 !important; border-width: 1px !important; }}
+  .q-field--outlined.q-field--focused .q-field__control:after {{ border-color: var(--brand-primary) !important; border-width: 1.5px !important; opacity: 1; }}
+  
+  /* Input Text Colors */
+  .q-field__native, .q-field__prefix, .q-field__suffix, .q-field__input {{ color: #ffffff !important; }}
+  .q-field__native::placeholder {{ color: #64748b !important; }}
+  
+  /* DROPDOWN MENUS (Fixes invisible text) */
+  .q-menu {{
+    background: #171717 !important; /* neutral-900 */
+    border: 1px solid #262626 !important; /* neutral-800 */
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important;
   }}
-  a.q-link {{
-    color: inherit;
-  }}
-  ::selection {{
-    background: color-mix(in srgb, var(--brand-primary) 70%, transparent);
-    color: #0a0b0d;
-  }}
-  .q-field__label {{
-    color: #94a3b8 !important;
-    font-weight: 400;
-  }}
-  .q-field--focused .q-field__label {{
-    color: var(--brand-primary) !important;
-    font-weight: 600;
-  }}
-  .q-field__control {{
-    transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
-  }}
-  .q-field--outlined .q-field__control {{
-    background: #1f2937 !important;
-    border-radius: 0.375rem;
-    transition: all 0.2s ease;
-  }}
-  .q-field--outlined .q-field__control:before {{
-    border-color: #334155 !important;
-    border-width: 1px !important;
-  }}
-  .q-field--outlined.q-field--focused .q-field__control:after {{
-    border-color: var(--brand-primary) !important;
-    border-width: 1.5px !important;
-    opacity: 1;
-  }}
-  .q-field--standard .q-field__control,
-  .q-field--filled .q-field__control,
-  .q-field--standout .q-field__control {{
-    background: #1f2937 !important;
-  }}
-  .q-field__native, .q-field__prefix, .q-field__suffix {{
-    color: #ffffff !important;
-    font-size: 0.875rem;
-  }}
-  .q-field__native::placeholder {{
-    color: #475569 !important;
-  }}
-  .q-field__marginal {{
-    color: #cbd5e1;
-  }}
-  .q-field__messages {{
-    color: #cbd5e1;
-  }}
-  .q-notification {{
-    background: #0f172a !important;
-    color: #f1f5f9 !important;
-    border: 1px solid #1e293b !important;
-    border-radius: 12px;
-    box-shadow: 0 12px 24px rgba(2, 6, 23, 0.45);
-  }}
-  .q-notification__message {{
-    color: inherit !important;
-  }}
-  .q-notification__caption,
-  .q-notification__icon,
-  .q-notification__actions,
-  .q-notification__actions .q-btn,
-  .q-notification__actions .q-icon {{
-    color: inherit !important;
-  }}
-  .q-notification__progress {{
-    background: #1f2937 !important;
-  }}
-  .q-field--error .q-field__control:after {{
-    border-color: #fb923c !important;
-  }}
-  .q-field--error .q-field__label {{
-    color: #fb923c !important;
-  }}
-  .q-checkbox__label {{
-    color: #e5e7eb;
-  }}
-  .q-checkbox__inner--truthy .q-checkbox__bg {{
-    background: var(--brand-primary);
-    border-color: var(--brand-primary);
-  }}
-  .q-checkbox__inner--falsy .q-checkbox__bg {{
-    border-color: #3f454b;
-  }}
-  .q-menu, .q-menu .q-list {{
-    background: #111827;
-    color: #e5e7eb;
-  }}
-  .q-item {{
-    color: #e5e7eb;
-  }}
-  .q-item--active {{
-    color: var(--brand-primary);
-  }}
-  .q-item__section--main {{
-    color: #e5e7eb;
-  }}
-  .q-item__section--main .q-item__label--caption {{
-    color: #9ca3af;
-  }}
-  .q-focus-helper,
-  .q-btn .q-focus-helper {{
-    background: #0a0b0d !important;
-    opacity: 1 !important;
-  }}
-  .q-btn,
-  .q-btn__content,
-  .q-btn .q-icon,
-  .q-icon {{
-    color: inherit;
-  }}
-  .q-uploader .q-btn {{
-    background: #111827;
-    color: #e5e7eb;
-    border: 1px solid #2f3338;
-  }}
-  .q-uploader .q-btn:hover {{
-    background: #1f242a;
-    border-color: #3b4046;
-  }}
-  .q-link {{
-    color: inherit;
-  }}
-  input:-webkit-autofill,
-  input:-webkit-autofill:hover,
-  input:-webkit-autofill:focus {{
+  .q-menu .q-item {{ color: #e5e7eb !important; }}
+  .q-menu .q-item--active {{ color: var(--brand-primary) !important; background: rgba(255, 197, 36, 0.1); }}
+  .q-menu .q-item:hover {{ background: #262626 !important; }}
+  
+  /* Notifications */
+  .q-notification {{ background: #0f172a !important; color: #f1f5f9 !important; border: 1px solid #1e293b !important; border-radius: 12px; }}
+  
+  /* Checkboxes */
+  .q-checkbox__inner--truthy .q-checkbox__bg {{ background: var(--brand-primary); border-color: var(--brand-primary); }}
+  .q-checkbox__inner--falsy .q-checkbox__bg {{ border-color: #4b5563; }}
+  .q-checkbox__label {{ color: #e5e7eb; }}
+
+  /* Buttons */
+  .q-focus-helper {{ background: #0a0b0d !important; opacity: 1 !important; }}
+  
+  /* Utilities */
+  .q-btn { color: inherit; }
+  input:-webkit-autofill {
     -webkit-text-fill-color: #ffffff !important;
-    transition: background-color 9999s ease-in-out 0s;
     box-shadow: 0 0 0px 1000px #1f2937 inset !important;
-  }}
+  }
 </style>
 """
 
 # Panels / cards
 C_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow-sm"
-C_CARD_HOVER = "hover:border-neutral-700/80 hover:bg-neutral-900/60 transition-all duration-150"
 C_GLASS_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow-sm"
-C_GLASS_CARD_HOVER = "hover:border-neutral-700/80 hover:bg-neutral-900/60 transition-all duration-150"
 
 # Buttons
 C_BTN_PRIM = "!bg-neutral-800 !text-white hover:bg-neutral-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
@@ -181,15 +90,4 @@ C_BADGE_YELLOW = "bg-[#ffc524]/10 text-[#ffd35d] border border-[#ffc524]/20 px-2
 C_BADGE_RED = "bg-rose-500/10 text-rose-300 border border-rose-500/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 
 # Typography
-C_PAGE_TITLE = "text-2xl font-semibold text-neutral-100 tracking-tight"
 C_SECTION_TITLE = "text-sm font-semibold text-neutral-300"
-
-# Tables
-C_TABLE_HEADER = "w-full bg-neutral-900/80 border-b border-neutral-800 px-4 py-3 gap-4"
-C_TABLE_ROW = "w-full px-4 py-3 border-b border-neutral-800 items-center gap-4 hover:bg-neutral-900/70 transition-colors"
-
-# Legacy header tokens (kept so other components don’t break)
-C_HEADER = "bg-neutral-950 border-b border-neutral-800 h-16 px-6 flex items-center justify-between sticky top-0 z-50"
-C_BRAND_BADGE = "bg-[#ffc524] text-neutral-950 p-2 rounded-lg shadow-sm"
-C_NAV_ITEM = "text-neutral-300 hover:text-neutral-100 px-3 py-2 rounded-lg hover:bg-neutral-900 transition-all duration-150"
-C_NAV_ITEM_ACTIVE = "text-[#ffd35d] px-3 py-2 rounded-lg bg-neutral-900 transition-all duration-150"
