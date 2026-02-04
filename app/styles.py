@@ -8,6 +8,7 @@ C_CONTAINER = "w-full max-w-6xl mx-auto px-5 py-6 gap-5"
 C_FONT_STACK = '"Inter", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif'
 C_NUMERIC = "tabular-nums"
 
+# WICHTIG: Alle CSS-Klammern {{ }} sind doppelt, damit Python sie nicht als Variablen liest!
 APP_FONT_CSS = f"""
 <style>
   :root, body, .q-body {{
@@ -63,11 +64,11 @@ APP_FONT_CSS = f"""
   .q-focus-helper {{ background: #0a0b0d !important; opacity: 1 !important; }}
   
   /* Utilities */
-  .q-btn { color: inherit; }
-  input:-webkit-autofill {
+  .q-btn {{ color: inherit; }}
+  input:-webkit-autofill {{
     -webkit-text-fill-color: #ffffff !important;
     box-shadow: 0 0 0px 1000px #1f2937 inset !important;
-  }
+  }}
 </style>
 """
 
