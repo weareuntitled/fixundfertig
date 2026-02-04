@@ -35,7 +35,9 @@ def auth_layout(title: str, subtitle: str):
     with ui.element("div").classes(BG_CLASSES):
         with ui.column().classes("w-full items-center gap-6"):
             with ui.column().classes(f"{CARD_CLASSES} gap-4"):
-                ui.image("/static/Logo_fixundfertig_inv.jpg").classes("h-16 w-auto self-center object-contain")
+                ui.image("/static/Logo-fixundfertig-invertiert.jpg").classes(
+                    "h-16 w-auto self-center object-contain"
+                )
                 ui.label(title).classes(TITLE_TEXT)
                 if subtitle:
                     ui.label(subtitle).classes(SUBTITLE_TEXT)
