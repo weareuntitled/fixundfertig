@@ -1474,7 +1474,7 @@ def layout_wrapper(content_func):
     identifier = app.storage.user.get("auth_user")
     initials = _avatar_initials(identifier)
     company_name = _active_company_name()
-    company_logo_url = "/static/logo_fixundfertig.svg"
+    company_logo_url = "/static/Logo-fixundfertig.svg"
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "home")
@@ -1677,5 +1677,5 @@ if __name__ in {"__main__", "__mp_main__"}:
         port=8000,           # <--- WICHTIG: Muss zum Dockerfile/Docker-Compose passen (war 8080)
         language="de",
         storage_secret=storage_secret,
-        favicon="/static/Logo_fixundfertig_01.ico",
+        favicon="/static/Logo-fixundfertig-01.ico",
     )
