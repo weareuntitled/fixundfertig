@@ -37,6 +37,17 @@ APP_FONT_CSS = f"""
   .q-field--outlined .q-field__control {{ background: #1f2937 !important; border-radius: 0.375rem; }}
   .q-field--outlined .q-field__control:before {{ border-color: #334155 !important; border-width: 1px !important; }}
   .q-field--outlined.q-field--focused .q-field__control:after {{ border-color: var(--brand-primary) !important; border-width: 1.5px !important; opacity: 1; }}
+
+  .ff-stroke-input .q-field__control {{
+    background: transparent !important;
+    border-radius: 9999px !important;
+  }}
+  .ff-stroke-input .q-field__control:before {{
+    border-color: #475569 !important;
+  }}
+  .ff-stroke-input.q-field--focused .q-field__control:after {{
+    border-color: var(--brand-primary) !important;
+  }}
   
   /* Input Text Colors */
   .q-field__native, .q-field__prefix, .q-field__suffix, .q-field__input {{ color: #ffffff !important; }}
@@ -49,6 +60,7 @@ APP_FONT_CSS = f"""
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important;
   }}
   .q-menu .q-item {{ color: #e5e7eb !important; }}
+  .q-menu .q-item__label {{ color: #e5e7eb !important; }}
   .q-menu .q-item--active {{ color: var(--brand-primary) !important; background: rgba(255, 197, 36, 0.1); }}
   .q-menu .q-item:hover {{ background: #262626 !important; }}
   
