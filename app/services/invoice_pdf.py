@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import BytesIO
 import os
-from pathlib import Path
 from typing import Any
 
 from reportlab.lib.pagesizes import A4
@@ -14,6 +13,8 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.lib import colors
+
+from services.storage import company_logo_path
 
 # ---------------------------------------------------------
 # HIER KANNST DU ALLES EINSTELLEN (DESIGN & LAYOUT)
@@ -215,13 +216,15 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     # Debugging: Falls das Logo immer noch fehlt, aktiviere diesen Print
     # print(f"Suche Logo für ID {_get(comp, 'id')}")
 
-    logo_path = Path(os.path.abspath(__file__)).resolve().parents[1] / "assets" / "danep-logo.png"
     logo = None
-    if logo_path.exists():
-        try:
-            logo = ImageReader(str(logo_path))
-        except Exception:
-            logo = None
+    comp_id = _get(comp, "id", default=None)
+    if comp_id:
+        logo_path = company_logo_path(comp_id)
+        if os.path.exists(logo_path):
+            try:
+                logo = ImageReader(str(logo_path))
+            except Exception:
+                logo = None
 
     if logo is not None:
         iw, ih = logo.getSize()

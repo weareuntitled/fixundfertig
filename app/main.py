@@ -58,6 +58,7 @@ from pages import (
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies, _open_invoice_editor
 from services.blob_storage import blob_storage, build_document_key
+from services.storage import company_logo_path
 from services.auth import ensure_owner_user, get_owner_email
 from services.documents import (
     backfill_document_fields,
@@ -1436,6 +1437,23 @@ def _active_company_name() -> str | None:
         return name.strip() or None
 
 
+def _active_company_logo_url() -> str:
+    fallback_url = "/static/logo_fixundfertig.svg"
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if not user_id:
+            return fallback_url
+        company = _resolve_active_company(session, user_id)
+        company_id = getattr(company, "id", None) if company else None
+        if not company_id:
+            return fallback_url
+        logo_path = company_logo_path(int(company_id))
+        if os.path.exists(logo_path):
+            stamp = int(os.path.getmtime(logo_path))
+            return f"/{logo_path.replace(os.sep, '/')}?v={stamp}"
+    return fallback_url
+
+
 def _is_owner_user() -> bool:
     with get_session() as session:
         user_id = get_current_user_id(session)
@@ -1483,6 +1501,7 @@ def layout_wrapper(content_func):
     identifier = app.storage.user.get("auth_user")
     initials = _avatar_initials(identifier)
     company_name = _active_company_name()
+    company_logo_url = _active_company_logo_url()
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "home")
@@ -1494,7 +1513,7 @@ def layout_wrapper(content_func):
                 "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white/80 backdrop-blur-md "
                 "border border-white/60 shadow-lg items-center py-6 gap-5 z-40"
             ):
-                ui.image("/static/logo_fixundfertig.jpg").classes("w-11 h-11 rounded-2xl object-contain")
+                ui.image(company_logo_url).classes("w-11 h-11 rounded-2xl object-contain")
 
                 def nav_item(label: str, target: str, icon: str) -> None:
                     active = app.storage.user.get("page", "home") == target
