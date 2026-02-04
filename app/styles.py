@@ -127,8 +127,10 @@ APP_FONT_CSS = f"""
   .q-item__section--main .q-item__label--caption {{
     color: #9ca3af;
   }}
+  .q-focus-helper,
   .q-btn .q-focus-helper {{
-    background: color-mix(in srgb, var(--brand-primary-2) 25%, transparent);
+    background: #0a0b0d !important;
+    opacity: 1 !important;
   }}
   .q-btn,
   .q-btn__content,
