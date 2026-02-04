@@ -1476,20 +1476,20 @@ def layout_wrapper(content_func):
         with ui.row().classes("w-full min-h-screen items-start"):
             # Sidebar
             with ui.column().classes(
-                "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-neutral-800/90 backdrop-blur-md "
-                "border border-neutral-800 shadow-lg items-center py-6 gap-5 z-40"
+                "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-transparent backdrop-blur-md "
+                "border border-neutral-800/80 shadow-lg items-center py-6 gap-5 z-40"
             ):
                 ui.image(company_logo_url).classes("w-11 h-11 rounded-2xl object-contain")
 
                 def nav_item(label: str, target: str, icon: str) -> None:
                     active = app.storage.user.get("page", "dashboard") == target
-                    base = "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150"
+                    base = "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 border border-transparent"
                     cls = (
-                        f"{base} bg-neutral-900 !text-[#ffc524] shadow-[0_0_18px_rgba(255,197,36,0.35)] ring-1 ring-[#ffc524]/40"
+                        f"{base} !text-[#ffc524] border-[#ffc524]/60 shadow-[0_0_18px_rgba(255,197,36,0.25)]"
                         if active
-                        else f"{base} !text-neutral-300 hover:!text-neutral-100 hover:bg-neutral-700/70"
+                        else f"{base} !text-neutral-300 hover:!text-neutral-100 hover:border-neutral-600/80"
                     )
-                    with ui.button(icon=icon, on_click=lambda t=target: set_page(t)).props("flat round").classes(cls):
+                    with ui.button(icon=icon, on_click=lambda t=target: set_page(t)).props("flat round no-ripple").classes(cls):
                         ui.tooltip(label)
 
                 nav_item("Dashboard", "dashboard", "dashboard")
@@ -1529,11 +1529,15 @@ def layout_wrapper(content_func):
                         ui.button(
                             "New Invoice",
                             on_click=lambda: _open_invoice_editor(None),
-                        ).classes(f"{C_BTN_PRIM} rounded-full")
+                        ).classes(
+                            "rounded-full !bg-[#ffc524] !text-neutral-900 hover:!bg-[#ffb300] "
+                            "active:scale-[0.98] px-4 py-2 text-sm font-semibold shadow-sm transition-all "
+                            "focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
+                        )
                         with ui.button().props("flat round").classes(
-                            "bg-neutral-900 text-neutral-100 hover:bg-neutral-800 rounded-full shadow-sm w-10 h-10"
+                            "bg-neutral-200 text-neutral-700 hover:bg-neutral-300 rounded-full shadow-sm w-10 h-10"
                         ):
-                            ui.label(initials).classes("text-xs font-semibold text-neutral-100")
+                            ui.label(initials).classes("text-xs font-semibold text-neutral-700")
                             with ui.menu().classes("min-w-[220px] bg-neutral-900 text-neutral-200"):
                                 if identifier:
                                     ui.label(identifier).classes("text-xs text-neutral-300 px-3 pt-2")
