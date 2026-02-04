@@ -100,6 +100,7 @@ C_GLASS_CARD_HOVER = "transition-colors hover:bg-neutral-900/70 hover:border-neu
 # Buttons
 C_BTN_PRIM = "!bg-neutral-800 !text-white hover:bg-neutral-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
 C_BTN_SEC = "!bg-neutral-900 !text-neutral-200 border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-800 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/20"
+C_BTN_ORANGE = "rounded-lg !bg-[#ffc524] !text-neutral-900 hover:!bg-[#ffb300] active:scale-[0.98] px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
 
 # Inputs
 C_INPUT = "w-full text-sm transition-all"

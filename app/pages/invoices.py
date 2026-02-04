@@ -7,7 +7,7 @@ from ._shared import _open_invoice_editor, _parse_iso_date
 def render_invoices(session, comp: Company) -> None:
     with ui.row().classes("w-full justify-between items-center mb-4"):
         ui.label("Rechnungen").classes(C_PAGE_TITLE)
-        ui.button("Neue Rechnung", on_click=lambda: _open_invoice_editor(None)).classes(C_BTN_PRIM)
+        ui.button("Neue Rechnung", on_click=lambda: _open_invoice_editor(None)).classes(C_BTN_ORANGE)
 
     # Nur Rechnungen der aktiven Company (via Customer.company_id)
     invs = session.exec(
