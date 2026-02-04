@@ -155,8 +155,8 @@ def render_dashboard(session, comp: Company) -> None:
     _assign_item_ids()
 
     status_badge = {
-        "Paid": "bg-neutral-800 text-neutral-200 border border-neutral-700 px-2 py-0.5 rounded-full text-xs font-semibold",
-        "Pending": "bg-[#ffc524]/10 text-[#ffd35d] border border-[#ffc524]/20 px-2 py-0.5 rounded-full text-xs font-semibold",
+        "Paid": f"{C_BADGE_GRAY} font-semibold",
+        "Pending": f"{C_BADGE_YELLOW} font-semibold",
     }
 
     filters = ["All", "Paid", "Pending"]

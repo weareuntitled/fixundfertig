@@ -51,6 +51,8 @@ from styles import (
     C_TABLE_HEADER,
     C_TABLE_ROW,
     C_BADGE_GREEN,
+    C_BADGE_GRAY,
+    C_BADGE_YELLOW,
     C_CONTAINER,
     C_GLASS_CARD,
     C_NUMERIC,
