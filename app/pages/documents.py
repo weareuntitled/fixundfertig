@@ -45,6 +45,13 @@ def render_documents(session, comp: Company) -> None:
         "date_from": "",
         "date_to": "",
     }
+    highlight_document_id = None
+    stored_highlight = app.storage.user.pop("documents_highlight_id", None)
+    if stored_highlight is not None:
+        try:
+            highlight_document_id = int(stored_highlight)
+        except (TypeError, ValueError):
+            highlight_document_id = None
     debug_enabled = os.getenv("FF_DEBUG") == "1"
     upload_status = None
     debug_client_logs = True
@@ -1011,9 +1018,13 @@ def render_documents(session, comp: Company) -> None:
                 open_url = f"/api/documents/{doc_id}/file"
                 status_label, badge_class = _resolve_status(doc, amount_total, vendor_value)
                 icon_name, icon_classes = _resolve_file_icon(mime_value, filename)
-                with ui.row().classes(
-                    "w-full px-6 py-2.5 items-center gap-4 border-b border-slate-100 hover:bg-slate-50 transition-colors"
-                ).on(
+                row_classes = (
+                    "w-full px-6 py-2.5 items-center gap-4 border-b border-slate-100 "
+                    "hover:bg-slate-50 transition-colors"
+                )
+                if highlight_document_id == doc_id:
+                    row_classes += " bg-amber-50 ring-1 ring-amber-200"
+                with ui.row().classes(row_classes).on(
                     "contextmenu",
                     lambda e, i=doc_id, u=open_url: _open_context_menu(e, i, u),
                     js_handler="(e) => { e.preventDefault(); emit({pageX: e.pageX, pageY: e.pageY, clientX: e.clientX, clientY: e.clientY}); }",
