@@ -367,7 +367,7 @@ def render_dashboard(session, comp: Company) -> None:
     with ui.row().classes("w-full items-center justify-between mb-6 flex-col lg:flex-row gap-4"):
         with ui.column().classes("gap-1"):
             ui.label("Dashboard").classes("text-3xl font-bold tracking-tight text-neutral-100")
-            ui.label(f"Welcome back, {greeting_name}").classes("text-sm text-neutral-400")
+            ui.label(f"Welcome back, {greeting_name}").classes("text-sm text-neutral-300")
         with ui.row().classes(
             "rounded-full bg-neutral-900/80 backdrop-blur-md border border-neutral-800 shadow-sm p-1 gap-1"
         ):
@@ -411,7 +411,7 @@ def render_dashboard(session, comp: Company) -> None:
                                 "text-sm font-semibold text-neutral-100 leading-snug line-clamp-2"
                             )
                             with ui.row().classes("items-center justify-between gap-2 min-w-0"):
-                                ui.label(item["date"]).classes("text-[11px] text-neutral-400")
+                                ui.label(item["date"]).classes("text-[11px] text-neutral-300")
                                 ui.label(item["type"]).classes(
                                     "bg-neutral-800 text-neutral-200 border border-neutral-700 px-2 py-0.5 rounded-full "
                                     "text-[11px] font-semibold truncate max-w-[120px]"

@@ -1039,10 +1039,10 @@ def render_documents(session, comp: Company) -> None:
                     selected_count = len(selected_ids.intersection(current_ids))
                     if selected_count == 0:
                         download_button.props("disable")
-                    ui.label(f"{selected_count} ausgewählt").classes("text-xs text-neutral-400")
+                    ui.label(f"{selected_count} ausgewählt").classes("text-xs text-neutral-300")
 
             with ui.row().classes(
-                "w-full px-6 py-3 text-xs font-semibold tracking-wide text-neutral-400 border-b border-neutral-800"
+                "w-full px-6 py-3 text-xs font-semibold tracking-wide text-neutral-300 border-b border-neutral-800"
             ):
                 ui.checkbox(
                     value=all_selected,
@@ -1058,7 +1058,7 @@ def render_documents(session, comp: Company) -> None:
                 ui.label("Aktionen").classes("w-[6%] text-right")
 
             if not items:
-                ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-neutral-400")
+                ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-neutral-300")
                 return
 
             for doc in items:
