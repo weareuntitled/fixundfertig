@@ -45,7 +45,7 @@ APP_FONT_CSS = f"""
     background: #3b4046;
   }}
   .q-field__control {{
-    background: var(--surface-1);
+    background: #1f2937;
   }}
   .q-field--focused .q-field__control:before {{
     background: #2f3338;
@@ -54,12 +54,12 @@ APP_FONT_CSS = f"""
     background: #3b4046;
   }}
   .q-field--outlined .q-field__control {{
-    background: var(--surface-1);
+    background: #1f2937;
   }}
   .q-field--standard .q-field__control,
   .q-field--filled .q-field__control,
   .q-field--standout .q-field__control {{
-    background: var(--surface-1);
+    background: #1f2937;
   }}
   .q-field--outlined .q-field__control:before {{
     border-color: #2f3338;
@@ -156,11 +156,11 @@ C_GLASS_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow
 C_GLASS_CARD_HOVER = "hover:border-neutral-700/80 hover:bg-neutral-900/60 transition-all duration-150"
 
 # Buttons
-C_BTN_PRIM = "!bg-[#ffc524] !text-neutral-950 hover:bg-[#ffd35d] active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
+C_BTN_PRIM = "!bg-neutral-800 !text-white hover:bg-neutral-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
 C_BTN_SEC = "!bg-neutral-900 !text-neutral-200 border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-800 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/20"
 
 # Inputs
-C_INPUT = "border-neutral-800 bg-neutral-900 text-neutral-100 placeholder:text-neutral-500 rounded-lg text-sm px-3 py-2 outline-none focus-visible:ring-0 focus-visible:border-neutral-600 w-full transition-all"
+C_INPUT = "border-neutral-700 bg-neutral-800 text-white placeholder:text-neutral-400 rounded-lg text-sm px-3 py-2 outline-none focus-visible:ring-0 focus-visible:border-neutral-500 w-full transition-all"
 
 # Badges
 C_BADGE_GREEN = "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
