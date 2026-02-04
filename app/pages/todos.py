@@ -4,10 +4,12 @@ from datetime import datetime
 
 from nicegui import ui
 
-from application.contracts.todo_dtos import CreateTodoRequest
-from application.todo.commands.create_todo import CreateTodoCommand
-from application.todo.errors import TodoTitleEmptyError
-from application.todo.queries.list_todos import ListTodosQuery
+from services.todos import (
+    CreateTodoCommand,
+    CreateTodoRequest,
+    ListTodosQuery,
+    TodoTitleEmptyError,
+)
 from styles import C_BTN_PRIM, C_CARD, C_INPUT, C_PAGE_TITLE
 
 
