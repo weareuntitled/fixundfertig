@@ -25,7 +25,7 @@ LINK_TEXT = "text-sm !text-neutral-400 hover:!text-neutral-200 no-underline"
 TITLE_TEXT = "text-2xl font-semibold text-neutral-100 text-center"
 SUBTITLE_TEXT = "text-sm text-neutral-300 text-center"
 INPUT_CLASSES = f"w-full {C_INPUT}"
-PRIMARY_BUTTON = "w-full bg-[#ffc524] text-neutral-950 rounded-lg hover:bg-[#ffd35d]"
+PRIMARY_BUTTON = "w-full !bg-neutral-800 !text-white rounded-lg hover:bg-neutral-700"
 SECONDARY_BUTTON = "w-full border border-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-800"
 CARD_CLASSES = "w-full max-w-[400px] bg-neutral-900 rounded-xl shadow-lg border border-neutral-800 p-6"
 BG_CLASSES = "min-h-screen w-full bg-neutral-950 flex items-center justify-center px-4"
@@ -51,6 +51,14 @@ def _error_label() -> ui.label:
     label = ui.label("").classes(ERROR_TEXT)
     label.set_visibility(False)
     return label
+
+
+def _set_input_error(input_field: ui.input, message: str) -> None:
+    if message:
+        input_field.props(f'error error-message="{message}"')
+    else:
+        input_field.props('error=false error-message=""')
+    input_field.update()
 
 
 def _set_error(label: ui.label, message: str) -> None:
@@ -94,25 +102,23 @@ def login_page():
     with auth_layout("Welcome back", "Sign in to your account") as card:
         with ui.column().classes("w-full gap-1"):
             identifier_input = ui.input("Email or username").props("outlined dense").classes(INPUT_CLASSES)
-            identifier_error = _error_label()
         with ui.column().classes("w-full gap-1"):
             password_input = ui.input("Password").props("outlined dense type=password").classes(INPUT_CLASSES)
-            password_error = _error_label()
         status_error = _error_label()
         status_success = ui.label("").classes("text-sm text-neutral-300")
         status_success.set_visibility(False)
 
         def handle_login() -> None:
-            _set_error(identifier_error, "")
-            _set_error(password_error, "")
+            _set_input_error(identifier_input, "")
+            _set_input_error(password_input, "")
             _set_error(status_error, "")
             _set_success(status_success, "")
             identifier = (identifier_input.value or "").strip()
             password = password_input.value or ""
             if not identifier:
-                _set_error(identifier_error, "Email or username is required")
+                _set_input_error(identifier_input, "Email or username is required")
             if not password:
-                _set_error(password_error, "Password is required")
+                _set_input_error(password_input, "Password is required")
             if not identifier or not password:
                 return
             login_button.loading = True
@@ -149,7 +155,11 @@ def login_page():
             except Exception as exc:
                 _set_error(status_error, str(exc))
 
-        login_button = ui.button("Log in", on_click=handle_login).props("loading=false").classes(PRIMARY_BUTTON)
+        login_button = (
+            ui.button("Log in", on_click=handle_login)
+            .props("unelevated loading=false")
+            .classes(PRIMARY_BUTTON)
+        )
         with ui.row().classes("w-full justify-between"):
             ui.link("Forgot password?", "/forgot").classes(LINK_TEXT)
             ui.link("Create account", "/signup").classes(LINK_TEXT)
@@ -166,34 +176,30 @@ def signup_page():
     with auth_layout("Create account", "Start with your email and a password") as card:
         with ui.column().classes("w-full gap-1"):
             email_input = ui.input("Email").props("outlined dense").classes(INPUT_CLASSES)
-            email_error = _error_label()
         with ui.column().classes("w-full gap-1"):
             username_input = ui.input("Username (optional)").props("outlined dense").classes(INPUT_CLASSES)
-            username_error = _error_label()
         with ui.column().classes("w-full gap-1"):
             password_input = ui.input("Password").props("outlined dense type=password").classes(INPUT_CLASSES)
-            password_error = _error_label()
         with ui.column().classes("w-full gap-1"):
             confirm_input = ui.input("Confirm password").props("outlined dense type=password").classes(INPUT_CLASSES)
-            confirm_error = _error_label()
         status_error = _error_label()
 
         def handle_signup() -> None:
-            _set_error(email_error, "")
-            _set_error(username_error, "")
-            _set_error(password_error, "")
-            _set_error(confirm_error, "")
+            _set_input_error(email_input, "")
+            _set_input_error(username_input, "")
+            _set_input_error(password_input, "")
+            _set_input_error(confirm_input, "")
             _set_error(status_error, "")
             email = (email_input.value or "").strip()
             username = (username_input.value or "").strip()
             password = password_input.value or ""
             confirm = confirm_input.value or ""
             if not email:
-                _set_error(email_error, "Email is required")
+                _set_input_error(email_input, "Email is required")
             if not password:
-                _set_error(password_error, "Password is required")
+                _set_input_error(password_input, "Password is required")
             if password and confirm != password:
-                _set_error(confirm_error, "Passwords do not match")
+                _set_input_error(confirm_input, "Passwords do not match")
             if not email or not password or (password and confirm != password):
                 return
             signup_button.loading = True
@@ -228,8 +234,10 @@ def signup_page():
             finally:
                 signup_button.loading = False
 
-        signup_button = ui.button("Create account", on_click=handle_signup).props("loading=false").classes(
-            PRIMARY_BUTTON
+        signup_button = (
+            ui.button("Create account", on_click=handle_signup)
+            .props("unelevated loading=false")
+            .classes(PRIMARY_BUTTON)
         )
         with ui.row().classes("w-full justify-between"):
             ui.link("Already have an account?", "/login").classes(LINK_TEXT)
@@ -260,7 +268,7 @@ def verify_page(request: Request):
             else:
                 _set_error(status_error, "Invalid or expired token")
 
-        ui.button("Verify email", on_click=handle_verify).classes(PRIMARY_BUTTON)
+        ui.button("Verify email", on_click=handle_verify).props("unelevated").classes(PRIMARY_BUTTON)
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
@@ -286,7 +294,7 @@ def forgot_page():
                 "/login",
             )
 
-        ui.button("Send reset link", on_click=handle_request).classes(PRIMARY_BUTTON)
+        ui.button("Send reset link", on_click=handle_request).props("unelevated").classes(PRIMARY_BUTTON)
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
@@ -327,5 +335,5 @@ def reset_page(request: Request):
             else:
                 _set_error(status_error, "Invalid or expired token")
 
-        ui.button("Reset password", on_click=handle_reset).classes(PRIMARY_BUTTON)
+        ui.button("Reset password", on_click=handle_reset).props("unelevated").classes(PRIMARY_BUTTON)
         ui.link("Back to login", "/login").classes(LINK_TEXT)
