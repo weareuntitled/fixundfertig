@@ -17,6 +17,7 @@ from services.auth import (
     verify_email,
     verify_password,
 )
+from ui_theme import apply_global_ui_theme
 
 ERROR_TEXT = "text-sm text-rose-600"
 LINK_TEXT = "text-sm text-slate-500 hover:text-slate-900 no-underline"
@@ -88,6 +89,7 @@ def _mask_token_prefix(token: str | None, visible: int = 6) -> str:
 
 @ui.page("/login")
 def login_page():
+    apply_global_ui_theme()
     with auth_layout("Welcome back", "Sign in to your account") as card:
         with ui.column().classes("w-full gap-1"):
             identifier_input = ui.input("Email or username").props("outlined dense").classes(INPUT_CLASSES)
@@ -159,6 +161,7 @@ def login_page():
 
 @ui.page("/signup")
 def signup_page():
+    apply_global_ui_theme()
     with auth_layout("Create account", "Start with your email and a password") as card:
         with ui.column().classes("w-full gap-1"):
             email_input = ui.input("Email").props("outlined dense").classes(INPUT_CLASSES)
@@ -233,6 +236,7 @@ def signup_page():
 
 @ui.page("/verify")
 def verify_page(request: Request):
+    apply_global_ui_theme()
     token_prefill = (request.query_params.get("token") or "").strip()
     with auth_layout("Verify your email", "Enter the verification token") as card:
         with ui.column().classes("w-full gap-1"):
@@ -261,6 +265,7 @@ def verify_page(request: Request):
 
 @ui.page("/forgot")
 def forgot_page():
+    apply_global_ui_theme()
     with auth_layout("Forgot password", "We will email you a reset link") as card:
         with ui.column().classes("w-full gap-1"):
             email_input = ui.input("Email").props("outlined dense").classes(INPUT_CLASSES)
@@ -286,6 +291,7 @@ def forgot_page():
 
 @ui.page("/reset")
 def reset_page(request: Request):
+    apply_global_ui_theme()
     token_prefill = (request.query_params.get("token") or "").strip()
     with auth_layout("Reset password", "Enter your token and choose a new password") as card:
         with ui.column().classes("w-full gap-1"):
