@@ -546,6 +546,8 @@ def render_documents(session, comp: Company) -> None:
             amount_net = _coerce_float(getattr(doc, "net_amount", None))
         if amount_tax is None:
             amount_tax = _coerce_float(getattr(doc, "tax_amount", None))
+        if amount_tax is None and amount_total is not None and amount_net is not None:
+            amount_tax = max(amount_total - amount_net, 0.0)
         return amount_total, amount_net, amount_tax
 
     @ui.refreshable
@@ -584,6 +586,7 @@ def render_documents(session, comp: Company) -> None:
                     on_change=lambda e: (
                         state.__setitem__("year", e.value or str(datetime.now().year)),
                         render_summary.refresh(),
+                        render_list.refresh(),
                     ),
                 ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
 

@@ -21,72 +21,111 @@ def render_dashboard(session, comp: Company) -> None:
     else:
         greeting_name = "there"
 
-    doc_items = [
-        {
-            "title": "March Invoice – ACME Studio",
-            "date": "Mar 12, 2024",
-            "type": "Invoice",
-            "status": "Paid",
-            "icon": "description",
-            "accent": "bg-blue-100 text-blue-600",
-        },
-        {
-            "title": "Receipt – Office Supplies",
-            "date": "Mar 08, 2024",
-            "type": "Receipt",
-            "status": "Pending",
-            "icon": "receipt_long",
-            "accent": "bg-orange-100 text-orange-600",
-        },
-        {
-            "title": "Product Shoot – Asset Pack",
-            "date": "Mar 05, 2024",
-            "type": "Image",
-            "status": "Paid",
-            "icon": "image",
-            "accent": "bg-emerald-100 text-emerald-600",
-        },
-        {
-            "title": "Travel Invoice – April",
-            "date": "Apr 02, 2024",
-            "type": "PDF",
-            "status": "Pending",
-            "icon": "picture_as_pdf",
-            "accent": "bg-slate-100 text-slate-700",
-        },
-        {
-            "title": "Studio Rent – Q1",
-            "date": "Mar 28, 2024",
-            "type": "Invoice",
-            "status": "Paid",
-            "icon": "description",
-            "accent": "bg-violet-100 text-violet-600",
-        },
-        {
-            "title": "Client Receipt – Catering",
-            "date": "Mar 23, 2024",
-            "type": "Receipt",
-            "status": "Pending",
-            "icon": "receipt_long",
-            "accent": "bg-amber-100 text-amber-700",
-        },
-        {
-            "title": "Workshop Photos – Batch 4",
-            "date": "Mar 19, 2024",
-            "type": "Image",
-            "status": "Paid",
-            "icon": "image",
-            "accent": "bg-teal-100 text-teal-700",
-        },
-        {
-            "title": "Insurance Policy – Renewal",
-            "date": "Mar 15, 2024",
-            "type": "PDF",
-            "status": "Pending",
-            "icon": "picture_as_pdf",
-            "accent": "bg-rose-100 text-rose-600",
-        },
-    ]
+    def _invoice_sort_date(invoice: Invoice) -> datetime:
+        if invoice.updated_at:
+            parsed = _parse_iso_date(invoice.updated_at)
+            if parsed != datetime.min:
+                return parsed
+        return _parse_iso_date(invoice.date)
+
+    def _invoice_display_date(invoice: Invoice) -> str:
+        display_date = (invoice.date or "").strip()
+        if display_date:
+            return display_date
+        parsed = _invoice_sort_date(invoice)
+        return parsed.strftime("%Y-%m-%d") if parsed != datetime.min else ""
+
+    def _document_display_date(doc: Document) -> str:
+        for value in (doc.doc_date, doc.invoice_date):
+            if (value or "").strip():
+                return str(value).strip()
+        created_at = doc.created_at if isinstance(doc.created_at, datetime) else datetime.min
+        return created_at.strftime("%Y-%m-%d") if created_at != datetime.min else ""
+
+    def _document_sort_date(doc: Document) -> datetime:
+        date_value = (doc.doc_date or "").strip() or (doc.invoice_date or "").strip()
+        if date_value:
+            parsed = _parse_iso_date(date_value)
+            if parsed != datetime.min:
+                return parsed
+        return doc.created_at if isinstance(doc.created_at, datetime) else datetime.min
+
+    def _document_status(doc: Document) -> str:
+        amount_total = doc.amount_total
+        if amount_total is None and doc.gross_amount is not None:
+            amount_total = doc.gross_amount
+        has_vendor = bool((doc.vendor or "").strip())
+        return "Paid" if amount_total is not None or has_vendor else "Pending"
+
+    def _document_icon(mime_value: str, filename: str) -> tuple[str, str]:
+        lower_mime = (mime_value or "").lower()
+        lower_name = (filename or "").lower()
+        if "pdf" in lower_mime or lower_name.endswith(".pdf"):
+            return "picture_as_pdf", "bg-rose-100 text-rose-600"
+        if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
+            return "image", "bg-emerald-100 text-emerald-600"
+        return "insert_drive_file", "bg-slate-100 text-slate-700"
+
+    def _load_doc_items() -> list[dict]:
+        invoice_rows = session.exec(
+            select(Invoice)
+            .join(Customer, Invoice.customer_id == Customer.id)
+            .where(Customer.company_id == int(comp.id or 0))
+            .order_by(Invoice.id.desc())
+        ).all()
+        invoice_items: list[dict] = []
+        for inv in invoice_rows:
+            customer = session.get(Customer, int(inv.customer_id)) if inv.customer_id else None
+            customer_name = customer.display_name if customer else ""
+            title = inv.title or "Rechnung"
+            if customer_name:
+                title = f"{title} – {customer_name}"
+            invoice_items.append(
+                {
+                    "title": title,
+                    "date": _invoice_display_date(inv),
+                    "type": "Invoice",
+                    "status": "Paid" if inv.status == InvoiceStatus.PAID else "Pending",
+                    "icon": "description",
+                    "accent": "bg-blue-100 text-blue-600",
+                    "sort_date": _invoice_sort_date(inv),
+                    "on_click": lambda _, invoice_id=int(inv.id): _open_invoice_detail(invoice_id),
+                }
+            )
+
+        document_rows = session.exec(
+            select(Document)
+            .where(Document.company_id == int(comp.id or 0))
+            .order_by(Document.created_at.desc())
+        ).all()
+        document_items: list[dict] = []
+        for doc in document_rows:
+            if doc.id is None:
+                continue
+            filename = doc.original_filename or doc.filename or doc.title or "Dokument"
+            mime_value = doc.mime or doc.mime_type or ""
+            icon_name, accent = _document_icon(mime_value, filename)
+            doc_type = (doc.doc_type or doc.document_type or "").strip() or "Document"
+            doc_id = int(doc.id)
+            open_url = f"/api/documents/{doc_id}/file"
+            document_items.append(
+                {
+                    "title": doc.title or filename,
+                    "date": _document_display_date(doc),
+                    "type": doc_type.capitalize(),
+                    "status": _document_status(doc),
+                    "icon": icon_name,
+                    "accent": accent,
+                    "sort_date": _document_sort_date(doc),
+                    "on_click": lambda _, url=open_url: ui.navigate.to(url),
+                }
+            )
+
+        items = invoice_items + document_items
+        items.sort(key=lambda item: item["sort_date"], reverse=True)
+        return items[:8]
+
+    doc_items = _load_doc_items()
 
     def _assign_item_ids() -> None:
         invoice_rows = session.exec(
