@@ -9,14 +9,12 @@ from .documents import render_documents
 from .expenses import render_expenses
 from .documents import render_documents
 from .exports import render_exports
-from .home import render_home
 from .invoice_create import render_invoice_create
 from .invoice_detail import render_invoice_detail
 from .invoices import render_invoices
 from .invites import render_invites
 from .ledger import render_ledger
 from .settings import render_settings
-from .todos import render_todos
 
 # Import routes for side effects. Registers @ui.page decorators
 from . import auth
