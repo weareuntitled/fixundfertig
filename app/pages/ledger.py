@@ -116,7 +116,7 @@ def render_ledger(session, comp: Company) -> None:
         if len(data) == 0:
             with ui.card().classes(C_CARD + " p-4"):
                 with ui.row().classes("w-full justify-center"):
-                    ui.label("Keine Ergebnisse gefunden").classes("text-sm text-slate-500")
+                    ui.label("Keine Ergebnisse gefunden").classes("text-sm text-neutral-400")
             return
 
         with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
@@ -131,32 +131,34 @@ def render_ledger(session, comp: Company) -> None:
             for it in data:
                 with ui.element("div").classes(C_TABLE_ROW + " group grid grid-cols-1 sm:grid-cols-[110px_110px_110px_1fr_120px_120px] gap-2 sm:gap-0 items-start sm:items-center"):
                     with ui.column().classes("gap-1"):
-                        ui.label("Datum").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Datum").classes("sm:hidden text-[10px] uppercase text-neutral-500")
                         ui.label(it["date"]).classes("text-xs font-mono")
 
                     with ui.column().classes("gap-1"):
-                        ui.label("Typ").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Typ").classes("sm:hidden text-[10px] uppercase text-neutral-500")
                         badge_class = (
-                            "bg-orange-50 text-orange-700 border border-orange-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+                            "bg-[#ffc524]/10 text-[#ffd35d] border border-[#ffc524]/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
                             if it["type"] == "INCOME"
-                            else "bg-orange-100 text-orange-800 border border-orange-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+                            else "bg-neutral-800 text-neutral-200 border border-neutral-700 px-2 py-0.5 rounded-full text-xs font-medium text-center"
                         )
                         ui.label("Income" if it["type"] == "INCOME" else "Expense").classes(badge_class + " w-20")
 
                     with ui.column().classes("gap-1"):
-                        ui.label("Status").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Status").classes("sm:hidden text-[10px] uppercase text-neutral-500")
                         ui.label(it["status"]).classes("text-xs")
 
                     with ui.column().classes("gap-1"):
-                        ui.label("Kunde/Lieferant").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Kunde/Lieferant").classes("sm:hidden text-[10px] uppercase text-neutral-500")
                         ui.label(it["party"]).classes("text-sm")
                         if it.get("description"):
-                            ui.label(it["description"]).classes("text-xs text-slate-500")
+                            ui.label(it["description"]).classes("text-xs text-neutral-400")
 
                     with ui.column().classes("gap-1 sm:items-end"):
-                        ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-neutral-500")
                         amount_label = f"{it['amount']:,.2f} €" if it["type"] == "INCOME" else f"-{it['amount']:,.2f} €"
-                        amount_class = "text-right text-sm text-orange-700" if it["type"] == "INCOME" else "text-right text-sm text-orange-800"
+                        amount_class = (
+                            "text-right text-sm text-[#ffd35d]" if it["type"] == "INCOME" else "text-right text-sm text-neutral-200"
+                        )
                         ui.label(amount_label).classes(amount_class)
 
                     with ui.row().classes("justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition"):
@@ -164,8 +166,8 @@ def render_ledger(session, comp: Company) -> None:
                             ui.button(
                                 icon="open_in_new",
                                 on_click=lambda _, iid=it["invoice_id"]: _open_invoice_detail(int(iid)),
-                            ).props("flat dense").classes("text-slate-500")
+                            ).props("flat dense").classes("text-neutral-400")
                         else:
-                            ui.label("-").classes("text-xs text-slate-400")
+                            ui.label("-").classes("text-xs text-neutral-500")
 
     render_list()

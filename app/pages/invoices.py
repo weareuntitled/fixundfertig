@@ -83,7 +83,7 @@ def render_invoices(session, comp: Company) -> None:
     with ui.dialog() as delete_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
             ui.label("Rechnung löschen").classes(C_SECTION_TITLE)
-            delete_label = ui.label("Willst du diese Rechnung wirklich löschen?").classes("text-sm text-slate-600")
+            delete_label = ui.label("Willst du diese Rechnung wirklich löschen?").classes("text-sm text-neutral-400")
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=delete_dialog.close).classes(C_BTN_SEC)
 
@@ -120,18 +120,18 @@ def render_invoices(session, comp: Company) -> None:
                 with ui.element("div").classes("overflow-x-auto"):
                     with ui.element("div").classes("w-full sm:min-w-[720px]"):
                         with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
-                            ui.label("Nr").classes("w-24 font-bold text-xs text-slate-500")
-                            ui.label("Kunde").classes("flex-1 font-bold text-xs text-slate-500")
-                            ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-slate-500")
-                            ui.label("Status").classes("w-28 text-right font-bold text-xs text-slate-500")
-                            ui.label("").classes("w-44 text-right font-bold text-xs text-slate-500")
+                            ui.label("Nr").classes("w-24 font-bold text-xs text-neutral-400")
+                            ui.label("Kunde").classes("flex-1 font-bold text-xs text-neutral-400")
+                            ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-neutral-400")
+                            ui.label("Status").classes("w-28 text-right font-bold text-xs text-neutral-400")
+                            ui.label("").classes("w-44 text-right font-bold text-xs text-neutral-400")
 
                         if not finals:
                             with ui.row().classes(C_TABLE_ROW):
-                                ui.label("Noch keine Rechnungen vorhanden").classes("text-sm text-slate-500")
+                                ui.label("Noch keine Rechnungen vorhanden").classes("text-sm text-neutral-400")
                         else:
                             for idx, inv in enumerate(finals):
-                                row_bg = "bg-white" if idx % 2 == 0 else "bg-[#F3F4F6]"
+                                row_bg = "bg-neutral-950/60" if idx % 2 == 0 else "bg-neutral-900/60"
                                 with ui.row().classes(
                                     C_TABLE_ROW + f" {row_bg} h-16 group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0"
                                 ):
@@ -139,33 +139,33 @@ def render_invoices(session, comp: Company) -> None:
                                         "click", lambda _, x=inv: _open_invoice_detail(int(x.id))
                                     ):
                                         with ui.column().classes("w-full sm:w-24 gap-1"):
-                                            ui.label("Nr").classes("sm:hidden text-[10px] uppercase text-slate-400")
-                                            ui.label(f"#{inv.nr}" if inv.nr else "-").classes("text-xs font-mono text-slate-700")
+                                            ui.label("Nr").classes("sm:hidden text-[10px] uppercase text-neutral-500")
+                                            ui.label(f"#{inv.nr}" if inv.nr else "-").classes("text-xs font-mono text-neutral-200")
                                         with ui.column().classes("w-full sm:flex-1 gap-1"):
-                                            ui.label("Kunde").classes("sm:hidden text-[10px] uppercase text-slate-400")
-                                            ui.label(cust_name(inv)).classes("text-sm text-slate-900")
+                                            ui.label("Kunde").classes("sm:hidden text-[10px] uppercase text-neutral-500")
+                                            ui.label(cust_name(inv)).classes("text-sm text-neutral-100")
                                         with ui.column().classes("w-full sm:w-28 gap-1 sm:items-end"):
-                                            ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-slate-400")
-                                            ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes(f"text-sm font-mono text-slate-800 sm:text-right {C_NUMERIC}")
+                                            ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-neutral-500")
+                                            ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes(f"text-sm font-mono text-neutral-100 sm:text-right {C_NUMERIC}")
                                         with ui.column().classes("w-full sm:w-28 gap-1 sm:items-end"):
-                                            ui.label("Status").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                                            ui.label("Status").classes("sm:hidden text-[10px] uppercase text-neutral-500")
                                             with ui.row().classes("sm:justify-end"):
                                                 ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))
 
                                     with ui.column().classes("w-full sm:w-44 gap-2 sm:items-end"):
-                                        ui.label("Aktionen").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                                        ui.label("Aktionen").classes("sm:hidden text-[10px] uppercase text-neutral-500")
                                         with ui.row().classes("w-full sm:w-44 justify-end gap-2"):
                                             ui.button(icon="visibility", on_click=lambda x=inv: _open_invoice_detail(int(x.id))).props(
                                                 "flat dense no-parent-event"
-                                            ).classes("text-slate-500 hover:text-slate-900")
+                                            ).classes("text-neutral-400 hover:text-neutral-100")
                                             ui.button(icon="download", on_click=lambda x=inv: run_download(x)).props(
                                                 "flat dense no-parent-event"
-                                            ).classes("text-slate-500 hover:text-slate-900")
+                                            ).classes("text-neutral-400 hover:text-neutral-100")
                                             ui.button(icon="mail", on_click=lambda x=inv: run_send(x)).props(
                                                 "flat dense no-parent-event"
-                                            ).classes("text-slate-500 hover:text-slate-900")
+                                            ).classes("text-neutral-400 hover:text-neutral-100")
 
-                                            with ui.button(icon="more_vert").props("flat dense no-parent-event").classes("text-slate-600"):
+                                            with ui.button(icon="more_vert").props("flat dense no-parent-event").classes("text-neutral-300"):
                                                 with ui.menu().props("auto-close no-parent-event"):
                                                     if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
                                                         ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))
@@ -179,41 +179,41 @@ def render_invoices(session, comp: Company) -> None:
         with ui.column().classes("col-span-10 lg:col-span-3 gap-4"):
             # Drafts
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
-                with ui.row().classes("px-4 py-3 border-b border-slate-200 items-center justify-between"):
-                    ui.label("Entwürfe").classes("text-sm font-semibold text-slate-700")
-                    ui.label(f"{len(drafts)}").classes("text-xs text-slate-500")
+                with ui.row().classes("px-4 py-3 border-b border-neutral-800 items-center justify-between"):
+                    ui.label("Entwürfe").classes("text-sm font-semibold text-neutral-200")
+                    ui.label(f"{len(drafts)}").classes("text-xs text-neutral-400")
 
                 if not drafts:
                     with ui.row().classes("px-4 py-3"):
-                        ui.label("Keine Entwürfe").classes("text-sm text-slate-500")
+                        ui.label("Keine Entwürfe").classes("text-sm text-neutral-400")
                 else:
                     for d in drafts[:12]:
-                        with ui.row().classes("px-4 py-3 border-b border-slate-100 items-center justify-between"):
+                        with ui.row().classes("px-4 py-3 border-b border-neutral-800 items-center justify-between"):
                             with ui.row().classes("gap-2 items-center cursor-pointer").on(
                                 "click", lambda _, x=d: _open_invoice_editor(int(x.id))
                             ):
                                 ui.label("Entwurf").classes(invoice_status_badge(InvoiceStatus.DRAFT))
-                                ui.label(cust_name(d)).classes("text-sm text-slate-900")
+                                ui.label(cust_name(d)).classes("text-sm text-neutral-100")
                             with ui.row().classes("gap-2"):
-                                ui.button("Edit", on_click=lambda x=d: _open_invoice_editor(int(x.id))).props("flat dense no-parent-event").classes("text-slate-600")
+                                ui.button("Edit", on_click=lambda x=d: _open_invoice_editor(int(x.id))).props("flat dense no-parent-event").classes("text-neutral-300")
                                 ui.button("Löschen", on_click=lambda x=d: open_delete(x)).props("flat dense no-parent-event").classes("text-rose-600")
 
             # Reminders
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
-                with ui.row().classes("px-4 py-3 border-b border-slate-200 items-center justify-between"):
-                    ui.label("Mahnungen").classes("text-sm font-semibold text-slate-700")
-                    ui.label(f"{len(reminders)}").classes("text-xs text-slate-500")
+                with ui.row().classes("px-4 py-3 border-b border-neutral-800 items-center justify-between"):
+                    ui.label("Mahnungen").classes("text-sm font-semibold text-neutral-200")
+                    ui.label(f"{len(reminders)}").classes("text-xs text-neutral-400")
 
                 if not reminders:
                     with ui.row().classes("px-4 py-3"):
-                        ui.label("Keine überfälligen Rechnungen").classes("text-sm text-slate-500")
+                        ui.label("Keine überfälligen Rechnungen").classes("text-sm text-neutral-400")
                 else:
                     for r in reminders[:12]:
-                        with ui.row().classes("px-4 py-3 border-b border-slate-100 items-center justify-between"):
+                        with ui.row().classes("px-4 py-3 border-b border-neutral-800 items-center justify-between"):
                             with ui.row().classes("gap-2 items-center cursor-pointer").on(
                                 "click", lambda _, x=r: _open_invoice_detail(int(x.id))
                             ):
                                 ui.label("Overdue").classes(invoice_status_badge("Overdue"))
-                                ui.label(f"#{r.nr}" if r.nr else "Rechnung").classes("text-xs font-mono text-slate-700")
-                                ui.label(cust_name(r)).classes("text-sm text-slate-900")
-                            ui.label(f"{float(r.total_brutto or 0):,.2f} €").classes(f"text-sm font-mono text-slate-700 {C_NUMERIC}")
+                                ui.label(f"#{r.nr}" if r.nr else "Rechnung").classes("text-xs font-mono text-neutral-200")
+                                ui.label(cust_name(r)).classes("text-sm text-neutral-100")
+                            ui.label(f"{float(r.total_brutto or 0):,.2f} €").classes(f"text-sm font-mono text-neutral-200 {C_NUMERIC}")

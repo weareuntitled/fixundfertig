@@ -471,9 +471,9 @@ def render_documents(session, comp: Company) -> None:
     with ui.dialog() as upload_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[480px] max-w-[92vw]"):
             ui.label("Upload an n8n").classes(C_SECTION_TITLE)
-            ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500")
+            ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-neutral-400")
             ui.label("Die Datei wird an n8n gesendet und erscheint nach der Verarbeitung in der Liste.").classes(
-                "text-xs text-slate-500 mb-2"
+                "text-xs text-neutral-400 mb-2"
             )
             upload_input = ui.upload(
                 on_upload=_handle_upload,
@@ -481,7 +481,7 @@ def render_documents(session, comp: Company) -> None:
                 label="Datei wählen",
             ).classes("w-full")
             upload_input.on("change", lambda _: _log_client_debug({"step": "file_selected"}))
-            upload_status = ui.label("Status: bereit zum Senden").classes("text-xs text-slate-500 mt-1")
+            upload_status = ui.label("Status: bereit zum Senden").classes("text-xs text-neutral-400 mt-1")
             with ui.row().classes("justify-end w-full mt-4 gap-2"):
                 ui.button(
                     "Senden an n8n",
@@ -608,7 +608,7 @@ def render_documents(session, comp: Company) -> None:
     def render_filters():
         with ui.row().classes("w-full items-center justify-between gap-6 flex-wrap"):
             with ui.row().classes("items-center gap-4"):
-                ui.label("Dokumente").classes("text-3xl font-bold text-slate-900")
+                ui.label("Dokumente").classes("text-3xl font-bold text-neutral-100")
                 ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
 
     @ui.refreshable
@@ -631,7 +631,7 @@ def render_documents(session, comp: Company) -> None:
                 f"Dokumente (Jahr {year_value})",
                 f"{total_docs}",
                 "description",
-                "text-slate-600",
+                "text-neutral-400",
                 classes="flex-1 min-w-[220px]",
             )
             kpi_card(
@@ -655,7 +655,7 @@ def render_documents(session, comp: Company) -> None:
             ui.label("Alle Dokumente löschen").classes(C_SECTION_TITLE)
             ui.label(
                 "Das löscht alle Dokumente inkl. Dateien und Metadaten des aktiven Unternehmens."
-            ).classes("text-sm text-slate-600")
+            ).classes("text-sm text-neutral-400")
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=delete_all_dialog.close).classes(C_BTN_SEC)
 
@@ -730,7 +730,7 @@ def render_documents(session, comp: Company) -> None:
                         ui.notify(f"Fehler beim Löschen (Dokument-ID: {doc_id_display})", color="red")
 
                 ui.button("Alle löschen", on_click=_confirm_delete_all).classes(
-                    "bg-slate-700 text-white hover:bg-slate-600"
+                    "bg-rose-600 text-white hover:bg-rose-700"
                 )
 
     with ui.dialog() as reset_dialog:
@@ -738,7 +738,7 @@ def render_documents(session, comp: Company) -> None:
             ui.label("Webhook-Events zurücksetzen").classes(C_SECTION_TITLE)
             ui.label(
                 "Damit werden alle gespeicherten n8n-Events gelöscht, um Duplikate erneut senden zu können."
-            ).classes("text-sm text-slate-600")
+            ).classes("text-sm text-neutral-400")
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=reset_dialog.close).classes(C_BTN_SEC)
 
@@ -750,12 +750,12 @@ def render_documents(session, comp: Company) -> None:
                     ui.notify("Webhook-Events gelöscht.", color="orange")
                     reset_dialog.close()
 
-                ui.button("Reset", on_click=_confirm_reset).classes("bg-slate-700 text-white hover:bg-slate-600")
+                ui.button("Reset", on_click=_confirm_reset).classes("bg-neutral-800 text-neutral-100 hover:bg-neutral-700")
 
     with ui.dialog() as delete_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
             ui.label("Dokument löschen").classes(C_SECTION_TITLE)
-            ui.label("Willst du dieses Dokument wirklich löschen?").classes("text-sm text-slate-600")
+            ui.label("Willst du dieses Dokument wirklich löschen?").classes("text-sm text-neutral-400")
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=delete_dialog.close).classes(C_BTN_SEC)
 
@@ -827,13 +827,13 @@ def render_documents(session, comp: Company) -> None:
                         doc_id_display = document_id if document_id is not None else "unbekannt"
                         ui.notify(f"Fehler beim Löschen (Dokument-ID: {doc_id_display})", color="red")
 
-                ui.button("Löschen", on_click=_confirm_delete).classes("bg-slate-700 text-white hover:bg-slate-600")
+                ui.button("Löschen", on_click=_confirm_delete).classes("bg-rose-600 text-white hover:bg-rose-700")
 
     meta_state = {"doc_id": None, "title": "", "raw": "", "line_items": "", "flags": ""}
     with ui.dialog() as meta_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[860px] max-w-[96vw]"):
             meta_title = ui.label("Metadaten").classes(C_SECTION_TITLE)
-            ui.label("JSON bearbeiten, um Metadaten zu aktualisieren.").classes("text-xs text-slate-500 mb-2")
+            ui.label("JSON bearbeiten, um Metadaten zu aktualisieren.").classes("text-xs text-neutral-400 mb-2")
             raw_area = ui.textarea(label="Raw Payload (JSON)", value="").props("rows=8").classes(
                 C_INPUT + " w-full font-mono text-xs"
             )
@@ -983,17 +983,17 @@ def render_documents(session, comp: Company) -> None:
         lower_mime = (mime or "").lower()
         lower_name = (filename or "").lower()
         if "pdf" in lower_mime or lower_name.endswith(".pdf"):
-            return "picture_as_pdf", "text-amber-600 bg-amber-50 border border-amber-100"
+            return "picture_as_pdf", "text-[#ffd35d] bg-[#ffc524]/10 border border-[#ffc524]/20"
         if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
-            return "image", "text-slate-600 bg-slate-100 border border-slate-200"
-        return "insert_drive_file", "text-slate-500 bg-slate-100 border border-slate-200"
+            return "image", "text-neutral-300 bg-neutral-800 border border-neutral-700"
+        return "insert_drive_file", "text-neutral-400 bg-neutral-800 border border-neutral-700"
 
     @ui.refreshable
     def render_list():
         items = _sort_documents(_filter_documents(_load_documents()))
         selected_ids = set(state.get("selected_ids") or set())
         with ui.card().classes(
-            C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-none border-slate-200 bg-white backdrop-blur-0"
+            C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-none backdrop-blur-0"
         ):
             meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
             backfill_document_fields(session, items, meta_map=meta_map)
@@ -1012,7 +1012,7 @@ def render_documents(session, comp: Company) -> None:
             current_ids = {int(doc.id or 0) for doc in items if doc.id}
             all_selected = bool(current_ids) and current_ids.issubset(selected_ids)
             with ui.row().classes(
-                "w-full px-6 py-3 items-center justify-between border-b border-slate-100 bg-slate-50/60"
+                "w-full px-6 py-3 items-center justify-between border-b border-neutral-800 bg-neutral-950/60"
             ):
                 with ui.row().classes("items-center gap-3 flex-wrap"):
                     year_options = _year_options(_load_documents())
@@ -1024,13 +1024,13 @@ def render_documents(session, comp: Company) -> None:
                         value=state["year"],
                         label="Jahr",
                         on_change=lambda e: _set_year(e.value or str(datetime.now().year)),
-                    ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
+                    ).props("dense").classes(C_INPUT + " w-28 bg-neutral-900 shadow-sm")
                 with ui.row().classes("items-center gap-2 flex-wrap"):
                     ui.input(
                         placeholder="Dokumente durchsuchen",
                         value=state.get("query", ""),
                         on_change=lambda e: _set_query(e.value),
-                    ).props("dense clearable").classes(C_INPUT + " w-56 sm:w-72 bg-white shadow-sm")
+                    ).props("dense clearable").classes(C_INPUT + " w-56 sm:w-72 bg-neutral-900 shadow-sm")
                     download_button = ui.button(
                         "Download",
                         icon="download",
@@ -1039,10 +1039,10 @@ def render_documents(session, comp: Company) -> None:
                     selected_count = len(selected_ids.intersection(current_ids))
                     if selected_count == 0:
                         download_button.props("disable")
-                    ui.label(f"{selected_count} ausgewählt").classes("text-xs text-slate-500")
+                    ui.label(f"{selected_count} ausgewählt").classes("text-xs text-neutral-400")
 
             with ui.row().classes(
-                "w-full px-6 py-3 text-xs font-semibold tracking-wide text-slate-500 border-b border-slate-100"
+                "w-full px-6 py-3 text-xs font-semibold tracking-wide text-neutral-400 border-b border-neutral-800"
             ):
                 ui.checkbox(
                     value=all_selected,
@@ -1058,7 +1058,7 @@ def render_documents(session, comp: Company) -> None:
                 ui.label("Aktionen").classes("w-[3%] text-right")
 
             if not items:
-                ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-slate-500")
+                ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-neutral-400")
                 return
 
             for doc in items:
@@ -1096,11 +1096,11 @@ def render_documents(session, comp: Company) -> None:
                 status_label, badge_class = _resolve_status(doc, amount_total, vendor_value)
                 icon_name, icon_classes = _resolve_file_icon(mime_value, filename)
                 row_classes = (
-                    "w-full px-6 py-2.5 items-center gap-4 border-b border-slate-100 "
-                    "hover:bg-slate-50 transition-colors"
+                    "w-full px-6 py-2.5 items-center gap-4 border-b border-neutral-800 "
+                    "hover:bg-neutral-900/60 transition-colors"
                 )
                 if highlight_document_id == doc_id:
-                    row_classes += " bg-amber-50 ring-1 ring-amber-200"
+                    row_classes += " bg-[#ffc524]/10 ring-1 ring-[#ffc524]/20"
                 with ui.row().classes(row_classes):
                     ui.checkbox(
                         value=doc_id in selected_ids,
@@ -1113,36 +1113,36 @@ def render_documents(session, comp: Company) -> None:
                             ui.icon(icon_name).classes("text-base")
                         with ui.column().classes("min-w-0 gap-0.5"):
                             ui.link(filename, open_url, new_tab=True).classes(
-                                "text-slate-700 font-medium hover:text-amber-600 hover:underline truncate"
+                                "text-neutral-200 font-medium hover:text-[#ffd35d] hover:underline truncate"
                             ).tooltip(filename)
                             ui.label(f"{size_display} • {_format_source(doc.source)}").classes(
-                                "text-xs text-slate-400 truncate"
+                                "text-xs text-neutral-500 truncate"
                             )
-                    ui.label(display_date or "-").classes("w-[12%] text-sm text-slate-600")
+                    ui.label(display_date or "-").classes("w-[12%] text-sm text-neutral-300")
                     with ui.element("div").classes("w-[16%]"):
                         tag_items = _parse_keywords(tags_value) if tags_value != "-" else []
                         if tag_items:
                             with ui.row().classes("flex flex-wrap gap-1"):
                                 for tag in tag_items:
                                     ui.label(tag).classes(
-                                        "text-xs text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full"
+                                        "text-xs text-neutral-300 bg-neutral-800 border border-neutral-700 px-2 py-0.5 rounded-full"
                                     )
                         else:
-                            ui.label("-").classes("text-sm text-slate-400")
+                            ui.label("-").classes("text-sm text-neutral-500")
                     ui.label(
                         _format_amount_value(amount_total, currency_value) if amount_total is not None else "-"
-                    ).classes("w-[9%] text-right text-sm text-slate-600")
+                    ).classes("w-[9%] text-right text-sm text-neutral-300")
                     ui.label(
                         _format_amount_value(amount_net, currency_value) if amount_net is not None else "-"
-                    ).classes("w-[9%] text-right text-sm text-slate-600")
+                    ).classes("w-[9%] text-right text-sm text-neutral-300")
                     ui.label(
                         _format_amount_value(amount_tax, currency_value) if amount_tax is not None else "-"
-                    ).classes("w-[9%] text-right text-sm text-slate-600")
+                    ).classes("w-[9%] text-right text-sm text-neutral-300")
                     with ui.element("div").classes("w-[8%]"):
                         ui.label(status_label).classes(badge_class)
                     with ui.element("div").classes("w-[3%] flex justify-end"):
                         with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(
-                            "text-slate-500 hover:text-slate-700"
+                            "text-neutral-400 hover:text-neutral-100"
                         ):
                             with ui.menu().props("auto-close no-parent-event"):
                                 ui.menu_item(
@@ -1163,7 +1163,7 @@ def render_documents(session, comp: Company) -> None:
                                 )
 
     with ui.element("div").classes(
-        "w-full bg-[#F5F7FA] rounded-xl p-6 border border-slate-100 flex flex-col gap-6"
+        "w-full bg-neutral-950/80 rounded-xl p-6 border border-neutral-800 flex flex-col gap-6"
     ):
         render_filters()
         render_summary()

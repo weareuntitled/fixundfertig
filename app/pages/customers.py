@@ -19,13 +19,13 @@ def render_customers(session, comp: Company) -> None:
     ).all()
     with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
         with ui.row().classes(C_TABLE_HEADER):
-            ui.label("Name").classes("flex-1 font-bold text-xs text-slate-500")
-            ui.label("Email").classes("w-64 font-bold text-xs text-slate-500")
-            ui.label("Details").classes("w-64 font-bold text-xs text-slate-500")
+            ui.label("Name").classes("flex-1 font-bold text-xs text-neutral-400")
+            ui.label("Email").classes("w-64 font-bold text-xs text-neutral-400")
+            ui.label("Details").classes("w-64 font-bold text-xs text-neutral-400")
 
         if not customers:
             with ui.row().classes(C_TABLE_ROW):
-                ui.label("Noch keine Kunden vorhanden").classes("text-sm text-slate-500")
+                ui.label("Noch keine Kunden vorhanden").classes("text-sm text-neutral-400")
         else:
             for c in customers:
                 def open_detail(customer_id: int = int(c.id)):
@@ -42,6 +42,6 @@ def render_customers(session, comp: Company) -> None:
                     details.append(f"Kürzel: {c.short_code}")
 
                 with ui.row().classes(C_TABLE_ROW + " cursor-pointer").on("click", lambda _, x=int(c.id): open_detail(x)):
-                    ui.label(c.display_name).classes("flex-1 text-sm text-slate-900")
-                    ui.label(c.email or "-").classes("w-64 text-sm text-slate-600")
-                    ui.label(" · ".join(details) if details else "-").classes("w-64 text-sm text-slate-600")
+                    ui.label(c.display_name).classes("flex-1 text-sm text-neutral-100")
+                    ui.label(c.email or "-").classes("w-64 text-sm text-neutral-300")
+                    ui.label(" · ".join(details) if details else "-").classes("w-64 text-sm text-neutral-300")

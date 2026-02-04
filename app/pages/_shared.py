@@ -224,13 +224,13 @@ def use_address_autocomplete(
         for idx, result in enumerate(state["results"]):
             label = result.get("label") or ""
             is_active = idx == state["active_index"]
-            option_classes = "w-full text-left px-3 py-2 text-sm hover:bg-slate-50"
+            option_classes = "w-full text-left px-3 py-2 text-sm hover:bg-neutral-900/60"
             if is_active:
-                option_classes += " bg-slate-100"
+                option_classes += " bg-neutral-900"
             with ui.element("button").props(
                 f"type=button role=option aria-selected={'true' if is_active else 'false'}"
             ).classes(option_classes).on("click", lambda _, r=result: apply_result(r)):
-                ui.label(label).classes("text-left text-slate-700")
+                ui.label(label).classes("text-left text-neutral-200")
 
     def on_input_change(_) -> None:
         state["query"] = street_input.value or ""
@@ -322,7 +322,7 @@ def customer_address_card(
             with ui.element("div").classes("relative w-full"):
                 street = ui.input("Straße", value=street_value).classes(C_INPUT)
                 street_dropdown = ui.element("div").classes(
-                    "absolute left-0 right-0 mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-sm"
+                    "absolute left-0 right-0 mt-1 z-10 bg-neutral-900 border border-neutral-800 rounded-lg shadow-sm"
                 )
             plz = ui.input("PLZ", value=plz_value).classes(C_INPUT)
             city = ui.input("Ort", value=city_value).classes(C_INPUT)
@@ -603,10 +603,10 @@ def _render_status_stepper(invoice: Invoice) -> None:
     with ui.row().classes("items-center gap-2 flex-wrap"):
         for idx, (key, label) in enumerate(steps):
             is_active = key == current
-            cls = "text-slate-900 font-semibold text-sm" if is_active else "text-slate-400 text-sm"
+            cls = "text-neutral-100 font-semibold text-sm" if is_active else "text-neutral-500 text-sm"
             ui.label(label).classes(cls)
             if idx < len(steps) - 1:
-                ui.label("→").classes("text-slate-300 text-sm")
+                ui.label("→").classes("text-neutral-600 text-sm")
 
 
 
