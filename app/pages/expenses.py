@@ -89,17 +89,17 @@ def render_expenses(session, comp: Company) -> None:
                     desc_val = (d_desc.value or "").strip()
 
                     if not date_val:
-                        ui.notify("Datum fehlt", color="red")
+                        ui.notify("Datum fehlt", color="orange")
                         return
                     if amount_val <= 0:
-                        ui.notify("Betrag muss größer 0 sein", color="red")
+                        ui.notify("Betrag muss größer 0 sein", color="orange")
                         return
 
                     with get_session() as s:
                         if current_id["value"]:
                             exp = s.get(Expense, int(current_id["value"]))
                             if not exp:
-                                ui.notify("Ausgabe nicht gefunden", color="red")
+                                ui.notify("Ausgabe nicht gefunden", color="orange")
                                 return
                             action = "EXPENSE_UPDATED"
                         else:
@@ -123,7 +123,7 @@ def render_expenses(session, comp: Company) -> None:
                             # Audit is optional, do not block saving
                             pass
 
-                    ui.notify("Gespeichert", color="green")
+                    ui.notify("Gespeichert", color="grey")
                     edit_dialog.close()
                     ui.navigate.to("/")
 
@@ -151,11 +151,11 @@ def render_expenses(session, comp: Company) -> None:
                                 s.commit()
                             except Exception:
                                 pass
-                    ui.notify("Gelöscht", color="green")
+                    ui.notify("Gelöscht", color="grey")
                     delete_dialog.close()
                     ui.navigate.to("/")
 
-                ui.button("Löschen", on_click=_confirm_delete).classes("bg-rose-600 text-white hover:bg-rose-700")
+                ui.button("Löschen", on_click=_confirm_delete).classes(C_BTN_PRIM)
 
     def open_new():
         current_id["value"] = None
@@ -207,7 +207,7 @@ def render_expenses(session, comp: Company) -> None:
         total = sum(float(x["amount"] or 0) for x in data)
         with ui.row().classes("w-full items-center justify-between mb-3"):
             ui.label(f"{len(data)} Einträge").classes("text-sm text-slate-500")
-            ui.label(f"Summe: {total:,.2f} €").classes("text-sm font-semibold text-rose-700")
+            ui.label(f"Summe: {total:,.2f} €").classes("text-sm font-semibold text-amber-300")
 
         if not data:
             with ui.card().classes(C_CARD + " p-4"):
@@ -229,10 +229,10 @@ def render_expenses(session, comp: Company) -> None:
                     ui.label(it["category"] or "-").classes("w-40 text-sm text-slate-900")
                     ui.label(it["source"] or "-").classes("w-44 text-sm text-slate-900")
                     ui.label(it["description"] or "-").classes("flex-1 text-sm text-slate-700")
-                    ui.label(f"-{float(it['amount'] or 0):,.2f} €").classes("w-28 text-right text-sm font-mono text-rose-700")
+                    ui.label(f"-{float(it['amount'] or 0):,.2f} €").classes("w-28 text-right text-sm font-mono text-amber-300")
 
                     with ui.row().classes("w-28 justify-end gap-1"):
                         ui.button(icon="edit", on_click=lambda _, x=it: open_edit(x)).props("flat dense").classes("text-slate-600")
-                        ui.button(icon="delete", on_click=lambda _, x=it: open_delete(x)).props("flat dense").classes("text-rose-600")
+                        ui.button(icon="delete", on_click=lambda _, x=it: open_delete(x)).props("flat dense").classes("text-amber-400")
 
     render_list()

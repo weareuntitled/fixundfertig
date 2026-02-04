@@ -26,7 +26,7 @@ def _resolve_user_email(user_id: int | None) -> str:
 def render_invites(session, _comp) -> None:
     user_id = get_current_user_id(session)
     if user_id is None:
-        ui.notify("Nicht eingeloggt.", color="red")
+        ui.notify("Nicht eingeloggt.", color="orange")
         return
 
     current_email = _resolve_user_email(int(user_id))
@@ -60,7 +60,7 @@ def render_invites(session, _comp) -> None:
 
                         def _remove(email: str = invite.email) -> None:
                             if remove_invited_email(email):
-                                ui.notify("Einladung entfernt.", color="green")
+                                ui.notify("Einladung entfernt.", color="grey")
                                 invite_list.refresh()
                             else:
                                 ui.notify("Einladung nicht gefunden.", color="orange")
@@ -75,9 +75,9 @@ def render_invites(session, _comp) -> None:
             try:
                 add_invited_email(email, invited_by_user_id=int(user_id))
             except Exception as exc:
-                ui.notify(f"Einladung fehlgeschlagen: {exc}", color="red")
+                ui.notify(f"Einladung fehlgeschlagen: {exc}", color="orange")
                 return
-            ui.notify("Einladung gespeichert.", color="green")
+            ui.notify("Einladung gespeichert.", color="grey")
             email_input.set_value("")
             invite_list.refresh()
 
