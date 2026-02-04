@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 import re
 from typing import Any
+import unicodedata
 
 from renderer_interface import InvoiceRenderer
 from services.invoice_pdf import render_invoice_to_pdf_bytes as render_invoice_to_pdf_bytes_reportlab
@@ -22,7 +23,7 @@ def _usable_page_width(pdf: FPDF) -> float:
 def _sanitize_text(text: Any) -> str:
     if text is None:
         return ""
-    s = str(text)
+    s = unicodedata.normalize("NFC", str(text))
 
     replacements = {
         "\u2013": "-",    # en dash
