@@ -51,6 +51,14 @@ APP_FONT_CSS = f"""
   .ff-stroke-input.q-field--focused .q-field__control:after {{
     border-color: var(--brand-primary) !important;
   }}
+
+  .ff-select-fill .q-field__control {{
+    background: #171717 !important;
+    border-radius: 9999px !important;
+  }}
+  .ff-select-fill .q-field__native {{
+    color: #f8fafc !important;
+  }}
   
   /* Input Text Colors */
   .q-field__native, .q-field__prefix, .q-field__suffix, .q-field__input {{ color: #ffffff !important; }}
