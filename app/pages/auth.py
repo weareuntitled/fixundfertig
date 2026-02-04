@@ -19,9 +19,9 @@ from services.auth import (
 )
 from ui_theme import apply_global_ui_theme
 
-ERROR_TEXT = "text-sm text-neutral-300"
+ERROR_TEXT = "text-sm text-orange-400"
 LINK_TEXT = "text-sm text-neutral-400 hover:text-neutral-200 no-underline"
-TITLE_TEXT = "text-2xl font-semibold text-neutral-200 text-center"
+TITLE_TEXT = "text-2xl font-semibold text-neutral-100 text-center"
 SUBTITLE_TEXT = "text-sm text-neutral-400 text-center"
 INPUT_CLASSES = "w-full"
 PRIMARY_BUTTON = "w-full bg-[#ffc524] text-neutral-950 rounded-lg hover:bg-[#ffd35d]"
