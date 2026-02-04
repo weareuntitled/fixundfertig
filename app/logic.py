@@ -371,10 +371,19 @@ def export_documents_zip(*args: Any, **kwargs: Any) -> bytes:
         items = _parse_keywords(value or "")
         return ", ".join(items) if items else "-"
 
+    DEFAULT_VAT_RATE = 0.19
+
+    def _vat_from_gross(amount_total: float, rate: float = DEFAULT_VAT_RATE) -> float:
+        if amount_total <= 0 or rate <= 0:
+            return 0.0
+        return amount_total * (rate / (1 + rate))
+
     def _resolve_amounts(doc: Document) -> tuple[float | None, float | None, float | None]:
         amount_total = doc.amount_total if doc.amount_total is not None else doc.gross_amount
         amount_net = doc.amount_net if doc.amount_net is not None else doc.net_amount
         amount_tax = doc.amount_tax if doc.amount_tax is not None else doc.tax_amount
+        if amount_tax is None and amount_total is not None and amount_net is None:
+            amount_tax = _vat_from_gross(float(amount_total))
         return amount_total, amount_net, amount_tax
 
     stmt = select(Document).where(Document.company_id == int(company_id)).order_by(Document.id.desc())
