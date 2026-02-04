@@ -1078,7 +1078,7 @@ def render_documents(session, comp: Company) -> None:
                         value=state["year"],
                         label="Jahr",
                         on_change=lambda e: _set_year(e.value or str(datetime.now().year)),
-                    ).props("dense options-dense behavior=menu popup-content-class='bg-neutral-900 text-neutral-200 border border-neutral-800'").classes(
+                    ).props("outlined dense options-dense behavior=menu popup-content-class='bg-neutral-900 text-neutral-200 border border-neutral-800'").classes(
                         C_INPUT + " w-28 ff-stroke-input shadow-sm"
                     )
 
@@ -1087,7 +1087,7 @@ def render_documents(session, comp: Company) -> None:
                         placeholder="Dokumente durchsuchen",
                         value=state.get("query", ""),
                         on_change=lambda e: _set_query(e.value),
-                    ).props("dense clearable").classes(C_INPUT + " w-56 sm:w-72 ff-stroke-input shadow-sm")
+                    ).props("outlined dense clearable").classes(C_INPUT + " w-56 sm:w-72 ff-stroke-input shadow-sm")
                     
                     download_button = ui.button(
                         "Download",

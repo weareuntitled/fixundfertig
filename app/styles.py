@@ -42,6 +42,9 @@ APP_FONT_CSS = f"""
     background: transparent !important;
     border-radius: 9999px !important;
   }}
+  .ff-stroke-input .q-field__native {{
+    color: #e5e7eb !important;
+  }}
   .ff-stroke-input .q-field__control:before {{
     border-color: #475569 !important;
   }}
@@ -63,6 +66,10 @@ APP_FONT_CSS = f"""
   .q-menu .q-item__label {{ color: #e5e7eb !important; }}
   .q-menu .q-item--active {{ color: var(--brand-primary) !important; background: rgba(255, 197, 36, 0.1); }}
   .q-menu .q-item:hover {{ background: #262626 !important; }}
+
+  .q-btn.text-primary, .q-btn .text-primary {{
+    color: #e5e7eb !important;
+  }}
   
   /* Notifications */
   .q-notification {{ background: #0f172a !important; color: #f1f5f9 !important; border: 1px solid #1e293b !important; border-radius: 12px; }}
