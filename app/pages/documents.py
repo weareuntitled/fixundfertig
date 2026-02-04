@@ -10,17 +10,16 @@ import os
 import json
 import tempfile
 import zipfile
-import logging
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException
 
+# Assuming these imports exist in your project structure
 from ._shared import *
-from styles import C_BADGE_GRAY, C_BADGE_YELLOW
+from styles import C_BADGE_GRAY, C_BADGE_YELLOW, C_BTN_PRIM, C_BTN_SEC, C_CARD, C_INPUT, C_SECTION_TITLE
 from data import Document, DocumentMeta, WebhookEvent
-from sqlmodel import delete
-from data import WebhookEvent
+from sqlmodel import delete, select
 import httpx
 
 from integrations.n8n_client import post_to_n8n
@@ -37,17 +36,21 @@ logger = logging.getLogger(__name__)
 
 
 def render_documents(session, comp: Company) -> None:
+    # --- STATE MANAGEMENT ---
     state = {
         "year": str(datetime.now().year),
         "selected_ids": set(),
         "query": "",
     }
+    
+    # UI References for fast updates without full re-render
     selection_ui: dict[str, object] = {
         "current_ids": set(),
         "download": None,
         "count": None,
         "select_all": None,
     }
+
     highlight_document_id = None
     stored_highlight = app.storage.user.pop("documents_highlight_id", None)
     if stored_highlight is not None:
@@ -55,9 +58,12 @@ def render_documents(session, comp: Company) -> None:
             highlight_document_id = int(stored_highlight)
         except (TypeError, ValueError):
             highlight_document_id = None
+            
     debug_enabled = os.getenv("FF_DEBUG") == "1"
     upload_status = None
     debug_client_logs = True
+
+    # --- HELPER FUNCTIONS ---
 
     def _log_client_debug(payload: dict) -> None:
         if not debug_client_logs:
@@ -65,7 +71,7 @@ def render_documents(session, comp: Company) -> None:
         ui.run_javascript(f"console.log('n8n_upload_debug', {json.dumps(payload)});")
 
     def _load_documents() -> list[Document]:
-        session.expire_all()
+        # Performance Fix: Removed session.expire_all() to prevent DB thrashing
         return session.exec(
             select(Document).where(Document.company_id == int(comp.id or 0))
         ).all()
@@ -122,24 +128,56 @@ def render_documents(session, comp: Company) -> None:
         render_list.refresh()
 
     def _sync_selection_ui() -> None:
+        """Updates the selection counter and buttons without refreshing the list."""
         current_ids = selection_ui.get("current_ids") or set()
         selected = set(state.get("selected_ids") or set())
         selected_count = len(selected.intersection(current_ids))
+        
+        # Update Label
         selected_label = selection_ui.get("count")
         if selected_label is not None:
             selected_label.text = f"{selected_count} ausgewählt"
             selected_label.update()
+        
+        # Update Download Button
         download_button = selection_ui.get("download")
         if download_button is not None:
             if selected_count == 0:
                 download_button.disable()
             else:
                 download_button.enable()
+            download_button.update()
+            
+        # Update Select All Checkbox state
         select_all_checkbox = selection_ui.get("select_all")
         if select_all_checkbox is not None:
             all_selected = bool(current_ids) and current_ids.issubset(selected)
             select_all_checkbox.value = all_selected
             select_all_checkbox.update()
+
+    def _update_selected(doc_id: int, checked: bool) -> None:
+        selected = set(state.get("selected_ids") or set())
+        if checked:
+            selected.add(doc_id)
+        else:
+            selected.discard(doc_id)
+        state["selected_ids"] = selected
+        _sync_selection_ui()
+
+    def _toggle_select_all(items: list[Document], checked: bool | None = None) -> None:
+        current_ids = {int(doc.id or 0) for doc in items if doc.id}
+        if not current_ids:
+            ui.notify("Keine Dokumente zum Auswählen.", color="orange")
+            return
+        selected = set(state.get("selected_ids") or set())
+        if checked is None:
+            checked = not current_ids.issubset(selected)
+        if checked:
+            selected |= current_ids
+        else:
+            selected -= current_ids
+        state["selected_ids"] = selected
+        _sync_selection_ui()
 
     def _parse_keywords(value: object) -> list[str]:
         if value is None or value == "":
@@ -220,6 +258,139 @@ def render_documents(session, comp: Company) -> None:
         cleaned = cleaned.replace("/", "_").replace("\\", "_").replace(":", "_")
         return cleaned or "document"
 
+    def _preview_document(open_url: str) -> None:
+        if open_url:
+            ui.run_javascript(f"window.open('{open_url}', '_blank')")
+
+    def _trigger_download(open_url: str) -> None:
+        if open_url:
+            ui.run_javascript(
+                "const link=document.createElement('a');"
+                f"link.href='{open_url}';"
+                "link.download='';"
+                "document.body.appendChild(link);"
+                "link.click();"
+                "link.remove();"
+            )
+
+    def _download_selected(items: list[Document]) -> None:
+        selected = set(state.get("selected_ids") or set())
+        selection = [doc for doc in items if int(doc.id or 0) in selected]
+        if not selection:
+            ui.notify("Bitte Dokument auswählen.", color="orange")
+            return
+        if len(selection) > 1:
+            ui.notify("Bitte nur ein Dokument auswählen.", color="orange")
+            return
+        doc = selection[0]
+        doc_id = int(doc.id or 0)
+        if not doc_id:
+            ui.notify("Dokument nicht gefunden.", color="red")
+            return
+        _trigger_download(f"/api/documents/{doc_id}/file")
+
+    def _coerce_float(value: object) -> float | None:
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _load_meta_map(doc_ids: list[int]) -> dict[int, DocumentMeta]:
+        if not doc_ids:
+            return {}
+        metas = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id.in_(doc_ids))
+        ).all()
+        return {int(meta.document_id): meta for meta in metas if meta}
+
+    DEFAULT_VAT_RATE = 0.19
+
+    def _vat_from_gross(amount_total: float, rate: float = DEFAULT_VAT_RATE) -> float:
+        if amount_total <= 0 or rate <= 0:
+            return 0.0
+        return amount_total * (rate / (1 + rate))
+
+    def _resolve_amounts(doc: Document) -> tuple[float | None, float | None, float | None]:
+        amount_total = _coerce_float(doc.amount_total)
+        amount_net = _coerce_float(doc.amount_net)
+        amount_tax = _coerce_float(doc.amount_tax)
+        if amount_total is None:
+            amount_total = _coerce_float(getattr(doc, "gross_amount", None))
+        if amount_net is None:
+            amount_net = _coerce_float(getattr(doc, "net_amount", None))
+        if amount_tax is None:
+            amount_tax = _coerce_float(getattr(doc, "tax_amount", None))
+        if amount_tax is None and amount_total is not None and amount_net is not None:
+            amount_tax = max(amount_total - amount_net, 0.0)
+        if amount_tax is None and amount_total is not None and amount_net is None:
+            amount_tax = _vat_from_gross(amount_total)
+        return amount_total, amount_net, amount_tax
+
+    def _format_json(value: str | None, *, redact_payload: bool = False) -> str:
+        if not value:
+            return ""
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return str(value)
+        if redact_payload and isinstance(parsed, dict):
+            for key in ("file_bytes", "file_base64", "content_base64", "data_base64", "raw_base64"):
+                if key in parsed:
+                    parsed[key] = "<redacted>"
+        return json.dumps(parsed, ensure_ascii=False, indent=2)
+
+    def _format_size(size_bytes: int) -> str:
+        if size_bytes <= 0:
+            return "-"
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        if size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+    def _format_amount_value(amount: float | None, currency: str | None) -> str:
+        if amount is None:
+            return "n/a"
+        currency = (currency or "").strip()
+        if currency:
+            return f"{amount:,.2f} {currency}"
+        return f"{amount:,.2f}"
+
+    def _format_amount_eur(amount: float) -> str:
+        return f"{amount:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def _format_source(source: str | None) -> str:
+        value = (source or "").strip().lower()
+        if value in {"manual", "manuell"}:
+            return "Manuell"
+        if value == "n8n":
+            return "n8n"
+        if value in {"mail", "email"}:
+            return "Mail"
+        if value:
+            return value.upper()
+        return "-"
+
+    def _resolve_status(doc: Document, amount_total: float | None, vendor: str | None) -> tuple[str, str]:
+        if amount_total is not None or (vendor or "").strip():
+            return "Verarbeitet", C_BADGE_GRAY
+        if (doc.source or "").strip().lower() in {"mail", "email"}:
+            return "Eingang", C_BADGE_GRAY
+        return "Neu", C_BADGE_YELLOW
+
+    def _resolve_file_icon(mime: str, filename: str) -> tuple[str, str]:
+        lower_mime = (mime or "").lower()
+        lower_name = (filename or "").lower()
+        if "pdf" in lower_mime or lower_name.endswith(".pdf"):
+            return "picture_as_pdf", "text-[#ffd35d] bg-[#ffc524]/10 border border-[#ffc524]/20"
+        if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
+            return "image", "text-neutral-300 bg-neutral-800 border border-neutral-700"
+        return "insert_drive_file", "text-neutral-400 bg-neutral-800 border border-neutral-700"
+
+    # --- HANDLERS ---
+
     @ui_handler("documents.export")
     def _export_documents(selected_ids: set[int]) -> None:
         if not selected_ids:
@@ -233,17 +404,8 @@ def render_documents(session, comp: Company) -> None:
         writer = csv.writer(csv_buffer, delimiter=";", lineterminator="\n")
         writer.writerow(
             [
-                "Datei",
-                "Datum",
-                "Dateigröße (Bytes)",
-                "MIME",
-                "Belegnummer",
-                "Vendor",
-                "Tags",
-                "Betrag",
-                "Netto",
-                "Steuer",
-                "Summary",
+                "Datei", "Datum", "Dateigröße (Bytes)", "MIME", "Belegnummer",
+                "Vendor", "Tags", "Betrag", "Netto", "Steuer", "Summary",
             ]
         )
         for doc in items:
@@ -522,168 +684,6 @@ def render_documents(session, comp: Company) -> None:
                 ).classes(C_BTN_PRIM)
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
-    def _preview_document(open_url: str) -> None:
-        if open_url:
-            ui.run_javascript(f"window.open('{open_url}', '_blank')")
-
-    def _trigger_download(open_url: str) -> None:
-        if open_url:
-            ui.run_javascript(
-                "const link=document.createElement('a');"
-                f"link.href='{open_url}';"
-                "link.download='';"
-                "document.body.appendChild(link);"
-                "link.click();"
-                "link.remove();"
-            )
-
-    def _update_selected(doc_id: int, checked: bool) -> None:
-        selected = set(state.get("selected_ids") or set())
-        if checked:
-            selected.add(doc_id)
-        else:
-            selected.discard(doc_id)
-        state["selected_ids"] = selected
-        _sync_selection_ui()
-
-    def _toggle_select_all(items: list[Document], checked: bool | None = None) -> None:
-        current_ids = {int(doc.id or 0) for doc in items if doc.id}
-        if not current_ids:
-            ui.notify("Keine Dokumente zum Auswählen.", color="orange")
-            return
-        selected = set(state.get("selected_ids") or set())
-        if checked is None:
-            checked = not current_ids.issubset(selected)
-        if checked:
-            selected |= current_ids
-        else:
-            selected -= current_ids
-        state["selected_ids"] = selected
-        render_list.refresh()
-
-    def _download_selected(items: list[Document]) -> None:
-        selected = set(state.get("selected_ids") or set())
-        selection = [doc for doc in items if int(doc.id or 0) in selected]
-        if not selection:
-            ui.notify("Bitte Dokument auswählen.", color="orange")
-            return
-        if len(selection) > 1:
-            ui.notify("Bitte nur ein Dokument auswählen.", color="orange")
-            return
-        doc = selection[0]
-        doc_id = int(doc.id or 0)
-        if not doc_id:
-            ui.notify("Dokument nicht gefunden.", color="red")
-            return
-        _trigger_download(f"/api/documents/{doc_id}/file")
-
-    @ui_handler("documents.dialog.reset_events.open")
-    def _open_reset_events() -> None:
-        reset_dialog.open()
-
-    @ui_handler("documents.dialog.delete_all.open")
-    def _open_delete_all() -> None:
-        delete_all_dialog.open()
-
-    def _coerce_float(value: object) -> float | None:
-        if value is None or value == "":
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-
-    def _load_meta_map(doc_ids: list[int]) -> dict[int, DocumentMeta]:
-        if not doc_ids:
-            return {}
-        metas = session.exec(
-            select(DocumentMeta).where(DocumentMeta.document_id.in_(doc_ids))
-        ).all()
-        return {int(meta.document_id): meta for meta in metas if meta}
-
-    DEFAULT_VAT_RATE = 0.19
-
-    def _vat_from_gross(amount_total: float, rate: float = DEFAULT_VAT_RATE) -> float:
-        if amount_total <= 0 or rate <= 0:
-            return 0.0
-        return amount_total * (rate / (1 + rate))
-
-    def _resolve_amounts(doc: Document) -> tuple[float | None, float | None, float | None]:
-        amount_total = _coerce_float(doc.amount_total)
-        amount_net = _coerce_float(doc.amount_net)
-        amount_tax = _coerce_float(doc.amount_tax)
-        if amount_total is None:
-            amount_total = _coerce_float(getattr(doc, "gross_amount", None))
-        if amount_net is None:
-            amount_net = _coerce_float(getattr(doc, "net_amount", None))
-        if amount_tax is None:
-            amount_tax = _coerce_float(getattr(doc, "tax_amount", None))
-        if amount_tax is None and amount_total is not None and amount_net is not None:
-            amount_tax = max(amount_total - amount_net, 0.0)
-        if amount_tax is None and amount_total is not None and amount_net is None:
-            amount_tax = _vat_from_gross(amount_total)
-        return amount_total, amount_net, amount_tax
-
-    def _format_json(value: str | None, *, redact_payload: bool = False) -> str:
-        if not value:
-            return ""
-        try:
-            parsed = json.loads(value)
-        except Exception:
-            return str(value)
-        if redact_payload and isinstance(parsed, dict):
-            for key in ("file_bytes", "file_base64", "content_base64", "data_base64", "raw_base64"):
-                if key in parsed:
-                    parsed[key] = "<redacted>"
-        return json.dumps(parsed, ensure_ascii=False, indent=2)
-
-    @ui.refreshable
-    def render_filters():
-        with ui.row().classes("w-full items-center justify-between gap-6 flex-wrap"):
-            with ui.row().classes("items-center gap-4"):
-                ui.label("Dokumente").classes("text-3xl font-bold text-neutral-100")
-                ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
-
-    @ui.refreshable
-    def render_summary():
-        all_docs = _load_documents()
-        _ensure_year(all_docs)
-        year_value = str(state.get("year") or datetime.now().year)
-        items = _filter_documents(all_docs)
-        total_docs = 0
-        total_amount = 0.0
-        total_tax = 0.0
-        for doc in items:
-            total_docs += 1
-            amount_total, _, amount_tax = _resolve_amounts(doc)
-            if amount_total:
-                total_amount += float(amount_total)
-            if amount_tax:
-                total_tax += float(amount_tax)
-
-        with ui.row().classes("w-full gap-4 flex-wrap"):
-            kpi_card(
-                f"Dokumente (Jahr {year_value})",
-                f"{total_docs}",
-                "description",
-                "text-neutral-400",
-                classes="flex-1 min-w-[220px]",
-            )
-            kpi_card(
-                "Gesamtsumme",
-                _format_amount_eur(total_amount),
-                "payments",
-                "text-amber-600",
-                classes="flex-1 min-w-[220px]",
-            )
-            kpi_card(
-                "Steuern gesichert",
-                _format_amount_eur(total_tax),
-                "receipt_long",
-                "text-amber-500",
-                classes="flex-1 min-w-[220px]",
-            )
-
     delete_id = {"value": None}
     with ui.dialog() as delete_all_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[560px] max-w-[92vw]"):
@@ -816,6 +816,8 @@ def render_documents(session, comp: Company) -> None:
                                 if storage_key.startswith("storage/"):
                                     storage_key = storage_key.removeprefix("storage/").lstrip("/")
                                 storage_path = resolve_document_path(document.storage_path)
+                                current_storage_key = storage_key or None
+                                current_storage_path = storage_path or None
                                 if storage_path and os.path.exists(storage_path):
                                     try:
                                         os.remove(storage_path)
@@ -975,63 +977,76 @@ def render_documents(session, comp: Company) -> None:
             )
             ui.notify(f"Fehler beim Öffnen der Metadaten (Dokument-ID: {doc_id})", color="red")
 
-    def _format_size(size_bytes: int) -> str:
-        if size_bytes <= 0:
-            return "-"
-        if size_bytes < 1024:
-            return f"{size_bytes} B"
-        if size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.1f} KB"
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    @ui.refreshable
+    def render_filters():
+        with ui.row().classes("w-full items-center justify-between gap-6 flex-wrap"):
+            with ui.row().classes("items-center gap-4"):
+                ui.label("Dokumente").classes("text-3xl font-bold text-neutral-100")
+                ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
 
-    def _format_amount_value(amount: float | None, currency: str | None) -> str:
-        if amount is None:
-            return "nicht verfügbar"
-        currency = (currency or "").strip()
-        if currency:
-            return f"{amount:.2f} {currency}"
-        return f"{amount:.2f}"
+    @ui.refreshable
+    def render_summary():
+        all_docs = _load_documents()
+        _ensure_year(all_docs)
+        year_value = str(state.get("year") or datetime.now().year)
+        items = _filter_documents(all_docs)
+        total_docs = 0
+        total_amount = 0.0
+        total_tax = 0.0
+        for doc in items:
+            total_docs += 1
+            amount_total, _, amount_tax = _resolve_amounts(doc)
+            if amount_total:
+                total_amount += float(amount_total)
+            if amount_tax:
+                total_tax += float(amount_tax)
 
-    def _format_amount_eur(amount: float) -> str:
-        return f"{amount:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-
-    def _format_source(source: str | None) -> str:
-        value = (source or "").strip().lower()
-        if value in {"manual", "manuell"}:
-            return "Manuell"
-        if value == "n8n":
-            return "n8n"
-        if value in {"mail", "email"}:
-            return "Mail"
-        if value:
-            return value.upper()
-        return "-"
-
-    def _resolve_status(doc: Document, amount_total: float | None, vendor: str | None) -> tuple[str, str]:
-        if amount_total is not None or (vendor or "").strip():
-            return "Verarbeitet", C_BADGE_GRAY
-        if (doc.source or "").strip().lower() in {"mail", "email"}:
-            return "Eingang", C_BADGE_GRAY
-        return "Neu", C_BADGE_YELLOW
-
-    def _resolve_file_icon(mime: str, filename: str) -> tuple[str, str]:
-        lower_mime = (mime or "").lower()
-        lower_name = (filename or "").lower()
-        if "pdf" in lower_mime or lower_name.endswith(".pdf"):
-            return "picture_as_pdf", "text-[#ffd35d] bg-[#ffc524]/10 border border-[#ffc524]/20"
-        if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
-            return "image", "text-neutral-300 bg-neutral-800 border border-neutral-700"
-        return "insert_drive_file", "text-neutral-400 bg-neutral-800 border border-neutral-700"
+        with ui.row().classes("w-full gap-4 flex-wrap"):
+            kpi_card(
+                f"Dokumente (Jahr {year_value})",
+                f"{total_docs}",
+                "description",
+                "text-neutral-400",
+                classes="flex-1 min-w-[220px]",
+            )
+            kpi_card(
+                "Gesamtsumme",
+                _format_amount_eur(total_amount),
+                "payments",
+                "text-amber-600",
+                classes="flex-1 min-w-[220px]",
+            )
+            kpi_card(
+                "Steuern gesichert",
+                _format_amount_eur(total_tax),
+                "receipt_long",
+                "text-amber-500",
+                classes="flex-1 min-w-[220px]",
+            )
 
     @ui.refreshable
     def render_list():
+        # DATA LOADING
         all_docs = _load_documents()
         year_options = _ensure_year(all_docs)
         items = _sort_documents(_filter_documents(all_docs))
         selected_ids = set(state.get("selected_ids") or set())
+
+        # COLUMN WIDTH DEFINITIONS (Must sum to 100%)
+        col_w = {
+            "check": "w-[4%]",
+            "file": "w-[28%]",
+            "date": "w-[10%]",
+            "tags": "w-[15%]",
+            "amt": "w-[10%]",
+            "status": "w-[8%]",
+            "action": "w-[5%]",
+        }
+
         with ui.card().classes(
-            C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-none backdrop-blur-0"
+            C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-sm border border-neutral-800"
         ):
+            # META PRE-CALCULATION
             meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
             backfill_document_fields(session, items, meta_map=meta_map)
             meta_values_map = {
@@ -1039,6 +1054,8 @@ def render_documents(session, comp: Company) -> None:
                 for doc in items
                 if doc.id
             }
+            
+            # SEARCH FILTERING
             query_value = (state.get("query") or "").strip()
             if query_value:
                 items = [
@@ -1046,60 +1063,79 @@ def render_documents(session, comp: Company) -> None:
                     for doc in items
                     if _matches_query(doc, meta_values_map.get(int(doc.id or 0), {}), query_value)
                 ]
+            
             current_ids = {int(doc.id or 0) for doc in items if doc.id}
             all_selected = bool(current_ids) and current_ids.issubset(selected_ids)
+
+            # --- HEADER / CONTROLS ---
             with ui.row().classes(
                 "w-full px-6 py-3 items-center justify-between border-b border-neutral-800 bg-neutral-950/60"
             ):
                 with ui.row().classes("items-center gap-3 flex-wrap"):
+                    # FIXED: Added props options-dense and specific background classes for the popup
                     ui.select(
                         year_options,
                         value=state["year"],
                         label="Jahr",
                         on_change=lambda e: _set_year(e.value or str(datetime.now().year)),
-                    ).props("dense").classes(C_INPUT + " w-28 bg-neutral-900 shadow-sm")
+                    ).props("dense options-dense behavior=menu").classes(
+                        C_INPUT + " w-28 bg-neutral-900 shadow-sm"
+                    ).style(
+                        "--q-color-primary: #a3a3a3;"  # Ensure dropdown text contrast
+                    )
+
                 with ui.row().classes("items-center gap-2 flex-wrap"):
                     ui.input(
                         placeholder="Dokumente durchsuchen",
                         value=state.get("query", ""),
                         on_change=lambda e: _set_query(e.value),
                     ).props("dense clearable").classes(C_INPUT + " w-56 sm:w-72 bg-neutral-900 shadow-sm")
+                    
                     download_button = ui.button(
                         "Download",
                         icon="download",
                         on_click=lambda _, i=items: _download_selected(i),
                     ).classes(C_BTN_SEC)
                     selection_ui["download"] = download_button
+                    
                     selected_count = len(selected_ids.intersection(current_ids))
                     if selected_count == 0:
                         download_button.disable()
                     else:
                         download_button.enable()
+                        
                     selected_label = ui.label(f"{selected_count} ausgewählt").classes("text-xs text-neutral-300")
                     selection_ui["count"] = selected_label
 
+            # --- LIST HEADER ---
             with ui.row().classes(
-                "w-full px-6 py-3 text-xs font-semibold tracking-wide text-neutral-300 border-b border-neutral-800"
+                "w-full px-4 py-3 items-center border-b border-neutral-800 bg-neutral-900/50 text-xs font-semibold tracking-wider text-neutral-400 uppercase"
             ):
+                # Note: No 'gap' classes here, strict width based
                 select_all_checkbox = ui.checkbox(
                     value=all_selected,
                     on_change=lambda e, i=items: _toggle_select_all(i, bool(e.value)),
-                ).props("dense").classes("w-[4%]")
+                ).props("dense size=xs").classes(col_w["check"])
                 selection_ui["select_all"] = select_all_checkbox
-                ui.label("Datei").classes("w-[28%]")
-                ui.label("Datum").classes("w-[12%]")
-                ui.label("Tags").classes("w-[14%]")
-                ui.label("Brutto").classes("w-[9%] text-right")
-                ui.label("Netto").classes("w-[9%] text-right")
-                ui.label("Steuer").classes("w-[9%] text-right")
-                ui.label("Status").classes("w-[7%]")
-                ui.label("Aktionen").classes("w-[8%] text-right")
+                
+                ui.label("Datei").classes(col_w["file"])
+                ui.label("Datum").classes(col_w["date"])
+                ui.label("Tags").classes(col_w["tags"])
+                ui.label("Brutto").classes(col_w["amt"] + " text-right")
+                ui.label("Netto").classes(col_w["amt"] + " text-right")
+                ui.label("Steuer").classes(col_w["amt"] + " text-right")
+                ui.label("Status").classes(col_w["status"] + " pl-2")
+                ui.label("Action").classes(col_w["action"] + " text-right")
 
             selection_ui["current_ids"] = current_ids
+            
             if not items:
-                ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-neutral-300")
+                with ui.column().classes("w-full items-center justify-center py-12 text-neutral-500 gap-2"):
+                    ui.icon("folder_off").classes("text-4xl opacity-20")
+                    ui.label("Keine Dokumente gefunden.")
                 return
 
+            # --- LIST ROWS ---
             for doc in items:
                 doc_id = int(doc.id or 0)
                 display_date = _document_display_date(doc)
@@ -1109,97 +1145,101 @@ def render_documents(session, comp: Company) -> None:
                 if size_bytes <= 0 and isinstance(meta_size, int) and meta_size > 0:
                     size_bytes = meta_size
                 amount_total, amount_net, amount_tax = _resolve_amounts(doc)
-                meta_amount_total = meta_values.get("amount_total")
-                meta_amount_net = meta_values.get("amount_net")
-                meta_amount_tax = meta_values.get("amount_tax")
-                if amount_total is None and meta_amount_total is not None:
-                    amount_total = meta_amount_total
-                if amount_net is None and meta_amount_net is not None:
-                    amount_net = meta_amount_net
-                if amount_tax is None and meta_amount_tax is not None:
-                    amount_tax = meta_amount_tax
+                
+                # Meta overrides
+                if amount_total is None and meta_values.get("amount_total") is not None:
+                    amount_total = meta_values.get("amount_total")
+                if amount_net is None and meta_values.get("amount_net") is not None:
+                    amount_net = meta_values.get("amount_net")
+                if amount_tax is None and meta_values.get("amount_tax") is not None:
+                    amount_tax = meta_values.get("amount_tax")
+                
                 currency_value = (doc.currency or meta_values.get("currency") or "").strip() or None
-                meta_vendor = (meta_values.get("vendor") or "").strip()
-                vendor_value = (doc.vendor or meta_vendor or "").strip()
+                vendor_value = (doc.vendor or meta_values.get("vendor") or "").strip()
                 tags_value = _format_keywords(doc.keywords_json)
                 if tags_value == "-":
                     meta_keywords = meta_values.get("keywords")
                     tags_value = _format_keywords(meta_keywords) if meta_keywords else tags_value
+                
                 size_display = _format_size(size_bytes)
                 size_warning = 0 < size_bytes < 1024
                 if size_warning:
                     size_display = f"{size_display} ⚠️"
+                
                 filename = doc.original_filename or doc.title or "Dokument"
                 mime_value = doc.mime or doc.mime_type or ""
                 open_url = f"/api/documents/{doc_id}/file"
                 status_label, badge_class = _resolve_status(doc, amount_total, vendor_value)
                 icon_name, icon_classes = _resolve_file_icon(mime_value, filename)
+                
+                # Row Styles
                 row_classes = (
-                    "w-full px-6 py-2.5 items-center gap-4 border-b border-neutral-800 "
-                    "hover:bg-neutral-900/60 transition-colors"
+                    "w-full px-4 py-3 items-center border-b border-neutral-800/50 "
+                    "hover:bg-neutral-800/40 transition-colors text-sm group"
                 )
                 if highlight_document_id == doc_id:
-                    row_classes += " bg-[#ffc524]/10 ring-1 ring-[#ffc524]/20"
+                     row_classes += " bg-amber-500/5 border-l-2 border-l-amber-500 pl-[14px]"
+
                 with ui.row().classes(row_classes):
+                    # 1. Checkbox
                     ui.checkbox(
                         value=doc_id in selected_ids,
                         on_change=lambda e, i=doc_id: _update_selected(i, bool(e.value)),
-                    ).props("dense").classes("w-[4%] shrink-0")
-                    with ui.element("div").classes("flex items-center gap-3 w-[28%] min-w-0"):
+                    ).props("dense size=xs").classes(col_w["check"] + " shrink-0")
+
+                    # 2. File Info
+                    with ui.row().classes(col_w["file"] + " items-center gap-3 overflow-hidden pr-2"):
                         with ui.element("div").classes(
-                            f"w-9 h-9 rounded-md flex items-center justify-center {icon_classes}"
-                        ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6)"):
-                            ui.icon(icon_name).classes("text-base")
-                        with ui.column().classes("min-w-0 gap-0.5"):
+                            f"w-8 h-8 shrink-0 rounded flex items-center justify-center {icon_classes}"
+                        ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05)"):
+                            ui.icon(icon_name).classes("text-sm")
+                        
+                        with ui.column().classes("gap-0.5 min-w-0 flex-1"):
                             ui.link(filename, open_url, new_tab=True).classes(
-                                "text-neutral-200 font-medium hover:text-[#ffd35d] hover:underline truncate"
+                                "text-neutral-200 font-medium leading-tight truncate hover:text-amber-400 hover:underline block w-full"
                             ).tooltip(filename)
-                            ui.label(f"{size_display} • {_format_source(doc.source)}").classes(
-                                "text-xs text-neutral-500 truncate"
-                            )
-                    ui.label(display_date or "-").classes("w-[12%] text-sm text-neutral-300")
-                    with ui.element("div").classes("w-[14%]"):
+                            with ui.row().classes("items-center gap-1.5 text-[10px] text-neutral-500 leading-none"):
+                                ui.label(size_display)
+                                ui.element("div").classes("w-0.5 h-0.5 rounded-full bg-neutral-600")
+                                ui.label(_format_source(doc.source))
+
+                    # 3. Date
+                    ui.label(display_date or "-").classes(col_w["date"] + " text-neutral-400 font-mono text-xs")
+
+                    # 4. Tags
+                    with ui.row().classes(col_w["tags"] + " gap-1 flex-wrap"):
                         tag_items = _parse_keywords(tags_value) if tags_value != "-" else []
                         if tag_items:
-                            with ui.row().classes("flex flex-wrap gap-1"):
-                                for tag in tag_items:
-                                    ui.label(tag).classes(
-                                        "text-xs text-neutral-300 bg-neutral-800 border border-neutral-700 px-2 py-0.5 rounded-full"
-                                    )
+                            for tag in tag_items[:2]:
+                                ui.label(tag).classes(
+                                    "text-[10px] text-neutral-400 bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-700 truncate max-w-[80px]"
+                                )
+                            if len(tag_items) > 2:
+                                ui.label(f"+{len(tag_items)-2}").classes("text-[10px] text-neutral-500")
                         else:
-                            ui.label("-").classes("text-sm text-neutral-500")
-                    ui.label(
-                        _format_amount_value(amount_total, currency_value) if amount_total is not None else "-"
-                    ).classes("w-[9%] text-right text-sm text-neutral-300")
-                    ui.label(
-                        _format_amount_value(amount_net, currency_value) if amount_net is not None else "-"
-                    ).classes("w-[9%] text-right text-sm text-neutral-300")
-                    ui.label(
-                        _format_amount_value(amount_tax, currency_value) if amount_tax is not None else "-"
-                    ).classes("w-[9%] text-right text-sm text-neutral-300")
-                    with ui.element("div").classes("w-[7%]"):
-                        ui.label(status_label).classes(badge_class)
-                    with ui.element("div").classes("w-[8%] flex justify-end ml-auto"):
-                        with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(
-                            "text-neutral-400 hover:text-[#ffd35d]"
-                        ):
-                            with ui.menu().props("auto-close no-parent-event"):
-                                ui.menu_item(
-                                    "Bearbeiten",
-                                    on_click=lambda _, d=doc_id: _open_meta(int(d)),
-                                )
-                                ui.menu_item(
-                                    "Vorschau",
-                                    on_click=lambda _, u=open_url: _preview_document(u),
-                                )
-                                ui.menu_item(
-                                    "Download",
-                                    on_click=lambda _, u=open_url: _trigger_download(u),
-                                )
-                                ui.menu_item(
-                                    "Löschen",
-                                    on_click=lambda _, d=doc_id: _open_delete(int(d)),
-                                )
+                            ui.label("-").classes("text-neutral-600")
+
+                    # 5. Amounts
+                    def _amt_lbl(val, width):
+                         ui.label(val).classes(width + " text-right font-mono text-neutral-300 tracking-tight")
+                    _amt_lbl(_format_amount_value(amount_total, currency_value) if amount_total else "-", col_w["amt"])
+                    _amt_lbl(_format_amount_value(amount_net, currency_value) if amount_net else "-", col_w["amt"])
+                    _amt_lbl(_format_amount_value(amount_tax, currency_value) if amount_tax else "-", col_w["amt"])
+
+                    # 6. Status
+                    with ui.element("div").classes(col_w["status"] + " pl-2"):
+                         ui.label(status_label).classes(badge_class + " text-[10px] px-2 py-0.5 rounded-full font-medium border border-white/5")
+
+                    # 7. Action Button
+                    with ui.element("div").classes(col_w["action"] + " flex justify-end"):
+                        # FIXED: Added 'stop' to prevent row clicks, 'z-10' for layering
+                        with ui.button(icon="more_vert").props("round flat dense stop").classes("text-neutral-500 hover:text-white transition-colors z-10"):
+                            with ui.menu().props("auto-close").classes("bg-neutral-900 border border-neutral-800 text-neutral-200"):
+                                ui.menu_item("Bearbeiten", on_click=lambda _, d=doc_id: _open_meta(int(d)))
+                                ui.menu_item("Vorschau", on_click=lambda _, u=open_url: _preview_document(u))
+                                ui.menu_item("Download", on_click=lambda _, u=open_url: _trigger_download(u))
+                                ui.separator().classes("bg-neutral-800")
+                                ui.menu_item("Löschen", on_click=lambda _, d=doc_id: _open_delete(int(d))).classes("text-rose-400 hover:text-rose-300")
 
     with ui.element("div").classes(
         "w-full bg-neutral-950/80 rounded-xl p-6 border border-neutral-800 flex flex-col gap-6"
