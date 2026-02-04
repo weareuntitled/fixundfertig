@@ -49,7 +49,7 @@ def kpi_card(
     trend_direction: str | None = None,
     trend_color: str | None = None,
 ):
-    card_classes = f"{C_CARD} {C_CARD_HOVER} p-4 {classes}".strip()
+    card_classes = f"{C_CARD} {C_CARD_HOVER} p-5 {classes} relative overflow-hidden flex flex-col justify-between min-h-[140px]".strip()
     icon_map = {"up": "arrow_upward", "down": "arrow_downward", "flat": "arrow_forward"}
     direction = (trend_direction or "").lower()
     trend_icon = icon_map.get(direction)
@@ -63,11 +63,18 @@ def kpi_card(
         trend_color_class = "text-slate-500"
 
     with ui.card().classes(card_classes):
-        with ui.column().classes('gap-1'):
-            ui.label(label).classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
-            ui.label(value).classes(f'text-2xl font-bold text-slate-800 {C_NUMERIC}')
-        with ui.element("div").classes("rounded-full bg-white/80 shadow-inner px-3 py-2"):
-            ui.icon(icon).classes(f"text-2xl {color}")
+        ui.icon(icon).classes(f"absolute right-4 bottom-4 text-6xl {color} opacity-10")
+        with ui.column().classes("gap-2 z-10"):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon(icon).classes(f"text-base {color}")
+                ui.label(label).classes("text-xs font-bold text-slate-400 uppercase tracking-wider")
+            ui.element("div").classes("h-px w-10 bg-slate-200")
+            ui.label(value).classes(f"text-2xl font-bold text-slate-800 {C_NUMERIC}")
+            if trend_text:
+                with ui.row().classes("items-center gap-1"):
+                    if trend_icon:
+                        ui.icon(trend_icon).classes(f"text-xs {trend_color_class}")
+                    ui.label(trend_text).classes(f"text-xs {trend_color_class}")
 
 @contextmanager
 def settings_card(title: str | None = None, classes: str = ""):
