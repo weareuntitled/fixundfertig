@@ -41,6 +41,20 @@ def _parse_iso_date(value: str | None) -> datetime:
         return datetime.min
 
 
+def _document_filter_date(document: Document) -> datetime:
+    for candidate in (
+        (getattr(document, "doc_date", None) or "").strip(),
+        (getattr(document, "invoice_date", None) or "").strip(),
+    ):
+        parsed = _parse_iso_date(candidate)
+        if parsed != datetime.min:
+            return parsed
+    created_at = document.created_at
+    if isinstance(created_at, datetime):
+        return created_at
+    return _parse_iso_date(str(created_at))
+
+
 def normalize_keywords(value: Iterable[str] | str | None) -> str:
     if value is None:
         return "[]"
@@ -512,11 +526,9 @@ def document_matches_filters(
     doc_ext = _extension(document.original_filename or "")
     if doc_type and doc_ext.lower() != doc_type.lower():
         return False
-    created_at = document.created_at
-    if not isinstance(created_at, datetime):
-        created_at = _parse_iso_date(str(created_at))
-    if date_from and created_at < _parse_iso_date(date_from):
+    filter_date = _document_filter_date(document)
+    if date_from and filter_date < _parse_iso_date(date_from):
         return False
-    if date_to and created_at > _parse_iso_date(date_to):
+    if date_to and filter_date > _parse_iso_date(date_to):
         return False
     return True

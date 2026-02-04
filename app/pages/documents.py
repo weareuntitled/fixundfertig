@@ -160,11 +160,18 @@ def render_documents(session, comp: Company) -> None:
         return last_month_start.isoformat(), last_month_end.isoformat()
 
     def _year_options(items: list[Document]) -> dict[str, str]:
-        years = {
-            str(_doc_created_at(doc).year)
-            for doc in items
-            if _doc_created_at(doc) != datetime.min
-        }
+        years: set[str] = set()
+        for doc in items:
+            display_date = _document_display_date(doc)
+            doc_year = ""
+            if display_date:
+                doc_year = str(display_date)[:4]
+            if not doc_year or not doc_year.isdigit():
+                created_at = _doc_created_at(doc)
+                if created_at != datetime.min:
+                    doc_year = str(created_at.year)
+            if doc_year:
+                years.add(doc_year)
         if not years:
             years = {str(datetime.now().year)}
         options = {year: year for year in sorted(years, reverse=True)}
