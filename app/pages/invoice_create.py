@@ -310,7 +310,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         except Exception as ex:
             preview_frame.content = ""
             preview_summary.content = (
-                "<div class='text-red-600'>PDF Fehler: "
+                "<div class='text-orange-700'>PDF Fehler: "
                 f"{ex}</div>{preview_html}"
             )
 
