@@ -1,7 +1,17 @@
-<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="128" height="128" rx="28" fill="#0F172A"/>
-  <text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" fill="white"
-        font-size="40" font-family="Arial, Helvetica, sans-serif" font-weight="700" letter-spacing="4">
-    FF
-  </text>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Ebene_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 141.73 141.73">
+  <!-- Generator: Adobe Illustrator 29.8.4, SVG Export Plug-In . SVG Version: 2.1.1 Build 6)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #fffefe;
+      }
+
+      .st1 {
+        fill: #ffc524;
+      }
+    </style>
+  </defs>
+  <rect class="st1" x="-15.05" y="-6.66" width="168.15" height="157.55"/>
+  <path class="st0" d="M72.68,25.09l.19,9.34h49.06l.29.29v83.92H23.52V25.09h49.15ZM81.44,71.96l13.88-26.8c.05-.48-2.59-1.5-3.1-1.76l-14.97,28.47-19.44.19c-2.51,4.55-5.28,10.08-6.04,15.3-1.01,6.95,2.16,14.31,8.02,18.13l17.55-33.52h3.72l-18.11,35.52c14.27,7.25,31.58-5.05,28.68-21.04-.89-4.93-3.59-10.09-5.91-14.48h-4.29Z"/>
 </svg>
