@@ -375,7 +375,11 @@ def render_dashboard(session, comp: Company) -> None:
                 is_active = active_filter["value"] == value
                 cls = (
                     "px-4 py-1.5 rounded-full text-sm font-semibold transition-all "
-                    + ("bg-neutral-950 text-[#ffd35d] shadow-sm" if is_active else "text-neutral-400 hover:text-neutral-100")
+                    + (
+                        "bg-neutral-800 text-[#ffc524] shadow-sm"
+                        if is_active
+                        else "text-neutral-400 hover:text-neutral-100"
+                    )
                 )
                 ui.button(value, on_click=lambda v=value: set_filter(v)).props("flat dense").classes(cls)
 
