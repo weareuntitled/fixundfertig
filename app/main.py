@@ -1485,7 +1485,7 @@ def layout_wrapper(content_func):
                     active = app.storage.user.get("page", "dashboard") == target
                     base = "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150"
                     cls = (
-                        f"{base} bg-neutral-900 text-[#ffd35d] shadow-[0_0_18px_rgba(255,197,36,0.35)] ring-1 ring-[#ffc524]/30"
+                        f"{base} bg-neutral-900 text-[#ffc524] shadow-[0_0_18px_rgba(255,197,36,0.35)] ring-1 ring-[#ffc524]/40"
                         if active
                         else f"{base} text-neutral-300 hover:text-neutral-100 hover:bg-neutral-700/70"
                     )
