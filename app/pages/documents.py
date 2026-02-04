@@ -1079,14 +1079,12 @@ def render_documents(session, comp: Company) -> None:
                 coords = event.args or {}
                 row_left = int(coords.get("rowLeft") or 0)
                 row_bottom = int(coords.get("rowBottom") or 0)
-                scroll_x = int(coords.get("scrollX") or 0)
-                scroll_y = int(coords.get("scrollY") or 0)
                 if row_left == 0 and row_bottom == 0:
                     x = int(coords.get("pageX") or coords.get("clientX") or 0)
                     y = int(coords.get("pageY") or coords.get("clientY") or 0)
                 else:
-                    x = row_left + scroll_x
-                    y = row_bottom + scroll_y
+                    x = row_left
+                    y = row_bottom
                 if x == 0 and y == 0:
                     x = 220
                     y = 220
@@ -1146,8 +1144,6 @@ def render_documents(session, comp: Company) -> None:
                         " clientY: e.clientY,"
                         " rowLeft: rect.left,"
                         " rowBottom: rect.bottom,"
-                        " scrollX: window.scrollX,"
-                        " scrollY: window.scrollY,"
                         "});"
                         "}"
                     ),
