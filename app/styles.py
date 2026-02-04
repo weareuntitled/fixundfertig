@@ -44,6 +44,9 @@ APP_FONT_CSS = f"""
   .q-field__control:after {{
     background: #3b4046;
   }}
+  .q-field__control {{
+    background: var(--surface-1);
+  }}
   .q-field--focused .q-field__control:before {{
     background: #2f3338;
   }}
@@ -51,6 +54,11 @@ APP_FONT_CSS = f"""
     background: #3b4046;
   }}
   .q-field--outlined .q-field__control {{
+    background: var(--surface-1);
+  }}
+  .q-field--standard .q-field__control,
+  .q-field--filled .q-field__control,
+  .q-field--standout .q-field__control {{
     background: var(--surface-1);
   }}
   .q-field--outlined .q-field__control:before {{
