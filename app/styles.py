@@ -25,6 +25,9 @@ APP_FONT_CSS = f"""
   a {{
     color: var(--brand-primary);
   }}
+  a.q-link {{
+    color: inherit;
+  }}
   ::selection {{
     background: color-mix(in srgb, var(--brand-primary) 70%, transparent);
     color: #0a0b0d;
@@ -61,6 +64,18 @@ APP_FONT_CSS = f"""
     border-color: #3b4046;
   }}
   .q-field__native, .q-field__prefix, .q-field__suffix {{
+    color: #e5e7eb;
+  }}
+  .q-field__native::placeholder {{
+    color: #94a3b8;
+  }}
+  .q-field__marginal {{
+    color: #cbd5e1;
+  }}
+  .q-field__messages {{
+    color: #cbd5e1;
+  }}
+  .q-checkbox__label {{
     color: #e5e7eb;
   }}
   .q-checkbox__inner--truthy .q-checkbox__bg {{

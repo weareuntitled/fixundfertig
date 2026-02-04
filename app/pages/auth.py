@@ -23,7 +23,7 @@ from styles import C_INPUT
 ERROR_TEXT = "text-sm text-orange-400"
 LINK_TEXT = "text-sm !text-neutral-400 hover:!text-neutral-200 no-underline"
 TITLE_TEXT = "text-2xl font-semibold text-neutral-100 text-center"
-SUBTITLE_TEXT = "text-sm text-neutral-400 text-center"
+SUBTITLE_TEXT = "text-sm text-neutral-300 text-center"
 INPUT_CLASSES = f"w-full {C_INPUT}"
 PRIMARY_BUTTON = "w-full bg-[#ffc524] text-neutral-950 rounded-lg hover:bg-[#ffd35d]"
 SECONDARY_BUTTON = "w-full border border-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-800"
@@ -99,7 +99,7 @@ def login_page():
             password_input = ui.input("Password").props("outlined dense type=password").classes(INPUT_CLASSES)
             password_error = _error_label()
         status_error = _error_label()
-        status_success = ui.label("").classes("text-sm text-orange-600")
+        status_success = ui.label("").classes("text-sm text-neutral-300")
         status_success.set_visibility(False)
 
         def handle_login() -> None:
