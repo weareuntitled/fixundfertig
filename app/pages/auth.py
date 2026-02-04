@@ -150,7 +150,11 @@ def login_page():
         with ui.row().classes("w-full justify-between"):
             ui.link("Forgot password?", "/forgot").classes(LINK_TEXT)
             ui.link("Create account", "/signup").classes(LINK_TEXT)
-        owner_button = ui.link("Owner-Verifizierungslink senden", handle_owner_verification).classes(LINK_TEXT)
+        owner_button = (
+            ui.button("Owner-Verifizierungslink senden", on_click=handle_owner_verification)
+            .props("flat")
+            .classes(LINK_TEXT)
+        )
 
 
 @ui.page("/signup")
