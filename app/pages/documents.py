@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from ._shared import *
-from styles import C_BADGE_BLUE, C_BADGE_GREEN, C_BADGE_YELLOW
+from styles import C_BADGE_GRAY, C_BADGE_YELLOW
 from data import Document, DocumentMeta, WebhookEvent
 from sqlmodel import delete
 from data import WebhookEvent
@@ -269,7 +269,7 @@ def render_documents(session, comp: Company) -> None:
         ui.download(zip_path)
         if missing_files:
             ui.notify(f"{missing_files} Dateien fehlten im Export.", color="orange")
-        ui.notify("ZIP-Export bereit.", color="green")
+        ui.notify("ZIP-Export bereit.", color="orange")
 
     async def _read_upload_bytes(upload_file) -> bytes:
         temp_file = tempfile.NamedTemporaryFile(delete=False)
@@ -399,7 +399,7 @@ def render_documents(session, comp: Company) -> None:
                 _log_client_debug({"step": "post_call_finished"})
                 if upload_status:
                     upload_status.set_text("Status: Gesendet. Warte auf n8n-Ingest...")
-                ui.notify("Datei an n8n gesendet.", color="green")
+                ui.notify("Datei an n8n gesendet.", color="orange")
                 _log_client_debug({"step": "send_success"})
             except httpx.HTTPStatusError as exc:
                 logger.exception(
@@ -631,21 +631,21 @@ def render_documents(session, comp: Company) -> None:
                 f"Dokumente (Jahr {year_value})",
                 f"{total_docs}",
                 "description",
-                "text-blue-600",
+                "text-slate-600",
                 classes="flex-1 min-w-[220px]",
             )
             kpi_card(
                 "Gesamtsumme",
                 _format_amount_eur(total_amount),
                 "payments",
-                "text-emerald-600",
+                "text-amber-600",
                 classes="flex-1 min-w-[220px]",
             )
             kpi_card(
                 "Steuern gesichert",
                 _format_amount_eur(total_tax),
                 "receipt_long",
-                "text-amber-600",
+                "text-amber-500",
                 classes="flex-1 min-w-[220px]",
             )
 
@@ -712,7 +712,7 @@ def render_documents(session, comp: Company) -> None:
                                 storage_path=current_storage_path,
                             ),
                         )
-                        ui.notify("Alle Dokumente gelöscht.", color="green")
+                        ui.notify("Alle Dokumente gelöscht.", color="orange")
                         delete_all_dialog.close()
                         render_list.refresh()
                     except Exception:
@@ -729,7 +729,9 @@ def render_documents(session, comp: Company) -> None:
                         doc_id_display = current_document_id if current_document_id is not None else "unbekannt"
                         ui.notify(f"Fehler beim Löschen (Dokument-ID: {doc_id_display})", color="red")
 
-                ui.button("Alle löschen", on_click=_confirm_delete_all).classes("bg-rose-600 text-white hover:bg-rose-700")
+                ui.button("Alle löschen", on_click=_confirm_delete_all).classes(
+                    "bg-slate-700 text-white hover:bg-slate-600"
+                )
 
     with ui.dialog() as reset_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
@@ -745,10 +747,10 @@ def render_documents(session, comp: Company) -> None:
                     with get_session() as s:
                         s.exec(delete(WebhookEvent))
                         s.commit()
-                    ui.notify("Webhook-Events gelöscht.", color="green")
+                    ui.notify("Webhook-Events gelöscht.", color="orange")
                     reset_dialog.close()
 
-                ui.button("Reset", on_click=_confirm_reset).classes("bg-rose-600 text-white hover:bg-rose-700")
+                ui.button("Reset", on_click=_confirm_reset).classes("bg-slate-700 text-white hover:bg-slate-600")
 
     with ui.dialog() as delete_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
@@ -808,7 +810,7 @@ def render_documents(session, comp: Company) -> None:
                                 storage_path=storage_path,
                             ),
                         )
-                        ui.notify("Gelöscht", color="green")
+                        ui.notify("Gelöscht", color="orange")
                         delete_dialog.close()
                         render_list.refresh()
                     except Exception:
@@ -825,7 +827,7 @@ def render_documents(session, comp: Company) -> None:
                         doc_id_display = document_id if document_id is not None else "unbekannt"
                         ui.notify(f"Fehler beim Löschen (Dokument-ID: {doc_id_display})", color="red")
 
-                ui.button("Löschen", on_click=_confirm_delete).classes("bg-rose-600 text-white hover:bg-rose-700")
+                ui.button("Löschen", on_click=_confirm_delete).classes("bg-slate-700 text-white hover:bg-slate-600")
 
     meta_state = {"doc_id": None, "title": "", "raw": "", "line_items": "", "flags": ""}
     with ui.dialog() as meta_dialog:
@@ -875,7 +877,7 @@ def render_documents(session, comp: Company) -> None:
                     meta.line_items_json = json.dumps(line_value, ensure_ascii=False)
                     meta.compliance_flags_json = json.dumps(flags_value, ensure_ascii=False)
                     s.commit()
-                ui.notify("Metadaten gespeichert.", color="green")
+                ui.notify("Metadaten gespeichert.", color="orange")
                 meta_dialog.close()
                 render_list.refresh()
 
@@ -972,18 +974,18 @@ def render_documents(session, comp: Company) -> None:
 
     def _resolve_status(doc: Document, amount_total: float | None, vendor: str | None) -> tuple[str, str]:
         if amount_total is not None or (vendor or "").strip():
-            return "Verarbeitet", C_BADGE_GREEN
+            return "Verarbeitet", C_BADGE_GRAY
         if (doc.source or "").strip().lower() in {"mail", "email"}:
-            return "Eingang", C_BADGE_BLUE
+            return "Eingang", C_BADGE_GRAY
         return "Neu", C_BADGE_YELLOW
 
     def _resolve_file_icon(mime: str, filename: str) -> tuple[str, str]:
         lower_mime = (mime or "").lower()
         lower_name = (filename or "").lower()
         if "pdf" in lower_mime or lower_name.endswith(".pdf"):
-            return "picture_as_pdf", "text-rose-500 bg-rose-50 border border-rose-100"
+            return "picture_as_pdf", "text-amber-600 bg-amber-50 border border-amber-100"
         if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
-            return "image", "text-emerald-500 bg-emerald-50 border border-emerald-100"
+            return "image", "text-slate-600 bg-slate-100 border border-slate-200"
         return "insert_drive_file", "text-slate-500 bg-slate-100 border border-slate-200"
 
     @ui.refreshable
@@ -1111,7 +1113,7 @@ def render_documents(session, comp: Company) -> None:
                             ui.icon(icon_name).classes("text-base")
                         with ui.column().classes("min-w-0 gap-0.5"):
                             ui.link(filename, open_url, new_tab=True).classes(
-                                "text-blue-600 font-medium hover:underline truncate"
+                                "text-slate-700 font-medium hover:text-amber-600 hover:underline truncate"
                             ).tooltip(filename)
                             ui.label(f"{size_display} • {_format_source(doc.source)}").classes(
                                 "text-xs text-slate-400 truncate"
