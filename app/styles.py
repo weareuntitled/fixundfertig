@@ -33,10 +33,10 @@ APP_FONT_CSS = f"""
     color: #0a0b0d;
   }}
   .q-field__label {{
-    color: #cbd5e1;
+    color: #ffffff !important;
   }}
   .q-field--focused .q-field__label {{
-    color: #e2e8f0;
+    color: #ffffff !important;
   }}
   .q-field__control:before {{
     background: #2f3338;
@@ -45,7 +45,7 @@ APP_FONT_CSS = f"""
     background: #3b4046;
   }}
   .q-field__control {{
-    background: #1f2937;
+    background: #1f2937 !important;
   }}
   .q-field--focused .q-field__control:before {{
     background: #2f3338;
@@ -54,12 +54,12 @@ APP_FONT_CSS = f"""
     background: #3b4046;
   }}
   .q-field--outlined .q-field__control {{
-    background: #1f2937;
+    background: #1f2937 !important;
   }}
   .q-field--standard .q-field__control,
   .q-field--filled .q-field__control,
   .q-field--standout .q-field__control {{
-    background: #1f2937;
+    background: #1f2937 !important;
   }}
   .q-field--outlined .q-field__control:before {{
     border-color: #2f3338;
@@ -72,7 +72,7 @@ APP_FONT_CSS = f"""
     border-color: #3b4046;
   }}
   .q-field__native, .q-field__prefix, .q-field__suffix {{
-    color: #f8fafc;
+    color: #ffffff !important;
   }}
   .q-field__native::placeholder {{
     color: #94a3b8;
