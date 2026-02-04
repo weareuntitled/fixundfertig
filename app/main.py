@@ -1522,10 +1522,24 @@ def layout_wrapper(content_func):
                             on_change=lambda e: open_ledger_search(e.value or ""),
                         ).props("dense").classes(C_INPUT + " rounded-full shadow-sm w-72")
                     with ui.row().classes("flex-1 items-center justify-end gap-2"):
-                        ui.button(
-                            icon="notifications",
-                            on_click=lambda: ui.notify("Keine neuen Benachrichtigungen.", color="grey"),
-                        ).props("flat round").classes("!text-neutral-300 hover:!text-neutral-100")
+                        with ui.button(icon="notifications").props("flat round").classes(
+                            "!text-neutral-300 hover:!text-neutral-100"
+                        ):
+                            with ui.menu().classes(
+                                "min-w-[240px] bg-neutral-900 text-neutral-200 border border-neutral-800"
+                            ):
+                                notifications: list[str] = []
+                                if n8n_today_count:
+                                    notifications.append(
+                                        f"{n8n_today_count} neue N8N-Dokumente heute"
+                                    )
+                                if notifications:
+                                    for entry in notifications:
+                                        ui.item(entry).classes("text-neutral-200")
+                                else:
+                                    ui.item("Keine neuen Benachrichtigungen.").classes(
+                                        "text-neutral-400"
+                                    )
                         ui.button(
                             "New Invoice",
                             on_click=lambda: _open_invoice_editor(None),
