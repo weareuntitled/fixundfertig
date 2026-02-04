@@ -19,15 +19,15 @@ from services.auth import (
 )
 from ui_theme import apply_global_ui_theme
 
-ERROR_TEXT = "text-sm text-rose-600"
-LINK_TEXT = "text-sm text-slate-500 hover:text-slate-900 no-underline"
-TITLE_TEXT = "text-2xl font-semibold text-slate-900 text-center"
-SUBTITLE_TEXT = "text-sm text-slate-500 text-center"
+ERROR_TEXT = "text-sm text-orange-600"
+LINK_TEXT = "text-sm text-neutral-500 hover:text-orange-600 no-underline"
+TITLE_TEXT = "text-2xl font-semibold text-neutral-900 text-center"
+SUBTITLE_TEXT = "text-sm text-neutral-500 text-center"
 INPUT_CLASSES = "w-full"
-PRIMARY_BUTTON = "w-full bg-slate-900 text-white rounded-lg hover:bg-slate-800"
-SECONDARY_BUTTON = "w-full border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50"
-CARD_CLASSES = "w-full max-w-[400px] bg-white rounded-xl shadow-lg border border-slate-200 p-6"
-BG_CLASSES = "min-h-screen w-full bg-slate-50 flex items-center justify-center px-4"
+PRIMARY_BUTTON = "w-full bg-neutral-900 text-neutral-50 rounded-lg hover:bg-neutral-800"
+SECONDARY_BUTTON = "w-full border border-neutral-200 text-neutral-700 rounded-lg hover:bg-neutral-100"
+CARD_CLASSES = "w-full max-w-[400px] bg-white rounded-xl shadow-lg border border-neutral-200 p-6"
+BG_CLASSES = "min-h-screen w-full bg-neutral-50 flex items-center justify-center px-4"
 logger = logging.getLogger(__name__)
 
 
@@ -72,8 +72,8 @@ def _show_success(
     card.clear()
     with card:
         if icon:
-            ui.icon(icon).classes("text-emerald-500 text-4xl self-center")
-        ui.label(message).classes("text-sm text-slate-500 text-center")
+            ui.icon(icon).classes("text-orange-500 text-4xl self-center")
+        ui.label(message).classes("text-sm text-neutral-500 text-center")
         if link_text and link_href:
             ui.link(link_text, link_href).classes(f"{LINK_TEXT} self-center")
 
@@ -98,7 +98,7 @@ def login_page():
             password_input = ui.input("Password").props("outlined dense type=password").classes(INPUT_CLASSES)
             password_error = _error_label()
         status_error = _error_label()
-        status_success = ui.label("").classes("text-sm text-emerald-600")
+        status_success = ui.label("").classes("text-sm text-orange-600")
         status_success.set_visibility(False)
 
         def handle_login() -> None:
