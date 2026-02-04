@@ -74,7 +74,10 @@ APP_FONT_CSS = f"""
     color: var(--brand-primary);
   }}
   .q-item__section--main {{
-    color: inherit;
+    color: #e5e7eb;
+  }}
+  .q-item__section--main .q-item__label--caption {{
+    color: #9ca3af;
   }}
   .q-btn .q-focus-helper {{
     background: color-mix(in srgb, var(--brand-primary-2) 25%, transparent);

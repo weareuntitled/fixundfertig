@@ -1536,7 +1536,7 @@ def layout_wrapper(content_func):
                             ui.label(initials).classes("text-xs font-semibold text-neutral-100")
                             with ui.menu().classes("min-w-[220px] bg-neutral-900 text-neutral-200"):
                                 if identifier:
-                                    ui.label(identifier).classes("text-xs text-neutral-400 px-3 pt-2")
+                                    ui.label(identifier).classes("text-xs text-neutral-300 px-3 pt-2")
                                 if company_name:
                                     ui.label(company_name).classes("text-sm text-neutral-300 px-3 pb-2")
                                 ui.separator().classes("my-1")
