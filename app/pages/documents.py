@@ -566,6 +566,19 @@ def render_documents(session, comp: Company) -> None:
             amount_tax = _vat_from_gross(amount_total)
         return amount_total, amount_net, amount_tax
 
+    def _format_json(value: str | None, *, redact_payload: bool = False) -> str:
+        if not value:
+            return ""
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return str(value)
+        if redact_payload and isinstance(parsed, dict):
+            for key in ("file_bytes", "file_base64", "content_base64", "data_base64", "raw_base64"):
+                if key in parsed:
+                    parsed[key] = "<redacted>"
+        return json.dumps(parsed, ensure_ascii=False, indent=2)
+
     @ui.refreshable
     def render_filters():
         def _set_period(value: str) -> None:
@@ -836,6 +849,62 @@ def render_documents(session, comp: Company) -> None:
 
                 ui.button("Löschen", on_click=_confirm_delete).classes("bg-rose-600 text-white hover:bg-rose-700")
 
+    meta_state = {"doc_id": None, "title": "", "raw": "", "line_items": "", "flags": ""}
+    with ui.dialog() as meta_dialog:
+        with ui.card().classes(C_CARD + " p-5 w-[860px] max-w-[96vw]"):
+            meta_title = ui.label("Metadaten").classes(C_SECTION_TITLE)
+            ui.label("JSON bearbeiten, um Metadaten zu aktualisieren.").classes("text-xs text-slate-500 mb-2")
+            raw_area = ui.textarea(label="Raw Payload (JSON)", value="").props("rows=8").classes(
+                C_INPUT + " w-full font-mono text-xs"
+            )
+            line_area = ui.textarea(label="Line Items (JSON)", value="").props("rows=6").classes(
+                C_INPUT + " w-full font-mono text-xs"
+            )
+            flags_area = ui.textarea(label="Compliance Flags (JSON)", value="").props("rows=4").classes(
+                C_INPUT + " w-full font-mono text-xs"
+            )
+
+            def _parse_json_input(value: str | None, default: object, label: str) -> object | None:
+                cleaned = (value or "").strip()
+                if not cleaned:
+                    return default
+                try:
+                    return json.loads(cleaned)
+                except json.JSONDecodeError:
+                    ui.notify(f"{label} ist kein gültiges JSON.", color="red")
+                    return None
+
+            def _save_meta() -> None:
+                doc_id = meta_state.get("doc_id")
+                if not doc_id:
+                    ui.notify("Kein Dokument gewählt.", color="orange")
+                    return
+                raw_value = _parse_json_input(raw_area.value, {}, "Raw Payload")
+                if raw_value is None:
+                    return
+                line_value = _parse_json_input(line_area.value, [], "Line Items")
+                if line_value is None:
+                    return
+                flags_value = _parse_json_input(flags_area.value, [], "Compliance Flags")
+                if flags_value is None:
+                    return
+                with get_session() as s:
+                    meta = s.exec(select(DocumentMeta).where(DocumentMeta.document_id == int(doc_id))).first()
+                    if not meta:
+                        meta = DocumentMeta(document_id=int(doc_id))
+                        s.add(meta)
+                    meta.raw_payload_json = json.dumps(raw_value, ensure_ascii=False)
+                    meta.line_items_json = json.dumps(line_value, ensure_ascii=False)
+                    meta.compliance_flags_json = json.dumps(flags_value, ensure_ascii=False)
+                    s.commit()
+                ui.notify("Metadaten gespeichert.", color="green")
+                meta_dialog.close()
+                render_list.refresh()
+
+            with ui.row().classes("justify-end gap-2 mt-3 w-full"):
+                ui.button("Abbrechen", on_click=meta_dialog.close).classes(C_BTN_SEC)
+                ui.button("Speichern", on_click=_save_meta).classes(C_BTN_PRIM)
+
     @ui_handler("documents.dialog.delete.open")
     def _open_delete(doc_id: int) -> None:
         delete_id["value"] = doc_id
@@ -843,6 +912,9 @@ def render_documents(session, comp: Company) -> None:
 
     @ui_handler("documents.dialog.meta.open")
     def _open_meta(doc_id: int) -> None:
+        if not doc_id:
+            return
+        _hide_context_menu()
         action = "open_document_meta"
         filename = None
         storage_key = None
@@ -851,16 +923,16 @@ def render_documents(session, comp: Company) -> None:
             with get_session() as s:
                 meta = s.exec(select(DocumentMeta).where(DocumentMeta.document_id == doc_id)).first()
                 doc = s.get(Document, doc_id)
-            if not meta:
-                ui.notify("Keine Metadaten gefunden.", color="orange")
-                return
             filename = doc.original_filename if doc else ""
             storage_key = (doc.storage_key or "").strip() if doc else None
             storage_path = (doc.storage_path or "").strip() if doc else None
             meta_state["title"] = f"Dokument #{doc_id} {filename}".strip()
-            meta_state["raw"] = _format_json(meta.raw_payload_json, redact_payload=True)
-            meta_state["line_items"] = _format_json(meta.line_items_json)
-            meta_state["flags"] = _format_json(meta.compliance_flags_json)
+            meta_state["doc_id"] = doc_id
+            meta_state["raw"] = _format_json(
+                meta.raw_payload_json if meta else "{}", redact_payload=True
+            )
+            meta_state["line_items"] = _format_json(meta.line_items_json if meta else "[]")
+            meta_state["flags"] = _format_json(meta.compliance_flags_json if meta else "[]")
             meta_title.text = meta_state["title"]
             raw_area.value = meta_state["raw"]
             line_area.value = meta_state["line_items"]
@@ -903,6 +975,10 @@ def render_documents(session, comp: Company) -> None:
         ui.button(
             "⬇️ Download",
             on_click=_download_document,
+        ).classes("block w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700")
+        ui.button(
+            "✏️ Metadaten",
+            on_click=lambda: _open_meta(int(menu_state.get("doc_id") or 0)),
         ).classes("block w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700")
         ui.element("div").classes("border-t border-slate-100 my-1")
         ui.button(
@@ -971,12 +1047,15 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes(
                 "w-full px-6 py-3 text-xs font-semibold tracking-wide text-slate-500 border-b border-slate-100"
             ):
-                ui.label("Datei").classes("w-[34%]")
-                ui.label("Tags").classes("w-[16%]")
-                ui.label("Status").classes("w-[12%]")
-                ui.label("Datum").classes("w-[12%]")
-                ui.label("Größe").classes("w-[10%] text-right")
-                ui.label("Quelle").classes("w-[16%]")
+                ui.label("Datei").classes("w-[26%]")
+                ui.label("Tags").classes("w-[14%]")
+                ui.label("Status").classes("w-[10%]")
+                ui.label("Datum").classes("w-[10%]")
+                ui.label("Brutto").classes("w-[8%] text-right")
+                ui.label("Netto").classes("w-[8%] text-right")
+                ui.label("Steuer").classes("w-[8%] text-right")
+                ui.label("Größe").classes("w-[8%] text-right")
+                ui.label("Quelle").classes("w-[8%]")
 
             if not items:
                 ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-slate-500")
@@ -999,10 +1078,17 @@ def render_documents(session, comp: Company) -> None:
                 meta_size = meta_values.get("size_bytes")
                 if size_bytes <= 0 and isinstance(meta_size, int) and meta_size > 0:
                     size_bytes = meta_size
-                amount_total, _, _ = _resolve_amounts(doc)
+                amount_total, amount_net, amount_tax = _resolve_amounts(doc)
                 meta_amount_total = meta_values.get("amount_total")
+                meta_amount_net = meta_values.get("amount_net")
+                meta_amount_tax = meta_values.get("amount_tax")
                 if amount_total is None and meta_amount_total is not None:
                     amount_total = meta_amount_total
+                if amount_net is None and meta_amount_net is not None:
+                    amount_net = meta_amount_net
+                if amount_tax is None and meta_amount_tax is not None:
+                    amount_tax = meta_amount_tax
+                currency_value = (doc.currency or meta_values.get("currency") or "").strip() or None
                 meta_vendor = (meta_values.get("vendor") or "").strip()
                 vendor_value = (doc.vendor or meta_vendor or "").strip()
                 tags_value = _format_keywords(doc.keywords_json)
@@ -1029,7 +1115,7 @@ def render_documents(session, comp: Company) -> None:
                     lambda e, i=doc_id, u=open_url: _open_context_menu(e, i, u),
                     js_handler="(e) => { e.preventDefault(); emit({pageX: e.pageX, pageY: e.pageY, clientX: e.clientX, clientY: e.clientY}); }",
                 ):
-                    with ui.element("div").classes("flex items-center gap-3 w-[34%]"):
+                    with ui.element("div").classes("flex items-center gap-3 w-[26%]"):
                         with ui.element("div").classes(
                             f"w-9 h-9 rounded-md flex items-center justify-center {icon_classes}"
                         ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6)"):
@@ -1037,15 +1123,24 @@ def render_documents(session, comp: Company) -> None:
                         ui.link(filename, open_url, new_tab=True).classes(
                             "text-blue-600 font-medium hover:underline"
                         )
-                    with ui.element("div").classes("w-[16%]"):
+                    with ui.element("div").classes("w-[14%]"):
                         ui.label(tags_value).classes(
                             "text-sm text-slate-500 truncate"
                         ).tooltip(tags_value if tags_value != "-" else "")
-                    with ui.element("div").classes("w-[12%]"):
+                    with ui.element("div").classes("w-[10%]"):
                         ui.label(status_label).classes(badge_class)
-                    ui.label(display_date or "-").classes("w-[12%] text-sm text-slate-600")
-                    ui.label(size_display).classes("w-[10%] text-right text-sm text-slate-600")
-                    ui.label(_format_source(doc.source)).classes("w-[16%] text-sm text-slate-600")
+                    ui.label(display_date or "-").classes("w-[10%] text-sm text-slate-600")
+                    ui.label(
+                        _format_amount_value(amount_total, currency_value) if amount_total is not None else "-"
+                    ).classes("w-[8%] text-right text-sm text-slate-600")
+                    ui.label(
+                        _format_amount_value(amount_net, currency_value) if amount_net is not None else "-"
+                    ).classes("w-[8%] text-right text-sm text-slate-600")
+                    ui.label(
+                        _format_amount_value(amount_tax, currency_value) if amount_tax is not None else "-"
+                    ).classes("w-[8%] text-right text-sm text-slate-600")
+                    ui.label(size_display).classes("w-[8%] text-right text-sm text-slate-600")
+                    ui.label(_format_source(doc.source)).classes("w-[8%] text-sm text-slate-600")
 
     with ui.element("div").classes(
         "w-full bg-[#F5F7FA] rounded-xl p-6 border border-slate-100"
