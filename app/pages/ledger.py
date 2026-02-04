@@ -136,7 +136,11 @@ def render_ledger(session, comp: Company) -> None:
 
                     with ui.column().classes("gap-1"):
                         ui.label("Typ").classes("sm:hidden text-[10px] uppercase text-slate-400")
-                        badge_class = C_BADGE_GREEN if it["type"] == "INCOME" else "bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+                        badge_class = (
+                            "bg-orange-50 text-orange-700 border border-orange-100 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+                            if it["type"] == "INCOME"
+                            else "bg-orange-100 text-orange-800 border border-orange-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+                        )
                         ui.label("Income" if it["type"] == "INCOME" else "Expense").classes(badge_class + " w-20")
 
                     with ui.column().classes("gap-1"):
@@ -152,7 +156,7 @@ def render_ledger(session, comp: Company) -> None:
                     with ui.column().classes("gap-1 sm:items-end"):
                         ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-slate-400")
                         amount_label = f"{it['amount']:,.2f} €" if it["type"] == "INCOME" else f"-{it['amount']:,.2f} €"
-                        amount_class = "text-right text-sm text-emerald-600" if it["type"] == "INCOME" else "text-right text-sm text-rose-600"
+                        amount_class = "text-right text-sm text-orange-700" if it["type"] == "INCOME" else "text-right text-sm text-orange-800"
                         ui.label(amount_label).classes(amount_class)
 
                     with ui.row().classes("justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition"):
