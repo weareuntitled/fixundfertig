@@ -536,6 +536,13 @@ def render_documents(session, comp: Company) -> None:
         ).all()
         return {int(meta.document_id): meta for meta in metas if meta}
 
+    DEFAULT_VAT_RATE = 0.19
+
+    def _vat_from_gross(amount_total: float, rate: float = DEFAULT_VAT_RATE) -> float:
+        if amount_total <= 0 or rate <= 0:
+            return 0.0
+        return amount_total * (rate / (1 + rate))
+
     def _resolve_amounts(doc: Document) -> tuple[float | None, float | None, float | None]:
         amount_total = _coerce_float(doc.amount_total)
         amount_net = _coerce_float(doc.amount_net)
@@ -548,6 +555,8 @@ def render_documents(session, comp: Company) -> None:
             amount_tax = _coerce_float(getattr(doc, "tax_amount", None))
         if amount_tax is None and amount_total is not None and amount_net is not None:
             amount_tax = max(amount_total - amount_net, 0.0)
+        if amount_tax is None and amount_total is not None and amount_net is None:
+            amount_tax = _vat_from_gross(amount_total)
         return amount_total, amount_net, amount_tax
 
     @ui.refreshable
