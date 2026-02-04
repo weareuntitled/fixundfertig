@@ -1040,6 +1040,9 @@ def render_documents(session, comp: Company) -> None:
         items = _sort_documents(_filter_documents(_load_documents()))
         with ui.card().classes(
             C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-none border-slate-200 bg-white backdrop-blur-0"
+        ).on(
+            "contextmenu",
+            js_handler="(e) => { e.preventDefault(); }",
         ):
             meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
             backfill_document_fields(session, items, meta_map=meta_map)
@@ -1063,8 +1066,16 @@ def render_documents(session, comp: Company) -> None:
 
             def _open_context_menu(event, doc_id: int, open_url: str) -> None:
                 coords = event.args or {}
-                x = int(coords.get("pageX") or coords.get("clientX") or 0)
-                y = int(coords.get("pageY") or coords.get("clientY") or 0)
+                row_left = int(coords.get("rowLeft") or 0)
+                row_bottom = int(coords.get("rowBottom") or 0)
+                scroll_x = int(coords.get("scrollX") or 0)
+                scroll_y = int(coords.get("scrollY") or 0)
+                if row_left == 0 and row_bottom == 0:
+                    x = int(coords.get("pageX") or coords.get("clientX") or 0)
+                    y = int(coords.get("pageY") or coords.get("clientY") or 0)
+                else:
+                    x = row_left + scroll_x
+                    y = row_bottom + scroll_y
                 if x == 0 and y == 0:
                     x = 220
                     y = 220
@@ -1113,7 +1124,22 @@ def render_documents(session, comp: Company) -> None:
                 with ui.row().classes(row_classes).on(
                     "contextmenu",
                     lambda e, i=doc_id, u=open_url: _open_context_menu(e, i, u),
-                    js_handler="(e) => { e.preventDefault(); emit({pageX: e.pageX, pageY: e.pageY, clientX: e.clientX, clientY: e.clientY}); }",
+                    js_handler=(
+                        "(e) => {"
+                        " e.preventDefault();"
+                        " const rect = e.currentTarget.getBoundingClientRect();"
+                        " emit({"
+                        " pageX: e.pageX,"
+                        " pageY: e.pageY,"
+                        " clientX: e.clientX,"
+                        " clientY: e.clientY,"
+                        " rowLeft: rect.left,"
+                        " rowBottom: rect.bottom,"
+                        " scrollX: window.scrollX,"
+                        " scrollY: window.scrollY,"
+                        "});"
+                        "}"
+                    ),
                 ):
                     with ui.element("div").classes("flex items-center gap-3 w-[26%]"):
                         with ui.element("div").classes(
