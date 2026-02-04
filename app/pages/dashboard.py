@@ -400,18 +400,21 @@ def render_dashboard(session, comp: Company) -> None:
                                 ui.menu_item(label, on_click=handler)
                     with ui.column().classes("gap-4"):
                         with ui.element("div").classes(
-                            "h-28 rounded-2xl bg-slate-50 flex items-center justify-center"
+                            "h-24 rounded-2xl bg-slate-50 flex items-center justify-center"
                         ):
                             with ui.element("div").classes(
-                                f"w-16 h-16 rounded-full {item['accent']} flex items-center justify-center"
+                                f"w-14 h-14 rounded-full {item['accent']} flex items-center justify-center"
                             ):
-                                ui.icon(item["icon"]).classes("text-3xl")
-                        with ui.column().classes("gap-2"):
-                            ui.label(item["title"]).classes("text-base font-semibold text-slate-900 truncate")
-                            with ui.row().classes("items-center justify-between gap-2"):
-                                ui.label(item["date"]).classes("text-xs text-slate-500")
+                                ui.icon(item["icon"]).classes("text-2xl")
+                        with ui.column().classes("gap-2 min-w-0"):
+                            ui.label(item["title"]).classes(
+                                "text-sm font-semibold text-slate-900 leading-snug line-clamp-2"
+                            )
+                            with ui.row().classes("items-center justify-between gap-2 min-w-0"):
+                                ui.label(item["date"]).classes("text-[11px] text-slate-500")
                                 ui.label(item["type"]).classes(
-                                    "bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-xs font-semibold"
+                                    "bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-[11px] "
+                                    "font-semibold truncate max-w-[120px]"
                                 )
                             ui.label(item["status"]).classes(status_badge[item["status"]])
 
