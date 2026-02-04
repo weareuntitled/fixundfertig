@@ -75,6 +75,8 @@ APP_FONT_CSS = f"""
 # Panels / cards
 C_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow-sm"
 C_GLASS_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow-sm"
+C_CARD_HOVER = "transition-colors hover:bg-neutral-900/90 hover:border-neutral-700/80"
+C_GLASS_CARD_HOVER = "transition-colors hover:bg-neutral-900/70 hover:border-neutral-700/70"
 
 # Buttons
 C_BTN_PRIM = "!bg-neutral-800 !text-white hover:bg-neutral-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
@@ -91,4 +93,9 @@ C_BADGE_YELLOW = "bg-[#ffc524]/10 text-[#ffd35d] border border-[#ffc524]/20 px-2
 C_BADGE_RED = "bg-rose-500/10 text-rose-300 border border-rose-500/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 
 # Typography
+C_PAGE_TITLE = "text-xl font-semibold text-neutral-100"
 C_SECTION_TITLE = "text-sm font-semibold text-neutral-300"
+
+# Tables
+C_TABLE_HEADER = "w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-400 border-b border-neutral-800"
+C_TABLE_ROW = "w-full px-3 py-2 text-sm text-neutral-200 border-b border-neutral-800/60"
