@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 def auth_layout(title: str, subtitle: str):
     with ui.element("div").classes(BG_CLASSES):
         with ui.column().classes("w-full items-center gap-6"):
+            ui.image("/static/Logo_fixundfertig_inv.jpg").classes("h-16 w-auto object-contain")
             with ui.row().classes("items-center gap-3"):
                 ui.image("/static/logo_fixundfertig.svg").classes("h-9 w-9 rounded-lg object-contain")
                 ui.label("FixundFertig").classes("text-sm font-semibold text-slate-900 tracking-wide")
@@ -140,22 +141,17 @@ def login_page():
             if identifier != owner_email:
                 _set_error(status_error, "Bitte die OWNER_EMAIL eingeben.")
                 return
-            owner_button.loading = True
             try:
                 message = send_owner_verification_email()
                 _set_success(status_success, message)
             except Exception as exc:
                 _set_error(status_error, str(exc))
-            finally:
-                owner_button.loading = False
 
         login_button = ui.button("Log in", on_click=handle_login).props("loading=false").classes(PRIMARY_BUTTON)
         with ui.row().classes("w-full justify-between"):
             ui.link("Forgot password?", "/forgot").classes(LINK_TEXT)
             ui.link("Create account", "/signup").classes(LINK_TEXT)
-        owner_button = ui.button("Owner-Verifizierungslink senden", on_click=handle_owner_verification).props(
-            "loading=false"
-        ).classes(SECONDARY_BUTTON)
+        owner_button = ui.link("Owner-Verifizierungslink senden", handle_owner_verification).classes(LINK_TEXT)
 
 
 @ui.page("/signup")
