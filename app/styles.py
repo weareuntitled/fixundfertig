@@ -103,6 +103,7 @@ C_BTN_SEC = "!bg-neutral-900 !text-neutral-200 border border-neutral-800 hover:b
 
 # Inputs
 C_INPUT = "w-full text-sm transition-all"
+C_INPUT_ROUNDED = "rounded-full border border-neutral-700 bg-neutral-900/80"
 
 # Badges
 C_BADGE_GREEN = "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"

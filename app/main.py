@@ -29,7 +29,7 @@ from logging_setup import setup_logging
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import C_BG, C_BTN_PRIM, C_CONTAINER, C_INPUT
+from styles import C_BG, C_BTN_PRIM, C_CONTAINER, C_INPUT, C_INPUT_ROUNDED
 from ui_theme import apply_global_ui_theme
 from invoice_numbering import build_invoice_filename
 from pages import (
@@ -1520,7 +1520,7 @@ def layout_wrapper(content_func):
                         ui.input(
                             "Search Transactions",
                             on_change=lambda e: open_ledger_search(e.value or ""),
-                        ).props("dense").classes(C_INPUT + " rounded-full shadow-sm w-72")
+                        ).props("outlined dense").classes(f"{C_INPUT} {C_INPUT_ROUNDED} shadow-sm w-72")
                     with ui.row().classes("flex-1 items-center justify-end gap-2"):
                         ui.button(
                             icon="notifications",
