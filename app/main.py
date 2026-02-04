@@ -1540,9 +1540,6 @@ def layout_wrapper(content_func):
                             "Search Transactions",
                             on_change=lambda e: open_ledger_search(e.value or ""),
                         ).props("dense").classes(C_INPUT + " rounded-full bg-white/80 shadow-sm w-72")
-                    ui.label(f"[ 🧾 {n8n_today_count} BELEGE HEUTE ]").classes(
-                        "rounded-full bg-white/80 text-emerald-700 border border-emerald-200 px-3 py-1 text-xs font-semibold shadow-sm"
-                    )
                     with ui.row().classes("flex-1 items-center justify-end gap-2"):
                         ui.button(icon="notifications").props("flat round").classes("text-slate-500 hover:text-slate-700")
                         ui.button(
