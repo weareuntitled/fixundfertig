@@ -1452,6 +1452,7 @@ def _page_title(page: str | None) -> str:
         "dashboard": "Dashboard",
         "invoices": "Invoices",
         "documents": "Documents",
+        "todos": "Todos",
         "exports": "Exports",
         "customers": "Customers",
         "customer_new": "New customer",
@@ -1509,6 +1510,7 @@ def layout_wrapper(content_func):
                         ui.tooltip(label)
 
                 nav_item("Home", "home", "checklist")
+                nav_item("Todos", "todos", "task_alt")
                 nav_item("Dashboard", "dashboard", "dashboard")
                 ui.element("div").classes("w-8 h-px bg-slate-200/70")
                 nav_item("Invoices", "invoices", "receipt_long")
