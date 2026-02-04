@@ -6,7 +6,7 @@ from ._shared import _parse_iso_date
 
 def render_expenses(session, comp: Company) -> None:
     ui.label("Ausgaben").classes(C_PAGE_TITLE)
-    ui.label("Erfassen, bearbeiten und löschen.").classes("text-sm text-slate-500 mb-4")
+    ui.label("Erfassen, bearbeiten und löschen.").classes("text-sm text-neutral-400 mb-4")
 
     # Local filter state
     state = {
@@ -132,7 +132,7 @@ def render_expenses(session, comp: Company) -> None:
     with ui.dialog() as delete_dialog:
         with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
             ui.label("Löschen").classes(C_SECTION_TITLE)
-            ui.label("Willst du diese Ausgabe wirklich löschen.").classes("text-sm text-slate-600")
+            ui.label("Willst du diese Ausgabe wirklich löschen.").classes("text-sm text-neutral-400")
 
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
                 ui.button("Abbrechen", on_click=lambda: delete_dialog.close()).classes(C_BTN_SEC)
@@ -206,33 +206,33 @@ def render_expenses(session, comp: Company) -> None:
 
         total = sum(float(x["amount"] or 0) for x in data)
         with ui.row().classes("w-full items-center justify-between mb-3"):
-            ui.label(f"{len(data)} Einträge").classes("text-sm text-slate-500")
+            ui.label(f"{len(data)} Einträge").classes("text-sm text-neutral-400")
             ui.label(f"Summe: {total:,.2f} €").classes("text-sm font-semibold text-amber-300")
 
         if not data:
             with ui.card().classes(C_CARD + " p-4"):
-                ui.label("Keine Ausgaben gefunden").classes("text-sm text-slate-500")
+                ui.label("Keine Ausgaben gefunden").classes("text-sm text-neutral-400")
             return
 
         with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
             with ui.row().classes(C_TABLE_HEADER):
-                ui.label("Datum").classes("w-28 font-bold text-xs text-slate-500")
-                ui.label("Kategorie").classes("w-40 font-bold text-xs text-slate-500")
-                ui.label("Lieferant").classes("w-44 font-bold text-xs text-slate-500")
-                ui.label("Beschreibung").classes("flex-1 font-bold text-xs text-slate-500")
-                ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-slate-500")
-                ui.label("").classes("w-28 text-right font-bold text-xs text-slate-500")
+                ui.label("Datum").classes("w-28 font-bold text-xs text-neutral-400")
+                ui.label("Kategorie").classes("w-40 font-bold text-xs text-neutral-400")
+                ui.label("Lieferant").classes("w-44 font-bold text-xs text-neutral-400")
+                ui.label("Beschreibung").classes("flex-1 font-bold text-xs text-neutral-400")
+                ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-neutral-400")
+                ui.label("").classes("w-28 text-right font-bold text-xs text-neutral-400")
 
             for it in data:
                 with ui.row().classes(C_TABLE_ROW + " items-start"):
-                    ui.label(it["date"] or "-").classes("w-28 text-xs font-mono text-slate-700")
-                    ui.label(it["category"] or "-").classes("w-40 text-sm text-slate-900")
-                    ui.label(it["source"] or "-").classes("w-44 text-sm text-slate-900")
-                    ui.label(it["description"] or "-").classes("flex-1 text-sm text-slate-700")
+                    ui.label(it["date"] or "-").classes("w-28 text-xs font-mono text-neutral-200")
+                    ui.label(it["category"] or "-").classes("w-40 text-sm text-neutral-100")
+                    ui.label(it["source"] or "-").classes("w-44 text-sm text-neutral-100")
+                    ui.label(it["description"] or "-").classes("flex-1 text-sm text-neutral-200")
                     ui.label(f"-{float(it['amount'] or 0):,.2f} €").classes("w-28 text-right text-sm font-mono text-amber-300")
 
                     with ui.row().classes("w-28 justify-end gap-1"):
-                        ui.button(icon="edit", on_click=lambda _, x=it: open_edit(x)).props("flat dense").classes("text-slate-600")
+                        ui.button(icon="edit", on_click=lambda _, x=it: open_edit(x)).props("flat dense").classes("text-neutral-300")
                         ui.button(icon="delete", on_click=lambda _, x=it: open_delete(x)).props("flat dense").classes("text-amber-400")
 
     render_list()

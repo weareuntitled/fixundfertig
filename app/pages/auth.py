@@ -19,15 +19,15 @@ from services.auth import (
 )
 from ui_theme import apply_global_ui_theme
 
-ERROR_TEXT = "text-sm text-orange-600"
-LINK_TEXT = "text-sm text-neutral-500 hover:text-orange-600 no-underline"
-TITLE_TEXT = "text-2xl font-semibold text-neutral-900 text-center"
-SUBTITLE_TEXT = "text-sm text-neutral-500 text-center"
+ERROR_TEXT = "text-sm text-orange-400"
+LINK_TEXT = "text-sm text-neutral-400 hover:text-[#ffd35d] no-underline"
+TITLE_TEXT = "text-2xl font-semibold text-neutral-100 text-center"
+SUBTITLE_TEXT = "text-sm text-neutral-400 text-center"
 INPUT_CLASSES = "w-full"
-PRIMARY_BUTTON = "w-full bg-neutral-900 text-neutral-50 rounded-lg hover:bg-neutral-800"
-SECONDARY_BUTTON = "w-full border border-neutral-200 text-neutral-700 rounded-lg hover:bg-neutral-100"
-CARD_CLASSES = "w-full max-w-[400px] bg-white rounded-xl shadow-lg border border-neutral-200 p-6"
-BG_CLASSES = "min-h-screen w-full bg-neutral-50 flex items-center justify-center px-4"
+PRIMARY_BUTTON = "w-full bg-[#ffc524] text-neutral-950 rounded-lg hover:bg-[#ffd35d]"
+SECONDARY_BUTTON = "w-full border border-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-800"
+CARD_CLASSES = "w-full max-w-[400px] bg-neutral-900 rounded-xl shadow-lg border border-neutral-800 p-6"
+BG_CLASSES = "min-h-screen w-full bg-neutral-950 flex items-center justify-center px-4"
 logger = logging.getLogger(__name__)
 
 
