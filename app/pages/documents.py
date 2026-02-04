@@ -11,7 +11,7 @@ import json
 import tempfile
 import zipfile
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 def render_documents(session, comp: Company) -> None:
     state = {
+        "period": "last_month",
         "year": str(datetime.now().year),
     }
     highlight_document_id = None
@@ -63,12 +64,26 @@ def render_documents(session, comp: Company) -> None:
         ).all()
 
     def _filter_documents(items: list[Document]) -> list[Document]:
-        year_value = str(state.get("year") or datetime.now().year)
-        return [
-            doc
-            for doc in items
-            if _document_accounting_year(doc) == year_value
-        ]
+        period = state.get("period") or "last_month"
+        if period == "year":
+            year_value = str(state.get("year") or datetime.now().year)
+            return [
+                doc
+                for doc in items
+                if _document_accounting_year(doc) == year_value
+            ]
+        days = {
+            "last_week": 7,
+            "last_month": 30,
+            "last_3_months": 90,
+        }.get(period, 30)
+        cutoff = datetime.now() - timedelta(days=days)
+        filtered: list[Document] = []
+        for doc in items:
+            effective_date = _document_effective_date(doc)
+            if effective_date and effective_date >= cutoff:
+                filtered.append(doc)
+        return filtered
 
     def _doc_created_at(doc: Document) -> datetime:
         created_at = doc.created_at
@@ -103,6 +118,26 @@ def render_documents(session, comp: Company) -> None:
             if candidate and len(candidate) >= 4 and candidate[:4].isdigit():
                 return candidate[:4]
         return ""
+
+    def _document_effective_date(doc: Document) -> datetime | None:
+        for candidate in (
+            (getattr(doc, "doc_date", None) or "").strip(),
+            _document_invoice_date(doc).strip(),
+        ):
+            if candidate:
+                try:
+                    return datetime.fromisoformat(candidate)
+                except ValueError:
+                    continue
+        created_at = _doc_created_at(doc)
+        return created_at if created_at != datetime.min else None
+
+    def _set_period(value: str) -> None:
+        state["period"] = value or "last_month"
+        if state["period"] != "year" and not state.get("year"):
+            state["year"] = str(datetime.now().year)
+        render_summary.refresh()
+        render_list.refresh()
 
     def _parse_keywords(value: object) -> list[str]:
         if value is None or value == "":
@@ -593,15 +628,19 @@ def render_documents(session, comp: Company) -> None:
 
     @ui.refreshable
     def render_summary():
+        period = state.get("period") or "last_month"
         year_value = str(state.get("year") or datetime.now().year)
-        items = _load_documents()
+        period_labels = {
+            "last_week": "Letzte Woche",
+            "last_month": "Letzter Monat",
+            "last_3_months": "Letzte 3 Monate",
+        }
+        period_label = period_labels.get(period, f"Jahr {year_value}")
+        items = _filter_documents(_load_documents())
         total_docs = 0
         total_amount = 0.0
         total_tax = 0.0
         for doc in items:
-            doc_year = _document_accounting_year(doc)
-            if doc_year != year_value:
-                continue
             total_docs += 1
             amount_total, _, amount_tax = _resolve_amounts(doc)
             if amount_total:
@@ -611,7 +650,7 @@ def render_documents(session, comp: Company) -> None:
 
         with ui.row().classes("w-full gap-4 flex-wrap"):
             kpi_card(
-                f"Dokumente ({year_value})",
+                f"Dokumente ({period_label})",
                 f"{total_docs}",
                 "description",
                 "text-blue-600",
