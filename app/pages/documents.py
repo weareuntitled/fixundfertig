@@ -11,7 +11,7 @@ import json
 import tempfile
 import zipfile
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -28,7 +28,6 @@ from services.blob_storage import blob_storage
 from services.documents import (
     backfill_document_fields,
     document_size_bytes,
-    document_matches_filters,
     resolve_document_meta_values,
     resolve_document_path,
     validate_document_upload,
@@ -39,11 +38,7 @@ logger = logging.getLogger(__name__)
 
 def render_documents(session, comp: Company) -> None:
     state = {
-        "search": "",
-        "period": "last_month",
         "year": str(datetime.now().year),
-        "date_from": "",
-        "date_to": "",
     }
     highlight_document_id = None
     stored_highlight = app.storage.user.pop("documents_highlight_id", None)
@@ -68,18 +63,11 @@ def render_documents(session, comp: Company) -> None:
         ).all()
 
     def _filter_documents(items: list[Document]) -> list[Document]:
-        date_from, date_to = _resolved_date_range()
+        year_value = str(state.get("year") or datetime.now().year)
         return [
             doc
             for doc in items
-            if document_matches_filters(
-                doc,
-                query=state["search"],
-                source="",
-                doc_type="",
-                date_from=date_from,
-                date_to=date_to,
-            )
+            if _document_accounting_year(doc) == year_value
         ]
 
     def _doc_created_at(doc: Document) -> datetime:
@@ -107,6 +95,15 @@ def render_documents(session, comp: Company) -> None:
             return created_at.strftime("%Y-%m-%d")
         return ""
 
+    def _document_accounting_year(doc: Document) -> str:
+        for candidate in (
+            (getattr(doc, "doc_date", None) or "").strip(),
+            _document_invoice_date(doc).strip(),
+        ):
+            if candidate and len(candidate) >= 4 and candidate[:4].isdigit():
+                return candidate[:4]
+        return ""
+
     def _parse_keywords(value: object) -> list[str]:
         if value is None or value == "":
             return []
@@ -131,45 +128,10 @@ def render_documents(session, comp: Company) -> None:
     def _sort_documents(items: list[Document]) -> list[Document]:
         return sorted(items, key=_doc_created_at, reverse=True)
 
-    def _resolved_date_range() -> tuple[str, str]:
-        period = state["period"]
-        if period == "custom":
-            return state["date_from"], state["date_to"]
-
-        today = datetime.now().date()
-        if period == "year":
-            try:
-                year = int(state["year"])
-            except (TypeError, ValueError):
-                year = today.year
-            start = datetime(year, 1, 1).date()
-            end = datetime(year, 12, 31).date()
-            return start.isoformat(), end.isoformat()
-
-        if period == "last_week":
-            start = today - timedelta(days=7)
-            return start.isoformat(), today.isoformat()
-
-        if period == "last_3_months":
-            start = today - timedelta(days=90)
-            return start.isoformat(), today.isoformat()
-
-        first_of_month = today.replace(day=1)
-        last_month_end = first_of_month - timedelta(days=1)
-        last_month_start = last_month_end.replace(day=1)
-        return last_month_start.isoformat(), last_month_end.isoformat()
-
     def _year_options(items: list[Document]) -> dict[str, str]:
         years: set[str] = set()
         for doc in items:
-            display_date = _document_display_date(doc)
-            doc_year = ""
-            if display_date:
-                doc_year = str(display_date)[:4]
-            if not doc_year or not doc_year.isdigit():
-                created_at = _doc_created_at(doc)
-                if created_at != datetime.min:
-                    doc_year = str(created_at.year)
+            doc_year = _document_accounting_year(doc)
             if doc_year:
                 years.add(doc_year)
         if not years:
@@ -588,34 +550,12 @@ def render_documents(session, comp: Company) -> None:
 
     @ui.refreshable
     def render_filters():
-        def _set_period(value: str) -> None:
-            state["period"] = value
-            render_filters.refresh()
-            render_list.refresh()
-
         with ui.row().classes("w-full items-center justify-between gap-6 flex-wrap"):
             with ui.row().classes("items-center gap-4"):
                 ui.label("Dokumente").classes("text-3xl font-bold text-slate-900")
                 ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
 
             with ui.row().classes("items-center gap-3 flex-wrap"):
-                with ui.element("div").classes(
-                    "flex items-center bg-white border border-slate-200 rounded-full p-1 shadow-sm"
-                ):
-                    for label, value in [("Week", "last_week"), ("Month", "last_month"), ("Year", "year")]:
-                        is_active = state["period"] == value
-                        button_classes = (
-                            "px-4 py-1.5 text-sm font-medium rounded-full transition-all"
-                        )
-                        if is_active:
-                            button_classes += " bg-blue-600 text-white shadow-sm"
-                        else:
-                            button_classes += " text-slate-600 hover:text-slate-900"
-                        ui.button(
-                            label,
-                            on_click=lambda _, v=value: _set_period(v),
-                        ).props("flat").classes(button_classes)
-
                 ui.select(
                     _year_options(_load_documents()),
                     value=state["year"],
@@ -626,12 +566,6 @@ def render_documents(session, comp: Company) -> None:
                     ),
                 ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
 
-                ui.input(
-                    placeholder="Suche",
-                    value=state["search"],
-                    on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
-                ).props("dense").classes(C_INPUT + " w-64 rounded-full bg-white shadow-sm")
-
     @ui.refreshable
     def render_summary():
         year_value = str(state.get("year") or datetime.now().year)
@@ -640,12 +574,7 @@ def render_documents(session, comp: Company) -> None:
         total_amount = 0.0
         total_tax = 0.0
         for doc in items:
-            display_date = _document_display_date(doc)
-            doc_year = ""
-            if display_date:
-                doc_year = str(display_date)[:4]
-            if not doc_year or not doc_year.isdigit():
-                doc_year = str(_doc_created_at(doc).year)
+            doc_year = _document_accounting_year(doc)
             if doc_year != year_value:
                 continue
             total_docs += 1
