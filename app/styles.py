@@ -33,50 +33,41 @@ APP_FONT_CSS = f"""
     color: #0a0b0d;
   }}
   .q-field__label {{
-    color: #ffffff !important;
+    color: #94a3b8 !important;
+    font-weight: 400;
   }}
   .q-field--focused .q-field__label {{
-    color: #ffffff !important;
-  }}
-  .q-field__control:before {{
-    border-color: #2f3338;
-  }}
-  .q-field__control:after {{
-    border-color: #3b4046;
+    color: var(--brand-primary) !important;
+    font-weight: 600;
   }}
   .q-field__control {{
-    background: #1f2937 !important;
-  }}
-  .q-field--focused .q-field__control:before {{
-    border-color: #2f3338;
-  }}
-  .q-field--focused .q-field__control:after {{
-    border-color: #3b4046;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
   }}
   .q-field--outlined .q-field__control {{
     background: #1f2937 !important;
-    border-radius: 0.5rem;
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+  }}
+  .q-field--outlined .q-field__control:before {{
+    border-color: #334155 !important;
+    border-width: 1px !important;
+  }}
+  .q-field--outlined.q-field--focused .q-field__control:after {{
+    border-color: var(--brand-primary) !important;
+    border-width: 1.5px !important;
+    opacity: 1;
   }}
   .q-field--standard .q-field__control,
   .q-field--filled .q-field__control,
   .q-field--standout .q-field__control {{
     background: #1f2937 !important;
   }}
-  .q-field--outlined .q-field__control:before {{
-    border-color: #2f3338;
-  }}
-  .q-field--outlined .q-field__control:after {{
-    border-color: #3b4046;
-  }}
-  .q-field--outlined.q-field--focused .q-field__control:before,
-  .q-field--outlined.q-field--focused .q-field__control:after {{
-    border-color: #3b4046;
-  }}
   .q-field__native, .q-field__prefix, .q-field__suffix {{
     color: #ffffff !important;
+    font-size: 0.875rem;
   }}
   .q-field__native::placeholder {{
-    color: #94a3b8;
+    color: #475569 !important;
   }}
   .q-field__marginal {{
     color: #cbd5e1;
@@ -85,9 +76,10 @@ APP_FONT_CSS = f"""
     color: #cbd5e1;
   }}
   .q-notification {{
-    background: #0b0f14 !important;
-    color: #f8fafc !important;
-    border: 1px solid #2f3338 !important;
+    background: #0f172a !important;
+    color: #f1f5f9 !important;
+    border: 1px solid #1e293b !important;
+    border-radius: 12px;
     box-shadow: 0 12px 24px rgba(2, 6, 23, 0.45);
   }}
   .q-notification__message {{
@@ -102,6 +94,12 @@ APP_FONT_CSS = f"""
   }}
   .q-notification__progress {{
     background: #1f2937 !important;
+  }}
+  .q-field--error .q-field__control:after {{
+    border-color: #fb923c !important;
+  }}
+  .q-field--error .q-field__label {{
+    color: #fb923c !important;
   }}
   .q-checkbox__label {{
     color: #e5e7eb;
@@ -153,9 +151,9 @@ APP_FONT_CSS = f"""
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus {{
-    -webkit-text-fill-color: #f8fafc !important;
+    -webkit-text-fill-color: #ffffff !important;
     transition: background-color 9999s ease-in-out 0s;
-    box-shadow: 0 0 0px 1000px #111827 inset;
+    box-shadow: 0 0 0px 1000px #1f2937 inset !important;
   }}
 </style>
 """
