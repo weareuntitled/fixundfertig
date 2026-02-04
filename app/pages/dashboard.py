@@ -210,9 +210,13 @@ def render_dashboard(session, comp: Company) -> None:
         ids = [int(invoice_id)] if invoice_id else None
         _run_export(export_invoices_pdf_zip, "Rechnungen", ids)
 
-    def _export_documents(document_id: int | None) -> None:
-        ids = [int(document_id)] if document_id else None
-        _run_export(export_documents_zip, "Dokumente", ids)
+    def _open_documents_folder(document_id: int | None) -> None:
+        if not document_id:
+            ui.notify("Kein Dokument verknüpft. Öffne die Dokumente-Liste, um ein Dokument auszuwählen.", color="orange")
+            _open_page("documents")
+            return
+        app.storage.user["documents_highlight_id"] = int(document_id)
+        _open_page("documents")
 
     def _send_invoice(invoice_id: int | None, *, reminder: bool = False) -> None:
         if not invoice_id:
@@ -332,7 +336,7 @@ def render_dashboard(session, comp: Company) -> None:
         document_id = item.get("document_id")
         actions = [
             ("Öffnen", lambda: _open_document(document_id)),
-            ("Zum Ordner exportieren", lambda: _export_documents(document_id)),
+            ("Zu den Belegen", lambda: _open_documents_folder(document_id)),
         ]
         if item_type in {"Receipt", "PDF"}:
             actions.extend(
