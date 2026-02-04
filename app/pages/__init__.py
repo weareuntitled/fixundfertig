@@ -9,6 +9,7 @@ from .documents import render_documents
 from .expenses import render_expenses
 from .documents import render_documents
 from .exports import render_exports
+from .home import render_home
 from .invoice_create import render_invoice_create
 from .invoice_detail import render_invoice_detail
 from .invoices import render_invoices

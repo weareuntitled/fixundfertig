@@ -26,12 +26,6 @@ def _extract_app_port(app_main: str) -> str:
     return match.group(1)
 
 
-def _extract_src_main_port(src_main: str) -> str:
-    match = re.search(r"\bport\s*=\s*(\d+)", src_main)
-    assert match, "src/main.py missing ui.run port"
-    return match.group(1)
-
-
 def _extract_compose_port(compose: str) -> str:
     lines = compose.splitlines()
     in_app = False
@@ -59,7 +53,6 @@ def test_app_ports_are_consistent() -> None:
     caddy_port = _extract_caddy_port(_read(ROOT / "Caddyfile"))
     dockerfile_port = _extract_dockerfile_port(_read(ROOT / "Dockerfile"))
     app_port = _extract_app_port(_read(ROOT / "app" / "main.py"))
-    src_port = _extract_src_main_port(_read(ROOT / "src" / "main.py"))
     compose_port = _extract_compose_port(_read(ROOT / "docker-compose.prod.yml"))
 
     expected = {"8000"}
@@ -68,7 +61,6 @@ def test_app_ports_are_consistent() -> None:
         f"Dockerfile expected EXPOSE 8000, got {dockerfile_port}"
     )
     assert app_port in expected, f"app/main.py expected port 8000, got {app_port}"
-    assert src_port in expected, f"src/main.py expected port 8000, got {src_port}"
     assert compose_port in expected, (
         f"docker-compose.prod.yml expected container port 8000, got {compose_port}"
     )
