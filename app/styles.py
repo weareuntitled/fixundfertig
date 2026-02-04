@@ -33,55 +33,73 @@ APP_FONT_CSS = f"""
     color: #0a0b0d;
   }}
   .q-field__label {{
-    color: var(--text-muted);
+    color: #94a3b8 !important;
+    font-weight: 400;
   }}
   .q-field--focused .q-field__label {{
-    color: #cbd5e1;
-  }}
-  .q-field__control:before {{
-    background: #2f3338;
-  }}
-  .q-field__control:after {{
-    background: #3b4046;
+    color: var(--brand-primary) !important;
+    font-weight: 600;
   }}
   .q-field__control {{
-    background: var(--surface-1);
-  }}
-  .q-field--focused .q-field__control:before {{
-    background: #2f3338;
-  }}
-  .q-field--focused .q-field__control:after {{
-    background: #3b4046;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
   }}
   .q-field--outlined .q-field__control {{
-    background: var(--surface-1);
+    background: #1f2937 !important;
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+  }}
+  .q-field--outlined .q-field__control:before {{
+    border-color: #334155 !important;
+    border-width: 1px !important;
+  }}
+  .q-field--outlined.q-field--focused .q-field__control:after {{
+    border-color: var(--brand-primary) !important;
+    border-width: 1.5px !important;
+    opacity: 1;
   }}
   .q-field--standard .q-field__control,
   .q-field--filled .q-field__control,
   .q-field--standout .q-field__control {{
-    background: var(--surface-1);
-  }}
-  .q-field--outlined .q-field__control:before {{
-    border-color: #2f3338;
-  }}
-  .q-field--outlined .q-field__control:after {{
-    border-color: #3b4046;
-  }}
-  .q-field--outlined.q-field--focused .q-field__control:before,
-  .q-field--outlined.q-field--focused .q-field__control:after {{
-    border-color: #3b4046;
+    background: #1f2937 !important;
   }}
   .q-field__native, .q-field__prefix, .q-field__suffix {{
-    color: #e5e7eb;
+    color: #ffffff !important;
+    font-size: 0.875rem;
   }}
   .q-field__native::placeholder {{
-    color: #94a3b8;
+    color: #475569 !important;
   }}
   .q-field__marginal {{
     color: #cbd5e1;
   }}
   .q-field__messages {{
     color: #cbd5e1;
+  }}
+  .q-notification {{
+    background: #0f172a !important;
+    color: #f1f5f9 !important;
+    border: 1px solid #1e293b !important;
+    border-radius: 12px;
+    box-shadow: 0 12px 24px rgba(2, 6, 23, 0.45);
+  }}
+  .q-notification__message {{
+    color: inherit !important;
+  }}
+  .q-notification__caption,
+  .q-notification__icon,
+  .q-notification__actions,
+  .q-notification__actions .q-btn,
+  .q-notification__actions .q-icon {{
+    color: inherit !important;
+  }}
+  .q-notification__progress {{
+    background: #1f2937 !important;
+  }}
+  .q-field--error .q-field__control:after {{
+    border-color: #fb923c !important;
+  }}
+  .q-field--error .q-field__label {{
+    color: #fb923c !important;
   }}
   .q-checkbox__label {{
     color: #e5e7eb;
@@ -133,9 +151,9 @@ APP_FONT_CSS = f"""
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus {{
-    -webkit-text-fill-color: #e5e7eb;
+    -webkit-text-fill-color: #ffffff !important;
     transition: background-color 9999s ease-in-out 0s;
-    box-shadow: 0 0 0px 1000px #111827 inset;
+    box-shadow: 0 0 0px 1000px #1f2937 inset !important;
   }}
 </style>
 """
@@ -147,11 +165,11 @@ C_GLASS_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow
 C_GLASS_CARD_HOVER = "hover:border-neutral-700/80 hover:bg-neutral-900/60 transition-all duration-150"
 
 # Buttons
-C_BTN_PRIM = "!bg-[#ffc524] !text-neutral-950 hover:bg-[#ffd35d] active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
+C_BTN_PRIM = "!bg-neutral-800 !text-white hover:bg-neutral-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
 C_BTN_SEC = "!bg-neutral-900 !text-neutral-200 border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-800 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/20"
 
 # Inputs
-C_INPUT = "border-neutral-800 bg-neutral-900 text-neutral-100 placeholder:text-neutral-500 rounded-lg text-sm px-3 py-2 outline-none focus-visible:ring-0 focus-visible:border-neutral-600 w-full transition-all"
+C_INPUT = "w-full text-sm transition-all"
 
 # Badges
 C_BADGE_GREEN = "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
