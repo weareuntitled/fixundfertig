@@ -20,7 +20,7 @@ APP_FONT_CSS = f"""
     --surface-0: #0a0b0d;
     --surface-1: #131619;
     --surface-2: #1c2024;
-    --text-muted: #9ca3af;
+    --text-muted: #94a3b8;
   }}
   a {{
     color: var(--brand-primary);
@@ -121,7 +121,7 @@ C_BADGE_RED = "bg-rose-500/10 text-rose-300 border border-rose-500/20 px-2 py-0.
 
 # Typography
 C_PAGE_TITLE = "text-2xl font-semibold text-neutral-100 tracking-tight"
-C_SECTION_TITLE = "text-sm font-semibold text-neutral-400"
+C_SECTION_TITLE = "text-sm font-semibold text-neutral-300"
 
 # Tables
 C_TABLE_HEADER = "w-full bg-neutral-900/80 border-b border-neutral-800 px-4 py-3 gap-4"
@@ -130,5 +130,5 @@ C_TABLE_ROW = "w-full px-4 py-3 border-b border-neutral-800 items-center gap-4 h
 # Legacy header tokens (kept so other components don’t break)
 C_HEADER = "bg-neutral-950 border-b border-neutral-800 h-16 px-6 flex items-center justify-between sticky top-0 z-50"
 C_BRAND_BADGE = "bg-[#ffc524] text-neutral-950 p-2 rounded-lg shadow-sm"
-C_NAV_ITEM = "text-neutral-400 hover:text-neutral-100 px-3 py-2 rounded-lg hover:bg-neutral-900 transition-all duration-150"
+C_NAV_ITEM = "text-neutral-300 hover:text-neutral-100 px-3 py-2 rounded-lg hover:bg-neutral-900 transition-all duration-150"
 C_NAV_ITEM_ACTIVE = "text-[#ffd35d] px-3 py-2 rounded-lg bg-neutral-900 transition-all duration-150"

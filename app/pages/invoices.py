@@ -120,15 +120,15 @@ def render_invoices(session, comp: Company) -> None:
                 with ui.element("div").classes("overflow-x-auto"):
                     with ui.element("div").classes("w-full sm:min-w-[720px]"):
                         with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
-                            ui.label("Nr").classes("w-24 font-bold text-xs text-neutral-400")
-                            ui.label("Kunde").classes("flex-1 font-bold text-xs text-neutral-400")
-                            ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-neutral-400")
-                            ui.label("Status").classes("w-28 text-right font-bold text-xs text-neutral-400")
-                            ui.label("").classes("w-44 text-right font-bold text-xs text-neutral-400")
+                            ui.label("Nr").classes("w-24 font-bold text-xs text-neutral-300")
+                            ui.label("Kunde").classes("flex-1 font-bold text-xs text-neutral-300")
+                            ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-neutral-300")
+                            ui.label("Status").classes("w-28 text-right font-bold text-xs text-neutral-300")
+                            ui.label("").classes("w-44 text-right font-bold text-xs text-neutral-300")
 
                         if not finals:
                             with ui.row().classes(C_TABLE_ROW):
-                                ui.label("Noch keine Rechnungen vorhanden").classes("text-sm text-neutral-400")
+                                ui.label("Noch keine Rechnungen vorhanden").classes("text-sm text-neutral-300")
                         else:
                             for idx, inv in enumerate(finals):
                                 row_bg = "bg-neutral-950/60" if idx % 2 == 0 else "bg-neutral-900/60"
@@ -181,11 +181,11 @@ def render_invoices(session, comp: Company) -> None:
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
                 with ui.row().classes("px-4 py-3 border-b border-neutral-800 items-center justify-between"):
                     ui.label("Entwürfe").classes("text-sm font-semibold text-neutral-200")
-                    ui.label(f"{len(drafts)}").classes("text-xs text-neutral-400")
+                    ui.label(f"{len(drafts)}").classes("text-xs text-neutral-300")
 
                 if not drafts:
                     with ui.row().classes("px-4 py-3"):
-                        ui.label("Keine Entwürfe").classes("text-sm text-neutral-400")
+                        ui.label("Keine Entwürfe").classes("text-sm text-neutral-300")
                 else:
                     for d in drafts[:12]:
                         with ui.row().classes("px-4 py-3 border-b border-neutral-800 items-center justify-between"):
@@ -202,11 +202,11 @@ def render_invoices(session, comp: Company) -> None:
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
                 with ui.row().classes("px-4 py-3 border-b border-neutral-800 items-center justify-between"):
                     ui.label("Mahnungen").classes("text-sm font-semibold text-neutral-200")
-                    ui.label(f"{len(reminders)}").classes("text-xs text-neutral-400")
+                    ui.label(f"{len(reminders)}").classes("text-xs text-neutral-300")
 
                 if not reminders:
                     with ui.row().classes("px-4 py-3"):
-                        ui.label("Keine überfälligen Rechnungen").classes("text-sm text-neutral-400")
+                        ui.label("Keine überfälligen Rechnungen").classes("text-sm text-neutral-300")
                 else:
                     for r in reminders[:12]:
                         with ui.row().classes("px-4 py-3 border-b border-neutral-800 items-center justify-between"):
