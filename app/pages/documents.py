@@ -11,7 +11,7 @@ import json
 import tempfile
 import zipfile
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 
 def render_documents(session, comp: Company) -> None:
     state = {
-        "period": "last_month",
         "year": str(datetime.now().year),
+        "selected_ids": set(),
     }
     highlight_document_id = None
     stored_highlight = app.storage.user.pop("documents_highlight_id", None)
@@ -64,26 +64,12 @@ def render_documents(session, comp: Company) -> None:
         ).all()
 
     def _filter_documents(items: list[Document]) -> list[Document]:
-        period = state.get("period") or "last_month"
-        if period == "year":
-            year_value = str(state.get("year") or datetime.now().year)
-            return [
-                doc
-                for doc in items
-                if _document_accounting_year(doc) == year_value
-            ]
-        days = {
-            "last_week": 7,
-            "last_month": 30,
-            "last_3_months": 90,
-        }.get(period, 30)
-        cutoff = datetime.now() - timedelta(days=days)
-        filtered: list[Document] = []
-        for doc in items:
-            effective_date = _document_effective_date(doc)
-            if effective_date and effective_date >= cutoff:
-                filtered.append(doc)
-        return filtered
+        year_value = str(state.get("year") or datetime.now().year)
+        return [
+            doc
+            for doc in items
+            if _document_accounting_year(doc) == year_value
+        ]
 
     def _doc_created_at(doc: Document) -> datetime:
         created_at = doc.created_at
@@ -119,23 +105,8 @@ def render_documents(session, comp: Company) -> None:
                 return candidate[:4]
         return ""
 
-    def _document_effective_date(doc: Document) -> datetime | None:
-        for candidate in (
-            (getattr(doc, "doc_date", None) or "").strip(),
-            _document_invoice_date(doc).strip(),
-        ):
-            if candidate:
-                try:
-                    return datetime.fromisoformat(candidate)
-                except ValueError:
-                    continue
-        created_at = _doc_created_at(doc)
-        return created_at if created_at != datetime.min else None
-
-    def _set_period(value: str) -> None:
-        state["period"] = value or "last_month"
-        if state["period"] != "year" and not state.get("year"):
-            state["year"] = str(datetime.now().year)
+    def _set_year(value: str) -> None:
+        state["year"] = value or str(datetime.now().year)
         render_summary.refresh()
         render_list.refresh()
 
@@ -528,6 +499,44 @@ def render_documents(session, comp: Company) -> None:
                 "link.remove();"
             )
 
+    def _update_selected(doc_id: int, checked: bool) -> None:
+        selected = set(state.get("selected_ids") or set())
+        if checked:
+            selected.add(doc_id)
+        else:
+            selected.discard(doc_id)
+        state["selected_ids"] = selected
+        render_list.refresh()
+
+    def _toggle_select_all(items: list[Document]) -> None:
+        current_ids = {int(doc.id or 0) for doc in items if doc.id}
+        if not current_ids:
+            ui.notify("Keine Dokumente zum Auswählen.", color="orange")
+            return
+        selected = set(state.get("selected_ids") or set())
+        if current_ids.issubset(selected):
+            selected -= current_ids
+        else:
+            selected |= current_ids
+        state["selected_ids"] = selected
+        render_list.refresh()
+
+    def _download_selected(items: list[Document]) -> None:
+        selected = set(state.get("selected_ids") or set())
+        selection = [doc for doc in items if int(doc.id or 0) in selected]
+        if not selection:
+            ui.notify("Bitte Dokument auswählen.", color="orange")
+            return
+        if len(selection) > 1:
+            ui.notify("Bitte nur ein Dokument auswählen.", color="orange")
+            return
+        doc = selection[0]
+        doc_id = int(doc.id or 0)
+        if not doc_id:
+            ui.notify("Dokument nicht gefunden.", color="red")
+            return
+        _trigger_download(f"/api/documents/{doc_id}/file")
+
     def _delete_document() -> None:
         doc_id = menu_state.get("doc_id")
         _hide_context_menu()
@@ -602,40 +611,20 @@ def render_documents(session, comp: Company) -> None:
                 ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
 
             with ui.row().classes("items-center gap-3 flex-wrap"):
+                year_options = _year_options(_load_documents())
+                year_values = list(year_options.keys())
+                if year_values and state.get("year") not in year_options:
+                    state["year"] = year_values[0]
                 ui.select(
-                    {
-                        "last_week": "Letzte Woche",
-                        "last_month": "Letzter Monat",
-                        "last_3_months": "Letzte 3 Monate",
-                        "year": "Dieses Jahr",
-                    },
-                    value=state["period"],
-                    label="Zeitraum",
-                    on_change=lambda e: _set_period(e.value or "last_month"),
-                ).props("dense").classes(C_INPUT + " w-44 bg-white shadow-sm")
-
-                if state["period"] == "year":
-                    ui.select(
-                        _year_options(_load_documents()),
-                        value=state["year"],
-                        label="Jahr",
-                        on_change=lambda e: (
-                            state.__setitem__("year", e.value or str(datetime.now().year)),
-                            render_summary.refresh(),
-                            render_list.refresh(),
-                        ),
-                    ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
+                    year_options,
+                    value=state["year"],
+                    label="Jahr",
+                    on_change=lambda e: _set_year(e.value or str(datetime.now().year)),
+                ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
 
     @ui.refreshable
     def render_summary():
-        period = state.get("period") or "last_month"
         year_value = str(state.get("year") or datetime.now().year)
-        period_labels = {
-            "last_week": "Letzte Woche",
-            "last_month": "Letzter Monat",
-            "last_3_months": "Letzte 3 Monate",
-        }
-        period_label = period_labels.get(period, f"Jahr {year_value}")
         items = _filter_documents(_load_documents())
         total_docs = 0
         total_amount = 0.0
@@ -650,7 +639,7 @@ def render_documents(session, comp: Company) -> None:
 
         with ui.row().classes("w-full gap-4 flex-wrap"):
             kpi_card(
-                f"Dokumente ({period_label})",
+                f"Dokumente (Jahr {year_value})",
                 f"{total_docs}",
                 "description",
                 "text-blue-600",
@@ -1038,12 +1027,34 @@ def render_documents(session, comp: Company) -> None:
     def render_list():
         _hide_context_menu()
         items = _sort_documents(_filter_documents(_load_documents()))
+        selected_ids = set(state.get("selected_ids") or set())
         with ui.card().classes(
             C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-none border-slate-200 bg-white backdrop-blur-0"
         ).on(
             "contextmenu",
             js_handler="(e) => { e.preventDefault(); }",
         ):
+            current_ids = {int(doc.id or 0) for doc in items if doc.id}
+            all_selected = bool(current_ids) and current_ids.issubset(selected_ids)
+            selection_label = "Auswahl löschen" if all_selected else "Alle auswählen"
+            with ui.row().classes(
+                "w-full px-6 py-3 items-center justify-between border-b border-slate-100 bg-slate-50/60"
+            ):
+                with ui.row().classes("items-center gap-2"):
+                    ui.button(
+                        selection_label,
+                        icon="checklist",
+                        on_click=lambda _, i=items: _toggle_select_all(i),
+                    ).classes(C_BTN_SEC)
+                    ui.button(
+                        "Download",
+                        icon="download",
+                        on_click=lambda _, i=items: _download_selected(i),
+                    ).classes(C_BTN_SEC)
+                if current_ids:
+                    selected_count = len(selected_ids.intersection(current_ids))
+                    ui.label(f"{selected_count} ausgewählt").classes("text-xs text-slate-500")
+
             meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
             backfill_document_fields(session, items, meta_map=meta_map)
 
@@ -1142,6 +1153,10 @@ def render_documents(session, comp: Company) -> None:
                     ),
                 ):
                     with ui.element("div").classes("flex items-center gap-3 w-[26%]"):
+                        ui.checkbox(
+                            value=doc_id in selected_ids,
+                            on_change=lambda e, i=doc_id: _update_selected(i, bool(e.value)),
+                        ).props("dense").classes("shrink-0")
                         with ui.element("div").classes(
                             f"w-9 h-9 rounded-md flex items-center justify-center {icon_classes}"
                         ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6)"):
