@@ -14,5 +14,5 @@ def apply_global_ui_theme() -> None:
         shared=True,
     )
     ui.add_head_html(APP_FONT_CSS, shared=True)
-    ui.colors(primary="#ffc524", secondary="#262a30", accent="#ff9f0a", dark="#0a0b0d")
+    ui.colors(primary="#ffc524", secondary="#262a30", accent="#ffb300", dark="#0a0b0d")
     _THEME_APPLIED = True

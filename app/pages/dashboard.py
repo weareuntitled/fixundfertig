@@ -400,7 +400,7 @@ def render_dashboard(session, comp: Company) -> None:
                                 ui.menu_item(label, on_click=handler)
                     with ui.column().classes("gap-4"):
                         with ui.element("div").classes(
-                            "h-24 rounded-2xl bg-neutral-950 flex items-center justify-center"
+                            "h-24 rounded-2xl flex items-center justify-center"
                         ):
                             with ui.element("div").classes(
                                 f"w-14 h-14 rounded-full {item['accent']} flex items-center justify-center"

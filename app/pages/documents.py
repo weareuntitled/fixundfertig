@@ -1055,7 +1055,7 @@ def render_documents(session, comp: Company) -> None:
                 ui.label("Netto").classes("w-[9%] text-right")
                 ui.label("Steuer").classes("w-[9%] text-right")
                 ui.label("Status").classes("w-[8%]")
-                ui.label("Aktionen").classes("w-[3%] text-right")
+                ui.label("Aktionen").classes("w-[6%] text-right")
 
             if not items:
                 ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-neutral-400")
@@ -1140,9 +1140,9 @@ def render_documents(session, comp: Company) -> None:
                     ).classes("w-[9%] text-right text-sm text-neutral-300")
                     with ui.element("div").classes("w-[8%]"):
                         ui.label(status_label).classes(badge_class)
-                    with ui.element("div").classes("w-[3%] flex justify-end"):
+                    with ui.element("div").classes("w-[6%] flex justify-end"):
                         with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(
-                            "text-neutral-400 hover:text-neutral-100"
+                            "text-neutral-400 hover:text-[#ffd35d]"
                         ):
                             with ui.menu().props("auto-close no-parent-event"):
                                 ui.menu_item(

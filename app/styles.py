@@ -15,6 +15,7 @@ APP_FONT_CSS = f"""
     letter-spacing: -0.01em;
     color-scheme: dark;
     --brand-primary: #ffc524;
+    --brand-primary-2: #ffb300;
     --brand-accent: #ff9f0a;
     --surface-0: #0a0b0d;
     --surface-1: #131619;
@@ -34,8 +35,49 @@ APP_FONT_CSS = f"""
   .q-field--focused .q-field__label {{
     color: var(--brand-primary);
   }}
+  .q-field__control:before {{
+    background: #2f3338;
+  }}
+  .q-field__control:after {{
+    background: var(--brand-primary);
+  }}
+  .q-field--focused .q-field__control:after {{
+    background: var(--brand-primary);
+  }}
+  .q-field--outlined .q-field__control {{
+    background: #0f172a;
+  }}
+  .q-field--outlined .q-field__control:before {{
+    border-color: #2f3338;
+  }}
+  .q-field--outlined.q-field--focused .q-field__control:before {{
+    border-color: var(--brand-primary-2);
+  }}
   .q-field__native, .q-field__prefix, .q-field__suffix {{
     color: #e5e7eb;
+  }}
+  .q-checkbox__inner--truthy .q-checkbox__bg {{
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+  }}
+  .q-checkbox__inner--falsy .q-checkbox__bg {{
+    border-color: #3f454b;
+  }}
+  .q-menu, .q-menu .q-list {{
+    background: #111827;
+    color: #e5e7eb;
+  }}
+  .q-item {{
+    color: #e5e7eb;
+  }}
+  .q-item--active {{
+    color: var(--brand-primary);
+  }}
+  .q-item__section--main {{
+    color: inherit;
+  }}
+  .q-btn .q-focus-helper {{
+    background: color-mix(in srgb, var(--brand-primary-2) 25%, transparent);
   }}
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
