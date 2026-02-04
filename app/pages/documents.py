@@ -1079,7 +1079,7 @@ def render_documents(session, comp: Company) -> None:
                         label="Jahr",
                         on_change=lambda e: _set_year(e.value or str(datetime.now().year)),
                     ).props("outlined dense options-dense behavior=menu popup-content-class='bg-neutral-900 text-neutral-200 border border-neutral-800'").classes(
-                        C_INPUT + " w-28 ff-stroke-input shadow-sm"
+                        C_INPUT + " w-28 ff-select-fill shadow-sm"
                     )
 
                 with ui.row().classes("items-center gap-2 flex-wrap"):
