@@ -54,7 +54,6 @@ from pages import (
     render_invites,
     render_ledger,
     render_exports,
-    render_todos,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies, _open_invoice_editor
 from services.blob_storage import blob_storage, build_document_key
@@ -71,7 +70,6 @@ from services.documents import (
     serialize_document,
     validate_document_upload,
 )
-from src.presentation.ui.pages.home import render_home
 
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAXSIZE = 256
@@ -1448,7 +1446,6 @@ def _is_owner_user() -> bool:
 
 def _page_title(page: str | None) -> str:
     titles = {
-        "home": "Home",
         "dashboard": "Dashboard",
         "invoices": "Invoices",
         "documents": "Documents",
@@ -1484,7 +1481,7 @@ def layout_wrapper(content_func):
     company_name = _active_company_name()
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
-    current_page = app.storage.user.get("page", "home")
+    current_page = app.storage.user.get("page", "dashboard")
 
     with ui.element("div").classes(f"w-full min-h-screen {C_BG}"):
         with ui.row().classes("w-full min-h-screen items-start"):
@@ -1498,7 +1495,7 @@ def layout_wrapper(content_func):
                 )
 
                 def nav_item(label: str, target: str, icon: str) -> None:
-                    active = app.storage.user.get("page", "home") == target
+                    active = app.storage.user.get("page", "dashboard") == target
                     base = "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150"
                     cls = (
                         f"{base} bg-white text-blue-600 shadow-[0_0_18px_rgba(59,130,246,0.45)] ring-1 ring-blue-200"
@@ -1508,7 +1505,6 @@ def layout_wrapper(content_func):
                     with ui.button(icon=icon, on_click=lambda t=target: set_page(t)).props("flat round").classes(cls):
                         ui.tooltip(label)
 
-                nav_item("Home", "home", "checklist")
                 nav_item("Dashboard", "dashboard", "dashboard")
                 ui.element("div").classes("w-8 h-px bg-slate-200/70")
                 nav_item("Invoices", "invoices", "receipt_long")
@@ -1584,7 +1580,7 @@ def index():
         if not companies:
             get_primary_company(session, user_id)
 
-    page = app.storage.user.get("page", "home")
+    page = app.storage.user.get("page", "dashboard")
 
     def content():
         with get_session() as session:
@@ -1626,12 +1622,8 @@ def index():
 
             # Normal pages in container
             with ui.column().classes(C_CONTAINER):
-                if page == "home":
-                    render_home()
-                elif page == "dashboard":
+                if page == "dashboard":
                     render_dashboard(session, comp)
-                elif page == "todos":
-                    render_todos(session, comp)
                 elif page == "customers":
                     render_customers(session, comp)
                 elif page == "customer_new":
