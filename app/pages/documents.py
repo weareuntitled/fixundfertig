@@ -520,6 +520,17 @@ def render_documents(session, comp: Company) -> None:
                 "link.remove();"
             )
 
+    def _trigger_download(open_url: str) -> None:
+        if open_url:
+            ui.run_javascript(
+                "const link=document.createElement('a');"
+                f"link.href='{open_url}';"
+                "link.download='';"
+                "document.body.appendChild(link);"
+                "link.click();"
+                "link.remove();"
+            )
+
     def _delete_document() -> None:
         doc_id = menu_state.get("doc_id")
         _hide_context_menu()
@@ -599,32 +610,29 @@ def render_documents(session, comp: Company) -> None:
                 ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
 
             with ui.row().classes("items-center gap-3 flex-wrap"):
-                with ui.element("div").classes(
-                    "flex items-center bg-white border border-slate-200 rounded-full p-1 shadow-sm"
-                ):
-                    for label, value in [("Week", "last_week"), ("Month", "last_month"), ("Year", "year")]:
-                        is_active = state["period"] == value
-                        button_classes = (
-                            "px-4 py-1.5 text-sm font-medium rounded-full transition-all"
-                        )
-                        if is_active:
-                            button_classes += " bg-blue-600 text-white shadow-sm"
-                        else:
-                            button_classes += " text-slate-600 hover:text-slate-900"
-                        ui.button(
-                            label,
-                            on_click=lambda _, v=value: _set_period(v),
-                        ).props("flat").classes(button_classes)
-
                 ui.select(
-                    _year_options(_load_documents()),
-                    value=state["year"],
-                    on_change=lambda e: (
-                        state.__setitem__("year", e.value or str(datetime.now().year)),
-                        render_summary.refresh(),
-                        render_list.refresh(),
-                    ),
-                ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
+                    {
+                        "last_week": "Letzte Woche",
+                        "last_month": "Letzter Monat",
+                        "last_3_months": "Letzte 3 Monate",
+                        "year": "Dieses Jahr",
+                    },
+                    value=state["period"],
+                    label="Zeitraum",
+                    on_change=lambda e: _set_period(e.value or "last_month"),
+                ).props("dense").classes(C_INPUT + " w-44 bg-white shadow-sm")
+
+                if state["period"] == "year":
+                    ui.select(
+                        _year_options(_load_documents()),
+                        value=state["year"],
+                        label="Jahr",
+                        on_change=lambda e: (
+                            state.__setitem__("year", e.value or str(datetime.now().year)),
+                            render_summary.refresh(),
+                            render_list.refresh(),
+                        ),
+                    ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
 
                 ui.input(
                     placeholder="Suche",
@@ -1156,6 +1164,10 @@ def render_documents(session, comp: Company) -> None:
                         ui.link(filename, open_url, new_tab=True).classes(
                             "text-blue-600 font-medium hover:underline"
                         )
+                        ui.button(
+                            icon="download",
+                            on_click=lambda _, u=open_url: _trigger_download(u),
+                        ).props("flat dense").classes("text-slate-500 hover:text-slate-700")
                     with ui.element("div").classes("w-[14%]"):
                         ui.label(tags_value).classes(
                             "text-sm text-slate-500 truncate"
