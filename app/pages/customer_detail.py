@@ -170,7 +170,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
 
     with ui.row().classes("gap-2 mt-2"):
         if can_delete:
-            ui.button("Löschen", icon="delete", on_click=delete_customer).classes("bg-rose-600 text-white hover:bg-rose-700")
+            ui.button("Löschen", icon="delete", on_click=delete_customer).classes(C_BTN_PRIM)
         else:
             ui.button("Archivieren", icon="archive", on_click=archive_customer).classes(C_BTN_SEC)
 
