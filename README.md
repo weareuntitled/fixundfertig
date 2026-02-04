@@ -35,14 +35,14 @@ pip install -r requirements.txt
 ### Starten
 
 ```bash
-python -m src.main
+python app/main.py
 ```
 
-oder
+Optional: im Repo-Root ausführen (damit `app/` als Script-Verzeichnis gilt).
 
-```bash
-python src/main.py
-```
+### Code-Struktur
+
+- **`app/` ist die einzige Codebasis und der Runtime-Entry-Point.** Docker startet `python main.py` im Container, nachdem der Inhalt von `app/` nach `/app` kopiert wurde. Daher läuft die produktive App immer über `app/main.py`.【F:Dockerfile†L21-L32】
 
 ## 🧭 System Architecture
 

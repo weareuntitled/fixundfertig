@@ -22,7 +22,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Wir kopieren den INHALT von "app/" in das aktuelle Verzeichnis ("/app")
 # Dadurch liegt main.py direkt neben requirements.txt im Container.
 COPY app/ .
-COPY src/ ./src/
 
 # Port freigeben
 EXPOSE 8000

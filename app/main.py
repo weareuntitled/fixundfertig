@@ -12,19 +12,10 @@ import re
 import mimetypes
 import os
 import time
-import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request as UrlRequest, urlopen
-
-_SRC_ROOT_CANDIDATES = (
-    Path(__file__).resolve().parent.parent / "src",
-    Path(__file__).resolve().parent / "src",
-)
-for _src_root in _SRC_ROOT_CANDIDATES:
-    if _src_root.exists() and str(_src_root) not in sys.path:
-        sys.path.append(str(_src_root))
 
 from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -55,6 +46,7 @@ from pages import (
     render_ledger,
     render_exports,
     render_todos,
+    render_home,
 )
 from pages._shared import get_current_user_id, get_primary_company, list_companies, _open_invoice_editor
 from services.blob_storage import blob_storage, build_document_key
@@ -72,8 +64,6 @@ from services.documents import (
     serialize_document,
     validate_document_upload,
 )
-from src.presentation.ui.pages.home import render_home
-
 _CACHE_TTL_SECONDS = 300
 _CACHE_MAXSIZE = 256
 _CACHE_KEY_TYPE = tuple[int, int]
