@@ -1048,14 +1048,14 @@ def render_documents(session, comp: Company) -> None:
                     value=all_selected,
                     on_change=lambda e, i=items: _toggle_select_all(i, bool(e.value)),
                 ).props("dense").classes("w-[4%]")
-                ui.label("Datei").classes("w-[30%]")
+                ui.label("Datei").classes("w-[28%]")
                 ui.label("Datum").classes("w-[12%]")
-                ui.label("Tags").classes("w-[16%]")
+                ui.label("Tags").classes("w-[14%]")
                 ui.label("Brutto").classes("w-[9%] text-right")
                 ui.label("Netto").classes("w-[9%] text-right")
                 ui.label("Steuer").classes("w-[9%] text-right")
-                ui.label("Status").classes("w-[8%]")
-                ui.label("Aktionen").classes("w-[6%] text-right")
+                ui.label("Status").classes("w-[7%]")
+                ui.label("Aktionen").classes("w-[8%] text-right")
 
             if not items:
                 ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-neutral-300")
@@ -1106,7 +1106,7 @@ def render_documents(session, comp: Company) -> None:
                         value=doc_id in selected_ids,
                         on_change=lambda e, i=doc_id: _update_selected(i, bool(e.value)),
                     ).props("dense").classes("w-[4%] shrink-0")
-                    with ui.element("div").classes("flex items-center gap-3 w-[30%] min-w-0"):
+                    with ui.element("div").classes("flex items-center gap-3 w-[28%] min-w-0"):
                         with ui.element("div").classes(
                             f"w-9 h-9 rounded-md flex items-center justify-center {icon_classes}"
                         ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6)"):
@@ -1119,7 +1119,7 @@ def render_documents(session, comp: Company) -> None:
                                 "text-xs text-neutral-500 truncate"
                             )
                     ui.label(display_date or "-").classes("w-[12%] text-sm text-neutral-300")
-                    with ui.element("div").classes("w-[16%]"):
+                    with ui.element("div").classes("w-[14%]"):
                         tag_items = _parse_keywords(tags_value) if tags_value != "-" else []
                         if tag_items:
                             with ui.row().classes("flex flex-wrap gap-1"):
@@ -1138,13 +1138,17 @@ def render_documents(session, comp: Company) -> None:
                     ui.label(
                         _format_amount_value(amount_tax, currency_value) if amount_tax is not None else "-"
                     ).classes("w-[9%] text-right text-sm text-neutral-300")
-                    with ui.element("div").classes("w-[8%]"):
+                    with ui.element("div").classes("w-[7%]"):
                         ui.label(status_label).classes(badge_class)
-                    with ui.element("div").classes("w-[6%] flex justify-end"):
+                    with ui.element("div").classes("w-[8%] flex justify-end ml-auto"):
                         with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(
                             "text-neutral-400 hover:text-[#ffd35d]"
                         ):
                             with ui.menu().props("auto-close no-parent-event"):
+                                ui.menu_item(
+                                    "Bearbeiten",
+                                    on_click=lambda _, d=doc_id: _open_meta(int(d)),
+                                )
                                 ui.menu_item(
                                     "Vorschau",
                                     on_click=lambda _, u=open_url: _preview_document(u),
@@ -1152,10 +1156,6 @@ def render_documents(session, comp: Company) -> None:
                                 ui.menu_item(
                                     "Download",
                                     on_click=lambda _, u=open_url: _trigger_download(u),
-                                )
-                                ui.menu_item(
-                                    "Metadaten",
-                                    on_click=lambda _, d=doc_id: _open_meta(int(d)),
                                 )
                                 ui.menu_item(
                                     "Löschen",
