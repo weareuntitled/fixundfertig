@@ -1482,6 +1482,9 @@ def layout_wrapper(content_func):
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "dashboard")
+    if current_page in {"home", "todos"}:
+        current_page = "dashboard"
+        app.storage.user["page"] = current_page
 
     with ui.element("div").classes(f"w-full min-h-screen {C_BG}"):
         with ui.row().classes("w-full min-h-screen items-start"):
@@ -1581,6 +1584,9 @@ def index():
             get_primary_company(session, user_id)
 
     page = app.storage.user.get("page", "dashboard")
+    if page in {"home", "todos"}:
+        page = "dashboard"
+        app.storage.user["page"] = page
 
     def content():
         with get_session() as session:
