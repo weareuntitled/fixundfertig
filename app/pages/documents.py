@@ -40,6 +40,7 @@ def render_documents(session, comp: Company) -> None:
     state = {
         "year": str(datetime.now().year),
         "selected_ids": set(),
+        "query": "",
     }
     highlight_document_id = None
     stored_highlight = app.storage.user.pop("documents_highlight_id", None)
@@ -110,6 +111,10 @@ def render_documents(session, comp: Company) -> None:
         render_summary.refresh()
         render_list.refresh()
 
+    def _set_query(value: str) -> None:
+        state["query"] = value or ""
+        render_list.refresh()
+
     def _parse_keywords(value: object) -> list[str]:
         if value is None or value == "":
             return []
@@ -130,6 +135,37 @@ def render_documents(session, comp: Company) -> None:
     def _format_keywords(value: str | None) -> str:
         items = _parse_keywords(value or "")
         return ", ".join(items) if items else "-"
+
+    def _matches_query(doc: Document, meta_values: dict[str, object], query: str) -> bool:
+        if not query:
+            return True
+        terms = [term for term in query.lower().split() if term]
+        if not terms:
+            return True
+        haystack_parts = [
+            doc.original_filename,
+            doc.title,
+            doc.filename,
+            doc.vendor,
+            doc.doc_type,
+            doc.document_type,
+            doc.source,
+            doc.doc_date,
+            _document_invoice_date(doc),
+            _document_display_date(doc),
+            _format_keywords(doc.keywords_json),
+            meta_values.get("vendor"),
+            meta_values.get("keywords"),
+            meta_values.get("invoice_number"),
+            meta_values.get("summary"),
+            meta_values.get("amount_total"),
+            meta_values.get("amount_net"),
+            meta_values.get("amount_tax"),
+        ]
+        haystack = " ".join(
+            str(part).lower() for part in haystack_parts if part is not None and str(part).strip()
+        )
+        return all(term in haystack for term in terms)
 
     def _sort_documents(items: list[Document]) -> list[Document]:
         return sorted(items, key=_doc_created_at, reverse=True)
@@ -453,40 +489,9 @@ def render_documents(session, comp: Company) -> None:
                 ).classes(C_BTN_PRIM)
                 ui.button("Schließen", on_click=upload_dialog.close).classes(C_BTN_SEC)
 
-    menu_state = {"visible": False, "x": 0, "y": 0, "doc_id": None, "open_url": ""}
-
-    def _hide_context_menu() -> None:
-        menu_state["visible"] = False
-        menu_overlay.style("display: none")
-        context_menu.style("display: none")
-
-    def _show_context_menu(x: int, y: int, doc_id: int, open_url: str) -> None:
-        menu_state["visible"] = True
-        menu_state["x"] = x
-        menu_state["y"] = y
-        menu_state["doc_id"] = doc_id
-        menu_state["open_url"] = open_url
-        context_menu.style(f"display: block; top: {y}px; left: {x}px;")
-        menu_overlay.style("display: block")
-
-    def _preview_document() -> None:
-        open_url = menu_state.get("open_url")
-        _hide_context_menu()
+    def _preview_document(open_url: str) -> None:
         if open_url:
             ui.run_javascript(f"window.open('{open_url}', '_blank')")
-
-    def _download_document() -> None:
-        open_url = menu_state.get("open_url")
-        _hide_context_menu()
-        if open_url:
-            ui.run_javascript(
-                "const link=document.createElement('a');"
-                f"link.href='{open_url}';"
-                "link.download='';"
-                "document.body.appendChild(link);"
-                "link.click();"
-                "link.remove();"
-            )
 
     def _trigger_download(open_url: str) -> None:
         if open_url:
@@ -508,16 +513,18 @@ def render_documents(session, comp: Company) -> None:
         state["selected_ids"] = selected
         render_list.refresh()
 
-    def _toggle_select_all(items: list[Document]) -> None:
+    def _toggle_select_all(items: list[Document], checked: bool | None = None) -> None:
         current_ids = {int(doc.id or 0) for doc in items if doc.id}
         if not current_ids:
             ui.notify("Keine Dokumente zum Auswählen.", color="orange")
             return
         selected = set(state.get("selected_ids") or set())
-        if current_ids.issubset(selected):
-            selected -= current_ids
-        else:
+        if checked is None:
+            checked = not current_ids.issubset(selected)
+        if checked:
             selected |= current_ids
+        else:
+            selected -= current_ids
         state["selected_ids"] = selected
         render_list.refresh()
 
@@ -536,12 +543,6 @@ def render_documents(session, comp: Company) -> None:
             ui.notify("Dokument nicht gefunden.", color="red")
             return
         _trigger_download(f"/api/documents/{doc_id}/file")
-
-    def _delete_document() -> None:
-        doc_id = menu_state.get("doc_id")
-        _hide_context_menu()
-        if doc_id:
-            _open_delete(int(doc_id))
 
     @ui_handler("documents.dialog.reset_events.open")
     def _open_reset_events() -> None:
@@ -609,18 +610,6 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("items-center gap-4"):
                 ui.label("Dokumente").classes("text-3xl font-bold text-slate-900")
                 ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
-
-            with ui.row().classes("items-center gap-3 flex-wrap"):
-                year_options = _year_options(_load_documents())
-                year_values = list(year_options.keys())
-                if year_values and state.get("year") not in year_options:
-                    state["year"] = year_values[0]
-                ui.select(
-                    year_options,
-                    value=state["year"],
-                    label="Jahr",
-                    on_change=lambda e: _set_year(e.value or str(datetime.now().year)),
-                ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
 
     @ui.refreshable
     def render_summary():
@@ -903,7 +892,6 @@ def render_documents(session, comp: Company) -> None:
     def _open_meta(doc_id: int) -> None:
         if not doc_id:
             return
-        _hide_context_menu()
         action = "open_document_meta"
         filename = None
         storage_key = None
@@ -949,31 +937,6 @@ def render_documents(session, comp: Company) -> None:
                 ),
             )
             ui.notify(f"Fehler beim Öffnen der Metadaten (Dokument-ID: {doc_id})", color="red")
-
-    menu_overlay = ui.element("div").classes("fixed inset-0 z-40").style("display: none")
-    menu_overlay.on("click", lambda _: _hide_context_menu())
-
-    context_menu = ui.element("div").classes(
-        "fixed bg-white rounded-lg shadow-xl border border-slate-100 w-48 z-50 py-2"
-    ).style("display: none")
-    with context_menu:
-        ui.button(
-            "👁️ Vorschau",
-            on_click=_preview_document,
-        ).classes("block w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700")
-        ui.button(
-            "⬇️ Download",
-            on_click=_download_document,
-        ).classes("block w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700")
-        ui.button(
-            "✏️ Metadaten",
-            on_click=lambda: _open_meta(int(menu_state.get("doc_id") or 0)),
-        ).classes("block w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700")
-        ui.element("div").classes("border-t border-slate-100 my-1")
-        ui.button(
-            "🗑️ Löschen",
-            on_click=_delete_document,
-        ).classes("block w-full text-left px-4 py-2 hover:bg-rose-50 text-rose-600")
 
     def _format_size(size_bytes: int) -> str:
         if size_bytes <= 0:
@@ -1025,75 +988,81 @@ def render_documents(session, comp: Company) -> None:
 
     @ui.refreshable
     def render_list():
-        _hide_context_menu()
         items = _sort_documents(_filter_documents(_load_documents()))
         selected_ids = set(state.get("selected_ids") or set())
         with ui.card().classes(
             C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-none border-slate-200 bg-white backdrop-blur-0"
-        ).on(
-            "contextmenu",
-            js_handler="(e) => { e.preventDefault(); }",
         ):
+            meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
+            backfill_document_fields(session, items, meta_map=meta_map)
+            meta_values_map = {
+                int(doc.id or 0): resolve_document_meta_values(meta_map.get(int(doc.id or 0)))
+                for doc in items
+                if doc.id
+            }
+            query_value = (state.get("query") or "").strip()
+            if query_value:
+                items = [
+                    doc
+                    for doc in items
+                    if _matches_query(doc, meta_values_map.get(int(doc.id or 0), {}), query_value)
+                ]
             current_ids = {int(doc.id or 0) for doc in items if doc.id}
             all_selected = bool(current_ids) and current_ids.issubset(selected_ids)
-            selection_label = "Auswahl löschen" if all_selected else "Alle auswählen"
             with ui.row().classes(
                 "w-full px-6 py-3 items-center justify-between border-b border-slate-100 bg-slate-50/60"
             ):
-                with ui.row().classes("items-center gap-2"):
-                    ui.button(
-                        selection_label,
-                        icon="checklist",
-                        on_click=lambda _, i=items: _toggle_select_all(i),
-                    ).classes(C_BTN_SEC)
-                    ui.button(
+                with ui.row().classes("items-center gap-3 flex-wrap"):
+                    year_options = _year_options(_load_documents())
+                    year_values = list(year_options.keys())
+                    if year_values and state.get("year") not in year_options:
+                        state["year"] = year_values[0]
+                    ui.select(
+                        year_options,
+                        value=state["year"],
+                        label="Jahr",
+                        on_change=lambda e: _set_year(e.value or str(datetime.now().year)),
+                    ).props("dense").classes(C_INPUT + " w-28 bg-white shadow-sm")
+                with ui.row().classes("items-center gap-2 flex-wrap"):
+                    ui.input(
+                        placeholder="Dokumente durchsuchen",
+                        value=state.get("query", ""),
+                        on_change=lambda e: _set_query(e.value),
+                    ).props("dense clearable").classes(C_INPUT + " w-56 sm:w-72 bg-white shadow-sm")
+                    download_button = ui.button(
                         "Download",
                         icon="download",
                         on_click=lambda _, i=items: _download_selected(i),
                     ).classes(C_BTN_SEC)
-                if current_ids:
                     selected_count = len(selected_ids.intersection(current_ids))
+                    if selected_count == 0:
+                        download_button.props("disable")
                     ui.label(f"{selected_count} ausgewählt").classes("text-xs text-slate-500")
-
-            meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
-            backfill_document_fields(session, items, meta_map=meta_map)
 
             with ui.row().classes(
                 "w-full px-6 py-3 text-xs font-semibold tracking-wide text-slate-500 border-b border-slate-100"
             ):
-                ui.label("Datei").classes("w-[26%]")
-                ui.label("Tags").classes("w-[14%]")
-                ui.label("Status").classes("w-[10%]")
-                ui.label("Datum").classes("w-[10%]")
-                ui.label("Brutto").classes("w-[8%] text-right")
-                ui.label("Netto").classes("w-[8%] text-right")
-                ui.label("Steuer").classes("w-[8%] text-right")
-                ui.label("Größe").classes("w-[8%] text-right")
-                ui.label("Quelle").classes("w-[8%]")
+                ui.checkbox(
+                    value=all_selected,
+                    on_change=lambda e, i=items: _toggle_select_all(i, bool(e.value)),
+                ).props("dense").classes("w-[4%]")
+                ui.label("Datei").classes("w-[30%]")
+                ui.label("Datum").classes("w-[12%]")
+                ui.label("Tags").classes("w-[16%]")
+                ui.label("Brutto").classes("w-[9%] text-right")
+                ui.label("Netto").classes("w-[9%] text-right")
+                ui.label("Steuer").classes("w-[9%] text-right")
+                ui.label("Status").classes("w-[8%]")
+                ui.label("Aktionen").classes("w-[3%] text-right")
 
             if not items:
                 ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-slate-500")
                 return
 
-            def _open_context_menu(event, doc_id: int, open_url: str) -> None:
-                coords = event.args or {}
-                row_left = int(coords.get("rowLeft") or 0)
-                row_bottom = int(coords.get("rowBottom") or 0)
-                if row_left == 0 and row_bottom == 0:
-                    x = int(coords.get("pageX") or coords.get("clientX") or 0)
-                    y = int(coords.get("pageY") or coords.get("clientY") or 0)
-                else:
-                    x = row_left
-                    y = row_bottom
-                if x == 0 and y == 0:
-                    x = 220
-                    y = 220
-                _show_context_menu(x, y, doc_id, open_url)
-
             for doc in items:
                 doc_id = int(doc.id or 0)
                 display_date = _document_display_date(doc)
-                meta_values = resolve_document_meta_values(meta_map.get(doc_id))
+                meta_values = meta_values_map.get(doc_id, {})
                 size_bytes = document_size_bytes(doc)
                 meta_size = meta_values.get("size_bytes")
                 if size_bytes <= 0 and isinstance(meta_size, int) and meta_size > 0:
@@ -1130,61 +1099,69 @@ def render_documents(session, comp: Company) -> None:
                 )
                 if highlight_document_id == doc_id:
                     row_classes += " bg-amber-50 ring-1 ring-amber-200"
-                with ui.row().classes(row_classes).on(
-                    "contextmenu",
-                    lambda e, i=doc_id, u=open_url: _open_context_menu(e, i, u),
-                    js_handler=(
-                        "(e) => {"
-                        " e.preventDefault();"
-                        " const rect = e.currentTarget.getBoundingClientRect();"
-                        " emit({"
-                        " pageX: e.pageX,"
-                        " pageY: e.pageY,"
-                        " clientX: e.clientX,"
-                        " clientY: e.clientY,"
-                        " rowLeft: rect.left,"
-                        " rowBottom: rect.bottom,"
-                        "});"
-                        "}"
-                    ),
-                ):
-                    with ui.element("div").classes("flex items-center gap-3 w-[26%]"):
-                        ui.checkbox(
-                            value=doc_id in selected_ids,
-                            on_change=lambda e, i=doc_id: _update_selected(i, bool(e.value)),
-                        ).props("dense").classes("shrink-0")
+                with ui.row().classes(row_classes):
+                    ui.checkbox(
+                        value=doc_id in selected_ids,
+                        on_change=lambda e, i=doc_id: _update_selected(i, bool(e.value)),
+                    ).props("dense").classes("w-[4%] shrink-0")
+                    with ui.element("div").classes("flex items-center gap-3 w-[30%] min-w-0"):
                         with ui.element("div").classes(
                             f"w-9 h-9 rounded-md flex items-center justify-center {icon_classes}"
                         ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6)"):
                             ui.icon(icon_name).classes("text-base")
-                        ui.link(filename, open_url, new_tab=True).classes(
-                            "text-blue-600 font-medium hover:underline"
-                        )
-                        ui.button(
-                            icon="download",
-                            on_click=lambda _, u=open_url: _trigger_download(u),
-                        ).props("flat dense").classes("text-slate-500 hover:text-slate-700")
-                    with ui.element("div").classes("w-[14%]"):
-                        ui.label(tags_value).classes(
-                            "text-sm text-slate-500 truncate"
-                        ).tooltip(tags_value if tags_value != "-" else "")
-                    with ui.element("div").classes("w-[10%]"):
-                        ui.label(status_label).classes(badge_class)
-                    ui.label(display_date or "-").classes("w-[10%] text-sm text-slate-600")
+                        with ui.column().classes("min-w-0 gap-0.5"):
+                            ui.link(filename, open_url, new_tab=True).classes(
+                                "text-blue-600 font-medium hover:underline truncate"
+                            ).tooltip(filename)
+                            ui.label(f"{size_display} • {_format_source(doc.source)}").classes(
+                                "text-xs text-slate-400 truncate"
+                            )
+                    ui.label(display_date or "-").classes("w-[12%] text-sm text-slate-600")
+                    with ui.element("div").classes("w-[16%]"):
+                        tag_items = _parse_keywords(tags_value) if tags_value != "-" else []
+                        if tag_items:
+                            with ui.row().classes("flex flex-wrap gap-1"):
+                                for tag in tag_items:
+                                    ui.label(tag).classes(
+                                        "text-xs text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full"
+                                    )
+                        else:
+                            ui.label("-").classes("text-sm text-slate-400")
                     ui.label(
                         _format_amount_value(amount_total, currency_value) if amount_total is not None else "-"
-                    ).classes("w-[8%] text-right text-sm text-slate-600")
+                    ).classes("w-[9%] text-right text-sm text-slate-600")
                     ui.label(
                         _format_amount_value(amount_net, currency_value) if amount_net is not None else "-"
-                    ).classes("w-[8%] text-right text-sm text-slate-600")
+                    ).classes("w-[9%] text-right text-sm text-slate-600")
                     ui.label(
                         _format_amount_value(amount_tax, currency_value) if amount_tax is not None else "-"
-                    ).classes("w-[8%] text-right text-sm text-slate-600")
-                    ui.label(size_display).classes("w-[8%] text-right text-sm text-slate-600")
-                    ui.label(_format_source(doc.source)).classes("w-[8%] text-sm text-slate-600")
+                    ).classes("w-[9%] text-right text-sm text-slate-600")
+                    with ui.element("div").classes("w-[8%]"):
+                        ui.label(status_label).classes(badge_class)
+                    with ui.element("div").classes("w-[3%] flex justify-end"):
+                        with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(
+                            "text-slate-500 hover:text-slate-700"
+                        ):
+                            with ui.menu().props("auto-close no-parent-event"):
+                                ui.menu_item(
+                                    "Vorschau",
+                                    on_click=lambda _, u=open_url: _preview_document(u),
+                                )
+                                ui.menu_item(
+                                    "Download",
+                                    on_click=lambda _, u=open_url: _trigger_download(u),
+                                )
+                                ui.menu_item(
+                                    "Metadaten",
+                                    on_click=lambda _, d=doc_id: _open_meta(int(d)),
+                                )
+                                ui.menu_item(
+                                    "Löschen",
+                                    on_click=lambda _, d=doc_id: _open_delete(int(d)),
+                                )
 
     with ui.element("div").classes(
-        "w-full bg-[#F5F7FA] rounded-xl p-6 border border-slate-100"
+        "w-full bg-[#F5F7FA] rounded-xl p-6 border border-slate-100 flex flex-col gap-6"
     ):
         render_filters()
         render_summary()
