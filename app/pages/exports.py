@@ -21,15 +21,15 @@ def render_exports(session, comp: Company) -> None:
                 temp_file.write(result)
                 temp_file.close()
                 ui.download(temp_path)
-                ui.notify(f"{label} bereit", color="green")
+                ui.notify(f"{label} bereit", color="grey")
                 return
             if result and os.path.exists(result):
                 ui.download(result)
-                ui.notify(f"{label} bereit", color="green")
+                ui.notify(f"{label} bereit", color="grey")
                 return
-            ui.notify("Export fehlgeschlagen", color="red")
+            ui.notify("Export fehlgeschlagen", color="orange")
         except Exception as e:
-            ui.notify(f"Fehler: {e}", color="red")
+            ui.notify(f"Fehler: {e}", color="orange")
 
     def export_card(title: str, description: str, action):
         with ui.card().classes(C_CARD + " p-5 " + C_CARD_HOVER + " w-full"):

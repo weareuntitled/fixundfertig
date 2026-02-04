@@ -29,7 +29,7 @@ from services.iban import lookup_bank_from_iban
 from services.storage import cleanup_company_logos, company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
-LINK_TEXT = "text-sm text-blue-600 hover:text-blue-700"
+LINK_TEXT = "text-sm text-amber-400 hover:text-amber-300"
 
 
 def _company_select_options(companies: list[Company]) -> dict[int, str]:
@@ -46,7 +46,7 @@ def _company_select_options(companies: list[Company]) -> dict[int, str]:
 def render_settings(session, comp: Company) -> None:
     user_id = get_current_user_id(session)
     if user_id is None or int(comp.user_id or 0) != int(user_id):
-        ui.notify("Kein Zugriff auf Unternehmen.", color="red")
+        ui.notify("Kein Zugriff auf Unternehmen.", color="orange")
         return
     user_id = int(user_id)
 
@@ -71,7 +71,7 @@ def render_settings(session, comp: Company) -> None:
         with dlg, ui.card().classes("p-5 w-[420px]"):
             ui.label("Neues Unternehmen").classes("font-semibold")
             name_in = ui.input("Name", placeholder="z.B. untitled-ux").classes(C_INPUT)
-            err = ui.label("").classes("text-sm text-rose-600")
+            err = ui.label("").classes("text-sm text-amber-400")
             err.set_visibility(False)
 
             def _do_create() -> None:
@@ -120,7 +120,7 @@ def render_settings(session, comp: Company) -> None:
 
                 cid = int(app.storage.user.get("active_company_id") or comp.id or 0)
                 if not cid:
-                    ui.notify("Keine Company-ID gefunden.", color="red")
+                    ui.notify("Keine Company-ID gefunden.", color="orange")
                     return
 
                 try:
@@ -131,7 +131,7 @@ def render_settings(session, comp: Company) -> None:
                 try:
                     delete_company(user_id, cid)
                 except Exception as exc:
-                    ui.notify(f"Löschen fehlgeschlagen: {exc}", color="red")
+                    ui.notify(f"Löschen fehlgeschlagen: {exc}", color="orange")
                     return
 
                 remaining = list_companies(user_id)
@@ -237,7 +237,7 @@ def render_settings(session, comp: Company) -> None:
 
                     def on_up(e) -> None:
                         if not comp.id:
-                            ui.notify("Kein aktives Unternehmen.", color="red")
+                            ui.notify("Kein aktives Unternehmen.", color="orange")
                             return
                         cid = int(comp.id)
                         ensure_company_dirs(cid)
@@ -269,13 +269,13 @@ def render_settings(session, comp: Company) -> None:
                             else:
                                 raise RuntimeError("Keine Upload-Daten gefunden.")
                         except Exception as exc:
-                            ui.notify(f"Upload fehlgeschlagen: {exc}", color="red")
+                            ui.notify(f"Upload fehlgeschlagen: {exc}", color="orange")
                             return
 
                         cleanup_company_logos(cid, ext)
 
                         _refresh_logo_preview(cid)
-                        ui.notify("Hochgeladen", color="green")
+                        ui.notify("Hochgeladen", color="grey")
 
                     ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").classes(
                         f"w-full {C_BTN_SEC}"
@@ -432,7 +432,7 @@ def render_settings(session, comp: Company) -> None:
                         ui.notify("n8n Secret fehlt.", color="orange")
                         return
                     ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(secret_value)})")
-                    ui.notify("Secret kopiert.", color="green")
+                    ui.notify("Secret kopiert.", color="grey")
 
                 def _test_n8n_webhook() -> None:
                     if not bool(n8n_enabled.value):
@@ -487,7 +487,7 @@ def render_settings(session, comp: Company) -> None:
                             f"console.log('n8n_test_debug', {json.dumps({'step': 'test_failed_exception', 'error': str(exc)})});"
                         )
                         return
-                    ui.notify("Webhook-Test gesendet.", color="green")
+                    ui.notify("Webhook-Test gesendet.", color="grey")
                     n8n_status.set_text("Status: Test gesendet")
                     ui.run_javascript("console.log('n8n_test_debug', {step: 'test_success'});")
 
@@ -496,7 +496,7 @@ def render_settings(session, comp: Company) -> None:
                         "Secret generieren",
                         on_click=lambda: (
                             n8n_secret.set_value(secrets.token_urlsafe(32)),
-                            ui.notify("Secret generiert", color="green"),
+                            ui.notify("Secret generiert", color="grey"),
                         ),
                     ).classes(C_BTN_SEC)
                     ui.button("Secret kopieren", on_click=_copy_n8n_secret).classes(C_BTN_SEC)
@@ -521,10 +521,10 @@ def render_settings(session, comp: Company) -> None:
                     try:
                         change_password(user_id, current_pw.value or "", new_pw.value or "")
                     except Exception as exc:
-                        ui.notify(f"Passwort ändern fehlgeschlagen: {exc}", color="red")
+                        ui.notify(f"Passwort ändern fehlgeschlagen: {exc}", color="orange")
                         return
 
-                    ui.notify("Passwort geändert", color="green")
+                    ui.notify("Passwort geändert", color="grey")
                     current_pw.set_value("")
                     new_pw.set_value("")
                     confirm_pw.set_value("")
@@ -553,13 +553,13 @@ def render_settings(session, comp: Company) -> None:
                             try:
                                 delete_account(user_id)
                             except Exception as exc:
-                                ui.notify(f"Account löschen fehlgeschlagen: {exc}", color="red")
+                                ui.notify(f"Account löschen fehlgeschlagen: {exc}", color="orange")
                                 return
 
                             clear_auth_session()
                             app.storage.user.clear()
                             dlg.close()
-                            ui.notify("Account gelöscht", color="green")
+                            ui.notify("Account gelöscht", color="grey")
                             ui.navigate.to("/signup")
 
                         with ui.row().classes("justify-end gap-2 w-full mt-3"):
@@ -610,10 +610,10 @@ def render_settings(session, comp: Company) -> None:
         try:
             update_company(user_id, int(comp.id or 0), patch)
         except Exception as exc:
-            ui.notify(f"Speichern fehlgeschlagen: {exc}", color="red")
+            ui.notify(f"Speichern fehlgeschlagen: {exc}", color="orange")
             return
 
-        ui.notify("Gespeichert", color="green")
+        ui.notify("Gespeichert", color="grey")
 
     with ui.element("div").classes("w-full max-w-5xl mx-auto mt-4 flex justify-end"):
         ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)
