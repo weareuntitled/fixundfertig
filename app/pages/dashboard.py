@@ -62,10 +62,10 @@ def render_dashboard(session, comp: Company) -> None:
         lower_mime = (mime_value or "").lower()
         lower_name = (filename or "").lower()
         if "pdf" in lower_mime or lower_name.endswith(".pdf"):
-            return "picture_as_pdf", "bg-rose-100 text-rose-600"
+            return "picture_as_pdf", "bg-orange-100 text-orange-700"
         if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
-            return "image", "bg-emerald-100 text-emerald-600"
-        return "insert_drive_file", "bg-slate-100 text-slate-700"
+            return "image", "bg-orange-100 text-orange-600"
+        return "insert_drive_file", "bg-gray-100 text-gray-700"
 
     def _load_doc_items() -> list[dict]:
         invoice_rows = session.exec(
@@ -155,8 +155,8 @@ def render_dashboard(session, comp: Company) -> None:
     _assign_item_ids()
 
     status_badge = {
-        "Paid": "bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-semibold",
-        "Pending": "bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full text-xs font-semibold",
+        "Paid": "bg-gray-100 text-gray-700 border border-gray-200 px-2 py-0.5 rounded-full text-xs font-semibold",
+        "Pending": "bg-orange-100 text-orange-800 border border-orange-200 px-2 py-0.5 rounded-full text-xs font-semibold",
     }
 
     filters = ["All", "Paid", "Pending"]
@@ -196,15 +196,15 @@ def render_dashboard(session, comp: Company) -> None:
                 temp_file.write(result)
                 temp_file.close()
                 ui.download(temp_path)
-                ui.notify(f"{label} bereit", color="green")
+                ui.notify(f"{label} bereit", color="orange")
                 return
             if result and os.path.exists(result):
                 ui.download(result)
-                ui.notify(f"{label} bereit", color="green")
+                ui.notify(f"{label} bereit", color="orange")
                 return
-            ui.notify("Export fehlgeschlagen", color="red")
+            ui.notify("Export fehlgeschlagen", color="deep-orange")
         except Exception as e:
-            ui.notify(f"Fehler: {e}", color="red")
+            ui.notify(f"Fehler: {e}", color="deep-orange")
 
     def _export_invoices(invoice_id: int | None) -> None:
         ids = [int(invoice_id)] if invoice_id else None
@@ -226,13 +226,13 @@ def render_dashboard(session, comp: Company) -> None:
         try:
             invoice = session.get(Invoice, int(invoice_id))
             if not invoice:
-                ui.notify("Rechnung nicht gefunden.", color="red")
+                ui.notify("Rechnung nicht gefunden.", color="deep-orange")
                 return
             customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
             send_invoice_email(comp, customer, invoice)
-            ui.notify("Mahnung vorbereitet" if reminder else "Senden vorbereitet", color="green")
+            ui.notify("Mahnung vorbereitet" if reminder else "Senden vorbereitet", color="orange")
         except Exception as e:
-            ui.notify(f"Fehler: {e}", color="red")
+            ui.notify(f"Fehler: {e}", color="deep-orange")
 
     def _delete_document(document_id: int | None) -> None:
         if not document_id:
@@ -243,7 +243,7 @@ def render_dashboard(session, comp: Company) -> None:
             with get_session() as s:
                 document = s.get(Document, int(document_id))
                 if not document:
-                    ui.notify("Dokument nicht gefunden.", color="red")
+                    ui.notify("Dokument nicht gefunden.", color="deep-orange")
                     return
                 meta_entries = s.exec(
                     select(DocumentMeta).where(DocumentMeta.document_id == int(document.id))
@@ -271,10 +271,10 @@ def render_dashboard(session, comp: Company) -> None:
                     s.delete(meta)
                 s.delete(document)
                 s.commit()
-            ui.notify("Dokument gelöscht", color="green")
+            ui.notify("Dokument gelöscht", color="orange")
         except Exception as e:
             logger.exception("Dashboard delete failed", extra={"document_id": document_id})
-            ui.notify(f"Fehler: {e}", color="red")
+            ui.notify(f"Fehler: {e}", color="deep-orange")
 
     def _delete_invoice(invoice_id: int | None) -> None:
         if not invoice_id:
@@ -284,11 +284,11 @@ def render_dashboard(session, comp: Company) -> None:
         try:
             ok, err = delete_invoice(int(invoice_id))
             if not ok:
-                ui.notify(err or "Löschen fehlgeschlagen", color="red")
+                ui.notify(err or "Löschen fehlgeschlagen", color="deep-orange")
                 return
-            ui.notify("Rechnung gelöscht", color="green")
+            ui.notify("Rechnung gelöscht", color="orange")
         except Exception as e:
-            ui.notify(f"Fehler: {e}", color="red")
+            ui.notify(f"Fehler: {e}", color="deep-orange")
 
     delete_state = {"kind": None, "id": None, "label": ""}
 
