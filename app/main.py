@@ -1549,7 +1549,8 @@ def layout_wrapper(content_func):
                             "focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
                         )
                         with ui.button().props("flat round").classes(
-                            "bg-neutral-200 text-neutral-700 hover:bg-neutral-300 rounded-full shadow-sm w-10 h-10"
+                            "border border-neutral-400/50 bg-neutral-200 text-neutral-700 hover:bg-neutral-300 "
+                            "rounded-full shadow-sm w-10 h-10"
                         ):
                             ui.label(initials).classes("text-xs font-semibold text-neutral-700")
                             with ui.menu().classes("min-w-[220px] bg-neutral-900 text-neutral-200"):
