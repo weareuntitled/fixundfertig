@@ -287,6 +287,7 @@ ui.add_head_html(
     shared=True,
 )
 ui.add_head_html(APP_FONT_CSS, shared=True)
+ui.colors(primary="#f59e0b", secondary="#1f2937", accent="#fbbf24", dark="#020617")
 ensure_owner_user()
 
 
@@ -1188,12 +1189,13 @@ def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
         <title>Invoice {invoice_id}</title>
         <style>
           :root {{
-            color-scheme: light;
+            color-scheme: dark;
           }}
           body {{
             margin: 0;
             font-family: "Inter", "Segoe UI", system-ui, sans-serif;
-            background: #f8fafc;
+            background: #0f172a;
+            color: #e2e8f0;
           }}
           .viewer-shell {{
             display: flex;
@@ -1203,7 +1205,7 @@ def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
           }}
           .viewer-header {{
             font-size: 14px;
-            color: #475569;
+            color: #fbbf24;
           }}
           #viewer {{
             width: 100%;
@@ -1211,20 +1213,20 @@ def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
             min-height: 70vh;
             max-height: 85vh;
             overflow: auto;
-            background: white;
+            background: #111827;
             border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            box-shadow: 0 8px 24px rgba(2, 6, 23, 0.6);
             padding: 12px;
           }}
           .page {{
             margin: 0 auto 16px auto;
-            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+            box-shadow: 0 4px 12px rgba(2, 6, 23, 0.45);
             border-radius: 8px;
             background: white;
           }}
           .status {{
             font-size: 13px;
-            color: #64748b;
+            color: #94a3b8;
           }}
           @media (max-width: 640px) {{
             .viewer-shell {{
