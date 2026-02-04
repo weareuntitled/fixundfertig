@@ -1494,9 +1494,7 @@ def layout_wrapper(content_func):
                 "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white/80 backdrop-blur-md "
                 "border border-white/60 shadow-lg items-center py-6 gap-5 z-40"
             ):
-                ui.label("FF").classes(
-                    "w-11 h-11 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-sm font-semibold"
-                )
+                ui.image("/static/logo_fixundfertig.jpg").classes("w-11 h-11 rounded-2xl object-contain")
 
                 def nav_item(label: str, target: str, icon: str) -> None:
                     active = app.storage.user.get("page", "home") == target
