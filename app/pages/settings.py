@@ -110,7 +110,7 @@ def render_settings(session, comp: Company) -> None:
             ui.label("Unternehmen löschen").classes("font-semibold")
             ui.label(
                 "Das Unternehmen wird inklusive Kunden, Rechnungen, Ausgaben und Uploads gelöscht."
-            ).classes("text-sm text-slate-600")
+            ).classes("text-sm text-neutral-300")
             confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
 
             def _do_delete() -> None:
@@ -158,7 +158,7 @@ def render_settings(session, comp: Company) -> None:
     # Company switcher + CRUD
     # ----------------------------
     with ui.card().classes(C_CARD + " p-5 w-full max-w-5xl mx-auto mb-4"):
-        ui.label("Unternehmen").classes("text-sm font-semibold text-slate-700")
+        ui.label("Unternehmen").classes("text-sm font-semibold text-neutral-200")
 
         options = _company_select_options(companies)
 
@@ -211,8 +211,8 @@ def render_settings(session, comp: Company) -> None:
     with ui.element("div").classes("w-full max-w-5xl mx-auto"):
         with ui.element("div").classes("grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6"):
             with ui.element("div").classes("space-y-3"):
-                ui.label("Logo").classes("text-sm font-semibold text-slate-700")
-                with ui.element("div").classes("w-full rounded-lg border border-slate-200 bg-white p-4 space-y-3"):
+                ui.label("Logo").classes("text-sm font-semibold text-neutral-200")
+                with ui.element("div").classes("w-full rounded-lg border border-neutral-800 bg-neutral-900 p-4 space-y-3"):
                     logo_url = ""
                     logo_exists = False
                     if comp.id:
@@ -221,11 +221,11 @@ def render_settings(session, comp: Company) -> None:
                         logo_url = f"/{logo_path.replace(os.sep, '/')}"
 
                     logo_preview = ui.image(logo_url).classes(
-                        "w-full h-40 object-contain rounded-md border border-slate-100 bg-slate-50"
+                        "w-full h-40 object-contain rounded-md border border-neutral-800 bg-neutral-950"
                     )
                     logo_preview.set_visibility(logo_exists)
                     logo_placeholder = ui.label("Kein Logo hochgeladen").classes(
-                        "text-sm text-slate-500 text-center w-full py-8"
+                        "text-sm text-neutral-400 text-center w-full py-8"
                     )
                     logo_placeholder.set_visibility(not logo_exists)
 
@@ -282,7 +282,7 @@ def render_settings(session, comp: Company) -> None:
                     ).props("accept=.png,.jpg,.jpeg,image/png,image/jpeg")
 
             with ui.element("div").classes("space-y-6"):
-                ui.label("Unternehmen & Kontakt").classes("text-sm font-semibold text-slate-700")
+                ui.label("Unternehmen & Kontakt").classes("text-sm font-semibold text-neutral-200")
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4"):
                     name = ui.input("Firma", value=comp.name).classes(C_INPUT)
                     first_name = ui.input("Vorname", value=comp.first_name).classes(C_INPUT)
@@ -292,12 +292,12 @@ def render_settings(session, comp: Company) -> None:
 
                 ui.separator().classes("my-1")
 
-                ui.label("Adresse").classes("text-sm font-semibold text-slate-700")
+                ui.label("Adresse").classes("text-sm font-semibold text-neutral-200")
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4"):
                     with ui.element("div").classes("relative w-full"):
                         street = ui.input("Straße", value=comp.street).classes(C_INPUT)
                         street_dropdown = ui.element("div").classes(
-                            "absolute left-0 right-0 mt-1 z-10 bg-white border border-slate-200 rounded-lg shadow-sm"
+                            "absolute left-0 right-0 mt-1 z-10 bg-neutral-900 border border-neutral-800 rounded-lg shadow-sm"
                         )
                     plz = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
                     city = ui.input("Ort", value=comp.city).classes(C_INPUT)
@@ -363,12 +363,12 @@ def render_settings(session, comp: Company) -> None:
                     ).classes(C_INPUT)
 
                 ui.label("Platzhalter: {seq}, {date}, {customer_code}, {customer_kdnr}, {nr}.").classes(
-                    "text-sm text-slate-500"
+                    "text-sm text-neutral-400"
                 )
 
             with ui.expansion("Integrationen").classes("w-full"):
-                ui.label("SMTP (für Mails aus der App)").classes("text-sm font-semibold text-slate-700 pt-2")
-                ui.label("Port 465 nutzt SSL. Andere Ports nutzen STARTTLS.").classes("text-sm text-slate-500")
+                ui.label("SMTP (für Mails aus der App)").classes("text-sm font-semibold text-neutral-200 pt-2")
+                ui.label("Port 465 nutzt SSL. Andere Ports nutzen STARTTLS.").classes("text-sm text-neutral-400")
 
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
                     smtp_server = ui.input("SMTP Server", value=getattr(comp, "smtp_server", "") or "").classes(C_INPUT)
@@ -386,8 +386,8 @@ def render_settings(session, comp: Company) -> None:
 
                 ui.separator().classes("my-4")
 
-                ui.label("n8n").classes("text-sm font-semibold text-slate-700")
-                ui.label("Webhooks für Automationen.").classes("text-sm text-slate-500")
+                ui.label("n8n").classes("text-sm font-semibold text-neutral-200")
+                ui.label("Webhooks für Automationen.").classes("text-sm text-neutral-400")
 
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
                     n8n_webhook_url_test = ui.input(
@@ -416,7 +416,7 @@ def render_settings(session, comp: Company) -> None:
                         return "Status: aktiv, aber kein Secret gesetzt"
                     return "Status: aktiv und bereit"
 
-                n8n_status = ui.label(_n8n_status_text()).classes("text-xs text-slate-500")
+                n8n_status = ui.label(_n8n_status_text()).classes("text-xs text-neutral-400")
 
                 def _update_n8n_status() -> None:
                     n8n_status.set_text(_n8n_status_text())
@@ -539,7 +539,7 @@ def render_settings(session, comp: Company) -> None:
                     with dlg, ui.card().classes("p-5 w-[560px]"):
                         ui.label("Account löschen").classes("font-semibold")
                         ui.label("Das löscht deinen Account und alle Unternehmen inklusive Daten und Uploads.").classes(
-                            "text-sm text-slate-600"
+                            "text-sm text-neutral-300"
                         )
                         confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
 

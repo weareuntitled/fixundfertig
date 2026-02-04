@@ -25,7 +25,7 @@ def render_invoice_detail(session, comp: Company) -> None:
         with ui.column().classes("gap-1"):
             ui.label("Rechnung").classes(C_PAGE_TITLE)
             subtitle = f"#{invoice.nr}" if invoice.nr else f"ID {invoice.id}"
-            ui.label(subtitle).classes("text-sm text-slate-500")
+            ui.label(subtitle).classes("text-sm text-neutral-400")
 
         with ui.row().classes("gap-2 items-center"):
             ui.button("Zurück", on_click=lambda: (app.storage.user.__setitem__("page", "invoices"), ui.navigate.to("/"))).classes(C_BTN_SEC)
@@ -50,7 +50,7 @@ def render_invoice_detail(session, comp: Company) -> None:
             ui.button("Download", on_click=on_download).classes(C_BTN_SEC)
             ui.button("Senden", on_click=on_send).classes(C_BTN_SEC)
 
-            with ui.button(icon="more_vert").props("flat round").classes("text-slate-600"):
+            with ui.button(icon="more_vert").props("flat round").classes("text-neutral-300"):
                 with ui.menu().props("auto-close"):
                     def set_status(target_status: InvoiceStatus):
                         try:
@@ -102,25 +102,25 @@ def render_invoice_detail(session, comp: Company) -> None:
         with ui.card().classes(C_CARD + " p-4"):
             with ui.row().classes("w-full gap-8 flex-wrap"):
                 with ui.column().classes("gap-1"):
-                    ui.label("Kunde").classes("text-xs text-slate-400")
+                    ui.label("Kunde").classes("text-xs text-neutral-500")
                     ui.label(customer.display_name if customer else "-").classes("text-sm font-semibold")
                     if customer and customer.email:
-                        ui.label(customer.email).classes("text-xs text-slate-500")
+                        ui.label(customer.email).classes("text-xs text-neutral-400")
 
                 with ui.column().classes("gap-1"):
-                    ui.label("Datum").classes("text-xs text-slate-400")
+                    ui.label("Datum").classes("text-xs text-neutral-500")
                     ui.label(invoice.date or "-").classes("text-sm font-mono")
 
                 with ui.column().classes("gap-1"):
-                    ui.label("Lieferdatum").classes("text-xs text-slate-400")
+                    ui.label("Lieferdatum").classes("text-xs text-neutral-500")
                     ui.label(invoice.delivery_date or "-").classes("text-sm font-mono")
 
                 with ui.column().classes("gap-1"):
-                    ui.label("Betrag").classes("text-xs text-slate-400")
+                    ui.label("Betrag").classes("text-xs text-neutral-500")
                     ui.label(f"{float(invoice.total_brutto or 0):,.2f} €").classes("text-sm font-semibold font-mono")
 
                 with ui.column().classes("gap-1"):
-                    ui.label("Status").classes("text-xs text-slate-400")
+                    ui.label("Status").classes("text-xs text-neutral-500")
                     ui.label(format_invoice_status(invoice.status)).classes(invoice_status_badge(invoice.status))
 
             if invoice.status == InvoiceStatus.DRAFT:
@@ -131,8 +131,8 @@ def render_invoice_detail(session, comp: Company) -> None:
 
                 with ui.dialog() as risk_dialog:
                     with ui.card().classes(C_CARD + " p-4 w-[520px] max-w-[90vw]"):
-                        ui.label("Ändern auf Risiko").classes("text-base font-semibold text-slate-900")
-                        ui.label("Erstellt eine Revision als neuen Entwurf. Das Original bleibt nachvollziehbar.").classes("text-sm text-slate-600")
+                        ui.label("Ändern auf Risiko").classes("text-base font-semibold text-neutral-100")
+                        ui.label("Erstellt eine Revision als neuen Entwurf. Das Original bleibt nachvollziehbar.").classes("text-sm text-neutral-400")
                         reason_input = ui.textarea("Grund", placeholder="Warum musst du das ändern").classes(C_INPUT)
                         risk_checkbox = ui.checkbox("Ich verstehe das Risiko und möchte eine Revision erstellen.")
                         with ui.row().classes("justify-end w-full gap-2 mt-2"):
@@ -162,13 +162,13 @@ def render_invoice_detail(session, comp: Company) -> None:
         ui.label("Positionen").classes(C_SECTION_TITLE + " mt-2")
         if not items:
             with ui.card().classes(C_CARD + " p-4"):
-                ui.label("Keine Positionen hinterlegt").classes("text-sm text-slate-500")
+                ui.label("Keine Positionen hinterlegt").classes("text-sm text-neutral-400")
         else:
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
                 with ui.row().classes(C_TABLE_HEADER):
-                    ui.label("Beschreibung").classes("flex-1 font-bold text-xs text-slate-500")
-                    ui.label("Menge").classes("w-24 text-right font-bold text-xs text-slate-500")
-                    ui.label("Preis").classes("w-28 text-right font-bold text-xs text-slate-500")
+                    ui.label("Beschreibung").classes("flex-1 font-bold text-xs text-neutral-400")
+                    ui.label("Menge").classes("w-24 text-right font-bold text-xs text-neutral-400")
+                    ui.label("Preis").classes("w-28 text-right font-bold text-xs text-neutral-400")
 
                 for it in items:
                     with ui.row().classes(C_TABLE_ROW):

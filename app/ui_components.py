@@ -67,9 +67,9 @@ def kpi_card(
         with ui.column().classes("gap-2 z-10"):
             with ui.row().classes("items-center gap-2"):
                 ui.icon(icon).classes(f"text-base {color}")
-                ui.label(label).classes("text-xs font-bold text-slate-400 uppercase tracking-wider")
-            ui.element("div").classes("h-px w-10 bg-slate-200")
-            ui.label(value).classes(f"text-2xl font-bold text-slate-800 {C_NUMERIC}")
+                ui.label(label).classes("text-xs font-bold text-neutral-400 uppercase tracking-wider")
+            ui.element("div").classes("h-px w-10 bg-neutral-700")
+            ui.label(value).classes(f"text-2xl font-bold text-neutral-100 {C_NUMERIC}")
             if trend_text:
                 with ui.row().classes("items-center gap-1"):
                     if trend_icon:
@@ -103,10 +103,10 @@ def sticky_header(title, on_cancel, on_save=None, on_finalize=None):
     # Stattdessen ein sticky div/row.
     # z-index 40, damit es unter dem Haupt-Header (z-50) durchscrollt, falls nötig, 
     # oder einfach oben im Content klebt.
-    with ui.row().classes('bg-white border-b border-slate-200 p-4 sticky top-0 z-60 flex justify-between items-center w-full shadow-sm'):
+    with ui.row().classes('bg-neutral-950 border-b border-neutral-800 p-4 sticky top-0 z-60 flex justify-between items-center w-full shadow-sm'):
         with ui.row().classes('items-center gap-2'):
-            ui.icon('description', size='sm').classes('text-slate-500')
-            ui.label(title).classes('text-lg font-bold text-slate-800')
+            ui.icon('description', size='sm').classes('text-neutral-400')
+            ui.label(title).classes('text-lg font-bold text-neutral-100')
         with ui.row().classes('gap-2'):
             if on_cancel:
                 ui.button('Abbrechen', on_click=on_cancel).classes(C_BTN_SEC)

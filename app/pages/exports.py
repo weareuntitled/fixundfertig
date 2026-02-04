@@ -33,8 +33,8 @@ def render_exports(session, comp: Company) -> None:
 
     def export_card(title: str, description: str, action):
         with ui.card().classes(C_CARD + " p-5 " + C_CARD_HOVER + " w-full"):
-            ui.label(title).classes("font-semibold text-slate-900")
-            ui.label(description).classes("text-sm text-slate-500 mb-2")
+            ui.label(title).classes("font-semibold text-neutral-100")
+            ui.label(description).classes("text-sm text-neutral-400 mb-2")
             ui.button("Download", icon="download", on_click=action).classes(C_BTN_SEC)
 
     with ui.grid(columns=2).classes("w-full gap-4"):

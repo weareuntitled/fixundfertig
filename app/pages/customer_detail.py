@@ -24,7 +24,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         ui.navigate.to("/")
 
     with ui.row().classes("items-center gap-3 mb-2"):
-        ui.button(icon="arrow_back", on_click=back).props("flat round").classes("text-slate-500")
+        ui.button(icon="arrow_back", on_click=back).props("flat round").classes("text-neutral-400")
         ui.label(customer.display_name).classes(C_PAGE_TITLE)
 
     with settings_two_column_layout():
@@ -176,7 +176,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
 
     ui.label("Rechnungen").classes(C_SECTION_TITLE + " mt-6 mb-2")
     if not invoices:
-        ui.label("Keine Rechnungen vorhanden").classes("text-sm text-slate-500")
+        ui.label("Keine Rechnungen vorhanden").classes("text-sm text-neutral-400")
     else:
         with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
             with ui.row().classes(C_TABLE_HEADER):
@@ -192,7 +192,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
                     else:
                         _open_invoice_detail(int(target.id))
 
-                with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-slate-50").on("click", lambda _, x=inv: open_invoice(x)):
+                with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-neutral-900/60").on("click", lambda _, x=inv: open_invoice(x)):
                     ui.label(f"#{inv.nr}" if inv.nr else "-").classes("w-20 text-xs font-mono")
                     ui.label(inv.date or "-").classes("w-28 text-xs font-mono")
                     ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))

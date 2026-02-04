@@ -29,7 +29,7 @@ from logging_setup import setup_logging
 from auth_guard import clear_auth_session, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import C_BG, C_CONTAINER, C_INPUT
+from styles import C_BG, C_BTN_PRIM, C_CONTAINER, C_INPUT
 from ui_theme import apply_global_ui_theme
 from invoice_numbering import build_invoice_filename
 from pages import (
@@ -1476,8 +1476,8 @@ def layout_wrapper(content_func):
         with ui.row().classes("w-full min-h-screen items-start"):
             # Sidebar
             with ui.column().classes(
-                "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white/80 backdrop-blur-md "
-                "border border-white/60 shadow-lg items-center py-6 gap-5 z-40"
+                "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-neutral-900/90 backdrop-blur-md "
+                "border border-neutral-800 shadow-lg items-center py-6 gap-5 z-40"
             ):
                 ui.image(company_logo_url).classes("w-11 h-11 rounded-2xl object-contain")
 
@@ -1485,20 +1485,20 @@ def layout_wrapper(content_func):
                     active = app.storage.user.get("page", "dashboard") == target
                     base = "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150"
                     cls = (
-                        f"{base} bg-white text-blue-600 shadow-[0_0_18px_rgba(59,130,246,0.45)] ring-1 ring-blue-200"
+                        f"{base} bg-neutral-950 text-[#ffd35d] shadow-[0_0_18px_rgba(255,197,36,0.35)] ring-1 ring-[#ffc524]/30"
                         if active
-                        else f"{base} text-slate-500 hover:text-slate-900 hover:bg-white/70"
+                        else f"{base} text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/70"
                     )
                     with ui.button(icon=icon, on_click=lambda t=target: set_page(t)).props("flat round").classes(cls):
                         ui.tooltip(label)
 
                 nav_item("Dashboard", "dashboard", "dashboard")
-                ui.element("div").classes("w-8 h-px bg-slate-200/70")
+                ui.element("div").classes("w-8 h-px bg-neutral-800")
                 nav_item("Invoices", "invoices", "receipt_long")
                 nav_item("Documents", "documents", "description")
                 nav_item("Ledger", "ledger", "account_balance")
                 nav_item("Exports", "exports", "file_download")
-                ui.element("div").classes("w-8 h-px bg-slate-200/70")
+                ui.element("div").classes("w-8 h-px bg-neutral-800")
                 nav_item("Customers", "customers", "groups")
                 if is_owner:
                     nav_item("Einladungen", "invites", "mail")
@@ -1520,24 +1520,25 @@ def layout_wrapper(content_func):
                         ui.input(
                             "Search Transactions",
                             on_change=lambda e: open_ledger_search(e.value or ""),
-                        ).props("dense").classes(C_INPUT + " rounded-full bg-white/80 shadow-sm w-72")
+                        ).props("dense").classes(C_INPUT + " rounded-full bg-neutral-900/80 shadow-sm w-72")
                     with ui.row().classes("flex-1 items-center justify-end gap-2"):
-                        ui.button(icon="notifications").props("flat round").classes("text-slate-500 hover:text-slate-700")
+                        ui.button(
+                            icon="notifications",
+                            on_click=lambda: ui.notify("Keine neuen Benachrichtigungen.", color="grey"),
+                        ).props("flat round").classes("text-neutral-300 hover:text-[#ffd35d]")
                         ui.button(
                             "New Invoice",
                             on_click=lambda: _open_invoice_editor(None),
-                        ).classes(
-                            "!bg-slate-900 !text-white hover:bg-slate-800 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition-all"
-                        )
+                        ).classes(f"{C_BTN_PRIM} rounded-full")
                         with ui.button().props("flat round").classes(
-                            "bg-slate-900 text-white hover:bg-slate-800 rounded-full shadow-sm w-10 h-10"
+                            "bg-neutral-900 text-neutral-100 hover:bg-neutral-800 rounded-full shadow-sm w-10 h-10"
                         ):
                             ui.label(initials).classes("text-xs font-semibold")
                             with ui.menu().classes("min-w-[220px]"):
                                 if identifier:
-                                    ui.label(identifier).classes("text-xs text-slate-500 px-3 pt-2")
+                                    ui.label(identifier).classes("text-xs text-neutral-400 px-3 pt-2")
                                 if company_name:
-                                    ui.label(company_name).classes("text-sm text-slate-700 px-3 pb-2")
+                                    ui.label(company_name).classes("text-sm text-neutral-200 px-3 pb-2")
                                 ui.separator().classes("my-1")
                                 ui.item("Settings", on_click=lambda: ui.navigate.to("/settings"))
                                 ui.item("Logout", on_click=handle_logout).classes("text-red-600")
