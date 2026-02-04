@@ -1520,7 +1520,7 @@ def layout_wrapper(content_func):
                         ui.input(
                             "Search Transactions",
                             on_change=lambda e: open_ledger_search(e.value or ""),
-                        ).props("dense").classes(C_INPUT + " rounded-full bg-neutral-800/95 shadow-sm w-72")
+                        ).props("dense").classes(C_INPUT + " rounded-full shadow-sm w-72")
                     with ui.row().classes("flex-1 items-center justify-end gap-2"):
                         ui.button(
                             icon="notifications",
