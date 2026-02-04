@@ -1525,7 +1525,7 @@ def layout_wrapper(content_func):
                         ui.button(
                             icon="notifications",
                             on_click=lambda: ui.notify("Keine neuen Benachrichtigungen.", color="grey"),
-                        ).props("flat round").classes("text-[#ffc524] hover:text-[#ffd35d]")
+                        ).props("flat round").classes("text-neutral-300 hover:text-neutral-100")
                         ui.button(
                             "New Invoice",
                             on_click=lambda: _open_invoice_editor(None),
