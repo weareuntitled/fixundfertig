@@ -1437,23 +1437,6 @@ def _active_company_name() -> str | None:
         return name.strip() or None
 
 
-def _active_company_logo_url() -> str:
-    fallback_url = "/static/logo_fixundfertig.svg"
-    with get_session() as session:
-        user_id = get_current_user_id(session)
-        if not user_id:
-            return fallback_url
-        company = _resolve_active_company(session, user_id)
-        company_id = getattr(company, "id", None) if company else None
-        if not company_id:
-            return fallback_url
-        logo_path = company_logo_path(int(company_id))
-        if os.path.exists(logo_path):
-            stamp = int(os.path.getmtime(logo_path))
-            return f"/{logo_path.replace(os.sep, '/')}?v={stamp}"
-    return fallback_url
-
-
 def _is_owner_user() -> bool:
     with get_session() as session:
         user_id = get_current_user_id(session)
@@ -1501,7 +1484,7 @@ def layout_wrapper(content_func):
     identifier = app.storage.user.get("auth_user")
     initials = _avatar_initials(identifier)
     company_name = _active_company_name()
-    company_logo_url = _active_company_logo_url()
+    company_logo_url = "/static/logo_fixundfertig.svg"
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "home")
@@ -1704,5 +1687,5 @@ if __name__ in {"__main__", "__mp_main__"}:
         port=8000,           # <--- WICHTIG: Muss zum Dockerfile/Docker-Compose passen (war 8080)
         language="de",
         storage_secret=storage_secret,
-        favicon="🚀",
+        favicon="/static/Logo_fixundfertig_01.ico",
     )
