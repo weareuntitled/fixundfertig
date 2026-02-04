@@ -75,8 +75,8 @@ APP_FONT_CSS = f"""
 # Panels / cards
 C_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow-sm"
 C_GLASS_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow-sm"
-C_CARD_HOVER = "transition-all hover:bg-neutral-900/90 hover:border-neutral-700/80"
-C_GLASS_CARD_HOVER = "transition-all hover:bg-neutral-900/70 hover:border-neutral-700/70"
+C_CARD_HOVER = "transition-colors hover:bg-neutral-900/90 hover:border-neutral-700/80"
+C_GLASS_CARD_HOVER = "transition-colors hover:bg-neutral-900/70 hover:border-neutral-700/70"
 
 # Buttons
 C_BTN_PRIM = "!bg-neutral-800 !text-white hover:bg-neutral-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
