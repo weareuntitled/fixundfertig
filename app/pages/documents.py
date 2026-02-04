@@ -42,6 +42,12 @@ def render_documents(session, comp: Company) -> None:
         "selected_ids": set(),
         "query": "",
     }
+    selection_ui: dict[str, object] = {
+        "current_ids": set(),
+        "download": None,
+        "count": None,
+        "select_all": None,
+    }
     highlight_document_id = None
     stored_highlight = app.storage.user.pop("documents_highlight_id", None)
     if stored_highlight is not None:
@@ -115,6 +121,26 @@ def render_documents(session, comp: Company) -> None:
         state["query"] = value or ""
         render_list.refresh()
 
+    def _sync_selection_ui() -> None:
+        current_ids = selection_ui.get("current_ids") or set()
+        selected = set(state.get("selected_ids") or set())
+        selected_count = len(selected.intersection(current_ids))
+        selected_label = selection_ui.get("count")
+        if selected_label is not None:
+            selected_label.text = f"{selected_count} ausgewählt"
+            selected_label.update()
+        download_button = selection_ui.get("download")
+        if download_button is not None:
+            if selected_count == 0:
+                download_button.disable()
+            else:
+                download_button.enable()
+        select_all_checkbox = selection_ui.get("select_all")
+        if select_all_checkbox is not None:
+            all_selected = bool(current_ids) and current_ids.issubset(selected)
+            select_all_checkbox.value = all_selected
+            select_all_checkbox.update()
+
     def _parse_keywords(value: object) -> list[str]:
         if value is None or value == "":
             return []
@@ -180,6 +206,13 @@ def render_documents(session, comp: Company) -> None:
             years = {str(datetime.now().year)}
         options = {year: year for year in sorted(years, reverse=True)}
         return options
+
+    def _ensure_year(items: list[Document]) -> dict[str, str]:
+        year_options = _year_options(items)
+        year_values = list(year_options.keys())
+        if year_values and state.get("year") not in year_options:
+            state["year"] = year_values[0]
+        return year_options
 
     def _safe_export_filename(name: str) -> str:
         cleaned = (name or "").strip() or "document"
@@ -511,7 +544,7 @@ def render_documents(session, comp: Company) -> None:
         else:
             selected.discard(doc_id)
         state["selected_ids"] = selected
-        render_list.refresh()
+        _sync_selection_ui()
 
     def _toggle_select_all(items: list[Document], checked: bool | None = None) -> None:
         current_ids = {int(doc.id or 0) for doc in items if doc.id}
@@ -613,8 +646,10 @@ def render_documents(session, comp: Company) -> None:
 
     @ui.refreshable
     def render_summary():
+        all_docs = _load_documents()
+        _ensure_year(all_docs)
         year_value = str(state.get("year") or datetime.now().year)
-        items = _filter_documents(_load_documents())
+        items = _filter_documents(all_docs)
         total_docs = 0
         total_amount = 0.0
         total_tax = 0.0
@@ -990,7 +1025,9 @@ def render_documents(session, comp: Company) -> None:
 
     @ui.refreshable
     def render_list():
-        items = _sort_documents(_filter_documents(_load_documents()))
+        all_docs = _load_documents()
+        year_options = _ensure_year(all_docs)
+        items = _sort_documents(_filter_documents(all_docs))
         selected_ids = set(state.get("selected_ids") or set())
         with ui.card().classes(
             C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-none backdrop-blur-0"
@@ -1015,10 +1052,6 @@ def render_documents(session, comp: Company) -> None:
                 "w-full px-6 py-3 items-center justify-between border-b border-neutral-800 bg-neutral-950/60"
             ):
                 with ui.row().classes("items-center gap-3 flex-wrap"):
-                    year_options = _year_options(_load_documents())
-                    year_values = list(year_options.keys())
-                    if year_values and state.get("year") not in year_options:
-                        state["year"] = year_values[0]
                     ui.select(
                         year_options,
                         value=state["year"],
@@ -1036,18 +1069,23 @@ def render_documents(session, comp: Company) -> None:
                         icon="download",
                         on_click=lambda _, i=items: _download_selected(i),
                     ).classes(C_BTN_SEC)
+                    selection_ui["download"] = download_button
                     selected_count = len(selected_ids.intersection(current_ids))
                     if selected_count == 0:
-                        download_button.props("disable")
-                    ui.label(f"{selected_count} ausgewählt").classes("text-xs text-neutral-300")
+                        download_button.disable()
+                    else:
+                        download_button.enable()
+                    selected_label = ui.label(f"{selected_count} ausgewählt").classes("text-xs text-neutral-300")
+                    selection_ui["count"] = selected_label
 
             with ui.row().classes(
                 "w-full px-6 py-3 text-xs font-semibold tracking-wide text-neutral-300 border-b border-neutral-800"
             ):
-                ui.checkbox(
+                select_all_checkbox = ui.checkbox(
                     value=all_selected,
                     on_change=lambda e, i=items: _toggle_select_all(i, bool(e.value)),
                 ).props("dense").classes("w-[4%]")
+                selection_ui["select_all"] = select_all_checkbox
                 ui.label("Datei").classes("w-[28%]")
                 ui.label("Datum").classes("w-[12%]")
                 ui.label("Tags").classes("w-[14%]")
@@ -1057,6 +1095,7 @@ def render_documents(session, comp: Company) -> None:
                 ui.label("Status").classes("w-[7%]")
                 ui.label("Aktionen").classes("w-[8%] text-right")
 
+            selection_ui["current_ids"] = current_ids
             if not items:
                 ui.label("Keine Dokumente gefunden.").classes("px-6 py-8 text-sm text-neutral-300")
                 return
