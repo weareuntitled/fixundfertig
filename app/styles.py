@@ -54,7 +54,8 @@ APP_FONT_CSS = f"""
     background: #3b4046;
   }}
   .q-field--outlined .q-field__control {{
-    background: var(--surface-1);
+    background: transparent;
+    border-radius: 0.75rem;
   }}
   .q-field--standard .q-field__control,
   .q-field--filled .q-field__control,
@@ -63,9 +64,11 @@ APP_FONT_CSS = f"""
   }}
   .q-field--outlined .q-field__control:before {{
     border-color: #2f3338;
+    border-radius: 0.75rem;
   }}
   .q-field--outlined .q-field__control:after {{
     border-color: #3b4046;
+    border-radius: 0.75rem;
   }}
   .q-field--outlined.q-field--focused .q-field__control:before,
   .q-field--outlined.q-field--focused .q-field__control:after {{

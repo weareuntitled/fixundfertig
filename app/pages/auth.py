@@ -21,9 +21,9 @@ from ui_theme import apply_global_ui_theme
 from styles import C_INPUT
 
 ERROR_TEXT = "text-sm text-orange-400"
-LINK_TEXT = "text-sm !text-neutral-400 hover:!text-neutral-200 no-underline"
+LINK_TEXT = "text-sm !text-neutral-300 hover:!text-neutral-100 no-underline"
 TITLE_TEXT = "text-2xl font-semibold text-neutral-100 text-center"
-SUBTITLE_TEXT = "text-sm text-neutral-300 text-center"
+SUBTITLE_TEXT = "text-sm text-neutral-200 text-center"
 INPUT_CLASSES = f"w-full {C_INPUT}"
 PRIMARY_BUTTON = "w-full bg-[#ffc524] text-neutral-950 rounded-lg hover:bg-[#ffd35d]"
 SECONDARY_BUTTON = "w-full border border-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-800"
@@ -74,7 +74,7 @@ def _show_success(
     with card:
         if icon:
             ui.icon(icon).classes("text-orange-500 text-4xl self-center")
-        ui.label(message).classes("text-sm text-neutral-500 text-center")
+        ui.label(message).classes("text-sm text-neutral-300 text-center")
         if link_text and link_href:
             ui.link(link_text, link_href).classes(f"{LINK_TEXT} self-center")
 
