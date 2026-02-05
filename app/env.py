@@ -14,9 +14,10 @@ def load_env() -> None:
     _LOADED = True
 
     base_dir = Path(__file__).resolve().parent
+    # Prefer project root .env so credentials in fixundfertig/.env are used (not only app/.env).
     candidates = [
-        base_dir / ".env",
         base_dir.parent / ".env",
+        base_dir / ".env",
         Path("/app/.env"),
     ]
 
