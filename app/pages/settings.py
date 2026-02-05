@@ -297,7 +297,7 @@ def render_settings(session, comp: Company) -> None:
                     with ui.element("div").classes("relative w-full"):
                         street = ui.input("Straße", value=comp.street).classes(C_INPUT)
                         street_dropdown = ui.element("div").classes(
-                            "absolute left-0 right-0 mt-1 z-10 bg-neutral-900 border border-neutral-800 rounded-lg shadow-sm"
+                            "absolute left-0 right-0 mt-1 z-10 bg-neutral-900 border border-neutral-800 rounded-lg"
                         )
                     plz = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
                     city = ui.input("Ort", value=comp.city).classes(C_INPUT)

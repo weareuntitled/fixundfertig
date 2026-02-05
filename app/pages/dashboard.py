@@ -395,8 +395,8 @@ def render_dashboard(session, comp: Company) -> None:
         with ui.element("div").classes("w-full grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"):
             for item in visible_items:
                 with ui.element("div").classes(
-                    "group relative bg-neutral-900/80 border border-neutral-800/80 rounded-[24px] p-5 shadow-sm "
-                    "hover:-translate-y-1 hover:shadow-2xl hover:border-neutral-700/80 transition-all duration-200"
+                    "group relative bg-neutral-900/80 border border-neutral-800/80 rounded-[24px] p-5 "
+                    "hover:-translate-y-1 hover:border-neutral-700/80 transition-all duration-200"
                 ):
                     with ui.button(icon="more_horiz").props("flat round dense").classes(
                         "absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition "

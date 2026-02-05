@@ -1199,15 +1199,15 @@ def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
             max-height: 85vh;
             overflow: auto;
             background: #111827;
+            border: 1px solid #1e293b;
             border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(2, 6, 23, 0.6);
             padding: 12px;
           }}
           .page {{
             margin: 0 auto 16px auto;
-            box-shadow: 0 4px 12px rgba(2, 6, 23, 0.45);
             border-radius: 8px;
             background: white;
+            border: 1px solid rgba(2, 6, 23, 0.18);
           }}
           .status {{
             font-size: 13px;
@@ -1475,7 +1475,7 @@ def layout_wrapper(content_func):
                     active = app.storage.user.get("page", "dashboard") == target
                     base = "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 border border-transparent"
                     cls = (
-                        f"{base} !text-[#ffc524] border-[#ffc524]/60 shadow-[0_0_18px_rgba(255,197,36,0.25)]"
+                        f"{base} !text-[#ffc524] border-[#ffc524]/60 bg-neutral-900/40"
                         if active
                         else f"{base} !text-neutral-300 hover:!text-neutral-100 hover:border-neutral-600/80"
                     )
@@ -1543,7 +1543,7 @@ def layout_wrapper(content_func):
                         with ui.button().props("flat").classes(
                             "ff-user-chip opacity-100 w-10 h-10 rounded-[20px] "
                             "!bg-transparent hover:!bg-transparent "
-                            "shadow-[0_4px_12px_rgba(0,0,0,0.15)] "
+                            "border border-neutral-700/60 hover:border-neutral-600/80 "
                             "!text-neutral-100"
                         ):
                             ui.label(initials).classes("text-xs font-semibold !text-neutral-100")

@@ -983,7 +983,7 @@ def render_documents(session, comp: Company) -> None:
             with ui.row().classes("items-center gap-4"):
                 ui.label("Dokumente").classes("text-3xl font-bold text-neutral-100")
                 ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(
-                    C_BTN_PRIM + " shadow-none border-2 border-solid border-[var(--color-neutral-100)]"
+                    C_BTN_PRIM + " border-2 border-solid border-[var(--color-neutral-100)]"
                 )
 
     @ui.refreshable
@@ -1045,9 +1045,7 @@ def render_documents(session, comp: Company) -> None:
             "action": "w-[5%]",
         }
 
-        with ui.card().classes(
-            C_CARD + " p-0 overflow-hidden w-full rounded-md shadow-sm border border-neutral-800"
-        ):
+        with ui.card().classes(C_CARD + " p-0 overflow-hidden w-full"):
             # META PRE-CALCULATION
             meta_map = _load_meta_map([int(doc.id or 0) for doc in items])
             backfill_document_fields(session, items, meta_map=meta_map)
@@ -1081,7 +1079,7 @@ def render_documents(session, comp: Company) -> None:
                         label="Jahr",
                         on_change=lambda e: _set_year(e.value or str(datetime.now().year)),
                     ).props("outlined dense options-dense behavior=menu popup-content-class='bg-neutral-900 text-neutral-200 border border-neutral-800'").classes(
-                        C_INPUT + " w-28 ff-select-fill shadow-sm"
+                        C_INPUT + " w-28 ff-select-fill"
                     )
 
                 with ui.row().classes("items-center gap-2 flex-wrap"):
@@ -1089,7 +1087,7 @@ def render_documents(session, comp: Company) -> None:
                         placeholder="Dokumente durchsuchen",
                         value=state.get("query", ""),
                         on_change=lambda e: _set_query(e.value),
-                    ).props("outlined dense clearable").classes(C_INPUT + " w-56 sm:w-72 ff-stroke-input shadow-sm")
+                    ).props("outlined dense clearable").classes(C_INPUT + " w-56 sm:w-72 ff-stroke-input")
                     
                     download_button = ui.button(
                         "Download",
@@ -1190,8 +1188,8 @@ def render_documents(session, comp: Company) -> None:
                     # 2. File Info
                     with ui.row().classes(col_w["file"] + " items-center gap-3 overflow-hidden pr-2 flex-nowrap"):
                         with ui.element("div").classes(
-                            f"w-8 h-8 shrink-0 rounded flex items-center justify-center {icon_classes}"
-                        ).style("box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05)"):
+                            f"w-8 h-8 shrink-0 rounded flex items-center justify-center {icon_classes} border border-white/5"
+                        ):
                             ui.icon(icon_name).classes("text-sm")
                         
                         # min-w-0 required for flex truncation

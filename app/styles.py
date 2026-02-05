@@ -53,10 +53,6 @@ APP_FONT_CSS = f"""
   /* Ledger: container + search input label tweaks */
   .ff-ledger-container {{
     border-radius: 50px !important;
-    border-top-left-radius: 50px !important;
-    border-top-right-radius: 50px !important;
-    border-bottom-right-radius: 50px !important;
-    border-bottom-left-radius: 50px !important;
     padding-left: 50px !important;
     padding-right: 50px !important;
   }}
@@ -68,28 +64,29 @@ APP_FONT_CSS = f"""
   /* Header search (top bar) */
   .ff-header-search {{
     box-shadow: none !important;
-    border-width: 0px !important;
-    border-color: rgba(0, 0, 0, 0) !important;
-    border-image: none !important;
-    background: unset !important;
-    background-color: unset !important;
+    border: 0 !important;
+    background: transparent !important;
   }}
   .ff-header-search .q-field__label {{ color: rgba(255, 255, 255, 1) !important; }}
   .ff-header-search.q-field--focused .q-field__label {{ color: rgba(255, 255, 255, 1) !important; }}
-  .ff-header-search .q-field__inner {{
-    background: unset !important;
-    background-color: unset !important;
-  }}
+  .ff-header-search .q-field__inner,
   .ff-header-search .q-field__control {{
     color: rgba(240, 240, 240, 1) !important;
-    background: unset !important;
-    background-color: unset !important;
+    background: transparent !important;
+    background-color: transparent !important;
+  }}
+  .ff-header-search .q-field__control:before,
+  .ff-header-search .q-field__control:after {{
+    border: 0 !important;
   }}
 
-  .q-field__control {{ transition: box-shadow 0.2s ease, border-color 0.2s ease !important; }}
+  .q-field__control {{ transition: border-color 0.2s ease !important; }}
   .q-field--outlined .q-field__control {{ background: #1f2937 !important; border-radius: 0.375rem; }}
   .q-field--outlined .q-field__control:before {{ border-color: #334155 !important; border-width: 1px !important; }}
   .q-field--outlined.q-field--focused .q-field__control:after {{ border-color: var(--brand-primary) !important; border-width: 1.5px !important; opacity: 1; }}
+
+  /* Cards */
+  .q-card {{ box-shadow: none !important; }}
 
   .ff-stroke-input .q-field__control {{
     background: transparent !important;
@@ -141,7 +138,7 @@ APP_FONT_CSS = f"""
   .q-menu {{
     background: #171717 !important; /* neutral-900 */
     border: 1px solid #262626 !important; /* neutral-800 */
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important;
+    box-shadow: none !important;
   }}
   .q-menu .q-item {{ color: #e5e7eb !important; }}
   .q-menu .q-item__label {{ color: #e5e7eb !important; }}
@@ -152,54 +149,32 @@ APP_FONT_CSS = f"""
   .q-btn.text-primary, .q-btn .text-primary {{ color: #e5e7eb !important; }}
   .q-btn {{ color: inherit; }}
   .q-focus-helper {{
-    background: unset !important;
-    background-color: unset !important;
-    border-radius: 0px !important;
-    border-top-left-radius: 0px !important;
-    border-top-right-radius: 0px !important;
-    border-bottom-right-radius: 0px !important;
-    border-bottom-left-radius: 0px !important;
-    color: var(--color-neutral-100) !important;
-    border-color: var(--color-neutral-400) !important;
-    border-image: none !important;
-    border-style: solid !important;
-    border-width: 1px !important;
-    padding-left: 0px !important;
-    padding-right: 0px !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    border: 1px solid var(--color-neutral-400) !important;
+    padding: 0 !important;
   }}
 
   .q-btn.ff-btn-finalize-invoice {{
-    padding-left: 19px !important;
-    padding-right: 19px !important;
-    padding-top: 14px !important;
-    padding-bottom: 14px !important;
+    padding: 14px 19px !important;
     border-radius: 19px !important;
-    border-top-left-radius: 19px !important;
-    border-top-right-radius: 19px !important;
-    border-bottom-right-radius: 19px !important;
-    border-bottom-left-radius: 19px !important;
     border-style: solid !important;
   }}
 
   /* Header actions */
   .q-btn.ff-btn-new-invoice {{
-    background: unset !important;
-    background-color: unset !important;
-    background-image: none !important;
-    background-clip: unset !important;
-    -webkit-background-clip: unset !important;
+    background: transparent !important;
+    background-color: transparent !important;
     color: var(--brand-accent) !important;
     border-color: var(--brand-accent) !important;
-    border-image: none !important;
     box-shadow: none !important;
   }}
   .q-btn.ff-btn-new-invoice .q-btn__content span.block {{ color: var(--brand-primary) !important; }}
   .q-btn.ff-user-chip {{
-    background: unset !important;
-    background-color: unset !important;
-    background-image: none !important;
+    background: transparent !important;
+    background-color: transparent !important;
     color: rgba(255, 255, 255, 1) !important;
-    border-image: none !important;
+    box-shadow: none !important;
   }}
   .q-btn.ff-user-chip .q-btn__content {{
     color: rgba(255, 255, 255, 1) !important;
@@ -215,6 +190,7 @@ APP_FONT_CSS = f"""
     color: #f1f5f9 !important;
     border: 1px solid #1e293b !important;
     border-radius: 12px;
+    box-shadow: none !important;
   }}
 
   /* Checkboxes */
@@ -231,7 +207,7 @@ APP_FONT_CSS = f"""
 """
 
 # Panels / cards
-C_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow-sm"
+C_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg"
 C_CARD_HOVER = "transition-colors hover:bg-neutral-900/90 hover:border-neutral-700/80"
 
 # Glass cards reuse the base card styles to avoid drift.
@@ -239,7 +215,7 @@ C_GLASS_CARD = C_CARD
 C_GLASS_CARD_HOVER = C_CARD_HOVER
 
 # Buttons
-C_BTN_PRIM = "!bg-neutral-800 !text-white hover:bg-neutral-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
+C_BTN_PRIM = "!bg-neutral-800 !text-white hover:bg-neutral-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
 C_BTN_SEC = "!bg-neutral-900 !text-neutral-200 border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-800 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/20"
 C_BTN_ORANGE = "ff-btn-new-invoice rounded-full justify-center items-center !bg-transparent hover:!bg-transparent shadow-none border border-[var(--brand-accent)] !text-[var(--brand-accent)] active:scale-[0.98] px-4 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
 

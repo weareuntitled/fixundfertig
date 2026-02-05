@@ -28,7 +28,7 @@ SUBTITLE_TEXT = "text-sm text-neutral-300 text-center"
 INPUT_CLASSES = f"w-full {C_INPUT}"
 PRIMARY_BUTTON = "w-full !bg-neutral-800 !text-white rounded-lg hover:bg-neutral-700"
 SECONDARY_BUTTON = "w-full border border-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-800"
-CARD_CLASSES = "w-full max-w-[400px] bg-neutral-900 rounded-xl shadow-lg border border-neutral-800 p-6"
+CARD_CLASSES = "w-full max-w-[400px] bg-neutral-900 rounded-xl border border-neutral-800 p-6"
 BG_CLASSES = "min-h-screen w-full bg-neutral-950 flex items-center justify-center px-4"
 logger = logging.getLogger(__name__)
 
