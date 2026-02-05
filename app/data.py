@@ -430,12 +430,14 @@ def ensure_document_schema():
             "sha256",
             "source",
             "doc_type",
+            "document_type",
             "storage_path",
             "title",
             "description",
             "vendor",
             "doc_number",
             "currency",
+            "tax_treatment",
             "keywords_json",
         ]:
             if col not in columns:

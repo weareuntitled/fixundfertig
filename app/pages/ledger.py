@@ -108,7 +108,7 @@ def render_ledger(session, comp: Company) -> None:
             ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
             ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
             ui.input("Suche", placeholder="Party oder Beschreibung",
-                     on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh())).classes(C_INPUT + " min-w-[220px]")
+                     on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh())).classes(C_INPUT + " min-w-[220px] ff-ledger-search")
 
     @ui.refreshable
     def render_list():

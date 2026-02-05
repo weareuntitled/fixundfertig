@@ -1476,10 +1476,10 @@ def layout_wrapper(content_func):
         with ui.row().classes("w-full min-h-screen items-start"):
             # Sidebar
             with ui.column().classes(
-                "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-transparent backdrop-blur-md "
-                "border border-neutral-800/80 shadow-lg items-center py-6 gap-5 z-40"
+                "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-transparent "
+                "border border-neutral-400 items-center py-6 gap-5 z-40"
             ):
-                ui.image(company_logo_url).classes("w-11 h-11 rounded-2xl object-contain")
+                ui.image(company_logo_url).classes("ff-sidebar-logo w-11 h-11 rounded-none object-contain")
 
                 def nav_item(label: str, target: str, icon: str) -> None:
                     active = app.storage.user.get("page", "dashboard") == target
@@ -1520,7 +1520,7 @@ def layout_wrapper(content_func):
                         ui.input(
                             "Search Transactions",
                             on_change=lambda e: open_ledger_search(e.value or ""),
-                        ).props("outlined dense").classes(f"{C_INPUT} {C_INPUT_ROUNDED} shadow-sm w-72")
+                        ).props("borderless dense").classes(f"{C_INPUT} ff-header-search rounded-full w-72")
                     with ui.row().classes("flex-1 items-center justify-end gap-2"):
                         with ui.button(icon="notifications").props("flat round").classes(
                             "!text-neutral-300 hover:!text-neutral-100"
@@ -1543,16 +1543,20 @@ def layout_wrapper(content_func):
                         ui.button(
                             "New Invoice",
                             on_click=lambda: _open_invoice_editor(None),
-                        ).classes(
-                            "rounded-full !bg-[#ffc524] !text-neutral-900 hover:!bg-[#ffb300] "
-                            "active:scale-[0.98] px-4 py-2 text-sm font-semibold shadow-sm transition-all "
+                        ).props("flat").classes(
+                            "ff-btn-new-invoice rounded-full w-[150px] justify-center items-center "
+                            "!bg-transparent hover:!bg-transparent shadow-none "
+                            "border border-[var(--brand-accent)] !text-[var(--brand-accent)] "
+                            "active:scale-[0.98] px-4 py-2 text-sm font-semibold transition-all "
                             "focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
                         )
-                        with ui.button().props("flat round").classes(
-                            "border border-neutral-400/50 bg-neutral-200 text-neutral-700 hover:bg-neutral-300 "
-                            "rounded-full shadow-sm w-10 h-10"
+                        with ui.button().props("flat").classes(
+                            "ff-user-chip opacity-100 w-10 h-10 rounded-[20px] "
+                            "!bg-transparent hover:!bg-transparent "
+                            "shadow-[0_4px_12px_rgba(0,0,0,0.15)] "
+                            "!text-neutral-100"
                         ):
-                            ui.label(initials).classes("text-xs font-semibold text-neutral-700")
+                            ui.label(initials).classes("text-xs font-semibold !text-neutral-100")
                             with ui.menu().classes("min-w-[220px] bg-neutral-900 text-neutral-200"):
                                 if identifier:
                                     ui.label(identifier).classes("text-xs text-neutral-300 px-3 pt-2")
@@ -1562,7 +1566,7 @@ def layout_wrapper(content_func):
                                 ui.item("Settings", on_click=lambda: ui.navigate.to("/settings")).classes("text-neutral-200")
                                 ui.item("Logout", on_click=handle_logout).classes("text-rose-400")
 
-                with ui.element("div").classes("w-full pt-4"):
+                with ui.element("div").classes("w-full pt-[50px] pb-[50px] bg-neutral-900 rounded-[47px]"):
                     content_func()
 
 
@@ -1629,7 +1633,10 @@ def index():
                 return
 
             # Normal pages in container
-            with ui.column().classes(C_CONTAINER):
+            container_classes = C_CONTAINER
+            if page == "ledger":
+                container_classes += " ff-ledger-container"
+            with ui.column().classes(container_classes):
                 if page == "dashboard":
                     render_dashboard(session, comp)
                 elif page == "customers":

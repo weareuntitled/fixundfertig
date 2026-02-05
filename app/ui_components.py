@@ -49,7 +49,7 @@ def kpi_card(
     trend_direction: str | None = None,
     trend_color: str | None = None,
 ):
-    card_classes = f"{C_CARD} {C_CARD_HOVER} p-5 {classes} relative overflow-hidden flex flex-col justify-between min-h-[140px]".strip()
+    card_classes = f"p-5 {classes} relative overflow-hidden flex flex-col justify-between h-[220px] bg-transparent border-0 shadow-none".strip()
     icon_map = {"up": "arrow_upward", "down": "arrow_downward", "flat": "arrow_forward"}
     direction = (trend_direction or "").lower()
     trend_icon = icon_map.get(direction)
@@ -63,13 +63,23 @@ def kpi_card(
         trend_color_class = "text-slate-500"
 
     with ui.card().classes(card_classes):
-        ui.icon(icon).classes(f"absolute right-4 bottom-4 text-6xl {color} opacity-10")
+        big_icon_color = (
+            "text-[var(--brand-primary)]"
+            if icon == "receipt_long"
+            else "text-[var(--color-neutral-600)]"
+        )
+        ui.icon(icon).classes(f"absolute right-4 bottom-4 text-6xl {big_icon_color} opacity-100")
         with ui.column().classes("gap-2 z-10"):
             with ui.row().classes("items-center gap-2"):
-                ui.icon(icon).classes(f"text-base {color}")
-                ui.label(label).classes("text-xs font-bold text-neutral-400 uppercase tracking-wider")
+                small_icon_color = (
+                    "text-[var(--brand-primary)]"
+                    if icon == "receipt_long"
+                    else "text-[var(--color-neutral-500)]"
+                )
+                ui.icon(icon).classes(f"text-base {small_icon_color}")
+                ui.label(label).classes("text-xs font-bold !text-[var(--brand-primary)] uppercase tracking-wider")
             ui.element("div").classes("h-px w-10 bg-neutral-700")
-            ui.label(value).classes(f"text-2xl font-bold text-neutral-100 {C_NUMERIC}")
+            ui.label(value).classes(f"text-[40px] font-bold !text-[var(--color-neutral-500)] {C_NUMERIC}")
             if trend_text:
                 with ui.row().classes("items-center gap-1"):
                     if trend_icon:
