@@ -269,6 +269,10 @@ STYLE_BTN_GHOST = (
     "text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:scale-[0.99] rounded-md px-3 py-2 text-sm "
     "font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30"
 )
+STYLE_BTN_MUTED = (
+    "bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 active:scale-[0.99] rounded-lg px-4 py-2 "
+    "text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30"
+)
 STYLE_BTN_DANGER = (
     "bg-rose-600 text-white hover:bg-rose-700 active:scale-[0.99] rounded-lg px-4 py-2 text-sm "
     "font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/30"
@@ -314,7 +318,8 @@ C_GLASS_CARD_HOVER = STYLE_CARD_HOVER
 
 C_BTN_PRIM = STYLE_BTN_PRIMARY
 C_BTN_SEC = STYLE_BTN_SECONDARY
-C_BTN_ORANGE = STYLE_BTN_ACCENT
+C_BTN_MUTED = STYLE_BTN_MUTED
+C_BTN_ORANGE = STYLE_BTN_PRIMARY
 
 C_INPUT = STYLE_INPUT
 C_INPUT_ROUNDED = STYLE_INPUT_ROUNDED
