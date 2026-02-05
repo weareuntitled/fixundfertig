@@ -26,7 +26,7 @@ from sqlmodel import select
 
 from env import load_env
 from logging_setup import setup_logging
-from auth_guard import clear_auth_session, require_auth
+from auth_guard import clear_auth_session, is_authenticated, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
 from styles import C_BG, C_BTN_PRIM, C_CONTAINER, C_INPUT, C_INPUT_ROUNDED
@@ -287,7 +287,7 @@ ensure_owner_user()
 
 
 def _require_api_auth() -> None:
-    if not app.storage.user.get("auth_user"):
+    if not is_authenticated():
         raise HTTPException(status_code=401, detail="Not authenticated")
 
 
@@ -1171,7 +1171,7 @@ def delete_document(document_id: int) -> dict:
 
 @app.get("/viewer/invoice/{invoice_id}", response_class=HTMLResponse)
 def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
-    if not app.storage.user.get("auth_user"):
+    if not is_authenticated():
         return HTMLResponse(status_code=302, headers={"Location": "/login"})
     rev_query = f"?rev={rev}" if rev else ""
     pdf_url = f"/api/invoices/{invoice_id}/pdf{rev_query}"

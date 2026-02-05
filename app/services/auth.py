@@ -447,3 +447,62 @@ def remove_invited_email(email: str) -> bool:
         session.delete(existing)
         session.commit()
         return True
+
+
+def ensure_local_test_user(*, email: str, username: str | None, password: str) -> User:
+    """Create/update a local test user and ensure the identifier is allowed.
+
+    This is intended for LOCAL DEVELOPMENT ONLY and should be gated by an explicit
+    environment flag by the caller (e.g. `FF_DISABLE_AUTH=1`).
+    """
+
+    email_normalized = _normalize_email(email)
+    username_clean = (username or "").strip() or None
+    if not email_normalized:
+        raise ValueError("email is required")
+    if not password:
+        raise ValueError("password is required")
+
+    with get_session() as session:
+        user_by_email = session.exec(select(User).where(User.email == email_normalized)).first()
+        user_by_username = None
+        if username_clean:
+            user_by_username = session.exec(select(User).where(User.username == username_clean)).first()
+
+        user = user_by_email or user_by_username
+        if not user:
+            user = User(
+                email=email_normalized,
+                username=username_clean,
+                password_hash=_hash_password(password),
+                is_active=True,
+                is_email_verified=True,
+            )
+            session.add(user)
+            session.flush()
+        else:
+            if user.email != email_normalized:
+                existing_email_user = session.exec(select(User).where(User.email == email_normalized)).first()
+                if existing_email_user and existing_email_user.id != user.id:
+                    raise ValueError("email already in use")
+                user.email = email_normalized
+            if username_clean and user.username != username_clean:
+                existing_username_user = session.exec(select(User).where(User.username == username_clean)).first()
+                if existing_username_user and existing_username_user.id != user.id:
+                    raise ValueError("username already in use")
+                user.username = username_clean
+
+            user.password_hash = _hash_password(password)
+            user.is_active = True
+            user.is_email_verified = True
+            session.add(user)
+
+        # Ensure this email can log in (invite-only guard).
+        if email_normalized != _owner_email():
+            invited = session.exec(select(InvitedEmail).where(InvitedEmail.email == email_normalized)).first()
+            if not invited:
+                session.add(InvitedEmail(email=email_normalized, invited_by_user_id=None))
+
+        session.commit()
+        session.refresh(user)
+        return user

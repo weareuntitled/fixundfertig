@@ -6,6 +6,7 @@ import logging
 from nicegui import app, ui
 from starlette.requests import Request
 
+from auth_guard import is_authenticated
 from services.auth import (
     create_user_pending,
     get_owner_email,
@@ -99,6 +100,9 @@ def _mask_token_prefix(token: str | None, visible: int = 6) -> str:
 @ui.page("/login")
 def login_page():
     apply_global_ui_theme()
+    if is_authenticated():
+        ui.navigate.to("/")
+        return
     with auth_layout("Welcome back", "Sign in to your account") as card:
         with ui.column().classes("w-full gap-1"):
             identifier_input = ui.input("Email or username").props("outlined dense").classes(INPUT_CLASSES)
@@ -173,6 +177,9 @@ def login_page():
 @ui.page("/signup")
 def signup_page():
     apply_global_ui_theme()
+    if is_authenticated():
+        ui.navigate.to("/")
+        return
     with auth_layout("Create account", "Start with your email and a password") as card:
         with ui.column().classes("w-full gap-1"):
             email_input = ui.input("Email").props("outlined dense").classes(INPUT_CLASSES)
