@@ -36,7 +36,7 @@ LAYOUT = {
 
     # Positionen (von oben gemessen)
     "pos_address": 10 * mm,    # Wo fängt das Adressfeld an? (Ideal für Fensterkuvert)
-    "pos_info": 50 * mm,       # Wo fängt der Datumsblock rechts an?
+    "pos_info": 40 * mm,       # Wo fängt der Datumsblock rechts an? (1 cm höher)
 
     # Header layout (Logo links, Titel rechts)
     "header_left_w": 60 * mm,          # reservierte Breite links für Logo/Firmenname
@@ -315,11 +315,6 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         ("Leistungszeitraum:", service_date or "-"),
         ("Zahlung bis:", due_str or "-"),
     ])
-
-    if company_vat_id:
-        meta_data.append(("USt-ID:", company_vat_id))
-    elif company_tax_id:
-        meta_data.append(("Steuernr.:", company_tax_id))
 
     if company_vat_id:
         meta_data.append(("USt-ID:", company_vat_id))
