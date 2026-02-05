@@ -346,12 +346,26 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     def _is_new_customer_selection(value: Any) -> bool:
         if value == new_customer_value:
             return True
-        if isinstance(value, str) and value.strip().lower() == "neuen kunden hinzufügen":
+        if not isinstance(value, str):
+            return False
+        normalized = value.strip().lower()
+        if not normalized:
+            return False
+        if normalized in {"neuen kunden hinzufügen", "neuen kunden anlegen"}:
+            return True
+        if "kunde" in normalized and ("hinzuf" in normalized or "anleg" in normalized):
             return True
         return False
 
     def _on_customer_change(e) -> None:
         if _is_new_customer_selection(e.value):
+            entered_customer_name = ""
+            if isinstance(customer_select.value, str):
+                normalized = customer_select.value.strip().lower()
+                if normalized and not _is_new_customer_selection(normalized):
+                    entered_customer_name = customer_select.value.strip()
+            if entered_customer_name:
+                app.storage.user["new_customer_prefill_name"] = entered_customer_name
             app.storage.user["return_page"] = "invoice_create"
             app.storage.user["return_invoice_draft_id"] = app.storage.user.get("invoice_draft_id")
             app.storage.user["page"] = "customer_new"
@@ -367,6 +381,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         preview_state["pending"] = False
         update_preview()
 
+    customer_select.on("update:model-value", _on_customer_change)
     customer_select.on("update:modelValue", _on_customer_change)
     title_input.on("update:value", lambda e: mark_preview_dirty())
     intro_input.on("update:value", lambda e: mark_preview_dirty())
