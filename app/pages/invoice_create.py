@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import time
 from datetime import date
+from types import SimpleNamespace
 from typing import Any
 
 from nicegui import app, ui
@@ -11,6 +12,7 @@ from sqlmodel import select
 from renderer import PDFInvoiceRenderer
 
 from data import Customer
+from invoice_numbering import build_invoice_filename, build_invoice_number
 from logic import finalize_invoice_logic
 from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
 from styles import C_CARD, C_INPUT
@@ -277,15 +279,33 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
     renderer = PDFInvoiceRenderer()
 
+    def _preview_invoice_number(date_value: str) -> str:
+        seq = getattr(comp, "next_invoice_nr", None)
+        try:
+            return build_invoice_number(comp, _current_customer_obj(), seq, date_value)
+        except Exception:
+            return f"INV-{date_value}" if date_value else "ENTWURF"
+
+    def _preview_filename(number_value: str, date_value: str) -> str:
+        try:
+            preview_invoice = SimpleNamespace(nr=number_value, date=date_value)
+            return build_invoice_filename(comp, preview_invoice, _current_customer_obj())
+        except Exception:
+            return ""
+
     def update_preview(force_pdf: bool = False) -> None:
         vat_enabled = bool(vat_switch.value)
         vat_rate = max((float(_get(it, "tax_rate", default=0) or 0) for it in items), default=0.0)
         net, vat, gross = compute_invoice_totals(items, vat_enabled, vat_rate)
+        invoice_date_value = str(invoice_date_input.value or "")
+        preview_number = _preview_invoice_number(invoice_date_value)
+        preview_filename = _preview_filename(preview_number, invoice_date_value)
 
         invoice = {
             "title": title_input.value or "Rechnung",
-            "invoice_number": f"INV-{invoice_date_input.value}",
-            "invoice_date": invoice_date_input.value,
+            "invoice_number": preview_number,
+            "invoice_date": invoice_date_value,
+            "filename": preview_filename,
             "service_from": service_from,
             "service_to": service_to,
             "intro_text": intro_input.value or "",
@@ -307,9 +327,11 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             pdf_bytes = renderer.render(invoice, template_id=None)
             pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
             preview_frame.content = (
+                "<div class=\"ff-invoice-preview-frame\">"
                 "<iframe "
                 f"src=\"data:application/pdf;base64,{pdf_b64}\" "
-                "style=\"width:100%;height:78vh;border:0;\"></iframe>"
+                "title=\"Invoice preview\"></iframe>"
+                "</div>"
             )
         except Exception as ex:
             preview_frame.content = ""

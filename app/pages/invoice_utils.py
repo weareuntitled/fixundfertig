@@ -36,11 +36,18 @@ def compute_invoice_totals(
 def build_invoice_preview_html(invoice_data: Mapping[str, object]) -> str:
     invoice_number = escape(str(invoice_data.get("invoice_number", "")))
     invoice_date = escape(str(invoice_data.get("invoice_date", "")))
+    filename = escape(str(invoice_data.get("filename", "")))
     totals = invoice_data.get("totals", {}) if isinstance(invoice_data.get("totals"), dict) else {}
 
     net = escape(str(totals.get("net", 0)))
     vat = escape(str(totals.get("vat", 0)))
     gross = escape(str(totals.get("gross", 0)))
+    filename_row = ""
+    if filename:
+        filename_row = (
+            "<div class='text-neutral-400'>Dateiname</div>"
+            f"<div class='font-medium text-neutral-100 break-all'>{filename}</div>"
+        )
 
     return (
         "<div class='text-sm text-neutral-300'>"
@@ -49,6 +56,7 @@ def build_invoice_preview_html(invoice_data: Mapping[str, object]) -> str:
         f"<div class='font-medium text-neutral-100'>{invoice_number}</div>"
         "<div class='text-neutral-400'>Rechnungsdatum</div>"
         f"<div class='font-medium text-neutral-100'>{invoice_date}</div>"
+        f"{filename_row}"
         "</div>"
         "<div class='mt-3 grid grid-cols-[140px_1fr] gap-x-3 gap-y-1'>"
         "<div class='text-neutral-400'>Netto</div>"

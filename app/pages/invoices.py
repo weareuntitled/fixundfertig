@@ -177,10 +177,7 @@ def render_invoices(session, comp: Company) -> None:
 
         # Right column
         with ui.column().classes(
-            "col-span-10 lg:col-span-3 "
-            "gap-5 "
-            "border-2 border-[color:var(--color-neutral-600)] rounded-[20px] "
-            "ml-0 px-5 py-[21px]"
+            f"col-span-10 lg:col-span-3 gap-5 {C_CARD} p-5"
         ):
             # Drafts
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):

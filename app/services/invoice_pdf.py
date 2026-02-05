@@ -43,9 +43,10 @@ LAYOUT = {
     "header_gap": 10 * mm,             # Abstand zwischen linker und rechter Header-Spalte
     "logo_max_w": 45 * mm,             # maximale Logobreite
     "logo_max_h": 25 * mm,             # maximale Logohöhe
-    "header_baseline_offset": 4 * mm,  # Baseline-Abstand unterhalb des oberen Rands
+    "header_baseline_offset": 2 * mm,  # Baseline-Abstand unterhalb des oberen Rands
     "header_title_leading": 6 * mm,    # Zeilenhöhe für den Titel
     "header_sub_leading": 4.5 * mm,    # Zeilenhöhe für Unterzeilen (z.B. Nr.)
+    "header_meta_gap": 6 * mm,         # Mindestabstand zwischen Header und Metadaten
 
     # Farben (RGB: 0.0 bis 1.0)
     "col_primary": (0, 0, 0),        # Hauptfarbe Text (Schwarz)
@@ -240,6 +241,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
             height=draw_h,
             mask="auto",
         )
+        left_block_bottom_y = header_top_y - draw_h
     else:
         fallback_name = _safe_str(_get(comp, "name", default="")) or "DANEP"
         set_font(bold=True, size=12)
@@ -248,6 +250,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         for ln in name_lines[:2]:
             c.drawString(mx, name_y, ln)
             name_y -= float(LAYOUT["header_sub_leading"])
+        left_block_bottom_y = name_y
 
     # Right header column: title + optional number (wrap inside right_col_w)
     set_font(bold=True, size=LAYOUT["fs_title"])
@@ -260,6 +263,8 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     if nr:
         set_font(bold=False, size=LAYOUT["fs_text"])
         c.drawRightString(right_edge_x, ty, f"Nr. {nr}")
+        ty -= float(LAYOUT["header_sub_leading"])
+    right_block_bottom_y = ty
 
     # 4. ABSENDERZEILE & EMPFÄNGER
     # Kleine Zeile
@@ -293,6 +298,11 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     # 5. META DATEN (RECHTS)
     y_meta = h - LAYOUT["pos_info"]
     meta_x = w - mx
+
+    header_bottom_y = min(left_block_bottom_y, right_block_bottom_y)
+    min_gap = float(LAYOUT["header_meta_gap"])
+    if y_meta > header_bottom_y - min_gap:
+        y_meta = header_bottom_y - min_gap
     
     meta_data = [
         ("Datum:", inv_date or "-"),

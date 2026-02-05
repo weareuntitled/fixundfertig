@@ -66,6 +66,21 @@ APP_FONT_CSS = f"""
     top: 5px !important;
   }}
 
+  /* Invoice preview (editor) */
+  .ff-invoice-preview-frame {{
+    border: 1px solid var(--color-neutral-800) !important;
+    background: var(--color-neutral-950) !important;
+    border-radius: 16px;
+    overflow: hidden;
+  }}
+  .ff-invoice-preview-frame iframe {{
+    display: block;
+    width: 100%;
+    height: 78vh;
+    border: 0;
+    background: #111827;
+  }}
+
   /* Header search (top bar) */
   .ff-header-search {{
     box-shadow: none !important;

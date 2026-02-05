@@ -103,21 +103,21 @@ def render_invoice_detail(session, comp: Company) -> None:
             with ui.row().classes("w-full gap-8 flex-wrap"):
                 with ui.column().classes("gap-1"):
                     ui.label("Kunde").classes("text-xs text-neutral-500")
-                    ui.label(customer.display_name if customer else "-").classes("text-sm font-semibold")
+                    ui.label(customer.display_name if customer else "-").classes("text-sm font-semibold text-neutral-100")
                     if customer and customer.email:
                         ui.label(customer.email).classes("text-xs text-neutral-400")
 
                 with ui.column().classes("gap-1"):
                     ui.label("Datum").classes("text-xs text-neutral-500")
-                    ui.label(invoice.date or "-").classes("text-sm font-mono")
+                    ui.label(invoice.date or "-").classes("text-sm font-mono text-neutral-100")
 
                 with ui.column().classes("gap-1"):
                     ui.label("Lieferdatum").classes("text-xs text-neutral-500")
-                    ui.label(invoice.delivery_date or "-").classes("text-sm font-mono")
+                    ui.label(invoice.delivery_date or "-").classes("text-sm font-mono text-neutral-100")
 
                 with ui.column().classes("gap-1"):
                     ui.label("Betrag").classes("text-xs text-neutral-500")
-                    ui.label(f"{float(invoice.total_brutto or 0):,.2f} €").classes("text-sm font-semibold font-mono")
+                    ui.label(f"{float(invoice.total_brutto or 0):,.2f} €").classes("text-sm font-semibold font-mono text-neutral-100")
 
                 with ui.column().classes("gap-1"):
                     ui.label("Status").classes("text-xs text-neutral-500")
@@ -166,12 +166,12 @@ def render_invoice_detail(session, comp: Company) -> None:
         else:
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
                 with ui.row().classes(C_TABLE_HEADER):
-                    ui.label("Beschreibung").classes("flex-1 font-bold text-xs text-neutral-400")
-                    ui.label("Menge").classes("w-24 text-right font-bold text-xs text-neutral-400")
-                    ui.label("Preis").classes("w-28 text-right font-bold text-xs text-neutral-400")
+                ui.label("Beschreibung").classes("flex-1 font-bold text-xs text-neutral-400")
+                ui.label("Menge").classes("w-24 text-right font-bold text-xs text-neutral-400")
+                ui.label("Preis").classes("w-28 text-right font-bold text-xs text-neutral-400")
 
                 for it in items:
                     with ui.row().classes(C_TABLE_ROW):
-                        ui.label(it.description).classes("flex-1 text-sm")
-                        ui.label(f"{float(it.quantity or 0):,.2f}").classes("w-24 text-right text-sm font-mono")
-                        ui.label(f"{float(it.unit_price or 0):,.2f} €").classes("w-28 text-right text-sm font-mono")
+                        ui.label(it.description).classes("flex-1 text-sm text-neutral-100")
+                        ui.label(f"{float(it.quantity or 0):,.2f}").classes("w-24 text-right text-sm font-mono text-neutral-100")
+                        ui.label(f"{float(it.unit_price or 0):,.2f} €").classes("w-28 text-right text-sm font-mono text-neutral-100")
