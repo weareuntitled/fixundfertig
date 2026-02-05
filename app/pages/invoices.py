@@ -2,7 +2,7 @@ from __future__ import annotations
 from ._shared import *
 from ._shared import _open_invoice_editor, _parse_iso_date
 from styles import STYLE_TEXT_MUTED
-from ui_components import ff_btn_danger, ff_btn_secondary, ff_card
+from ui_components import ff_btn_muted, ff_btn_primary, ff_btn_secondary, ff_card
 
 # Auto generated page renderer
 
@@ -20,7 +20,7 @@ def render_invoices(session, comp: Company) -> None:
 
     with ui.row().classes(_CLS["page_header"]):
         ui.label("Rechnungen").classes(C_PAGE_TITLE)
-        ui.button("Neue Rechnung", on_click=lambda: _open_invoice_editor(None)).props("unelevated no-caps").classes(C_BTN_ORANGE)
+        ff_btn_primary("Neue Rechnung", on_click=lambda: _open_invoice_editor(None))
 
     # Nur Rechnungen der aktiven Company (via Customer.company_id)
     invs = session.exec(
@@ -115,7 +115,7 @@ def render_invoices(session, comp: Company) -> None:
                     except Exception as e:
                         ui.notify(f"Fehler: {e}", color="red")
 
-                ff_btn_danger("Löschen", on_click=_confirm_delete)
+                ff_btn_muted("Löschen", on_click=_confirm_delete)
 
     def open_delete(inv: Invoice) -> None:
         delete_state["id"] = int(inv.id)
@@ -211,12 +211,8 @@ def render_invoices(session, comp: Company) -> None:
                                 ui.label("Entwurf").classes(invoice_status_badge(InvoiceStatus.DRAFT))
                                 ui.label(cust_name(d)).classes("text-sm text-slate-900")
                             with ui.row().classes("gap-2"):
-                                ui.button("Edit", on_click=lambda x=d: _open_invoice_editor(int(x.id))).props(
-                                    "flat dense no-parent-event no-caps"
-                                ).classes("text-slate-600 hover:text-slate-900")
-                                ui.button("Löschen", on_click=lambda x=d: open_delete(x)).props(
-                                    "flat dense no-parent-event no-caps"
-                                ).classes("text-rose-600 hover:text-rose-700")
+                                ff_btn_secondary("Edit", on_click=lambda x=d: _open_invoice_editor(int(x.id)), props="dense no-parent-event", classes="text-xs")
+                                ff_btn_muted("Löschen", on_click=lambda x=d: open_delete(x), props="dense no-parent-event", classes="text-xs")
 
             # Reminders
             with ff_card(pad="p-0", classes="overflow-hidden"):
