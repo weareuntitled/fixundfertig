@@ -44,6 +44,7 @@ from styles import (
     C_CARD_HOVER,
     C_GLASS_CARD_HOVER,
     C_BTN_PRIM,
+    C_BTN_ORANGE,
     C_BTN_SEC,
     C_INPUT,
     C_PAGE_TITLE,
