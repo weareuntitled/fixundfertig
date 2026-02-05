@@ -21,7 +21,7 @@ from services.auth import (
 from ui_theme import apply_global_ui_theme
 from styles import STYLE_BTN_PRIMARY, STYLE_CARD, STYLE_HEADING, STYLE_INPUT, STYLE_TEXT_MUTED
 
-ERROR_TEXT = "text-sm text-rose-600"
+ERROR_TEXT = "text-sm text-rose-600 ff-auth-error"
 LINK_TEXT = "text-sm text-slate-600 hover:text-slate-900 no-underline"
 TITLE_TEXT = f"{STYLE_HEADING} text-center"
 SUBTITLE_TEXT = f"{STYLE_TEXT_MUTED} text-center"
