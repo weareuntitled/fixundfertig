@@ -166,9 +166,9 @@ def render_invoice_detail(session, comp: Company) -> None:
         else:
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
                 with ui.row().classes(C_TABLE_HEADER):
-                ui.label("Beschreibung").classes("flex-1 font-bold text-xs text-neutral-400")
-                ui.label("Menge").classes("w-24 text-right font-bold text-xs text-neutral-400")
-                ui.label("Preis").classes("w-28 text-right font-bold text-xs text-neutral-400")
+                    ui.label("Beschreibung").classes("flex-1 font-bold text-xs text-neutral-400")
+                    ui.label("Menge").classes("w-24 text-right font-bold text-xs text-neutral-400")
+                    ui.label("Preis").classes("w-28 text-right font-bold text-xs text-neutral-400")
 
                 for it in items:
                     with ui.row().classes(C_TABLE_ROW):
