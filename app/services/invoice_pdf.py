@@ -273,23 +273,15 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         ty -= float(LAYOUT["header_sub_leading"])
     right_block_bottom_y = ty
 
-    # 4. ABSENDERZEILE & EMPFÄNGER
-    # Kleine Zeile
+    # 4. EMPFÄNGER
     y_addr = h - LAYOUT["pos_address"]
-    
+
     sender_parts = []
     if comp:
         s_name = _safe_str(_get(comp, "name"))
         s_str = _safe_str(_get(comp, "street"))
         s_city = f"{_get(comp, 'postal_code','')} {_get(comp, 'city','')}".strip()
         sender_parts = [p for p in [s_name, s_str, s_city] if p]
-
-    if sender_parts:
-        c.setStrokeColorRGB(*LAYOUT["col_line"])
-        line_text = " - ".join(sender_parts[:3])
-        set_font(size=8, color=(0.5, 0.5, 0.5))
-        c.drawString(mx, y_addr + 2*mm, line_text)
-        c.line(mx, y_addr, mx + 85*mm, y_addr)
 
     # Empfänger Block
     y_rec = y_addr - 5*mm
@@ -314,12 +306,20 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     company_tax_id = _safe_str(_get(comp, "tax_id"))
     company_vat_id = _safe_str(_get(comp, "vat_id"))
 
-    meta_data = [
+    meta_data = []
+    if sender_parts:
+        meta_data.append(("Absender:", sender_parts[0]))
+    meta_data.extend([
         ("Rechnungsnr.:", nr or "-"),
         ("Datum:", inv_date or "-"),
         ("Leistungszeitraum:", service_date or "-"),
         ("Zahlung bis:", due_str or "-"),
-    ]
+    ])
+
+    if company_vat_id:
+        meta_data.append(("USt-ID:", company_vat_id))
+    elif company_tax_id:
+        meta_data.append(("Steuernr.:", company_tax_id))
 
     if company_vat_id:
         meta_data.append(("USt-ID:", company_vat_id))
