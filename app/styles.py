@@ -67,6 +67,20 @@ APP_FONT_CSS = f"""
     box-shadow: none !important;
   }}
 
+  /* Button contrast guard: prevents unreadable label/icon combinations */
+  .q-btn[class*="bg-white"],
+  .q-btn[class*="bg-slate-50"],
+  .q-btn[class*="bg-amber-50"] {{
+    color: var(--ff-text) !important;
+  }}
+  .q-btn[class*="bg-slate-900"],
+  .q-btn[class*="bg-rose-600"] {{
+    color: #fff !important;
+  }}
+  .q-btn .q-icon {{
+    color: inherit !important;
+  }}
+
   /* --- QUASAR: fields & inputs (outlined dense -> shadcn-like) --- */
   .q-field__label {{
     color: var(--ff-muted) !important;
