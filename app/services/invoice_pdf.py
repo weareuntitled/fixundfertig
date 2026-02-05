@@ -36,7 +36,7 @@ LAYOUT = {
 
     # Positionen (von oben gemessen)
     "pos_address": 10 * mm,    # Wo fängt das Adressfeld an? (Ideal für Fensterkuvert)
-    "pos_info": 50 * mm,       # Wo fängt der Datumsblock rechts an?
+    "pos_info": 40 * mm,       # Wo fängt der Datumsblock rechts an? (1 cm höher)
 
     # Header layout (Logo links, Titel rechts)
     "header_left_w": 60 * mm,          # reservierte Breite links für Logo/Firmenname
@@ -106,6 +106,13 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _prefixed_value(prefix: str, value: Any) -> str:
+    text = _safe_str(value)
+    if not text:
+        return ""
+    return f"{prefix}{text}"
 
 @dataclass
 class _InvItem:
@@ -266,23 +273,15 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         ty -= float(LAYOUT["header_sub_leading"])
     right_block_bottom_y = ty
 
-    # 4. ABSENDERZEILE & EMPFÄNGER
-    # Kleine Zeile
+    # 4. EMPFÄNGER
     y_addr = h - LAYOUT["pos_address"]
-    
+
     sender_parts = []
     if comp:
         s_name = _safe_str(_get(comp, "name"))
         s_str = _safe_str(_get(comp, "street"))
         s_city = f"{_get(comp, 'postal_code','')} {_get(comp, 'city','')}".strip()
         sender_parts = [p for p in [s_name, s_str, s_city] if p]
-
-    if sender_parts:
-        c.setStrokeColorRGB(*LAYOUT["col_line"])
-        line_text = " - ".join(sender_parts[:3])
-        set_font(size=8, color=(0.5, 0.5, 0.5))
-        c.drawString(mx, y_addr + 2*mm, line_text)
-        c.line(mx, y_addr, mx + 85*mm, y_addr)
 
     # Empfänger Block
     y_rec = y_addr - 5*mm
@@ -304,11 +303,23 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     if y_meta > header_bottom_y - min_gap:
         y_meta = header_bottom_y - min_gap
     
-    meta_data = [
+    company_tax_id = _safe_str(_get(comp, "tax_id"))
+    company_vat_id = _safe_str(_get(comp, "vat_id"))
+
+    meta_data = []
+    if sender_parts:
+        meta_data.append(("Absender:", sender_parts[0]))
+    meta_data.extend([
+        ("Rechnungsnr.:", nr or "-"),
         ("Datum:", inv_date or "-"),
         ("Leistungszeitraum:", service_date or "-"),
-        ("Zahlung bis:", due_str)
-    ]
+        ("Zahlung bis:", due_str or "-"),
+    ])
+
+    if company_vat_id:
+        meta_data.append(("USt-ID:", company_vat_id))
+    elif company_tax_id:
+        meta_data.append(("Steuernr.:", company_tax_id))
 
     for label, val in meta_data:
         set_font(bold=True, size=9)
@@ -434,9 +445,17 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     set_font(size=7, color=(0.4, 0.4, 0.4))
     
     # Footer Daten
-    f_addr = [_get(comp, "name"), _get(comp, "email"), _get(comp, "website")]
-    f_bank = [_get(comp, "bank_name"), f"IBAN: {_get(comp, 'iban')}", f"BIC: {_get(comp, 'bic')}"]
-    f_legal = [f"St-Nr: {_get(comp, 'tax_id')}", f"USt-ID: {_get(comp, 'vat_id')}", f"Gericht: {_get(comp, 'city')}"]
+    f_addr = [_safe_str(_get(comp, "name")), _safe_str(_get(comp, "email")), _safe_str(_get(comp, "phone"))]
+    f_bank = [
+        _safe_str(_get(comp, "bank_name")),
+        _prefixed_value("IBAN: ", _get(comp, "iban")),
+        _prefixed_value("BIC: ", _get(comp, "bic", "swift", "swift_code")),
+    ]
+    f_legal = [
+        _prefixed_value("Steuernr.: ", company_tax_id),
+        _prefixed_value("USt-ID: ", company_vat_id),
+        _safe_str(_get(comp, "business_type")),
+    ]
     
     col_w = content_w / 3
     
