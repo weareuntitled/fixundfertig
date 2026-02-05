@@ -34,6 +34,11 @@ APP_FONT_CSS = f"""
     --color-neutral-800: #262626;
     --color-neutral-900: #171717;
     --color-neutral-950: #0a0b0d;
+    --ff-toast-bg: #0f172a;
+    --ff-toast-text: #f1f5f9;
+    --ff-toast-muted: #cbd5f5;
+    --ff-toast-border: #1e293b;
+    --ff-toast-accent: var(--brand-primary);
   }}
 
   a {{ color: var(--brand-primary); }}
@@ -186,11 +191,24 @@ APP_FONT_CSS = f"""
 
   /* Notifications */
   .q-notification {{
-    background: #0f172a !important;
-    color: #f1f5f9 !important;
-    border: 1px solid #1e293b !important;
+    background: var(--ff-toast-bg) !important;
+    color: var(--ff-toast-text) !important;
+    border: 1px solid var(--ff-toast-border) !important;
+    border-left: 3px solid var(--ff-toast-accent) !important;
     border-radius: 12px;
     box-shadow: none !important;
+  }}
+  .q-notification__message,
+  .q-notification__caption,
+  .q-notification__icon,
+  .q-notification__content {{
+    color: var(--ff-toast-text) !important;
+  }}
+  .q-notification__caption {{
+    color: var(--ff-toast-muted) !important;
+  }}
+  .q-notification__actions .q-btn {{
+    color: var(--ff-toast-text) !important;
   }}
 
   /* Checkboxes */
