@@ -10,7 +10,10 @@ from pydantic import validator
 import pandas as pd
 import io
 import os
+from env import load_env
 from models.document import DocumentSource
+
+load_env()
 
 # --- ENUMS ---
 

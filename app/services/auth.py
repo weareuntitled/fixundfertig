@@ -5,6 +5,8 @@ import logging
 import os
 import re
 import uuid
+
+import bcrypt
 from datetime import datetime, timedelta
 from threading import Thread, Lock
 
@@ -13,15 +15,19 @@ from passlib.context import CryptContext
 from sqlmodel import select
 
 from data import InvitedEmail, Token, TokenPurpose, User, get_session, get_valid_token
+from env import load_env
 from services.email import send_email
+
+load_env()
 
 VERIFY_TOKEN_TTL = timedelta(hours=24)
 RESET_TOKEN_TTL = timedelta(hours=2)
 logger = logging.getLogger(__name__)
 
-# Use bcrypt_sha256 to safely handle passwords >72 bytes (bcrypt limit) and avoid silent truncation.
-_PWD_CONTEXT = CryptContext(schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto")
+# Use pbkdf2_sha256 for new passwords; keep legacy bcrypt/sha256 verification for compatibility.
+_PWD_CONTEXT = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 _LEGACY_SHA256_RE = re.compile(r"^[A-Fa-f0-9]{64}$")
+_BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
 
 _LOGIN_RATE_LOCK = Lock()
 _LOGIN_FAILURES = TTLCache(maxsize=4096, ttl=60)
@@ -41,14 +47,20 @@ def _hash_password(password: str) -> str:
 
 
 def _verify_password_hash(password: str, password_hash: str | None) -> bool:
-    """Verify a password against either bcrypt (preferred) or legacy sha256 hashes."""
+    """Verify a password against pbkdf2_sha256, legacy bcrypt, or legacy sha256 hashes."""
     stored = (password_hash or "").strip()
     if not stored:
         return False
+    candidate = password or ""
     if _is_legacy_sha256_hash(stored):
-        return stored.lower() == _legacy_sha256(password).lower()
+        return stored.lower() == _legacy_sha256(candidate).lower()
+    if stored.startswith(_BCRYPT_PREFIXES):
+        try:
+            return bcrypt.checkpw(candidate.encode("utf-8")[:72], stored.encode("utf-8"))
+        except Exception:
+            return False
     try:
-        return _PWD_CONTEXT.verify(password or "", stored)
+        return _PWD_CONTEXT.verify(candidate, stored)
     except Exception:
         return False
 
@@ -104,7 +116,7 @@ def ensure_owner_user() -> None:
         user = session.exec(select(User).where(User.email == owner_email)).first()
         if user:
             password_ok = _verify_password_hash(owner_password, user.password_hash)
-            needs_upgrade = _is_legacy_sha256_hash(user.password_hash)
+            needs_upgrade = _is_legacy_sha256_hash(user.password_hash) or (user.password_hash or "").startswith(_BCRYPT_PREFIXES)
             try:
                 needs_rehash = (not needs_upgrade) and _PWD_CONTEXT.needs_update(user.password_hash or "")
             except Exception:
@@ -425,7 +437,7 @@ def verify_password(identifier: str, password: str) -> bool:
         # Successful auth: clear failure counter and transparently upgrade legacy/weak hashes.
         _login_clear_failures(identifier_norm)
 
-        needs_upgrade = _is_legacy_sha256_hash(old_hash)
+        needs_upgrade = _is_legacy_sha256_hash(old_hash) or old_hash.startswith(_BCRYPT_PREFIXES)
         try:
             needs_rehash = (not needs_upgrade) and _PWD_CONTEXT.needs_update(old_hash)
         except Exception:
