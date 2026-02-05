@@ -5,7 +5,7 @@
 # --- STYLE SYSTEM (Clean admin look) ---
 # Layout + typography
 C_BG = "bg-neutral-950 text-neutral-100 min-h-screen"
-C_CONTAINER = "w-full max-w-6xl mx-auto px-[50px] py-6 gap-5 bg-neutral-950 border border-black rounded-[50px]"
+C_CONTAINER = "w-full max-w-6xl mx-auto px-5 py-6 gap-5 bg-neutral-950 border border-black"
 C_FONT_STACK = '"Inter", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif'
 C_NUMERIC = "tabular-nums"
 
@@ -47,13 +47,23 @@ APP_FONT_CSS = f"""
 
   /* --- QUASAR OVERRIDES FOR DARK MODE --- */
   /* Fields & Inputs */
-  .q-field__label {{
-    color: #94a3b8 !important;
-    font-weight: 400;
+  .q-field__label {{ color: #94a3b8 !important; font-weight: 400; }}
+  .q-field--focused .q-field__label {{ color: var(--brand-primary) !important; font-weight: 600; }}
+
+  /* Ledger: container + search input label tweaks */
+  .ff-ledger-container {{
+    border-radius: 50px !important;
+    border-top-left-radius: 50px !important;
+    border-top-right-radius: 50px !important;
+    border-bottom-right-radius: 50px !important;
+    border-bottom-left-radius: 50px !important;
+    padding-left: 50px !important;
+    padding-right: 50px !important;
+  }}
+  .ff-ledger-search .q-field__label {{
     font-size: 12px !important;
     top: 5px !important;
   }}
-  .q-field--focused .q-field__label {{ color: var(--brand-primary) !important; font-weight: 600; }}
 
   /* Header search (top bar) */
   .ff-header-search {{
