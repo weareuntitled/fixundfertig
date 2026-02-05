@@ -1,19 +1,26 @@
+from __future__ import annotations
+
 from contextlib import contextmanager
 
 from nicegui import ui
+
 from data import InvoiceStatus
 from styles import (
-    C_BADGE_GRAY,
-    C_BADGE_GREEN,
-    C_BADGE_RED,
-    C_BADGE_YELLOW,
-    C_BTN_PRIM,
-    C_BTN_SEC,
-    C_CARD,
-    C_CARD_HOVER,
-    C_GLASS_CARD_HOVER,
-    C_SECTION_TITLE,
     C_NUMERIC,
+    STYLE_BADGE_GRAY,
+    STYLE_BADGE_GREEN,
+    STYLE_BADGE_RED,
+    STYLE_BADGE_YELLOW,
+    STYLE_BTN_DANGER,
+    STYLE_BTN_GHOST,
+    STYLE_BTN_PRIMARY,
+    STYLE_BTN_SECONDARY,
+    STYLE_CARD,
+    STYLE_CARD_HOVER,
+    STYLE_INPUT,
+    STYLE_PAGE_TITLE,
+    STYLE_SECTION_TITLE,
+    STYLE_TEXT_MUTED,
 )
 
 def format_invoice_status(status: str) -> str:
@@ -29,15 +36,88 @@ def format_invoice_status(status: str) -> str:
     return mapping.get(status, status)
 
 def invoice_status_badge(status: str) -> str:
-    if status == InvoiceStatus.DRAFT: return C_BADGE_GRAY
-    if status == InvoiceStatus.OPEN: return C_BADGE_YELLOW
-    if status == InvoiceStatus.SENT: return C_BADGE_YELLOW
-    if status == InvoiceStatus.PAID: return C_BADGE_GREEN
-    if status == InvoiceStatus.FINALIZED: return C_BADGE_YELLOW
-    if status == InvoiceStatus.CANCELLED: return C_BADGE_GRAY
-    if status == "Bezahlt": return C_BADGE_GREEN
-    if status == "Overdue": return C_BADGE_RED
-    return C_BADGE_GRAY
+    if status == InvoiceStatus.DRAFT:
+        return STYLE_BADGE_GRAY
+    if status == InvoiceStatus.OPEN:
+        return STYLE_BADGE_YELLOW
+    if status == InvoiceStatus.SENT:
+        return STYLE_BADGE_YELLOW
+    if status == InvoiceStatus.PAID:
+        return STYLE_BADGE_GREEN
+    if status == InvoiceStatus.FINALIZED:
+        return STYLE_BADGE_YELLOW
+    if status == InvoiceStatus.CANCELLED:
+        return STYLE_BADGE_GRAY
+    if status == "Bezahlt":
+        return STYLE_BADGE_GREEN
+    if status == "Overdue":
+        return STYLE_BADGE_RED
+    return STYLE_BADGE_GRAY
+
+
+@contextmanager
+def ff_card(*, pad: str = "p-6", classes: str = "", hover: bool = False):
+    """Card wrapper: flat (no Quasar shadow) + single padding source."""
+    hover_classes = STYLE_CARD_HOVER if hover else ""
+    with ui.card().props("flat").classes(f"{STYLE_CARD} {hover_classes} {pad} {classes}".strip()) as card:
+        yield card
+
+
+def ff_input(label: str, *, value: str | None = None, classes: str = "", props: str = "") -> ui.input:
+    """Input wrapper: outlined+dense, consistent sizing."""
+    return (
+        ui.input(label, value=value)
+        .props(f"outlined dense {props}".strip())
+        .classes(f"{STYLE_INPUT} {classes}".strip())
+    )
+
+
+def ff_textarea(label: str, *, value: str | None = None, classes: str = "", props: str = "") -> ui.textarea:
+    return (
+        ui.textarea(label, value=value)
+        .props(f"outlined dense {props}".strip())
+        .classes(f"{STYLE_INPUT} {classes}".strip())
+    )
+
+
+def ff_select(label: str, options, *, value=None, classes: str = "", props: str = "") -> ui.select:
+    return (
+        ui.select(options, label=label, value=value)
+        .props(f"outlined dense {props}".strip())
+        .classes(f"{STYLE_INPUT} {classes}".strip())
+    )
+
+
+def ff_btn_primary(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
+    return (
+        ui.button(text, icon=icon, on_click=on_click)
+        .props(f"unelevated no-caps {props}".strip())
+        .classes(f"{STYLE_BTN_PRIMARY} {classes}".strip())
+    )
+
+
+def ff_btn_secondary(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
+    return (
+        ui.button(text, icon=icon, on_click=on_click)
+        .props(f"flat no-caps {props}".strip())
+        .classes(f"{STYLE_BTN_SECONDARY} {classes}".strip())
+    )
+
+
+def ff_btn_ghost(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
+    return (
+        ui.button(text, icon=icon, on_click=on_click)
+        .props(f"flat no-caps {props}".strip())
+        .classes(f"{STYLE_BTN_GHOST} {classes}".strip())
+    )
+
+
+def ff_btn_danger(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
+    return (
+        ui.button(text, icon=icon, on_click=on_click)
+        .props(f"unelevated no-caps {props}".strip())
+        .classes(f"{STYLE_BTN_DANGER} {classes}".strip())
+    )
 
 def kpi_card(
     label,
@@ -49,37 +129,26 @@ def kpi_card(
     trend_direction: str | None = None,
     trend_color: str | None = None,
 ):
-    card_classes = f"p-5 {classes} relative overflow-hidden flex flex-col justify-between h-[220px] bg-transparent border-0 shadow-none".strip()
     icon_map = {"up": "arrow_upward", "down": "arrow_downward", "flat": "arrow_forward"}
     direction = (trend_direction or "").lower()
     trend_icon = icon_map.get(direction)
     if trend_color:
         trend_color_class = trend_color
     elif direction == "up":
-        trend_color_class = "text-emerald-500"
+        trend_color_class = "text-emerald-600"
     elif direction == "down":
-        trend_color_class = "text-rose-500"
+        trend_color_class = "text-rose-600"
     else:
-        trend_color_class = "text-slate-500"
+        trend_color_class = "text-slate-600"
 
-    with ui.card().classes(card_classes):
-        big_icon_color = (
-            "text-[var(--brand-primary)]"
-            if icon == "receipt_long"
-            else "text-[var(--color-neutral-600)]"
-        )
-        ui.icon(icon).classes(f"absolute right-4 bottom-4 text-6xl {big_icon_color} opacity-100")
+    with ff_card(pad="p-5", classes=f"relative overflow-hidden flex flex-col justify-between h-[220px] {classes}".strip()):
+        ui.icon(icon).classes("absolute right-4 bottom-4 text-6xl text-slate-200")
         with ui.column().classes("gap-2 z-10"):
             with ui.row().classes("items-center gap-2"):
-                small_icon_color = (
-                    "text-[var(--brand-primary)]"
-                    if icon == "receipt_long"
-                    else "text-[var(--color-neutral-500)]"
-                )
-                ui.icon(icon).classes(f"text-base {small_icon_color}")
-                ui.label(label).classes("text-xs font-bold !text-[var(--brand-primary)] uppercase tracking-wider")
-            ui.element("div").classes("h-px w-10 bg-neutral-700")
-            ui.label(value).classes(f"text-[40px] font-bold !text-[var(--color-neutral-500)] {C_NUMERIC}")
+                ui.icon(icon).classes("text-base text-amber-600")
+                ui.label(label).classes("text-xs font-bold text-slate-600 uppercase tracking-wider")
+            ui.element("div").classes("h-px w-10 bg-slate-200")
+            ui.label(value).classes(f"text-[40px] font-bold text-slate-900 {C_NUMERIC}")
             if trend_text:
                 with ui.row().classes("items-center gap-1"):
                     if trend_icon:
@@ -88,9 +157,9 @@ def kpi_card(
 
 @contextmanager
 def settings_card(title: str | None = None, classes: str = ""):
-    with ui.card().classes(f"{C_CARD} p-6 w-full {classes}".strip()) as card:
+    with ff_card(pad="p-6", classes=f"w-full {classes}".strip()) as card:
         if title:
-            ui.label(title).classes(C_SECTION_TITLE)
+            ui.label(title).classes(STYLE_SECTION_TITLE)
         yield card
 
 
@@ -113,14 +182,16 @@ def sticky_header(title, on_cancel, on_save=None, on_finalize=None):
     # Stattdessen ein sticky div/row.
     # z-index 40, damit es unter dem Haupt-Header (z-50) durchscrollt, falls nötig, 
     # oder einfach oben im Content klebt.
-    with ui.row().classes('bg-neutral-950 border-b border-neutral-800 p-4 sticky top-0 z-60 flex justify-between items-center w-full'):
-        with ui.row().classes('items-center gap-2'):
-            ui.icon('description', size='sm').classes('text-neutral-400')
-            ui.label(title).classes('text-lg font-bold text-neutral-100')
-        with ui.row().classes('gap-2'):
+    with ui.row().classes(
+        "bg-white/80 backdrop-blur border-b border-slate-200 p-4 sticky top-0 z-60 flex justify-between items-center w-full"
+    ):
+        with ui.row().classes("items-center gap-2"):
+            ui.icon("description", size="sm").classes("text-slate-500")
+            ui.label(title).classes("text-lg font-bold text-slate-900")
+        with ui.row().classes("gap-2"):
             if on_cancel:
-                ui.button('Abbrechen', on_click=on_cancel).classes(C_BTN_SEC)
+                ff_btn_secondary("Abbrechen", on_click=on_cancel)
             if on_save:
-                ui.button('Speichern', icon='save', on_click=on_save).classes(C_BTN_SEC)
+                ff_btn_secondary("Speichern", icon="save", on_click=on_save)
             if on_finalize:
-                ui.button('Finalisieren', icon='check_circle', on_click=on_finalize).classes(C_BTN_PRIM)
+                ff_btn_primary("Finalisieren", icon="check_circle", on_click=on_finalize)

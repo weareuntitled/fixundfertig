@@ -19,6 +19,8 @@ if str(APP_PATH) not in sys.path:
 from services import storage as storage_service
 from services.documents_ingest import save_upload_bytes
 
+PDF_BYTES = b"%PDF-1.4\n" + (b"0" * 64)
+
 
 def _load_app_modules():
     import importlib
@@ -81,7 +83,7 @@ def test_webhook_auth_failure_returns_401_403(tmp_path: Path, monkeypatch) -> No
         "file_base64": base64.b64encode(b"demo").decode("utf-8"),
     }
     resp = client.post("/api/webhooks/n8n/ingest", json=payload)
-    assert resp.status_code == 401
+    assert resp.status_code == 403
 
     with data_module.get_session() as session:
         company = data_module.Company(name="Test Co", n8n_enabled=False, n8n_secret="secret")
@@ -110,11 +112,11 @@ def test_webhook_success_stores_file_and_meta(tmp_path: Path, monkeypatch) -> No
         session.commit()
         session.refresh(company)
 
-    file_bytes = b"webhook-bytes"
+    file_bytes = PDF_BYTES
     payload = {
         "event_id": "evt-success",
         "company_id": int(company.id or 0),
-        "file_name": "doc.txt",
+        "file_name": "doc.pdf",
         "file_base64": base64.b64encode(file_bytes).decode("utf-8"),
         "extracted": {"vendor": "ACME"},
     }
@@ -156,7 +158,8 @@ def test_webhook_legacy_payload_maps_to_extracted(tmp_path: Path, monkeypatch) -
     payload = {
         "event_id": "evt-legacy",
         "company_id": int(company.id or 0),
-        "file_base64": base64.b64encode(b"legacy-bytes").decode("utf-8"),
+        "file_name": "legacy.pdf",
+        "file_base64": base64.b64encode(PDF_BYTES).decode("utf-8"),
         "vendor": "Legacy Vendor",
         "doc_date": "2024-01-31",
         "amount_total": "123.45",
@@ -199,7 +202,8 @@ def test_webhook_extracted_payload_only(tmp_path: Path, monkeypatch) -> None:
     payload = {
         "event_id": "evt-extracted-only",
         "company_id": int(company.id or 0),
-        "file_base64": base64.b64encode(b"extracted-bytes").decode("utf-8"),
+        "file_name": "extracted.pdf",
+        "file_base64": base64.b64encode(PDF_BYTES).decode("utf-8"),
         "extracted": {
             "vendor": "Extracted Vendor",
             "doc_date": "2024-02-15",
@@ -238,7 +242,8 @@ def test_webhook_mixed_payload_prefers_extracted(tmp_path: Path, monkeypatch) ->
     payload = {
         "event_id": "evt-mixed",
         "company_id": int(company.id or 0),
-        "file_base64": base64.b64encode(b"mixed-bytes").decode("utf-8"),
+        "file_name": "mixed.pdf",
+        "file_base64": base64.b64encode(PDF_BYTES).decode("utf-8"),
         "vendor": "Legacy Vendor",
         "doc_date": "2024-01-01",
         "extracted": {
@@ -273,6 +278,7 @@ def test_manual_upload_sets_storage_key(tmp_path: Path, monkeypatch) -> None:
         session.add(user)
         session.commit()
         session.refresh(user)
+        session.add(data_module.InvitedEmail(email=user.email))
         company = data_module.Company(user_id=int(user.id or 0), name="Manual Co")
         session.add(company)
         session.commit()

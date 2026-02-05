@@ -1,12 +1,14 @@
 from __future__ import annotations
 from ._shared import *
 from ._shared import _parse_iso_date
+from styles import STYLE_TEXT_MUTED
+from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card
 
 # Auto generated page renderer
 
 def render_expenses(session, comp: Company) -> None:
     ui.label("Ausgaben").classes(C_PAGE_TITLE)
-    ui.label("Erfassen, bearbeiten und löschen.").classes("text-sm text-neutral-400 mb-4")
+    ui.label("Erfassen, bearbeiten und löschen.").classes(f"{STYLE_TEXT_MUTED} mb-4")
 
     # Local filter state
     state = {
@@ -69,17 +71,21 @@ def render_expenses(session, comp: Company) -> None:
     current_id = {"value": None}
 
     with ui.dialog() as edit_dialog:
-        with ui.card().classes(C_CARD + " p-5 w-[640px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-[640px] max-w-[92vw]"):
             ui.label("Ausgabe").classes(C_SECTION_TITLE)
 
-            d_date = ui.input("Datum").props("type=date").classes(C_INPUT)
-            d_amount = ui.number("Betrag (EUR)", min=0, step=0.01).classes(C_INPUT)
-            d_category = ui.input("Kategorie", placeholder="z.B. Software, Fahrtkosten").classes(C_INPUT)
-            d_source = ui.input("Lieferant", placeholder="z.B. Adobe, Bahn, Amazon").classes(C_INPUT)
-            d_desc = ui.textarea("Beschreibung", placeholder="Wofür war das").props("rows=2 auto-grow").classes(C_INPUT)
+            d_date = ui.input("Datum").props("outlined dense type=date").classes(C_INPUT)
+            d_amount = ui.number("Betrag (EUR)", min=0, step=0.01).props("outlined dense").classes(C_INPUT)
+            d_category = ui.input("Kategorie", placeholder="z.B. Software, Fahrtkosten").props("outlined dense").classes(C_INPUT)
+            d_source = ui.input("Lieferant", placeholder="z.B. Adobe, Bahn, Amazon").props("outlined dense").classes(C_INPUT)
+            d_desc = (
+                ui.textarea("Beschreibung", placeholder="Wofür war das")
+                .props("outlined dense rows=2 auto-grow")
+                .classes(C_INPUT)
+            )
 
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
-                ui.button("Abbrechen", on_click=lambda: edit_dialog.close()).classes(C_BTN_SEC)
+                ff_btn_secondary("Abbrechen", on_click=lambda: edit_dialog.close())
 
                 def _save():
                     date_val = (d_date.value or "").strip()
@@ -127,15 +133,15 @@ def render_expenses(session, comp: Company) -> None:
                     edit_dialog.close()
                     ui.navigate.to("/")
 
-                ui.button("Speichern", on_click=_save).classes(C_BTN_PRIM)
+                ff_btn_primary("Speichern", on_click=_save)
 
     with ui.dialog() as delete_dialog:
-        with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-[520px] max-w-[92vw]"):
             ui.label("Löschen").classes(C_SECTION_TITLE)
-            ui.label("Willst du diese Ausgabe wirklich löschen.").classes("text-sm text-neutral-400")
+            ui.label("Willst du diese Ausgabe wirklich löschen.").classes(STYLE_TEXT_MUTED)
 
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
-                ui.button("Abbrechen", on_click=lambda: delete_dialog.close()).classes(C_BTN_SEC)
+                ff_btn_secondary("Abbrechen", on_click=lambda: delete_dialog.close())
 
                 def _confirm_delete():
                     if not current_id["value"]:
@@ -155,7 +161,7 @@ def render_expenses(session, comp: Company) -> None:
                     delete_dialog.close()
                     ui.navigate.to("/")
 
-                ui.button("Löschen", on_click=_confirm_delete).classes(C_BTN_PRIM)
+                ff_btn_danger("Löschen", on_click=_confirm_delete)
 
     def open_new():
         current_id["value"] = None
@@ -180,24 +186,28 @@ def render_expenses(session, comp: Company) -> None:
         delete_dialog.open()
 
     with ui.row().classes("w-full justify-between items-center mb-3 gap-3 flex-wrap"):
-        ui.button("Neu", icon="add", on_click=open_new).classes(C_BTN_PRIM)
+        ff_btn_primary("Neu", icon="add", on_click=open_new)
 
         with ui.row().classes("gap-2 items-end flex-wrap"):
             ui.input(
                 "Suche",
                 placeholder="Kategorie, Lieferant, Beschreibung",
                 on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
-            ).classes(C_INPUT + " min-w-[260px]")
+            ).props("outlined dense").classes(C_INPUT + " min-w-[260px]")
 
             ui.select(
                 category_opts,
                 label="Kategorie",
                 value=state["category"],
                 on_change=lambda e: (state.__setitem__("category", e.value or "ALL"), render_list.refresh()),
-            ).classes(C_INPUT)
+            ).props("outlined dense").classes(C_INPUT)
 
-            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
-            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
+            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props(
+                "outlined dense type=date"
+            ).classes(C_INPUT)
+            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props(
+                "outlined dense type=date"
+            ).classes(C_INPUT)
 
     @ui.refreshable
     def render_list():
@@ -206,33 +216,39 @@ def render_expenses(session, comp: Company) -> None:
 
         total = sum(float(x["amount"] or 0) for x in data)
         with ui.row().classes("w-full items-center justify-between mb-3"):
-            ui.label(f"{len(data)} Einträge").classes("text-sm text-neutral-400")
-            ui.label(f"Summe: {total:,.2f} €").classes("text-sm font-semibold text-amber-300")
+            ui.label(f"{len(data)} Einträge").classes(STYLE_TEXT_MUTED)
+            ui.label(f"Summe: {total:,.2f} €").classes(f"text-sm font-semibold text-rose-600 {C_NUMERIC}")
 
         if not data:
-            with ui.card().classes(C_CARD + " p-4"):
-                ui.label("Keine Ausgaben gefunden").classes("text-sm text-neutral-400")
+            with ff_card(pad="p-4"):
+                ui.label("Keine Ausgaben gefunden").classes(STYLE_TEXT_MUTED)
             return
 
-        with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+        with ff_card(pad="p-0", classes="overflow-hidden"):
             with ui.row().classes(C_TABLE_HEADER):
-                ui.label("Datum").classes("w-28 font-bold text-xs text-neutral-400")
-                ui.label("Kategorie").classes("w-40 font-bold text-xs text-neutral-400")
-                ui.label("Lieferant").classes("w-44 font-bold text-xs text-neutral-400")
-                ui.label("Beschreibung").classes("flex-1 font-bold text-xs text-neutral-400")
-                ui.label("Betrag").classes("w-28 text-right font-bold text-xs text-neutral-400")
-                ui.label("").classes("w-28 text-right font-bold text-xs text-neutral-400")
+                ui.label("Datum").classes("w-28")
+                ui.label("Kategorie").classes("w-40")
+                ui.label("Lieferant").classes("w-44")
+                ui.label("Beschreibung").classes("flex-1")
+                ui.label("Betrag").classes("w-28 text-right")
+                ui.label("").classes("w-28 text-right")
 
             for it in data:
                 with ui.row().classes(C_TABLE_ROW + " items-start"):
-                    ui.label(it["date"] or "-").classes("w-28 text-xs font-mono text-neutral-200")
-                    ui.label(it["category"] or "-").classes("w-40 text-sm text-neutral-100")
-                    ui.label(it["source"] or "-").classes("w-44 text-sm text-neutral-100")
-                    ui.label(it["description"] or "-").classes("flex-1 text-sm text-neutral-200")
-                    ui.label(f"-{float(it['amount'] or 0):,.2f} €").classes("w-28 text-right text-sm font-mono text-amber-300")
+                    ui.label(it["date"] or "-").classes("w-28 text-xs font-mono text-slate-700")
+                    ui.label(it["category"] or "-").classes("w-40")
+                    ui.label(it["source"] or "-").classes("w-44")
+                    ui.label(it["description"] or "-").classes("flex-1 text-slate-700")
+                    ui.label(f"-{float(it['amount'] or 0):,.2f} €").classes(
+                        f"w-28 text-right text-sm font-mono text-rose-600 {C_NUMERIC}"
+                    )
 
                     with ui.row().classes("w-28 justify-end gap-1"):
-                        ui.button(icon="edit", on_click=lambda _, x=it: open_edit(x)).props("flat dense").classes("text-neutral-300")
-                        ui.button(icon="delete", on_click=lambda _, x=it: open_delete(x)).props("flat dense").classes("text-amber-400")
+                        ui.button(icon="edit", on_click=lambda _, x=it: open_edit(x)).props("flat dense").classes(
+                            "text-slate-500 hover:text-slate-900"
+                        )
+                        ui.button(icon="delete", on_click=lambda _, x=it: open_delete(x)).props("flat dense").classes(
+                            "text-rose-600 hover:text-rose-700"
+                        )
 
     render_list()

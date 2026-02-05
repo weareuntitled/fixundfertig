@@ -16,6 +16,7 @@ from invoice_numbering import build_invoice_filename, build_invoice_number
 from logic import finalize_invoice_logic
 from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
 from styles import C_CARD, C_INPUT
+from styles import STYLE_TEXT_SUBTLE
 
 
 def _get(obj: Any, *names: str, default: Any = "") -> Any:
@@ -91,7 +92,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     with ui.row().classes("w-full gap-6 items-start flex-col md:flex-row md:flex-nowrap"):
         # LEFT column (35%)
         with ui.column().classes("w-full md:w-[35%] gap-4"):
-            with ui.card().classes(card_cls):
+            with ui.card().props("flat").classes(card_cls):
                 ui.label("Stammdaten").classes(card_title_cls)
 
                 customer_select = ui.select(
@@ -99,7 +100,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     value=customer_default,
                     label="Kunde",
                     with_input=True,
-                ).props("use-input").classes(C_INPUT)
+                ).props("outlined dense use-input").classes(C_INPUT)
                 def _filter_customers(e) -> None:
                     filter_text = ""
                     if getattr(e, "value", None) is not None:
@@ -113,9 +114,9 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
                 customer_select.on("filter", _filter_customers)
 
-                title_input = ui.input("Titel", value="Rechnung").classes(C_INPUT)
+                title_input = ui.input("Titel", value="Rechnung").props("outlined dense").classes(C_INPUT)
 
-                invoice_date_input = ui.input("Rechnungsdatum", value=today).props("readonly").classes(C_INPUT)
+                invoice_date_input = ui.input("Rechnungsdatum", value=today).props("outlined dense readonly").classes(C_INPUT)
                 with invoice_date_input.add_slot("append"):
                     ui.icon("event").classes("cursor-pointer")
 
@@ -135,7 +136,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
                 invoice_date_picker.on("update:modelValue", _invoice_date_changed)
 
-                service_input = ui.input("Leistungszeitraum", value=f"{today} bis {today}").props("readonly").classes(C_INPUT)
+                service_input = ui.input("Leistungszeitraum", value=f"{today} bis {today}").props("outlined dense readonly").classes(C_INPUT)
                 with service_input.add_slot("append"):
                     ui.icon("event").classes("cursor-pointer")
 
@@ -163,16 +164,16 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 vat_switch = ui.switch("USt berechnen", value=False).classes("mt-2")
                 if getattr(comp, "is_small_business", False):
                     vat_switch.props("disable")
-                ui.label("Kleinunternehmer: USt wird automatisch nicht ausgewiesen.").classes("text-sm text-neutral-500")
+                ui.label("Kleinunternehmer: USt wird automatisch nicht ausgewiesen.").classes(STYLE_TEXT_SUBTLE)
 
-            with ui.card().classes(card_cls):
+            with ui.card().props("flat").classes(card_cls):
                 ui.label("Einleitungstext").classes(card_title_cls)
                 intro_input = ui.textarea(
                     value="Vielen Dank für Ihren Auftrag. Hiermit berechne ich die folgenden Leistungen."
-                ).classes(C_INPUT)
+                ).props("outlined dense").classes(C_INPUT)
                 intro_input.props("autogrow")
 
-            with ui.card().classes(card_cls):
+            with ui.card().props("flat").classes(card_cls):
                 with ui.row().classes("w-full items-center justify-between"):
                     ui.label("Positionen").classes("text-lg font-semibold")
                     add_btn = ui.button("Position hinzufügen").props("outline color=primary")
@@ -188,13 +189,13 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
                 dialog = ui.dialog()
                 with dialog:
-                    with ui.card().classes(f"{C_CARD} w-[min(680px,95vw)] p-4"):
+                    with ui.card().props("flat").classes(f"{C_CARD} w-[min(680px,95vw)] p-4"):
                         ui.label("Position").classes(card_title_cls)
-                        d_desc = ui.textarea("Beschreibung", value="").classes(C_INPUT)
+                        d_desc = ui.textarea("Beschreibung", value="").props("outlined dense").classes(C_INPUT)
                         d_desc.props("autogrow")
-                        d_qty = ui.number("Menge", value=1, min=0, step=1).classes(C_INPUT)
-                        d_price = ui.number("Einzelpreis", value=0.0, min=0, step=0.01).classes(C_INPUT)
-                        d_tax = ui.number("USt in %", value=0, min=0, step=1).classes(C_INPUT)
+                        d_qty = ui.number("Menge", value=1, min=0, step=1).props("outlined dense").classes(C_INPUT)
+                        d_price = ui.number("Einzelpreis", value=0.0, min=0, step=0.01).props("outlined dense").classes(C_INPUT)
+                        d_tax = ui.number("USt in %", value=0, min=0, step=1).props("outlined dense").classes(C_INPUT)
 
                         with ui.row().classes("w-full justify-end gap-2 mt-4"):
                             ui.button("Abbrechen", on_click=dialog.close).props("flat color=primary")
@@ -256,7 +257,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
         # RIGHT column preview
         with ui.column().classes("w-full md:flex-1"):
-            with ui.card().classes(card_cls_sticky):
+            with ui.card().props("flat").classes(card_cls_sticky):
                 ui.label("Vorschau").classes(card_title_cls)
                 preview_summary = ui.html("", sanitize=False).classes("w-full mb-3")
                 preview_frame = ui.html("", sanitize=False).classes("w-full")

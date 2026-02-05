@@ -17,6 +17,7 @@ from ._shared import (
     C_CARD,
     C_INPUT,
     C_PAGE_TITLE,
+    C_SECTION_TITLE,
     Company,
     get_current_user_id,
     get_session,
@@ -29,7 +30,10 @@ from services.iban import lookup_bank_from_iban
 from services.storage import cleanup_company_logos, company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
-LINK_TEXT = "text-sm text-amber-400 hover:text-amber-300"
+from styles import STYLE_DROPDOWN_PANEL, STYLE_TEXT_MUTED
+
+
+LINK_TEXT = "text-sm text-amber-700 hover:text-amber-800"
 
 
 def _company_select_options(companies: list[Company]) -> dict[int, str]:
@@ -68,9 +72,9 @@ def render_settings(session, comp: Company) -> None:
 
     def _open_create_dialog() -> None:
         dlg = ui.dialog()
-        with dlg, ui.card().classes("p-5 w-[420px]"):
-            ui.label("Neues Unternehmen").classes("font-semibold")
-            name_in = ui.input("Name", placeholder="z.B. untitled-ux").classes(C_INPUT)
+        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-[420px]"):
+            ui.label("Neues Unternehmen").classes(C_SECTION_TITLE)
+            name_in = ui.input("Name", placeholder="z.B. untitled-ux").props("outlined dense").classes(C_INPUT)
             err = ui.label("").classes("text-sm text-amber-400")
             err.set_visibility(False)
 
@@ -106,12 +110,12 @@ def render_settings(session, comp: Company) -> None:
             return
 
         dlg = ui.dialog()
-        with dlg, ui.card().classes("p-5 w-[520px]"):
-            ui.label("Unternehmen löschen").classes("font-semibold")
+        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-[520px]"):
+            ui.label("Unternehmen löschen").classes(C_SECTION_TITLE)
             ui.label(
                 "Das Unternehmen wird inklusive Kunden, Rechnungen, Ausgaben und Uploads gelöscht."
-            ).classes("text-sm text-neutral-300")
-            confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
+            ).classes(STYLE_TEXT_MUTED)
+            confirm = ui.input('Tippe "DELETE" zur Bestätigung').props("outlined dense").classes(C_INPUT)
 
             def _do_delete() -> None:
                 if (confirm.value or "").strip().upper() != "DELETE":
@@ -152,13 +156,13 @@ def render_settings(session, comp: Company) -> None:
 
     with ui.row().classes("w-full justify-between items-center mb-6"):
         ui.label("Einstellungen").classes(C_PAGE_TITLE)
-        ui.button("Neues Unternehmen", on_click=_open_create_dialog).classes(C_BTN_PRIM)
+        ui.button("Neues Unternehmen", on_click=_open_create_dialog).props("unelevated no-caps").classes(C_BTN_PRIM)
 
     # ----------------------------
     # Company switcher + CRUD
     # ----------------------------
     with ui.card().classes(C_CARD + " p-5 w-full max-w-5xl mx-auto mb-4"):
-        ui.label("Unternehmen").classes("text-sm font-semibold text-neutral-200")
+        ui.label("Unternehmen").classes(C_SECTION_TITLE)
 
         options = _company_select_options(companies)
 
@@ -188,7 +192,7 @@ def render_settings(session, comp: Company) -> None:
             value=active_company_id, # int, muss key sein
             label="Aktives Unternehmen",
             on_change=_switch_company,
-        ).classes(C_INPUT)
+        ).props("outlined dense").classes(C_INPUT)
 
         with ui.row().classes("w-full gap-2 mt-3 flex-wrap"):
             ui.button("Unternehmen löschen", on_click=_open_delete_dialog).classes(C_BTN_SEC)
@@ -211,8 +215,8 @@ def render_settings(session, comp: Company) -> None:
     with ui.element("div").classes("w-full max-w-5xl mx-auto"):
         with ui.element("div").classes("grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6"):
             with ui.element("div").classes("space-y-3"):
-                ui.label("Logo").classes("text-sm font-semibold text-neutral-200")
-                with ui.element("div").classes("w-full rounded-lg border border-neutral-800 bg-neutral-900 p-4 space-y-3"):
+                ui.label("Logo").classes(C_SECTION_TITLE)
+                with ui.element("div").classes(f"w-full {C_CARD} p-4 space-y-3"):
                     logo_url = ""
                     logo_exists = False
                     if comp.id:
@@ -221,11 +225,11 @@ def render_settings(session, comp: Company) -> None:
                         logo_url = f"/{logo_path.replace(os.sep, '/')}"
 
                     logo_preview = ui.image(logo_url).classes(
-                        "w-full h-40 object-contain rounded-md border border-neutral-800 bg-neutral-950"
+                        "w-full h-40 object-contain rounded-md border border-slate-200 bg-slate-50"
                     )
                     logo_preview.set_visibility(logo_exists)
                     logo_placeholder = ui.label("Kein Logo hochgeladen").classes(
-                        "text-sm text-neutral-400 text-center w-full py-8"
+                        f"{STYLE_TEXT_MUTED} text-center w-full py-8"
                     )
                     logo_placeholder.set_visibility(not logo_exists)
 
@@ -282,26 +286,24 @@ def render_settings(session, comp: Company) -> None:
                     ).props("accept=.png,.jpg,.jpeg,image/png,image/jpeg")
 
             with ui.element("div").classes("space-y-6"):
-                ui.label("Unternehmen & Kontakt").classes("text-sm font-semibold text-neutral-200")
+                ui.label("Unternehmen & Kontakt").classes(C_SECTION_TITLE)
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4"):
-                    name = ui.input("Firma", value=comp.name).classes(C_INPUT)
-                    first_name = ui.input("Vorname", value=comp.first_name).classes(C_INPUT)
-                    last_name = ui.input("Nachname", value=comp.last_name).classes(C_INPUT)
-                    email = ui.input("Email", value=comp.email).classes(C_INPUT)
-                    phone = ui.input("Telefon", value=comp.phone).classes(C_INPUT)
+                    name = ui.input("Firma", value=comp.name).props("outlined dense").classes(C_INPUT)
+                    first_name = ui.input("Vorname", value=comp.first_name).props("outlined dense").classes(C_INPUT)
+                    last_name = ui.input("Nachname", value=comp.last_name).props("outlined dense").classes(C_INPUT)
+                    email = ui.input("Email", value=comp.email).props("outlined dense").classes(C_INPUT)
+                    phone = ui.input("Telefon", value=comp.phone).props("outlined dense").classes(C_INPUT)
 
                 ui.separator().classes("my-1")
 
-                ui.label("Adresse").classes("text-sm font-semibold text-neutral-200")
+                ui.label("Adresse").classes(C_SECTION_TITLE)
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4"):
                     with ui.element("div").classes("relative w-full"):
-                        street = ui.input("Straße", value=comp.street).classes(C_INPUT)
-                        street_dropdown = ui.element("div").classes(
-                            "absolute left-0 right-0 mt-1 z-10 bg-neutral-900 border border-neutral-800 rounded-lg"
-                        )
-                    plz = ui.input("PLZ", value=comp.postal_code).classes(C_INPUT)
-                    city = ui.input("Ort", value=comp.city).classes(C_INPUT)
-                    country = ui.input("Land", value=comp.country or "DE").classes(C_INPUT)
+                        street = ui.input("Straße", value=comp.street).props("outlined dense").classes(C_INPUT)
+                        street_dropdown = ui.element("div").classes(STYLE_DROPDOWN_PANEL)
+                    plz = ui.input("PLZ", value=comp.postal_code).props("outlined dense").classes(C_INPUT)
+                    city = ui.input("Ort", value=comp.city).props("outlined dense").classes(C_INPUT)
+                    country = ui.input("Land", value=comp.country or "DE").props("outlined dense").classes(C_INPUT)
 
         with ui.element("div").classes("w-full mt-6 space-y-4"):
             with ui.expansion("Business Meta").classes("w-full"):
@@ -320,19 +322,19 @@ def render_settings(session, comp: Company) -> None:
                         options=business_type_options,
                         label="Unternehmensform",
                         value=comp.business_type or "Einzelunternehmen",
-                    ).classes(C_INPUT)
+                    ).props("outlined dense").classes(C_INPUT)
 
                     is_small_business = ui.switch(
                         "Kleinunternehmer",
                         value=bool(comp.is_small_business) if comp.is_small_business is not None else False,
                     ).props("dense color=grey-8")
 
-                    iban = ui.input("IBAN", value=comp.iban).classes(C_INPUT)
-                    bic = ui.input("BIC", value=getattr(comp, "bic", "") or "").classes(C_INPUT)
-                    bank_name = ui.input("Bankname", value=getattr(comp, "bank_name", "") or "").classes(C_INPUT)
+                    iban = ui.input("IBAN", value=comp.iban).props("outlined dense").classes(C_INPUT)
+                    bic = ui.input("BIC", value=getattr(comp, "bic", "") or "").props("outlined dense").classes(C_INPUT)
+                    bank_name = ui.input("Bankname", value=getattr(comp, "bank_name", "") or "").props("outlined dense").classes(C_INPUT)
 
-                    tax = ui.input("Steuernummer", value=comp.tax_id).classes(C_INPUT)
-                    vat = ui.input("USt-ID", value=comp.vat_id).classes(C_INPUT)
+                    tax = ui.input("Steuernummer", value=comp.tax_id).props("outlined dense").classes(C_INPUT)
+                    vat = ui.input("USt-ID", value=comp.vat_id).props("outlined dense").classes(C_INPUT)
 
                 def _iban_lookup(_e=None) -> None:
                     b, bn = lookup_bank_from_iban(iban.value or "")
@@ -350,60 +352,60 @@ def render_settings(session, comp: Company) -> None:
                         value=comp.next_invoice_nr,
                         min=1,
                         step=1,
-                    ).classes(C_INPUT)
+                    ).props("outlined dense").classes(C_INPUT)
                     invoice_number_template = ui.input(
                         "Rechnungsnummer-Regel",
                         value=comp.invoice_number_template or "{seq}",
                         placeholder="{seq}",
-                    ).classes(C_INPUT)
+                    ).props("outlined dense").classes(C_INPUT)
                     invoice_filename_template = ui.input(
                         "Dateiname-Regel (PDF)",
                         value=comp.invoice_filename_template or "rechnung_{nr}",
                         placeholder="rechnung_{nr}",
-                    ).classes(C_INPUT)
+                    ).props("outlined dense").classes(C_INPUT)
 
                 ui.label("Platzhalter: {seq}, {date}, {customer_code}, {customer_kdnr}, {nr}.").classes(
-                    "text-sm text-neutral-400"
+                    STYLE_TEXT_MUTED
                 )
 
             with ui.expansion("Integrationen").classes("w-full"):
-                ui.label("SMTP (für Mails aus der App)").classes("text-sm font-semibold text-neutral-200 pt-2")
-                ui.label("Port 465 nutzt SSL. Andere Ports nutzen STARTTLS.").classes("text-sm text-neutral-400")
+                ui.label("SMTP (für Mails aus der App)").classes(f"{C_SECTION_TITLE} pt-2")
+                ui.label("Port 465 nutzt SSL. Andere Ports nutzen STARTTLS.").classes(STYLE_TEXT_MUTED)
 
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
-                    smtp_server = ui.input("SMTP Server", value=getattr(comp, "smtp_server", "") or "").classes(C_INPUT)
-                    smtp_port = ui.number("SMTP Port", value=getattr(comp, "smtp_port", 465) or 465).classes(C_INPUT)
-                    smtp_user = ui.input("SMTP User", value=getattr(comp, "smtp_user", "") or "").classes(C_INPUT)
+                    smtp_server = ui.input("SMTP Server", value=getattr(comp, "smtp_server", "") or "").props("outlined dense").classes(C_INPUT)
+                    smtp_port = ui.number("SMTP Port", value=getattr(comp, "smtp_port", 465) or 465).props("outlined dense").classes(C_INPUT)
+                    smtp_user = ui.input("SMTP User", value=getattr(comp, "smtp_user", "") or "").props("outlined dense").classes(C_INPUT)
                     smtp_password = (
                         ui.input("SMTP Passwort", value=getattr(comp, "smtp_password", "") or "")
-                        .props("type=password")
+                        .props("outlined dense type=password")
                         .classes(C_INPUT)
                     )
                     default_sender_email = ui.input(
                         "Standard Absender-Email (optional)",
                         value=comp.default_sender_email,
-                    ).classes(C_INPUT)
+                    ).props("outlined dense").classes(C_INPUT)
 
                 ui.separator().classes("my-4")
 
-                ui.label("n8n").classes("text-sm font-semibold text-neutral-200")
-                ui.label("Webhooks für Automationen.").classes("text-sm text-neutral-400")
+                ui.label("n8n").classes(C_SECTION_TITLE)
+                ui.label("Webhooks für Automationen.").classes(STYLE_TEXT_MUTED)
 
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
                     n8n_webhook_url_test = ui.input(
                         "n8n Webhook URL (Test)",
                         value=comp.n8n_webhook_url_test,
-                    ).classes(C_INPUT)
+                    ).props("outlined dense").classes(C_INPUT)
                     n8n_webhook_url_prod = ui.input(
                         "n8n Webhook URL (Production)",
                         value=comp.n8n_webhook_url_prod or comp.n8n_webhook_url,
-                    ).classes(C_INPUT)
-                    n8n_secret = ui.input("n8n Secret", value=comp.n8n_secret).classes(C_INPUT).props("type=password")
+                    ).props("outlined dense").classes(C_INPUT)
+                    n8n_secret = ui.input("n8n Secret", value=comp.n8n_secret).props("outlined dense type=password").classes(C_INPUT)
                     n8n_enabled = ui.switch("n8n aktivieren", value=bool(comp.n8n_enabled)).props("dense color=grey-8")
                     google_drive_folder_id = ui.input(
                         "Google Drive Ordner-ID",
                         value=comp.google_drive_folder_id,
-                    ).classes(C_INPUT)
+                    ).props("outlined dense").classes(C_INPUT)
 
                 def _n8n_status_text() -> str:
                     if not bool(n8n_enabled.value):
@@ -416,7 +418,7 @@ def render_settings(session, comp: Company) -> None:
                         return "Status: aktiv, aber kein Secret gesetzt"
                     return "Status: aktiv und bereit"
 
-                n8n_status = ui.label(_n8n_status_text()).classes("text-xs text-neutral-400")
+                n8n_status = ui.label(_n8n_status_text()).classes("text-xs text-slate-500")
 
                 def _update_n8n_status() -> None:
                     n8n_status.set_text(_n8n_status_text())
@@ -504,9 +506,9 @@ def render_settings(session, comp: Company) -> None:
 
             with ui.expansion("Account").classes("w-full"):
                 with ui.element("div").classes("space-y-4 pt-2"):
-                    current_pw = ui.input("Aktuelles Passwort").props("type=password").classes(C_INPUT)
-                    new_pw = ui.input("Neues Passwort").props("type=password").classes(C_INPUT)
-                    confirm_pw = ui.input("Neues Passwort bestätigen").props("type=password").classes(C_INPUT)
+                    current_pw = ui.input("Aktuelles Passwort").props("outlined dense type=password").classes(C_INPUT)
+                    new_pw = ui.input("Neues Passwort").props("outlined dense type=password").classes(C_INPUT)
+                    confirm_pw = ui.input("Neues Passwort bestätigen").props("outlined dense type=password").classes(C_INPUT)
 
                 def _change_password() -> None:
                     if not (new_pw.value or ""):
@@ -536,12 +538,12 @@ def render_settings(session, comp: Company) -> None:
 
                 def _open_delete_account_dialog() -> None:
                     dlg = ui.dialog()
-                    with dlg, ui.card().classes("p-5 w-[560px]"):
-                        ui.label("Account löschen").classes("font-semibold")
+                    with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-[560px]"):
+                        ui.label("Account löschen").classes(C_SECTION_TITLE)
                         ui.label("Das löscht deinen Account und alle Unternehmen inklusive Daten und Uploads.").classes(
-                            "text-sm text-neutral-300"
+                            STYLE_TEXT_MUTED
                         )
-                        confirm = ui.input('Tippe "DELETE" zur Bestätigung').classes(C_INPUT)
+                        confirm = ui.input('Tippe "DELETE" zur Bestätigung').props("outlined dense").classes(C_INPUT)
 
                         def _do_delete_account() -> None:
                             if (confirm.value or "").strip().upper() != "DELETE":

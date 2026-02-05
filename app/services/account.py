@@ -20,7 +20,7 @@ from data import (
     User,
     get_session,
 )
-from services.auth import _hash_password
+from services.auth import _hash_password, _verify_password_hash
 from services.storage import delete_company_dirs
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ def change_password(user_id: int, current_password: str, new_password: str) -> N
         user = session.get(User, int(user_id))
         if not user:
             raise ValueError("User not found")
-        if user.password_hash != _hash_password(current_password or ""):
+        if not _verify_password_hash(current_password or "", user.password_hash):
             raise ValueError("Current password is incorrect")
         user.password_hash = _hash_password(new_password)
         session.add(user)

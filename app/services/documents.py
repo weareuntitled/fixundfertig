@@ -18,7 +18,11 @@ from services.storage import company_document_dir, company_documents_dir, ensure
 from sqlmodel import Session, select
 
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
-MAX_DOCUMENT_SIZE_BYTES = 15 * 1024 * 1024
+_DEFAULT_MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024
+try:
+    MAX_DOCUMENT_SIZE_BYTES = int(os.getenv("FF_MAX_UPLOAD_BYTES") or _DEFAULT_MAX_DOCUMENT_SIZE_BYTES)
+except ValueError:
+    MAX_DOCUMENT_SIZE_BYTES = _DEFAULT_MAX_DOCUMENT_SIZE_BYTES
 
 
 def _storage_key_from_filename(filename: str) -> str:

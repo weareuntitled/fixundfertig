@@ -3,10 +3,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timedelta
-from threading import Thread
+from threading import Thread, Lock
 
+from cachetools import TTLCache
+from passlib.context import CryptContext
 from sqlmodel import select
 
 from data import InvitedEmail, Token, TokenPurpose, User, get_session, get_valid_token
@@ -15,8 +18,65 @@ from services.email import send_email
 VERIFY_TOKEN_TTL = timedelta(hours=24)
 RESET_TOKEN_TTL = timedelta(hours=2)
 logger = logging.getLogger(__name__)
+
+# Use bcrypt_sha256 to safely handle passwords >72 bytes (bcrypt limit) and avoid silent truncation.
+_PWD_CONTEXT = CryptContext(schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto")
+_LEGACY_SHA256_RE = re.compile(r"^[A-Fa-f0-9]{64}$")
+
+_LOGIN_RATE_LOCK = Lock()
+_LOGIN_FAILURES = TTLCache(maxsize=4096, ttl=60)
+
+
+def _legacy_sha256(password: str) -> str:
+    return hashlib.sha256((password or "").encode("utf-8")).hexdigest()
+
+
+def _is_legacy_sha256_hash(value: str | None) -> bool:
+    return bool(_LEGACY_SHA256_RE.fullmatch((value or "").strip()))
+
+
 def _hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    """Hash a password for storage (bcrypt)."""
+    return _PWD_CONTEXT.hash(password or "")
+
+
+def _verify_password_hash(password: str, password_hash: str | None) -> bool:
+    """Verify a password against either bcrypt (preferred) or legacy sha256 hashes."""
+    stored = (password_hash or "").strip()
+    if not stored:
+        return False
+    if _is_legacy_sha256_hash(stored):
+        return stored.lower() == _legacy_sha256(password).lower()
+    try:
+        return _PWD_CONTEXT.verify(password or "", stored)
+    except Exception:
+        return False
+
+
+def _login_rate_limited(identifier: str) -> bool:
+    try:
+        limit = int(os.getenv("FF_RATELIMIT_LOGIN_PER_MIN") or "10")
+    except ValueError:
+        limit = 10
+    if limit <= 0:
+        return False
+    key = (identifier or "").strip().lower()
+    if not key:
+        key = "anonymous"
+    with _LOGIN_RATE_LOCK:
+        return int(_LOGIN_FAILURES.get(key, 0)) >= limit
+
+
+def _login_register_failure(identifier: str) -> None:
+    key = (identifier or "").strip().lower() or "anonymous"
+    with _LOGIN_RATE_LOCK:
+        _LOGIN_FAILURES[key] = int(_LOGIN_FAILURES.get(key, 0)) + 1
+
+
+def _login_clear_failures(identifier: str) -> None:
+    key = (identifier or "").strip().lower() or "anonymous"
+    with _LOGIN_RATE_LOCK:
+        _LOGIN_FAILURES.pop(key, None)
 
 
 def _normalize_email(email: str | None) -> str:
@@ -43,12 +103,19 @@ def ensure_owner_user() -> None:
     with get_session() as session:
         user = session.exec(select(User).where(User.email == owner_email)).first()
         if user:
-            if user.password_hash != _hash_password(owner_password):
+            password_ok = _verify_password_hash(owner_password, user.password_hash)
+            needs_upgrade = _is_legacy_sha256_hash(user.password_hash)
+            try:
+                needs_rehash = (not needs_upgrade) and _PWD_CONTEXT.needs_update(user.password_hash or "")
+            except Exception:
+                needs_rehash = False
+
+            if (not password_ok) or needs_upgrade or needs_rehash:
                 user.password_hash = _hash_password(owner_password)
-                user.is_active = True
-                user.is_email_verified = True
-                session.add(user)
-                session.commit()
+            user.is_active = True
+            user.is_email_verified = True
+            session.add(user)
+            session.commit()
             return
         user = User(
             email=owner_email,
@@ -338,11 +405,38 @@ def verify_email(token_str: str) -> bool:
 
 
 def verify_password(identifier: str, password: str) -> bool:
+    identifier_norm = (identifier or "").strip().lower()
+    if _login_rate_limited(identifier_norm):
+        logger.warning("auth.login_rate_limited", extra={"identifier": identifier_norm or None})
+        return False
+
     with get_session() as session:
-        user = _get_user_by_identifier(session, identifier)
+        user = _get_user_by_identifier(session, identifier_norm)
         if not user:
+            _login_register_failure(identifier_norm)
             return False
-        return user.password_hash == _hash_password(password or "")
+
+        old_hash = (user.password_hash or "").strip()
+        ok = _verify_password_hash(password or "", old_hash)
+        if not ok:
+            _login_register_failure(identifier_norm)
+            return False
+
+        # Successful auth: clear failure counter and transparently upgrade legacy/weak hashes.
+        _login_clear_failures(identifier_norm)
+
+        needs_upgrade = _is_legacy_sha256_hash(old_hash)
+        try:
+            needs_rehash = (not needs_upgrade) and _PWD_CONTEXT.needs_update(old_hash)
+        except Exception:
+            needs_rehash = False
+
+        if needs_upgrade or needs_rehash:
+            user.password_hash = _hash_password(password or "")
+            session.add(user)
+            session.commit()
+
+        return True
 
 
 def login_user(identifier: str) -> bool:

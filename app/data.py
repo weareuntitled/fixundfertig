@@ -247,10 +247,15 @@ class WebhookEvent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 # --- DATABASE SETUP ---
-os.makedirs('./storage', exist_ok=True)
-os.makedirs('./storage/invoices', exist_ok=True)
+#
+# Use env var in production. Default keeps current local dev behavior.
+# Example: DATABASE_URL=sqlite:///storage/database.db
+DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip() or "sqlite:///storage/database.db"
 
-engine = create_engine("sqlite:///storage/database.db")
+os.makedirs("./storage", exist_ok=True)
+os.makedirs("./storage/invoices", exist_ok=True)
+
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
 
 # Create Tables

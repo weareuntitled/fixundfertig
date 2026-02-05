@@ -3,6 +3,8 @@ import os
 import tempfile
 
 from ._shared import *
+from styles import STYLE_TEXT_MUTED
+from ui_components import ff_btn_secondary, ff_card
 
 # Auto generated page renderer
 
@@ -32,10 +34,10 @@ def render_exports(session, comp: Company) -> None:
             ui.notify(f"Fehler: {e}", color="orange")
 
     def export_card(title: str, description: str, action):
-        with ui.card().classes(C_CARD + " p-5 " + C_CARD_HOVER + " w-full"):
-            ui.label(title).classes("font-semibold text-neutral-100")
-            ui.label(description).classes("text-sm text-neutral-400 mb-2")
-            ui.button("Download", icon="download", on_click=action).classes(C_BTN_SEC)
+        with ff_card(pad="p-5", classes="w-full", hover=True):
+            ui.label(title).classes(C_SECTION_TITLE)
+            ui.label(description).classes(f"{STYLE_TEXT_MUTED} mb-2")
+            ff_btn_secondary("Download", icon="download", on_click=action)
 
     with ui.grid(columns=2).classes("w-full gap-4"):
         export_card("Dokumente ZIP", "Alle Dokumente als ZIP-Datei", lambda: run_export(export_documents_zip, "Dokumente ZIP"))

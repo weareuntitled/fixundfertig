@@ -1,5 +1,7 @@
 from __future__ import annotations
 from ._shared import *
+from styles import STYLE_TEXT_MUTED
+from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card, ff_input
 
 # Auto generated page renderer
 
@@ -24,7 +26,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         ui.navigate.to("/")
 
     with ui.row().classes("items-center gap-3 mb-2"):
-        ui.button(icon="arrow_back", on_click=back).props("flat round").classes("text-neutral-400")
+        ui.button(icon="arrow_back", on_click=back).props("flat round").classes("text-slate-500 hover:text-slate-900")
         ui.label(customer.display_name).classes(C_PAGE_TITLE)
 
     with settings_two_column_layout():
@@ -45,10 +47,10 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
 
         with settings_card("Rechnungsempfänger"):
             with settings_grid():
-                recipient_name = ui.input("Rechnungsempfänger", value=customer.recipient_name).classes(C_INPUT)
-                recipient_street = ui.input("Rechnungsstraße", value=customer.recipient_street).classes(C_INPUT)
-                recipient_plz = ui.input("Rechnungs-PLZ", value=customer.recipient_postal_code).classes(C_INPUT)
-                recipient_city = ui.input("Rechnungs-Ort", value=customer.recipient_city).classes(C_INPUT)
+                recipient_name = ff_input("Rechnungsempfänger", value=customer.recipient_name)
+                recipient_street = ff_input("Rechnungsstraße", value=customer.recipient_street)
+                recipient_plz = ff_input("Rechnungs-PLZ", value=customer.recipient_postal_code)
+                recipient_city = ff_input("Rechnungs-Ort", value=customer.recipient_city)
 
     name = contact_fields["name"]
     first = contact_fields["first"]
@@ -136,10 +138,13 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         edit_button.enable()
 
     with ui.row().classes("gap-2 mt-4"):
-        edit_button = ui.button("Bearbeiten", on_click=lambda: (set_editable(True), save_button.enable(), edit_button.disable())).classes(C_BTN_SEC)
-        save_button = ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)
+        edit_button = ff_btn_secondary(
+            "Bearbeiten",
+            on_click=lambda: (set_editable(True), save_button.enable(), edit_button.disable()),
+        )
+        save_button = ff_btn_primary("Speichern", on_click=save)
         save_button.disable()
-        ui.button("Abbrechen", on_click=cancel_edit).classes(C_BTN_SEC)
+        ff_btn_secondary("Abbrechen", on_click=cancel_edit)
 
     def delete_customer():
         with get_session() as s:
@@ -170,15 +175,15 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
 
     with ui.row().classes("gap-2 mt-2"):
         if can_delete:
-            ui.button("Löschen", icon="delete", on_click=delete_customer).classes(C_BTN_PRIM)
+            ff_btn_danger("Löschen", icon="delete", on_click=delete_customer)
         else:
-            ui.button("Archivieren", icon="archive", on_click=archive_customer).classes(C_BTN_SEC)
+            ff_btn_secondary("Archivieren", icon="archive", on_click=archive_customer)
 
     ui.label("Rechnungen").classes(C_SECTION_TITLE + " mt-6 mb-2")
     if not invoices:
-        ui.label("Keine Rechnungen vorhanden").classes("text-sm text-neutral-400")
+        ui.label("Keine Rechnungen vorhanden").classes(STYLE_TEXT_MUTED)
     else:
-        with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+        with ff_card(pad="p-0", classes="overflow-hidden"):
             with ui.row().classes(C_TABLE_HEADER):
                 ui.label("Nr").classes("w-20 font-bold")
                 ui.label("Datum").classes("w-28 font-bold")
@@ -192,7 +197,9 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
                     else:
                         _open_invoice_detail(int(target.id))
 
-                with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-neutral-900/60").on("click", lambda _, x=inv: open_invoice(x)):
+                with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-slate-50").on(
+                    "click", lambda _, x=inv: open_invoice(x)
+                ):
                     ui.label(f"#{inv.nr}" if inv.nr else "-").classes("w-20 text-xs font-mono")
                     ui.label(inv.date or "-").classes("w-28 text-xs font-mono")
                     ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))
