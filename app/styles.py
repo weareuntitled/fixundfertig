@@ -37,6 +37,7 @@ APP_FONT_CSS = f"""
     --ff-text: #0f172a;          /* slate-900 */
     --ff-muted: #64748b;         /* slate-500 */
     --ff-muted-2: #94a3b8;       /* slate-400 */
+    --ff-icon-inactive: #cbd5e1; /* slate-300 */
 
     /* Brand accent (used for focus ring / highlights) */
     --brand-primary: #f59e0b;     /* amber-500 */
@@ -65,6 +66,26 @@ APP_FONT_CSS = f"""
   }}
   .q-btn {{
     box-shadow: none !important;
+  }}
+
+  /* Global icon standard: inactive light gray, active primary orange */
+  .q-icon {{
+    color: var(--ff-icon-inactive);
+  }}
+  .q-btn .q-icon,
+  .q-item .q-icon,
+  .q-tab .q-icon,
+  .q-checkbox .q-icon,
+  .q-radio .q-icon {{
+    color: inherit !important;
+  }}
+  .q-btn--active,
+  .q-btn--active .q-icon,
+  .q-item--active,
+  .q-item--active .q-icon,
+  .q-tab--active,
+  .q-tab--active .q-icon {{
+    color: var(--brand-primary) !important;
   }}
 
   /* Button contrast guard: prevents unreadable label/icon combinations */
@@ -258,12 +279,12 @@ STYLE_TEXT_SUBTLE = "text-sm text-slate-500"
 STYLE_TEXT_HINT = "text-sm text-slate-400"
 
 STYLE_BTN_PRIMARY = (
-    "bg-slate-900 text-white hover:bg-slate-800 active:scale-[0.99] rounded-lg px-4 py-2 text-sm "
+    "bg-amber-500 text-white hover:bg-amber-600 border border-amber-500 active:scale-[0.99] rounded-lg px-4 py-2 text-sm "
     "font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
 )
 STYLE_BTN_SECONDARY = (
-    "bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 active:scale-[0.99] rounded-lg px-4 py-2 "
-    "text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30"
+    "bg-transparent text-amber-500 border border-amber-500 hover:bg-amber-50 active:scale-[0.99] rounded-lg px-4 py-2 "
+    "text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/30"
 )
 STYLE_BTN_GHOST = (
     "text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:scale-[0.99] rounded-md px-3 py-2 text-sm "
