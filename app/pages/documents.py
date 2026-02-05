@@ -806,6 +806,7 @@ def render_documents(session, comp: Company) -> None:
                     filename = None
                     storage_key = None
                     storage_path = None
+                    deleted = False
                     try:
                         if not delete_id["value"]:
                             delete_dialog.close()
@@ -842,6 +843,7 @@ def render_documents(session, comp: Company) -> None:
                                     s.delete(meta)
                                 s.delete(document)
                                 s.commit()
+                                deleted = True
                         logger.info(
                             "ACTION_SUCCESS",
                             extra=_build_action_context(
@@ -852,9 +854,29 @@ def render_documents(session, comp: Company) -> None:
                                 storage_path=storage_path,
                             ),
                         )
-                        ui.notify("Gelöscht", color="orange")
+                        if document_id is not None:
+                            state["selected_ids"] = {
+                                int(selected_id)
+                                for selected_id in state.get("selected_ids") or set()
+                                if int(selected_id) != int(document_id)
+                            }
+                        delete_id["value"] = None
                         delete_dialog.close()
-                        render_list.refresh()
+                        if deleted and document_id is not None:
+                            with get_session() as verify_session:
+                                still_exists = verify_session.get(Document, int(document_id)) is not None
+                            if still_exists:
+                                ui.notify(f"Löschen nicht bestätigt (Dokument-ID: {document_id})", color="red")
+                                return
+                        ui.notify("Gelöscht", color="orange")
+                        try:
+                            render_list.refresh()
+                        except Exception:
+                            logger.exception(
+                                "LIST_REFRESH_FAILED_AFTER_DELETE",
+                                extra={"document_id": document_id},
+                            )
+                            ui.notify("Dokument gelöscht. Bitte Liste neu laden.", color="orange")
                     except Exception:
                         logger.exception(
                             "ACTION_FAILED",
