@@ -107,6 +107,21 @@ APP_FONT_CSS = f"""
     color: var(--ff-muted-2) !important;
   }}
 
+  /* Field error/hint text (Quasar bottom slot) – ensure readable on light background */
+  .q-field__bottom,
+  .q-field__messages,
+  .q-field .q-field__bottom .q-field__messages,
+  .q-field [class*="text-negative"] {{
+    color: #b91c1c !important;
+    opacity: 1 !important;
+  }}
+
+  /* Auth (login/signup) error text – always visible */
+  .ff-auth-error {{
+    color: #b91c1c !important;
+    opacity: 1 !important;
+  }}
+
   /* Dropdown menus */
   .q-menu {{
     background: var(--ff-surface) !important;
