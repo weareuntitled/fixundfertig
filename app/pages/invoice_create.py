@@ -17,6 +17,7 @@ from logic import finalize_invoice_logic
 from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
 from styles import C_CARD, C_INPUT
 from styles import STYLE_TEXT_SUBTLE
+from ui_components import ff_btn_primary, ff_btn_secondary
 
 
 def _get(obj: Any, *names: str, default: Any = "") -> Any:
@@ -126,7 +127,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     )
                     with invoice_date_menu:
                         invoice_date_picker = ui.date(value=today).props('mask="YYYY-MM-DD"')
-                        ui.button("OK", on_click=invoice_date_menu.close).props("flat color=primary")
+                        ff_btn_secondary("OK", on_click=invoice_date_menu.close, props="dense")
 
                 invoice_date_input.on("click", lambda: invoice_date_menu.open())
 
@@ -146,7 +147,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     )
                     with service_menu:
                         service_picker = ui.date(value={"from": today, "to": today}).props('mask="YYYY-MM-DD" range')
-                        ui.button("OK", on_click=service_menu.close).props("flat color=primary")
+                        ff_btn_secondary("OK", on_click=service_menu.close, props="dense")
 
                 service_input.on("click", lambda: service_menu.open())
 
@@ -176,7 +177,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             with ui.card().props("flat").classes(card_cls):
                 with ui.row().classes("w-full items-center justify-between"):
                     ui.label("Positionen").classes("text-lg font-semibold")
-                    add_btn = ui.button("Position hinzufügen").props("outline color=primary")
+                    add_btn = ff_btn_secondary("Position hinzufügen")
 
                 columns = [
                     {"name": "description", "label": "Beschreibung", "field": "description", "align": "left"},
@@ -198,7 +199,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                         d_tax = ui.number("USt in %", value=0, min=0, step=1).props("outlined dense").classes(C_INPUT)
 
                         with ui.row().classes("w-full justify-end gap-2 mt-4"):
-                            ui.button("Abbrechen", on_click=dialog.close).props("flat color=primary")
+                            ff_btn_secondary("Abbrechen", on_click=dialog.close)
 
                             def _add_item() -> None:
                                 new_item = {
@@ -213,7 +214,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                                 dialog.close()
                                 mark_preview_dirty()
 
-                            ui.button("Hinzufügen", on_click=_add_item).props("unelevated color=primary")
+                            ff_btn_primary("Hinzufügen", on_click=_add_item)
 
                 add_btn.on("click", dialog.open)
 
@@ -250,10 +251,11 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     except Exception as exc:
                         ui.notify(f"Fehler beim Speichern der Rechnung: {exc}", color="red")
 
-                ui.button(
+                ff_btn_primary(
                     "Rechnung finalisieren",
                     on_click=_finalize_invoice,
-                ).props("unelevated color=primary").classes("mt-4 ff-btn-finalize-invoice")
+                    classes="mt-4 ff-btn-finalize-invoice",
+                )
 
         # RIGHT column preview
         with ui.column().classes("w-full md:flex-1"):
@@ -344,12 +346,26 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     def _is_new_customer_selection(value: Any) -> bool:
         if value == new_customer_value:
             return True
-        if isinstance(value, str) and value.strip().lower() == "neuen kunden hinzufügen":
+        if not isinstance(value, str):
+            return False
+        normalized = value.strip().lower()
+        if not normalized:
+            return False
+        if normalized in {"neuen kunden hinzufügen", "neuen kunden anlegen"}:
+            return True
+        if "kunde" in normalized and ("hinzuf" in normalized or "anleg" in normalized):
             return True
         return False
 
     def _on_customer_change(e) -> None:
         if _is_new_customer_selection(e.value):
+            entered_customer_name = ""
+            if isinstance(customer_select.value, str):
+                normalized = customer_select.value.strip().lower()
+                if normalized and not _is_new_customer_selection(normalized):
+                    entered_customer_name = customer_select.value.strip()
+            if entered_customer_name:
+                app.storage.user["new_customer_prefill_name"] = entered_customer_name
             app.storage.user["return_page"] = "invoice_create"
             app.storage.user["return_invoice_draft_id"] = app.storage.user.get("invoice_draft_id")
             app.storage.user["page"] = "customer_new"
@@ -365,6 +381,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         preview_state["pending"] = False
         update_preview()
 
+    customer_select.on("update:model-value", _on_customer_change)
     customer_select.on("update:modelValue", _on_customer_change)
     title_input.on("update:value", lambda e: mark_preview_dirty())
     intro_input.on("update:value", lambda e: mark_preview_dirty())

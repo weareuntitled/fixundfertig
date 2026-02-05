@@ -22,6 +22,9 @@ def render_customer_new(session, comp: Company) -> None:
                 recipient_city = ff_input("Rechnungs-Ort", value="")
 
     name = contact_fields["name"]
+    prefill_name = str(app.storage.user.pop("new_customer_prefill_name", "") or "").strip()
+    if prefill_name:
+        name.value = prefill_name
     first = contact_fields["first"]
     last = contact_fields["last"]
     email = contact_fields["email"]
@@ -77,10 +80,10 @@ def render_customer_new(session, comp: Company) -> None:
             return_invoice_draft_id = app.storage.user.get("return_invoice_draft_id")
             if return_invoice_draft_id is not None:
                 app.storage.user["invoice_draft_id"] = return_invoice_draft_id
-            app.storage.user["new_customer_id"] = new_customer_id
-            app.storage.user["page"] = "invoice_create"
             app.storage.user.pop("return_page", None)
             app.storage.user.pop("return_invoice_draft_id", None)
+            app.storage.user["page"] = "customer_detail"
+            app.storage.user["customer_detail_id"] = new_customer_id
             ui.navigate.to("/")
             return
         app.storage.user["page"] = "customers"

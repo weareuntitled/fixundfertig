@@ -1684,13 +1684,13 @@ _LAYOUT = {
         "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 "
         "border border-transparent"
     ),
-    "nav_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
-    "nav_btn_inactive": "text-slate-600 hover:text-slate-900 hover:border-slate-200 hover:bg-slate-50",
+    "nav_btn_active": "text-amber-500 border-amber-200 bg-amber-50",
+    "nav_btn_inactive": "text-slate-300 hover:text-amber-500 hover:border-amber-200 hover:bg-amber-50",
     "main": "flex-1 w-full relative pl-28 pr-6 pb-8",
     "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
     "topbar_left": "flex-1 items-center gap-4",
     "topbar_right": "flex-1 items-center justify-end gap-2",
-    "icon_btn": "text-slate-600 hover:text-slate-900",
+    "icon_btn": "text-slate-300 hover:text-amber-500",
     "sidebar_logo": "ff-sidebar-logo w-11 h-11 rounded-none object-contain",
     "header_search": f"{STYLE_INPUT} w-72",
     "new_invoice_btn": f"{STYLE_BTN_ACCENT} w-[150px]",
