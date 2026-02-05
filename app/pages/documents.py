@@ -982,7 +982,9 @@ def render_documents(session, comp: Company) -> None:
         with ui.row().classes("w-full items-center justify-between gap-6 flex-wrap"):
             with ui.row().classes("items-center gap-4"):
                 ui.label("Dokumente").classes("text-3xl font-bold text-neutral-100")
-                ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(C_BTN_PRIM)
+                ui.button("Upload", icon="upload", on_click=upload_dialog.open).classes(
+                    C_BTN_PRIM + " shadow-none border-2 border-solid border-[var(--color-neutral-100)]"
+                )
 
     @ui.refreshable
     def render_summary():
@@ -1233,7 +1235,9 @@ def render_documents(session, comp: Company) -> None:
                     # FIXED: Added 'flex justify-end' and 'shrink-0' to lock position
                     with ui.element("div").classes(col_w["action"] + " flex justify-end shrink-0"):
                         # 'stop' stops click propagation (so clicking menu doesn't select row)
-                        with ui.button(icon="more_vert").props("round flat dense stop").classes("text-neutral-500 hover:text-white transition-colors"):
+                        with ui.button(icon="more_vert").props("round flat dense stop").classes(
+                            "!text-[var(--brand-accent)] hover:!text-[var(--brand-primary)] transition-colors"
+                        ):
                             with ui.menu().props("auto-close").classes("bg-neutral-900 border border-neutral-800 text-neutral-200"):
                                 ui.menu_item("Bearbeiten", on_click=lambda _, d=doc_id: _open_meta(int(d)))
                                 ui.menu_item("Vorschau", on_click=lambda _, u=open_url: _preview_document(u))
@@ -1241,9 +1245,7 @@ def render_documents(session, comp: Company) -> None:
                                 ui.separator().classes("bg-neutral-800")
                                 ui.menu_item("Löschen", on_click=lambda _, d=doc_id: _open_delete(int(d))).classes("text-rose-400 hover:text-rose-300")
 
-    with ui.element("div").classes(
-        "w-full bg-neutral-950/80 rounded-xl p-6 border border-neutral-800 flex flex-col gap-6"
-    ):
+    with ui.element("div").classes("w-full rounded-xl p-6 flex flex-col gap-6"):
         render_filters()
         render_summary()
         render_list()

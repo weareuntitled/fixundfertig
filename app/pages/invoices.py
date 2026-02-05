@@ -176,7 +176,12 @@ def render_invoices(session, comp: Company) -> None:
                                                     ui.menu_item("Löschen", on_click=lambda x=inv: open_delete(x))
 
         # Right column
-        with ui.column().classes("col-span-10 lg:col-span-3 gap-4"):
+        with ui.column().classes(
+            "col-span-10 lg:col-span-3 "
+            "gap-5 "
+            "border-2 border-[color:var(--color-neutral-600)] rounded-[20px] "
+            "ml-0 px-5 py-[21px]"
+        ):
             # Drafts
             with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
                 with ui.row().classes("px-4 py-3 border-b border-neutral-800 items-center justify-between"):

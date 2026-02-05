@@ -369,13 +369,19 @@ def render_dashboard(session, comp: Company) -> None:
             ui.label("Dashboard").classes("text-3xl font-bold tracking-tight text-neutral-100")
             ui.label(f"Welcome back, {greeting_name}").classes("text-sm text-neutral-300")
         with ui.row().classes(
-            "rounded-full bg-neutral-900/80 backdrop-blur-md border border-neutral-800 shadow-sm p-1 gap-1"
+            "rounded-full bg-neutral-900 border border-[var(--brand-accent)] "
+            "shadow-none text-neutral-100 "
+            "px-[25px] py-[5px] gap-1 mx-0"
         ):
             for value in filters:
                 is_active = active_filter["value"] == value
                 cls = (
-                    "px-4 py-1.5 rounded-full text-sm font-semibold transition-all "
-                    + ("bg-[#ffc524]/20 text-[#ffc524] shadow-sm" if is_active else "text-neutral-500 hover:text-neutral-200")
+                    "px-4 py-1.5 text-sm font-semibold transition-all "
+                    + (
+                        "rounded-full !bg-neutral-600 !text-[var(--brand-accent)] shadow-none"
+                        if is_active
+                        else "rounded-none !bg-transparent hover:!bg-transparent !text-neutral-500 hover:!text-neutral-200"
+                    )
                 )
                 ui.button(value, on_click=lambda v=value: set_filter(v)).props("flat dense").classes(cls)
 
@@ -393,7 +399,8 @@ def render_dashboard(session, comp: Company) -> None:
                     "hover:-translate-y-1 hover:shadow-2xl hover:border-neutral-700/80 transition-all duration-200"
                 ):
                     with ui.button(icon="more_horiz").props("flat round dense").classes(
-                        "absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition text-neutral-400 hover:text-neutral-100"
+                        "absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition "
+                        "!text-[var(--brand-primary)]"
                     ):
                         with ui.menu().props("auto-close"):
                             for label, handler in _actions_for_item(item):

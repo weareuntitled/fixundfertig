@@ -246,7 +246,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 ui.button(
                     "Rechnung finalisieren",
                     on_click=_finalize_invoice,
-                ).props("unelevated color=primary").classes("mt-4")
+                ).props("unelevated color=primary").classes("mt-4 ff-btn-finalize-invoice")
 
         # RIGHT column preview
         with ui.column().classes("w-full md:flex-1"):
