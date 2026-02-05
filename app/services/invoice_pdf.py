@@ -321,6 +321,11 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     elif company_tax_id:
         meta_data.append(("Steuernr.:", company_tax_id))
 
+    if company_vat_id:
+        meta_data.append(("USt-ID:", company_vat_id))
+    elif company_tax_id:
+        meta_data.append(("Steuernr.:", company_tax_id))
+
     for label, val in meta_data:
         set_font(bold=True, size=9)
         c.drawRightString(meta_x, y_meta, label)
