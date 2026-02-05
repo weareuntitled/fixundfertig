@@ -338,12 +338,13 @@ def render_settings(session, comp: Company) -> None:
 
                 def _iban_lookup(_e=None) -> None:
                     b, bn = lookup_bank_from_iban(iban.value or "")
-                    if b and not (bic.value or "").strip():
+                    if b:
                         bic.set_value(b)
-                    if bn and not (bank_name.value or "").strip():
+                    if bn:
                         bank_name.set_value(bn)
 
                 iban.on("blur", _iban_lookup)
+                iban.on("update:value", _iban_lookup)
 
             with ui.expansion("Rechnungsnummern").classes("w-full"):
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4 pt-2"):
@@ -576,6 +577,18 @@ def render_settings(session, comp: Company) -> None:
     use_address_autocomplete(street, plz, city, country, street_dropdown)
 
     def save() -> None:
+        iban_value = (iban.value or "").strip()
+        bic_value = (bic.value or "").strip()
+        bank_name_value = (bank_name.value or "").strip()
+        if iban_value and (not bic_value or not bank_name_value):
+            looked_up_bic, looked_up_bank = lookup_bank_from_iban(iban_value)
+            if looked_up_bic and not bic_value:
+                bic_value = looked_up_bic
+                bic.set_value(looked_up_bic)
+            if looked_up_bank and not bank_name_value:
+                bank_name_value = looked_up_bank
+                bank_name.set_value(looked_up_bank)
+
         patch = {
             "name": name.value or "",
             "first_name": first_name.value or "",
@@ -586,9 +599,9 @@ def render_settings(session, comp: Company) -> None:
             "country": country.value or "",
             "email": email.value or "",
             "phone": phone.value or "",
-            "iban": iban.value or "",
-            "bic": bic.value or "",
-            "bank_name": bank_name.value or "",
+            "iban": iban_value,
+            "bic": bic_value,
+            "bank_name": bank_name_value,
             "tax_id": tax.value or "",
             "vat_id": vat.value or "",
             "business_type": business_type.value or "Einzelunternehmen",
