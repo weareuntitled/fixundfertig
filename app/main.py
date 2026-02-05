@@ -710,6 +710,9 @@ async def n8n_upload(
     if not isinstance(vendor_details, dict):
         vendor_details = {}
 
+    extracted_payload = _resolve_extracted_payload(payload)
+    extracted = _validate_extracted_payload(extracted_payload)
+
     raw_filename = (
         file_name
         or payload.get("file_name")
@@ -756,14 +759,13 @@ async def n8n_upload(
     title_value = (title or extracted.get("title") or payload.get("title") or "").strip()
     if not title_value:
         title_value = build_display_title(
-            vendor_name_value,
-            invoice_date_value,
+            vendor_value,
+            doc_date_value,
             amount_value,
             currency_value,
             safe_name,
         )
-    description_value = (description or _payload_text(payload, "summary")).strip()
-    doc_date_value = invoice_date_value
+    description_value = (description or extracted.get("summary") or _payload_text(payload, "summary")).strip()
 
     with get_session() as session:
         company = session.get(Company, company_id)
@@ -779,7 +781,7 @@ async def n8n_upload(
             select(Document).where(
                 Document.company_id == company_id,
                 Document.sha256 == sha256,
-                Document.source == "N8N",
+                Document.source.in_(["n8n", "N8N"]),
             )
         ).first()
         if existing:
@@ -793,19 +795,16 @@ async def n8n_upload(
             )
 
         ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
-        document = Document(
-            company_id=company_id,
-            filename=safe_name,
-            storage_key="pending",
-            original_filename=str(raw_filename),
+        document = build_document_record(
+            company_id,
+            str(raw_filename),
             mime_type=mime,
             size_bytes=len(file_bytes),
-            source="N8N",
-            doc_type=ext,
-            storage_path="",
-            mime=mime,
-            size=len(file_bytes),
             sha256=sha256,
+            source="n8n",
+            doc_type=ext,
+            storage_key="pending",
+            storage_path="",
             title=title_value,
             description=description_value,
             vendor=vendor_value,
@@ -815,21 +814,17 @@ async def n8n_upload(
             amount_net=amount_net_value,
             amount_tax=amount_tax_value,
             currency=currency_value,
-            keywords_json=normalize_keywords(keywords_value),
-            amount_vat=vat_amount_value,
-            amount_gross=gross_amount_value,
-            invoice_number=invoice_number_value,
-            invoice_date=invoice_date_value,
-            tax_treatment=tax_treatment_value,
-            document_type=document_type_value,
-            vendor_name=vendor_name_value,
-            vendor_street=vendor_street_value,
-            vendor_zip=vendor_zip_value,
-            vendor_city=vendor_city_value,
-            vendor_country=vendor_country_value,
-            vendor_tax_id=vendor_tax_id_value,
-            vendor_vat_id=vendor_vat_id_value,
         )
+        # Make sure stored filename matches our computed safe name (incl. .bnh adjustments).
+        document.filename = safe_name
+        document.keywords_json = normalize_keywords(keywords_value)
+        # Backfill commonly used derived fields for downstream UI logic.
+        document.invoice_date = doc_date_value
+        document.gross_amount = amount_value
+        document.net_amount = amount_net_value
+        document.tax_amount = amount_tax_value
+        document.tax_treatment = str(extracted.get("tax_treatment") or payload.get("tax_treatment") or "").strip()
+        document.document_type = str(extracted.get("document_type") or payload.get("document_type") or "").strip()
         session.add(document)
         session.flush()
 
@@ -853,6 +848,29 @@ async def n8n_upload(
             session.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
 
+        raw_payload_json = json.dumps(payload, ensure_ascii=False)
+        line_items_json = _json_text(extracted.get("line_items") if isinstance(extracted, dict) else None, default="[]")
+        compliance_flags_json = _json_text(
+            extracted.get("compliance_flags") if isinstance(extracted, dict) else None,
+            default="[]",
+        )
+        meta = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id == int(document.id or 0))
+        ).first()
+        if meta:
+            meta.raw_payload_json = raw_payload_json
+            meta.line_items_json = line_items_json
+            meta.compliance_flags_json = compliance_flags_json
+        else:
+            session.add(
+                DocumentMeta(
+                    document_id=int(document.id or 0),
+                    raw_payload_json=raw_payload_json,
+                    line_items_json=line_items_json,
+                    compliance_flags_json=compliance_flags_json,
+                )
+            )
+
         session.commit()
 
         return JSONResponse(
@@ -863,34 +881,6 @@ async def n8n_upload(
                 "document_id": int(document.id or 0),
             },
         )
-
-
-@app.get("/api/invoices/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: int, rev: str | None = None) -> Response:
-    _require_api_auth()
-    with get_session() as session:
-        invoice = session.get(Invoice, invoice_id)
-        if not invoice:
-            raise HTTPException(status_code=404, detail="Invoice not found")
-
-        customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
-        company = None
-        if customer and customer.company_id:
-            company = session.get(Company, customer.company_id)
-        if not company:
-            company = session.exec(select(Company)).first() or Company()
-
-        pdf_path = _resolve_invoice_pdf_path(invoice.pdf_filename)
-        if pdf_path and pdf_path.exists():
-            return Response(pdf_path.read_bytes(), media_type="application/pdf")
-
-        if invoice.pdf_bytes:
-            pdf_bytes = invoice.pdf_bytes
-        else:
-            pdf_bytes = render_invoice_to_pdf_bytes(invoice, company)
-        if isinstance(pdf_bytes, bytearray):
-            pdf_bytes = bytes(pdf_bytes)
-        return Response(pdf_bytes, media_type="application/pdf")
 
 
 @app.post("/api/documents/upload")
@@ -1338,7 +1328,7 @@ def set_page(name: str):
 
 
 @app.get("/api/invoices/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: int):
+def invoice_pdf(invoice_id: int, rev: str | None = None):
     if not require_auth():
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -1454,7 +1444,7 @@ def _n8n_documents_today_count() -> int:
     try:
         with get_session() as session:
             stmt = select(Document.id).where(
-                Document.source == "N8N",
+                Document.source.in_(["n8n", "N8N"]),
                 Document.created_at >= start,
                 Document.created_at < end,
             )
