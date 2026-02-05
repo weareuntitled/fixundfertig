@@ -9,7 +9,13 @@ logger = logging.getLogger(__name__)
 
 
 def _auth_disabled() -> bool:
-    return os.getenv("FF_DISABLE_AUTH") == "1"
+    # Never disable auth automatically in test runs (CI/dev machines might have FF_DISABLE_AUTH set).
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return False
+    disabled = os.getenv("FF_DISABLE_AUTH") == "1"
+    if disabled and (os.getenv("FF_ENV") or "").strip().lower() in {"prod", "production"}:
+        raise RuntimeError("FF_DISABLE_AUTH must not be enabled in production")
+    return disabled
 
 
 def _local_test_username() -> str:
@@ -17,7 +23,10 @@ def _local_test_username() -> str:
 
 
 def _local_test_password() -> str:
-    return os.getenv("FF_LOCAL_TEST_PASSWORD") or "123456"
+    password = os.getenv("FF_LOCAL_TEST_PASSWORD")
+    if password:
+        return password
+    raise RuntimeError("FF_LOCAL_TEST_PASSWORD must be set when FF_DISABLE_AUTH=1")
 
 
 def _local_test_email(username: str) -> str:

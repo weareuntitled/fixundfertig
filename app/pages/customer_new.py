@@ -1,5 +1,6 @@
 from __future__ import annotations
 from ._shared import *
+from ui_components import ff_btn_primary, ff_input
 
 # Auto generated page renderer
 
@@ -15,10 +16,10 @@ def render_customer_new(session, comp: Company) -> None:
                 value=True,
             ).classes("mb-2")
             with settings_grid():
-                recipient_name = ui.input("Rechnungsempfänger", value="").classes(C_INPUT)
-                recipient_street = ui.input("Rechnungsstraße", value="").classes(C_INPUT)
-                recipient_plz = ui.input("Rechnungs-PLZ", value="").classes(C_INPUT)
-                recipient_city = ui.input("Rechnungs-Ort", value="").classes(C_INPUT)
+                recipient_name = ff_input("Rechnungsempfänger", value="")
+                recipient_street = ff_input("Rechnungsstraße", value="")
+                recipient_plz = ff_input("Rechnungs-PLZ", value="")
+                recipient_city = ff_input("Rechnungs-Ort", value="")
 
     name = contact_fields["name"]
     first = contact_fields["first"]
@@ -85,4 +86,4 @@ def render_customer_new(session, comp: Company) -> None:
         app.storage.user["page"] = "customers"
         ui.navigate.to("/")
 
-    ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)
+    ff_btn_primary("Speichern", on_click=save)

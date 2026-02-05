@@ -38,6 +38,16 @@ LAYOUT = {
     "pos_address": 10 * mm,    # Wo fängt das Adressfeld an? (Ideal für Fensterkuvert)
     "pos_info": 50 * mm,       # Wo fängt der Datumsblock rechts an?
 
+    # Header layout (Logo links, Titel rechts)
+    "header_left_w": 60 * mm,          # reservierte Breite links für Logo/Firmenname
+    "header_gap": 10 * mm,             # Abstand zwischen linker und rechter Header-Spalte
+    "logo_max_w": 45 * mm,             # maximale Logobreite
+    "logo_max_h": 25 * mm,             # maximale Logohöhe
+    "header_baseline_offset": 2 * mm,  # Baseline-Abstand unterhalb des oberen Rands
+    "header_title_leading": 6 * mm,    # Zeilenhöhe für den Titel
+    "header_sub_leading": 4.5 * mm,    # Zeilenhöhe für Unterzeilen (z.B. Nr.)
+    "header_meta_gap": 6 * mm,         # Mindestabstand zwischen Header und Metadaten
+
     # Farben (RGB: 0.0 bis 1.0)
     "col_primary": (0, 0, 0),        # Hauptfarbe Text (Schwarz)
     "col_line": (0.0, 0.0, 0.0),     # Farbe der Trennlinien (Schwarz)
@@ -194,27 +204,16 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         c.setFont(font_b if bold else font_r, size)
         c.setFillColorRGB(*color)
 
-    # 3. HEADER (Logo & Titel)
-    y = my_top
-    
-    # Titel rechts
+    # 3. HEADER (Logo / Firmenname links, Titel rechts)
+    header_top_y = my_top
+    header_baseline_y = header_top_y - LAYOUT["header_baseline_offset"]
+    left_w = min(float(LAYOUT["header_left_w"]), float(content_w) * 0.6)
+    gap_w = float(LAYOUT["header_gap"])
+    right_edge_x = w - mx
+    right_col_w = max(float(content_w) - left_w - gap_w, 40 * mm)
+
     title = _safe_str(_get(invoice, "title", default="")) or "Rechnung"
     nr = _safe_str(_get(invoice, "nr", "invoice_number", default=""))
-
-    set_font(bold=True, size=LAYOUT["fs_title"])
-    c.drawRightString(w - mx, y - 10, title)
-    
-    if nr:
-        set_font(bold=False, size=10)
-        c.drawRightString(w - mx, y - 10 - LAYOUT["fs_title"], f"Nr. {nr}")
-
-  # ... innerhalb von render_invoice_to_pdf_bytes ...
-    
-    # 1. Definieren wo oben ist (Seitenhöhe minus Rand)
-    logo_top_y = h - LAYOUT["margin_top"]  
-    
-    # Debugging: Falls das Logo immer noch fehlt, aktiviere diesen Print
-    # print(f"Suche Logo für ID {_get(comp, 'id')}")
 
     logo = None
     comp_id = _get(comp, "id", default=None)
@@ -226,26 +225,46 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
             except Exception:
                 logo = None
 
+    # Left header column: logo or company name (wrap inside left_w)
     if logo is not None:
         iw, ih = logo.getSize()
-
-        # Maximale Größe definieren (z.B. 4.5cm breit, 2.5cm hoch)
-        max_w = 45 * mm
-        max_h = 25 * mm
-
-        # Skalierung berechnen (Aspektverhältnis beibehalten)
+        max_w = float(LAYOUT["logo_max_w"])
+        max_h = float(LAYOUT["logo_max_h"])
         scale = min(max_w / iw, max_h / ih, 1.0)
         draw_w = iw * scale
         draw_h = ih * scale
-
-        # WICHTIG: Positionierung
-        # x = rechter Rand (w - mx - draw_w)
-        # y = Oben (logo_top_y) minus Bildhöhe (draw_h), da Reportlab von unten malt
-        c.drawImage(logo, w - mx - draw_w, logo_top_y - draw_h, width=draw_w, height=draw_h, mask="auto")
+        c.drawImage(
+            logo,
+            mx,
+            header_top_y - draw_h,
+            width=draw_w,
+            height=draw_h,
+            mask="auto",
+        )
+        left_block_bottom_y = header_top_y - draw_h
     else:
-        fallback_name = _safe_str(_get(comp, "name", default="DANEP")) or "DANEP"
+        fallback_name = _safe_str(_get(comp, "name", default="")) or "DANEP"
         set_font(bold=True, size=12)
-        c.drawRightString(w - mx, logo_top_y - 10, fallback_name)
+        name_lines = _wrap_text(fallback_name, font_b, 12, left_w)
+        name_y = header_baseline_y
+        for ln in name_lines[:2]:
+            c.drawString(mx, name_y, ln)
+            name_y -= float(LAYOUT["header_sub_leading"])
+        left_block_bottom_y = name_y
+
+    # Right header column: title + optional number (wrap inside right_col_w)
+    set_font(bold=True, size=LAYOUT["fs_title"])
+    title_lines = _wrap_text(title, font_b, LAYOUT["fs_title"], right_col_w)
+    ty = header_baseline_y
+    for ln in title_lines[:2]:
+        c.drawRightString(right_edge_x, ty, ln)
+        ty -= float(LAYOUT["header_title_leading"])
+
+    if nr:
+        set_font(bold=False, size=LAYOUT["fs_text"])
+        c.drawRightString(right_edge_x, ty, f"Nr. {nr}")
+        ty -= float(LAYOUT["header_sub_leading"])
+    right_block_bottom_y = ty
 
     # 4. ABSENDERZEILE & EMPFÄNGER
     # Kleine Zeile
@@ -279,6 +298,11 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     # 5. META DATEN (RECHTS)
     y_meta = h - LAYOUT["pos_info"]
     meta_x = w - mx
+
+    header_bottom_y = min(left_block_bottom_y, right_block_bottom_y)
+    min_gap = float(LAYOUT["header_meta_gap"])
+    if y_meta > header_bottom_y - min_gap:
+        y_meta = header_bottom_y - min_gap
     
     meta_data = [
         ("Datum:", inv_date or "-"),

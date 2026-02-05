@@ -19,17 +19,15 @@ from services.auth import (
     verify_password,
 )
 from ui_theme import apply_global_ui_theme
-from styles import C_INPUT
+from styles import STYLE_BTN_PRIMARY, STYLE_CARD, STYLE_HEADING, STYLE_INPUT, STYLE_TEXT_MUTED
 
-ERROR_TEXT = "text-sm text-orange-400"
-LINK_TEXT = "text-sm !text-neutral-400 hover:!text-neutral-200 no-underline"
-TITLE_TEXT = "text-2xl font-semibold text-neutral-100 text-center"
-SUBTITLE_TEXT = "text-sm text-neutral-300 text-center"
-INPUT_CLASSES = f"w-full {C_INPUT}"
-PRIMARY_BUTTON = "w-full !bg-neutral-800 !text-white rounded-lg hover:bg-neutral-700"
-SECONDARY_BUTTON = "w-full border border-neutral-800 text-neutral-200 rounded-lg hover:bg-neutral-800"
-CARD_CLASSES = "w-full max-w-[400px] bg-neutral-900 rounded-xl shadow-lg border border-neutral-800 p-6"
-BG_CLASSES = "min-h-screen w-full bg-neutral-950 flex items-center justify-center px-4"
+ERROR_TEXT = "text-sm text-rose-600"
+LINK_TEXT = "text-sm text-slate-600 hover:text-slate-900 no-underline"
+TITLE_TEXT = f"{STYLE_HEADING} text-center"
+SUBTITLE_TEXT = f"{STYLE_TEXT_MUTED} text-center"
+INPUT_CLASSES = f"w-full {STYLE_INPUT}"
+CARD_CLASSES = f"w-full max-w-[420px] {STYLE_CARD} p-6"
+BG_CLASSES = "min-h-screen w-full bg-slate-50 flex items-center justify-center px-4"
 logger = logging.getLogger(__name__)
 
 
@@ -38,9 +36,7 @@ def auth_layout(title: str, subtitle: str):
     with ui.element("div").classes(BG_CLASSES):
         with ui.column().classes("w-full items-center gap-6"):
             with ui.column().classes(f"{CARD_CLASSES} gap-4"):
-                ui.image("/static/Logo-fixundfertig-invertiert.jpg").props(
-                    "fit=contain"
-                ).classes("h-16 w-40 self-center")
+                ui.image("/static/Logo-fixundfertig.svg").props("fit=contain").classes("h-14 w-40 self-center")
                 ui.label(title).classes(TITLE_TEXT)
                 if subtitle:
                     ui.label(subtitle).classes(SUBTITLE_TEXT)
@@ -83,7 +79,7 @@ def _show_success(
     with card:
         if icon:
             ui.icon(icon).classes("text-orange-500 text-4xl self-center")
-        ui.label(message).classes("text-sm text-neutral-500 text-center")
+        ui.label(message).classes(f"{STYLE_TEXT_MUTED} text-center")
         if link_text and link_href:
             ui.link(link_text, link_href).classes(f"{LINK_TEXT} self-center")
 
@@ -109,7 +105,7 @@ def login_page():
         with ui.column().classes("w-full gap-1"):
             password_input = ui.input("Password").props("outlined dense type=password").classes(INPUT_CLASSES)
         status_error = _error_label()
-        status_success = ui.label("").classes("text-sm text-neutral-300")
+        status_success = ui.label("").classes(STYLE_TEXT_MUTED)
         status_success.set_visibility(False)
 
         def handle_login() -> None:
@@ -159,17 +155,15 @@ def login_page():
             except Exception as exc:
                 _set_error(status_error, str(exc))
 
-        login_button = (
-            ui.button("Log in", on_click=handle_login)
-            .props("unelevated loading=false")
-            .classes(PRIMARY_BUTTON)
+        login_button = ui.button("Log in", on_click=handle_login).props("unelevated no-caps loading=false").classes(
+            f"{STYLE_BTN_PRIMARY} w-full"
         )
         with ui.row().classes("w-full justify-between"):
             ui.link("Forgot password?", "/forgot").classes(LINK_TEXT)
             ui.link("Create account", "/signup").classes(LINK_TEXT)
         owner_button = (
             ui.button("Owner-Verifizierungslink senden", on_click=handle_owner_verification)
-            .props("flat")
+            .props("flat no-caps")
             .classes(LINK_TEXT)
         )
 
@@ -241,11 +235,9 @@ def signup_page():
             finally:
                 signup_button.loading = False
 
-        signup_button = (
-            ui.button("Create account", on_click=handle_signup)
-            .props("unelevated loading=false")
-            .classes(PRIMARY_BUTTON)
-        )
+        signup_button = ui.button("Create account", on_click=handle_signup).props(
+            "unelevated no-caps loading=false"
+        ).classes(f"{STYLE_BTN_PRIMARY} w-full")
         with ui.row().classes("w-full justify-between"):
             ui.link("Already have an account?", "/login").classes(LINK_TEXT)
 
@@ -275,7 +267,9 @@ def verify_page(request: Request):
             else:
                 _set_error(status_error, "Invalid or expired token")
 
-        ui.button("Verify email", on_click=handle_verify).props("unelevated").classes(PRIMARY_BUTTON)
+        ui.button("Verify email", on_click=handle_verify).props("unelevated no-caps").classes(
+            f"{STYLE_BTN_PRIMARY} w-full"
+        )
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
@@ -301,7 +295,9 @@ def forgot_page():
                 "/login",
             )
 
-        ui.button("Send reset link", on_click=handle_request).props("unelevated").classes(PRIMARY_BUTTON)
+        ui.button("Send reset link", on_click=handle_request).props("unelevated no-caps").classes(
+            f"{STYLE_BTN_PRIMARY} w-full"
+        )
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
@@ -342,5 +338,7 @@ def reset_page(request: Request):
             else:
                 _set_error(status_error, "Invalid or expired token")
 
-        ui.button("Reset password", on_click=handle_reset).props("unelevated").classes(PRIMARY_BUTTON)
+        ui.button("Reset password", on_click=handle_reset).props("unelevated no-caps").classes(
+            f"{STYLE_BTN_PRIMARY} w-full"
+        )
         ui.link("Back to login", "/login").classes(LINK_TEXT)

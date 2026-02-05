@@ -36,25 +36,35 @@ def compute_invoice_totals(
 def build_invoice_preview_html(invoice_data: Mapping[str, object]) -> str:
     invoice_number = escape(str(invoice_data.get("invoice_number", "")))
     invoice_date = escape(str(invoice_data.get("invoice_date", "")))
+    filename = escape(str(invoice_data.get("filename", "")))
     totals = invoice_data.get("totals", {}) if isinstance(invoice_data.get("totals"), dict) else {}
 
     net = escape(str(totals.get("net", 0)))
     vat = escape(str(totals.get("vat", 0)))
     gross = escape(str(totals.get("gross", 0)))
+    filename_row = ""
+    if filename:
+        filename_row = (
+            "<div class='text-slate-500'>Dateiname</div>"
+            f"<div class='font-medium text-slate-900 break-all'>{filename}</div>"
+        )
 
     return (
-        "<div class='text-sm text-gray-700'>"
-        "<div><strong>Rechnungsnummer:</strong> "
-        f"{invoice_number}</div>"
-        "<div><strong>Rechnungsdatum:</strong> "
-        f"{invoice_date}</div>"
-        "<div class='mt-2'>"
-        "<div><strong>Netto:</strong> "
-        f"{net} EUR</div>"
-        "<div><strong>USt:</strong> "
-        f"{vat} EUR</div>"
-        "<div><strong>Brutto:</strong> "
-        f"{gross} EUR</div>"
+        "<div class='text-sm text-slate-600'>"
+        "<div class='grid grid-cols-[140px_1fr] gap-x-3 gap-y-1'>"
+        "<div class='text-slate-500'>Rechnungsnummer</div>"
+        f"<div class='font-medium text-slate-900'>{invoice_number}</div>"
+        "<div class='text-slate-500'>Rechnungsdatum</div>"
+        f"<div class='font-medium text-slate-900'>{invoice_date}</div>"
+        f"{filename_row}"
+        "</div>"
+        "<div class='mt-3 grid grid-cols-[140px_1fr] gap-x-3 gap-y-1'>"
+        "<div class='text-slate-500'>Netto</div>"
+        f"<div class='font-medium text-slate-900'>{net} EUR</div>"
+        "<div class='text-slate-500'>USt</div>"
+        f"<div class='font-medium text-slate-900'>{vat} EUR</div>"
+        "<div class='text-slate-500'>Brutto</div>"
+        f"<div class='font-semibold text-slate-900'>{gross} EUR</div>"
         "</div>"
         "</div>"
     )

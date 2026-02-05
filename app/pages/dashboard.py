@@ -8,6 +8,8 @@ from ._shared import _parse_iso_date
 from data import DocumentMeta
 from services.blob_storage import blob_storage
 from services.documents import resolve_document_path
+from styles import STYLE_TEXT_MUTED
+from ui_components import ff_btn_danger, ff_btn_secondary
 
 # Auto generated page renderer
 
@@ -62,10 +64,10 @@ def render_dashboard(session, comp: Company) -> None:
         lower_mime = (mime_value or "").lower()
         lower_name = (filename or "").lower()
         if "pdf" in lower_mime or lower_name.endswith(".pdf"):
-            return "picture_as_pdf", "bg-[#ffc524]/10 text-[#ffd35d] border border-[#ffc524]/20"
+            return "picture_as_pdf", "bg-amber-50 text-amber-700 border border-amber-200"
         if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
-            return "image", "bg-[#ffc524]/10 text-[#ffd35d] border border-[#ffc524]/20"
-        return "insert_drive_file", "bg-neutral-800 text-neutral-300 border border-neutral-700"
+            return "image", "bg-amber-50 text-amber-700 border border-amber-200"
+        return "insert_drive_file", "bg-slate-100 text-slate-600 border border-slate-200"
 
     def _load_doc_items() -> list[dict]:
         invoice_rows = session.exec(
@@ -88,7 +90,7 @@ def render_dashboard(session, comp: Company) -> None:
                     "type": "Invoice",
                     "status": "Paid" if inv.status == InvoiceStatus.PAID else "Pending",
                     "icon": "description",
-                    "accent": "bg-[#ffc524]/10 text-[#ffd35d] border border-[#ffc524]/20",
+                    "accent": "bg-amber-50 text-amber-700 border border-amber-200",
                     "sort_date": _invoice_sort_date(inv),
                     "on_click": lambda _, invoice_id=int(inv.id): _open_invoice_detail(invoice_id),
                 }
@@ -293,11 +295,11 @@ def render_dashboard(session, comp: Company) -> None:
     delete_state = {"kind": None, "id": None, "label": ""}
 
     with ui.dialog() as delete_dialog:
-        with ui.card().classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
+        with ui.card().props("flat").classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
             ui.label("Löschen").classes(C_SECTION_TITLE)
-            delete_label = ui.label("Willst du dieses Element wirklich löschen?").classes("text-sm text-neutral-400")
+            delete_label = ui.label("Willst du dieses Element wirklich löschen?").classes(STYLE_TEXT_MUTED)
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
-                ui.button("Abbrechen", on_click=delete_dialog.close).classes(C_BTN_SEC)
+                ff_btn_secondary("Abbrechen", on_click=delete_dialog.close)
 
                 def _confirm_delete() -> None:
                     if not delete_state["id"] or not delete_state["kind"]:
@@ -309,7 +311,7 @@ def render_dashboard(session, comp: Company) -> None:
                         _delete_document(int(delete_state["id"]))
                     delete_dialog.close()
 
-                ui.button("Löschen", on_click=_confirm_delete).classes("bg-rose-600 text-white hover:bg-rose-700")
+                ff_btn_danger("Löschen", on_click=_confirm_delete)
 
     def _open_delete(kind: str, item_id: int | None, label: str) -> None:
         if not item_id:
@@ -366,24 +368,22 @@ def render_dashboard(session, comp: Company) -> None:
 
     with ui.row().classes("w-full items-center justify-between mb-6 flex-col lg:flex-row gap-4"):
         with ui.column().classes("gap-1"):
-            ui.label("Dashboard").classes("text-3xl font-bold tracking-tight text-neutral-100")
-            ui.label(f"Welcome back, {greeting_name}").classes("text-sm text-neutral-300")
+            ui.label("Dashboard").classes("text-3xl font-bold tracking-tight text-slate-900")
+            ui.label(f"Welcome back, {greeting_name}").classes("text-sm text-slate-600")
         with ui.row().classes(
-            "rounded-full bg-neutral-900 border border-[var(--brand-accent)] "
-            "shadow-none text-neutral-100 "
-            "px-[25px] py-[5px] gap-1 mx-0"
+            "rounded-full bg-white border border-slate-200 shadow-sm p-1 gap-1 mx-0"
         ):
             for value in filters:
                 is_active = active_filter["value"] == value
                 cls = (
-                    "px-4 py-1.5 text-sm font-semibold transition-all "
+                    "px-4 py-1.5 text-sm font-semibold transition-colors rounded-full "
                     + (
-                        "rounded-full !bg-neutral-600 !text-[var(--brand-accent)] shadow-none"
+                        "bg-slate-900 text-white"
                         if is_active
-                        else "rounded-none !bg-transparent hover:!bg-transparent !text-neutral-500 hover:!text-neutral-200"
+                        else "text-slate-600 hover:bg-slate-100"
                     )
                 )
-                ui.button(value, on_click=lambda v=value: set_filter(v)).props("flat dense").classes(cls)
+                ui.button(value, on_click=lambda v=value: set_filter(v)).props("flat dense no-caps").classes(cls)
 
     @ui.refreshable
     def render_cards() -> None:
@@ -395,12 +395,11 @@ def render_dashboard(session, comp: Company) -> None:
         with ui.element("div").classes("w-full grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"):
             for item in visible_items:
                 with ui.element("div").classes(
-                    "group relative bg-neutral-900/80 border border-neutral-800/80 rounded-[24px] p-5 shadow-sm "
-                    "hover:-translate-y-1 hover:shadow-2xl hover:border-neutral-700/80 transition-all duration-200"
+                    f"group relative {C_CARD} {C_CARD_HOVER} p-5 hover:-translate-y-1 transition-all duration-200"
                 ):
                     with ui.button(icon="more_horiz").props("flat round dense").classes(
                         "absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition "
-                        "!text-[var(--brand-primary)]"
+                        "text-slate-500 hover:text-slate-900"
                     ):
                         with ui.menu().props("auto-close"):
                             for label, handler in _actions_for_item(item):
@@ -415,12 +414,12 @@ def render_dashboard(session, comp: Company) -> None:
                                 ui.icon(item["icon"]).classes("text-2xl")
                         with ui.column().classes("gap-2 min-w-0"):
                             ui.label(item["title"]).classes(
-                                "text-sm font-semibold text-neutral-100 leading-snug line-clamp-2"
+                                "text-sm font-semibold text-slate-900 leading-snug line-clamp-2"
                             )
                             with ui.row().classes("items-center justify-between gap-2 min-w-0"):
-                                ui.label(item["date"]).classes("text-[11px] text-neutral-300")
+                                ui.label(item["date"]).classes("text-[11px] text-slate-500")
                                 ui.label(item["type"]).classes(
-                                    "bg-neutral-800 text-neutral-200 border border-neutral-700 px-2 py-0.5 rounded-full "
+                                    "bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full "
                                     "text-[11px] font-semibold truncate max-w-[120px]"
                                 )
                             ui.label(item["status"]).classes(status_badge[item["status"]])

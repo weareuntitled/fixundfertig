@@ -2,262 +2,302 @@
 # APP/STYLES.PY
 # =========================
 
-# --- STYLE SYSTEM (Clean admin look) ---
-# Layout + typography
-C_BG = "bg-neutral-950 text-neutral-100 min-h-screen"
-C_CONTAINER = "w-full max-w-6xl mx-auto px-5 py-6 gap-5 bg-neutral-950 border border-black"
-C_FONT_STACK = '"Inter", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif'
+from __future__ import annotations
+
+"""
+Strict design system (light slate, shadcn-inspired).
+
+Rules:
+- No Quasar elevation shadows (we reset them globally + wrappers use flat/no-shadow).
+- Avoid long inline class strings across pages; prefer STYLE_* constants or wrappers in `ui_components.py`.
+- One padding source: outer container/card defines padding; inner layout uses gap only.
+"""
+
+# Typography
+C_FONT_STACK = '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
 C_NUMERIC = "tabular-nums"
 
 # WICHTIG: Alle CSS-Klammern {{ }} sind doppelt, damit Python sie nicht als Variablen liest!
 APP_FONT_CSS = f"""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  /* Base tokens */
   :root, body, .q-body {{
     font-family: {C_FONT_STACK};
     letter-spacing: -0.01em;
-    color-scheme: dark;
-    --brand-primary: #ffc524;
-    --brand-primary-2: #ffb300;
-    --brand-accent: #ff9f0a;
-    --surface-0: #0a0b0d;
-    --surface-1: #131619;
-    --surface-2: #1c2024;
-    --text-muted: #94a3b8;
-    --color-neutral-100: #f5f5f5;
-    --color-neutral-200: #e5e5e5;
-    --color-neutral-300: #d4d4d4;
-    --color-neutral-400: #a3a3a3;
-    --color-neutral-500: #737373;
-    --color-neutral-600: #525252;
-    --color-neutral-700: #404040;
-    --color-neutral-800: #262626;
-    --color-neutral-900: #171717;
-    --color-neutral-950: #0a0b0d;
+    color-scheme: light;
+
+    /* Light slate tokens */
+    --ff-bg: #f8fafc;            /* slate-50 */
+    --ff-surface: #ffffff;       /* white */
+    --ff-surface-2: #f1f5f9;     /* slate-100 */
+    --ff-border: #e2e8f0;        /* slate-200 */
+    --ff-border-strong: #cbd5e1; /* slate-300 */
+    --ff-text: #0f172a;          /* slate-900 */
+    --ff-muted: #64748b;         /* slate-500 */
+    --ff-muted-2: #94a3b8;       /* slate-400 */
+
+    /* Brand accent (used for focus ring / highlights) */
+    --brand-primary: #f59e0b;     /* amber-500 */
+    --brand-accent: #d97706;      /* amber-600 */
+
+    --ff-ring: rgba(245, 158, 11, 0.25);
   }}
 
-  a {{ color: var(--brand-primary); }}
+  body, .q-body, .nicegui-content {{
+    background: var(--ff-bg) !important;
+    color: var(--ff-text) !important;
+  }}
+
+  a {{ color: var(--brand-accent); }}
   a.q-link {{ color: inherit; }}
-  ::selection {{ background: color-mix(in srgb, var(--brand-primary) 70%, transparent); color: #0a0b0d; }}
+  ::selection {{ background: color-mix(in srgb, var(--brand-primary) 35%, transparent); }}
 
-  /* NiceGUI content container */
-  .nicegui-content {{
-    background-color: var(--color-neutral-950) !important;
+  /* --- QUASAR: disable elevation everywhere (no double design) --- */
+  [class*="q-elevation--"],
+  .q-card,
+  .q-menu,
+  .q-dialog,
+  .q-notification,
+  .q-tooltip {{
+    box-shadow: none !important;
+  }}
+  .q-btn {{
+    box-shadow: none !important;
   }}
 
-  /* --- QUASAR OVERRIDES FOR DARK MODE --- */
-  /* Fields & Inputs */
-  .q-field__label {{ color: #94a3b8 !important; font-weight: 400; }}
-  .q-field--focused .q-field__label {{ color: var(--brand-primary) !important; font-weight: 600; }}
-
-  /* Ledger: container + search input label tweaks */
-  .ff-ledger-container {{
-    border-radius: 50px !important;
-    border-top-left-radius: 50px !important;
-    border-top-right-radius: 50px !important;
-    border-bottom-right-radius: 50px !important;
-    border-bottom-left-radius: 50px !important;
-    padding-left: 50px !important;
-    padding-right: 50px !important;
+  /* --- QUASAR: fields & inputs (outlined dense -> shadcn-like) --- */
+  .q-field__label {{
+    color: var(--ff-muted) !important;
+    font-weight: 500;
   }}
-  .ff-ledger-search .q-field__label {{
-    font-size: 12px !important;
-    top: 5px !important;
+  .q-field--focused .q-field__label {{
+    color: var(--ff-text) !important;
+    font-weight: 600;
+  }}
+
+  .q-field__control {{
+    transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+  }}
+  .q-field--outlined .q-field__control {{
+    background: var(--ff-surface) !important;
+    border-radius: 0.75rem;
+  }}
+  .q-field--outlined .q-field__control:before {{
+    border-color: var(--ff-border) !important;
+    border-width: 1px !important;
+  }}
+  .q-field--outlined.q-field--focused .q-field__control:after {{
+    border-color: var(--brand-accent) !important;
+    border-width: 1px !important;
+    opacity: 1;
+  }}
+  .q-field--outlined.q-field--focused .q-field__control {{
+    box-shadow: 0 0 0 3px var(--ff-ring) !important;
+  }}
+
+  .q-field__native,
+  .q-field__prefix,
+  .q-field__suffix,
+  .q-field__input {{
+    color: var(--ff-text) !important;
+  }}
+  .q-field__native::placeholder {{
+    color: var(--ff-muted-2) !important;
+  }}
+
+  /* Dropdown menus */
+  .q-menu {{
+    background: var(--ff-surface) !important;
+    border: 1px solid var(--ff-border) !important;
+    border-radius: 0.75rem;
+  }}
+  .q-menu .q-item {{ color: var(--ff-text) !important; }}
+  .q-menu .q-item__label {{ color: var(--ff-text) !important; }}
+  .q-menu .q-item:hover {{ background: var(--ff-surface-2) !important; }}
+  .q-menu .q-item--active {{ background: color-mix(in srgb, var(--brand-primary) 12%, white) !important; }}
+
+  /* Notifications */
+  .q-notification {{
+    background: var(--ff-surface) !important;
+    color: var(--ff-text) !important;
+    border: 1px solid var(--ff-border) !important;
+    border-left: 3px solid var(--brand-primary) !important;
+    border-radius: 12px;
+  }}
+  .q-notification__message,
+  .q-notification__caption,
+  .q-notification__icon,
+  .q-notification__content {{
+    color: var(--ff-text) !important;
+  }}
+  .q-notification__caption {{
+    color: var(--ff-muted) !important;
+  }}
+
+  /* Checkboxes */
+  .q-checkbox__inner--truthy .q-checkbox__bg {{
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+  }}
+  .q-checkbox__inner--falsy .q-checkbox__bg {{
+    border-color: var(--ff-border-strong);
+  }}
+  .q-checkbox__label {{
+    color: var(--ff-text);
   }}
 
   /* Header search (top bar) */
   .ff-header-search {{
     box-shadow: none !important;
-    border-width: 0px !important;
-    border-color: rgba(0, 0, 0, 0) !important;
-    border-image: none !important;
-    background: unset !important;
-    background-color: unset !important;
+    background: transparent !important;
   }}
-  .ff-header-search .q-field__label {{ color: rgba(255, 255, 255, 1) !important; }}
-  .ff-header-search.q-field--focused .q-field__label {{ color: rgba(255, 255, 255, 1) !important; }}
-  .ff-header-search .q-field__inner {{
-    background: unset !important;
-    background-color: unset !important;
+  .ff-header-search .q-field__control:before,
+  .ff-header-search .q-field__control:after {{
+    border-color: transparent !important;
   }}
   .ff-header-search .q-field__control {{
-    color: rgba(240, 240, 240, 1) !important;
-    background: unset !important;
-    background-color: unset !important;
+    background: transparent !important;
+  }}
+  .ff-header-search .q-field__native::placeholder {{
+    color: var(--ff-muted-2) !important;
   }}
 
-  .q-field__control {{ transition: box-shadow 0.2s ease, border-color 0.2s ease !important; }}
-  .q-field--outlined .q-field__control {{ background: #1f2937 !important; border-radius: 0.375rem; }}
-  .q-field--outlined .q-field__control:before {{ border-color: #334155 !important; border-width: 1px !important; }}
-  .q-field--outlined.q-field--focused .q-field__control:after {{ border-color: var(--brand-primary) !important; border-width: 1.5px !important; opacity: 1; }}
-
+  /* Documents: compact pill selects/inputs (kept for compatibility) */
   .ff-stroke-input .q-field__control {{
     background: transparent !important;
     border-radius: 9999px !important;
   }}
-  .ff-stroke-input .q-field__native {{
-    color: var(--brand-primary) !important;
-  }}
   .ff-stroke-input .q-field__control:before {{
-    border-color: #475569 !important;
+    border-color: var(--ff-border-strong) !important;
   }}
   .ff-stroke-input.q-field--focused .q-field__control:after {{
-    border-color: var(--brand-primary) !important;
+    border-color: var(--brand-accent) !important;
   }}
 
   .ff-select-fill .q-field__control {{
-    background: #171717 !important;
+    background: var(--ff-surface) !important;
     border-radius: 9999px !important;
-    padding-left: 20px !important;
-    padding-right: 20px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
     justify-content: center !important;
     align-items: center !important;
   }}
-  .ff-select-fill .q-field__native {{
-    color: inherit !important;
-  }}
-  .ff-select-fill .q-field__control-container {{
-    color: var(--color-neutral-300) !important;
-  }}
-  .ff-select-fill .q-field__append {{
-    color: rgba(255, 255, 255, 0.54) !important;
-  }}
-  .ff-select-fill .q-select__dropdown-icon {{
-    padding-left: 7px !important;
-    padding-right: 7px !important;
-    align-items: flex-end !important;
+  .ff-select-fill .q-field__control:before {{
+    border-color: var(--ff-border) !important;
   }}
 
-  /* Input text colors */
-  .q-field__native,
-  .q-field__prefix,
-  .q-field__suffix,
-  .q-field__input {{
-    color: #ffffff !important;
+  /* Invoice preview (editor) */
+  .ff-invoice-preview-frame {{
+    border: 1px solid var(--ff-border) !important;
+    background: var(--ff-surface) !important;
+    border-radius: 16px;
+    overflow: hidden;
   }}
-  .q-field__native::placeholder {{ color: #64748b !important; }}
-
-  /* Dropdown menus */
-  .q-menu {{
-    background: #171717 !important; /* neutral-900 */
-    border: 1px solid #262626 !important; /* neutral-800 */
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important;
+  .ff-invoice-preview-frame iframe {{
+    display: block;
+    width: 100%;
+    height: 78vh;
+    border: 0;
+    background: var(--ff-surface);
   }}
-  .q-menu .q-item {{ color: #e5e7eb !important; }}
-  .q-menu .q-item__label {{ color: #e5e7eb !important; }}
-  .q-menu .q-item--active {{ color: var(--brand-primary) !important; background: rgba(255, 197, 36, 0.1); }}
-  .q-menu .q-item:hover {{ background: #262626 !important; }}
-
-  /* Buttons & focus */
-  .q-btn.text-primary, .q-btn .text-primary {{ color: #e5e7eb !important; }}
-  .q-btn {{ color: inherit; }}
-  .q-focus-helper {{
-    background: unset !important;
-    background-color: unset !important;
-    border-radius: 0px !important;
-    border-top-left-radius: 0px !important;
-    border-top-right-radius: 0px !important;
-    border-bottom-right-radius: 0px !important;
-    border-bottom-left-radius: 0px !important;
-    color: var(--color-neutral-100) !important;
-    border-color: var(--color-neutral-400) !important;
-    border-image: none !important;
-    border-style: solid !important;
-    border-width: 1px !important;
-    padding-left: 0px !important;
-    padding-right: 0px !important;
-  }}
-
-  .q-btn.ff-btn-finalize-invoice {{
-    padding-left: 19px !important;
-    padding-right: 19px !important;
-    padding-top: 14px !important;
-    padding-bottom: 14px !important;
-    border-radius: 19px !important;
-    border-top-left-radius: 19px !important;
-    border-top-right-radius: 19px !important;
-    border-bottom-right-radius: 19px !important;
-    border-bottom-left-radius: 19px !important;
-    border-style: solid !important;
-  }}
-
-  /* Header actions */
-  .q-btn.ff-btn-new-invoice {{
-    background: unset !important;
-    background-color: unset !important;
-    background-image: none !important;
-    background-clip: unset !important;
-    -webkit-background-clip: unset !important;
-    color: var(--brand-accent) !important;
-    border-color: var(--brand-accent) !important;
-    border-image: none !important;
-    box-shadow: none !important;
-  }}
-  .q-btn.ff-btn-new-invoice .q-btn__content span.block {{ color: var(--brand-primary) !important; }}
-  .q-btn.ff-user-chip {{
-    background: unset !important;
-    background-color: unset !important;
-    background-image: none !important;
-    color: rgba(255, 255, 255, 1) !important;
-    border-image: none !important;
-  }}
-  .q-btn.ff-user-chip .q-btn__content {{
-    color: rgba(255, 255, 255, 1) !important;
-  }}
-  .ff-sidebar-logo,
-  .ff-sidebar-logo .q-img__container {{
-    border-radius: 0px !important;
-  }}
-
-  /* Notifications */
-  .q-notification {{
-    background: #0f172a !important;
-    color: #f1f5f9 !important;
-    border: 1px solid #1e293b !important;
-    border-radius: 12px;
-  }}
-
-  /* Checkboxes */
-  .q-checkbox__inner--truthy .q-checkbox__bg {{ background: var(--brand-primary); border-color: var(--brand-primary); }}
-  .q-checkbox__inner--falsy .q-checkbox__bg {{ border-color: #4b5563; }}
-  .q-checkbox__label {{ color: #e5e7eb; }}
 
   /* Utilities */
   input:-webkit-autofill {{
-    -webkit-text-fill-color: #ffffff !important;
-    box-shadow: 0 0 0px 1000px #1f2937 inset !important;
+    -webkit-text-fill-color: var(--ff-text) !important;
+    box-shadow: 0 0 0px 1000px var(--ff-surface) inset !important;
   }}
 </style>
 """
 
-# Panels / cards
-C_CARD = "bg-neutral-900/80 border border-neutral-800/80 rounded-lg shadow-sm"
-C_CARD_HOVER = "transition-colors hover:bg-neutral-900/90 hover:border-neutral-700/80"
+# -------------------------
+# Design system class tokens
+# -------------------------
 
-# Glass cards reuse the base card styles to avoid drift.
-C_GLASS_CARD = C_CARD
-C_GLASS_CARD_HOVER = C_CARD_HOVER
+STYLE_BG = "bg-slate-50 text-slate-900 min-h-screen"
+STYLE_CONTAINER = "w-full max-w-6xl mx-auto px-6 py-6 gap-6"
 
-# Buttons
-C_BTN_PRIM = "!bg-neutral-800 !text-white hover:bg-neutral-700 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
-C_BTN_SEC = "!bg-neutral-900 !text-neutral-200 border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-800 active:scale-[0.98] rounded-lg px-4 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/20"
-C_BTN_ORANGE = "ff-btn-new-invoice rounded-full justify-center items-center !bg-transparent hover:!bg-transparent shadow-none border border-[var(--brand-accent)] !text-[var(--brand-accent)] active:scale-[0.98] px-4 py-2 text-sm font-semibold transition-all focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
+STYLE_CARD = "bg-white border border-slate-200 shadow-sm rounded-xl"
+STYLE_CARD_HOVER = "transition-colors hover:bg-slate-50 hover:border-slate-300"
 
-# Inputs
-C_INPUT = "w-full text-sm transition-all"
-C_INPUT_ROUNDED = "rounded-full border border-neutral-700 bg-neutral-900/80"
+STYLE_HEADING = "text-2xl font-bold tracking-tight text-slate-900"
+STYLE_PAGE_TITLE = STYLE_HEADING
+STYLE_SECTION_TITLE = "text-sm font-semibold text-slate-900"
+STYLE_TEXT_MUTED = "text-sm text-slate-600"
+STYLE_TEXT_SUBTLE = "text-sm text-slate-500"
+STYLE_TEXT_HINT = "text-sm text-slate-400"
 
-# Badges
-C_BADGE_GREEN = "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-C_BADGE_BLUE = "bg-sky-500/10 text-sky-300 border border-sky-500/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-C_BADGE_GRAY = "bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-C_BADGE_YELLOW = "bg-[#ffc524]/10 text-[#ffd35d] border border-[#ffc524]/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-C_BADGE_RED = "bg-rose-500/10 text-rose-300 border border-rose-500/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+STYLE_BTN_PRIMARY = (
+    "bg-slate-900 text-white hover:bg-slate-800 active:scale-[0.99] rounded-lg px-4 py-2 text-sm "
+    "font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
+)
+STYLE_BTN_SECONDARY = (
+    "bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 active:scale-[0.99] rounded-lg px-4 py-2 "
+    "text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30"
+)
+STYLE_BTN_GHOST = (
+    "text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:scale-[0.99] rounded-md px-3 py-2 text-sm "
+    "font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30"
+)
+STYLE_BTN_DANGER = (
+    "bg-rose-600 text-white hover:bg-rose-700 active:scale-[0.99] rounded-lg px-4 py-2 text-sm "
+    "font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/30"
+)
+STYLE_BTN_ACCENT = (
+    "rounded-full justify-center items-center bg-white hover:bg-amber-50 shadow-none border border-amber-300 "
+    "text-amber-700 active:scale-[0.99] px-4 py-2 text-sm font-semibold transition-all "
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
+)
 
-# Typography
-C_PAGE_TITLE = "text-xl font-semibold text-neutral-100"
-C_SECTION_TITLE = "text-sm font-semibold text-neutral-300"
+STYLE_INPUT = "w-full text-sm"
+STYLE_INPUT_ROUNDED = "rounded-full"
 
-# Tables
-C_TABLE_HEADER = "w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-400 border-b border-neutral-800"
-C_TABLE_ROW = "w-full px-3 py-2 text-sm text-neutral-200 border-b border-neutral-800/60"
+STYLE_DROPDOWN_PANEL = f"absolute left-0 right-0 mt-1 z-10 {STYLE_CARD} p-1"
+STYLE_DROPDOWN_OPTION = "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-slate-100"
+STYLE_DROPDOWN_OPTION_ACTIVE = "bg-slate-100"
+STYLE_DROPDOWN_LABEL = "text-left text-slate-900"
+
+STYLE_STEPPER_ACTIVE = "text-slate-900 font-semibold text-sm"
+STYLE_STEPPER_INACTIVE = "text-slate-500 text-sm"
+STYLE_STEPPER_ARROW = "text-slate-400 text-sm"
+
+STYLE_TABLE_HEADER = "w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 border-b border-slate-200"
+STYLE_TABLE_ROW = "w-full px-3 py-2 text-sm text-slate-800 border-b border-slate-200/70"
+
+STYLE_BADGE_GREEN = "bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+STYLE_BADGE_BLUE = "bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+STYLE_BADGE_GRAY = "bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+STYLE_BADGE_YELLOW = "bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+STYLE_BADGE_RED = "bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+
+# -------------------------
+# Backwards-compatible aliases (temporary)
+# -------------------------
+
+C_BG = STYLE_BG
+C_CONTAINER = STYLE_CONTAINER
+
+C_CARD = STYLE_CARD
+C_CARD_HOVER = STYLE_CARD_HOVER
+C_GLASS_CARD = STYLE_CARD
+C_GLASS_CARD_HOVER = STYLE_CARD_HOVER
+
+C_BTN_PRIM = STYLE_BTN_PRIMARY
+C_BTN_SEC = STYLE_BTN_SECONDARY
+C_BTN_ORANGE = STYLE_BTN_ACCENT
+
+C_INPUT = STYLE_INPUT
+C_INPUT_ROUNDED = STYLE_INPUT_ROUNDED
+
+C_BADGE_GREEN = STYLE_BADGE_GREEN
+C_BADGE_BLUE = STYLE_BADGE_BLUE
+C_BADGE_GRAY = STYLE_BADGE_GRAY
+C_BADGE_YELLOW = STYLE_BADGE_YELLOW
+C_BADGE_RED = STYLE_BADGE_RED
+
+C_PAGE_TITLE = STYLE_PAGE_TITLE
+C_SECTION_TITLE = STYLE_SECTION_TITLE
+
+C_TABLE_HEADER = STYLE_TABLE_HEADER
+C_TABLE_ROW = STYLE_TABLE_ROW

@@ -1,6 +1,8 @@
 from __future__ import annotations
 from ._shared import *
 from ._shared import _parse_iso_date
+from styles import STYLE_TEXT_MUTED
+from ui_components import ff_card
 
 # Auto generated page renderer
 
@@ -98,28 +100,28 @@ def render_ledger(session, comp: Company) -> None:
             filtered.append(it)
         return filtered
 
-    with ui.card().classes(C_CARD + " p-4 mb-4 sticky top-0 z-30"):
+    with ff_card(pad="p-4", classes="mb-4 sticky top-0 z-30"):
         with ui.row().classes("gap-4 w-full items-end flex-wrap"):
             ui.select({"ALL": "Alle", "INCOME": "Income", "EXPENSE": "Expense"}, label="Typ", value=state["type"],
-                      on_change=lambda e: (state.__setitem__("type", e.value or "ALL"), render_list.refresh())).classes(C_INPUT)
+                      on_change=lambda e: (state.__setitem__("type", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT)
             ui.select({"ALL": "Alle", "Draft": "Draft", "Open": "Open", "Sent": "Sent", "Paid": "Paid", "Cancelled": "Cancelled"},
                       label="Status", value=state["status"],
-                      on_change=lambda e: (state.__setitem__("status", e.value or "ALL"), render_list.refresh())).classes(C_INPUT)
-            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
-            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("type=date").classes(C_INPUT)
+                      on_change=lambda e: (state.__setitem__("status", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT)
+            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT)
+            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT)
             ui.input("Suche", placeholder="Party oder Beschreibung",
-                     on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh())).classes(C_INPUT + " min-w-[220px] ff-ledger-search")
+                     on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh())).props("outlined dense").classes(C_INPUT + " min-w-[220px] ff-ledger-search")
 
     @ui.refreshable
     def render_list():
         data = apply_filters(items)
         if len(data) == 0:
-            with ui.card().classes(C_CARD + " p-4"):
+            with ff_card(pad="p-4"):
                 with ui.row().classes("w-full justify-center"):
-                    ui.label("Keine Ergebnisse gefunden").classes("text-sm text-neutral-400")
+                    ui.label("Keine Ergebnisse gefunden").classes(STYLE_TEXT_MUTED)
             return
 
-        with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+        with ff_card(pad="p-0", classes="overflow-hidden"):
             with ui.element("div").classes(C_TABLE_HEADER + " hidden sm:grid sm:grid-cols-[110px_110px_110px_1fr_120px_120px] items-center"):
                 ui.label("Datum").classes("font-bold")
                 ui.label("Typ").classes("font-bold")
@@ -129,35 +131,35 @@ def render_ledger(session, comp: Company) -> None:
                 ui.label("").classes("font-bold text-right")
 
             for it in data:
-                with ui.element("div").classes(C_TABLE_ROW + " group grid grid-cols-1 sm:grid-cols-[110px_110px_110px_1fr_120px_120px] gap-2 sm:gap-0 items-start sm:items-center"):
+                with ui.element("div").classes(
+                    C_TABLE_ROW
+                    + " group grid grid-cols-1 sm:grid-cols-[110px_110px_110px_1fr_120px_120px] gap-2 sm:gap-0 items-start sm:items-center hover:bg-slate-50 transition-colors"
+                ):
                     with ui.column().classes("gap-1"):
-                        ui.label("Datum").classes("sm:hidden text-[10px] uppercase text-neutral-500")
+                        ui.label("Datum").classes("sm:hidden text-[10px] uppercase text-slate-400")
                         ui.label(it["date"]).classes("text-xs font-mono")
 
                     with ui.column().classes("gap-1"):
-                        ui.label("Typ").classes("sm:hidden text-[10px] uppercase text-neutral-500")
-                        badge_class = (
-                            "bg-[#ffc524]/10 text-[#ffd35d] border border-[#ffc524]/20 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-                            if it["type"] == "INCOME"
-                            else "bg-neutral-800 text-neutral-200 border border-neutral-700 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-                        )
+                        ui.label("Typ").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        badge_class = C_BADGE_YELLOW if it["type"] == "INCOME" else C_BADGE_GRAY
                         ui.label("Income" if it["type"] == "INCOME" else "Expense").classes(badge_class + " w-20")
 
                     with ui.column().classes("gap-1"):
-                        ui.label("Status").classes("sm:hidden text-[10px] uppercase text-neutral-500")
+                        ui.label("Status").classes("sm:hidden text-[10px] uppercase text-slate-400")
                         ui.label(it["status"]).classes("text-xs")
 
                     with ui.column().classes("gap-1"):
-                        ui.label("Kunde/Lieferant").classes("sm:hidden text-[10px] uppercase text-neutral-500")
+                        ui.label("Kunde/Lieferant").classes("sm:hidden text-[10px] uppercase text-slate-400")
                         ui.label(it["party"]).classes("text-sm")
                         if it.get("description"):
-                            ui.label(it["description"]).classes("text-xs text-neutral-400")
+                            ui.label(it["description"]).classes("text-xs text-slate-500")
 
                     with ui.column().classes("gap-1 sm:items-end"):
-                        ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-neutral-500")
+                        ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-slate-400")
                         amount_label = f"{it['amount']:,.2f} €" if it["type"] == "INCOME" else f"-{it['amount']:,.2f} €"
                         amount_class = (
-                            "text-right text-sm text-[#ffd35d]" if it["type"] == "INCOME" else "text-right text-sm text-neutral-200"
+                            f"text-right text-sm font-mono {C_NUMERIC} "
+                            + ("text-emerald-600" if it["type"] == "INCOME" else "text-rose-600")
                         )
                         ui.label(amount_label).classes(amount_class)
 
@@ -166,8 +168,8 @@ def render_ledger(session, comp: Company) -> None:
                             ui.button(
                                 icon="open_in_new",
                                 on_click=lambda _, iid=it["invoice_id"]: _open_invoice_detail(int(iid)),
-                            ).props("flat dense").classes("text-neutral-400")
+                            ).props("flat dense").classes("text-slate-500 hover:text-slate-900")
                         else:
-                            ui.label("-").classes("text-xs text-neutral-500")
+                            ui.label("-").classes("text-xs text-slate-400")
 
     render_list()

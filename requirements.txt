@@ -12,3 +12,5 @@ SQLAlchemy==2.0.45
 sqlmodel==0.0.31
 uvicorn
 redis
+python-dotenv
+passlib[bcrypt]

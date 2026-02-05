@@ -12,9 +12,10 @@ import re
 import mimetypes
 import os
 import time
+from threading import Lock
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Request
@@ -23,13 +24,23 @@ from nicegui import ui, app, helpers
 from nicegui.storage import Storage, PseudoPersistentDict, request_contextvar
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from sqlmodel import select
+from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from env import load_env
+
+# Load ".env" before importing modules that read env vars at import time.
+load_env()
+
 from logging_setup import setup_logging
+
+setup_logging()
+
 from auth_guard import clear_auth_session, is_authenticated, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import C_BG, C_BTN_PRIM, C_CONTAINER, C_INPUT, C_INPUT_ROUNDED
+from styles import STYLE_BG, STYLE_BTN_ACCENT, STYLE_CONTAINER, STYLE_INPUT, STYLE_TEXT_MUTED
 from ui_theme import apply_global_ui_theme
 from invoice_numbering import build_invoice_filename
 from pages import (
@@ -78,6 +89,201 @@ logger = logging.getLogger(__name__)
 _N8N_MIN_PAYLOAD_BYTES = 32
 _N8N_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _N8N_MONEY_PATTERN = re.compile(r"^-?\d+\.\d{2}$")
+
+_IS_PYTEST = helpers.is_pytest()
+_FF_ENV = (os.getenv("FF_ENV") or "").strip().lower() or ("test" if _IS_PYTEST else "development")
+_APP_BASE_URL = (os.getenv("APP_BASE_URL") or "").strip()
+_BASE_URL_IS_HTTPS = _APP_BASE_URL.lower().startswith("https://")
+_IS_PROD = _FF_ENV in {"prod", "production"} or (_BASE_URL_IS_HTTPS and not _IS_PYTEST)
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_csv(name: str) -> list[str]:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return []
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _require_storage_secret() -> str:
+    secret = (os.getenv("STORAGE_SECRET") or "").strip()
+    if _IS_PYTEST and len(secret) < 32:
+        return "pytest-secret"
+    if secret:
+        if len(secret) < 32:
+            raise RuntimeError("STORAGE_SECRET is too short; use a high-entropy value (>=32 chars).")
+        return secret
+    if _IS_PYTEST:
+        return "pytest-secret"
+    raise RuntimeError('Missing STORAGE_SECRET. Copy ".env.example" to ".env" and set a strong random value.')
+
+
+_MAX_UPLOAD_BYTES = _env_int("FF_MAX_UPLOAD_BYTES", 10 * 1024 * 1024)
+_RATELIMIT_LOGIN_PER_MIN = _env_int("FF_RATELIMIT_LOGIN_PER_MIN", 10)
+_RATELIMIT_UPLOAD_PER_MIN = _env_int("FF_RATELIMIT_UPLOAD_PER_MIN", 30)
+_RATELIMIT_WEBHOOKS_PER_MIN = _env_int("FF_RATELIMIT_WEBHOOKS_PER_MIN", 120)
+_TRUST_PROXY_HEADERS = (os.getenv("FF_TRUST_PROXY_HEADERS") or ("1" if _IS_PROD else "0")).strip() == "1"
+
+storage_secret = _require_storage_secret()
+Storage.secret = storage_secret
+
+
+def _dedupe_keep_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in values:
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def _derive_trusted_hosts() -> list[str]:
+    explicit = _env_csv("FF_TRUSTED_HOSTS")
+    if explicit:
+        return explicit
+
+    hosts: list[str] = []
+    domain = (os.getenv("APP_DOMAIN") or "").strip()
+    if domain:
+        hosts.extend([domain, f"www.{domain}"])
+
+    base_url = (os.getenv("APP_BASE_URL") or "").strip()
+    if base_url:
+        parsed = urlparse(base_url if "://" in base_url else f"https://{base_url}")
+        if parsed.hostname:
+            hosts.append(parsed.hostname)
+
+    if _IS_PYTEST:
+        hosts.append("testserver")
+    if not _IS_PROD:
+        hosts.extend(["localhost", "127.0.0.1", "0.0.0.0"])
+
+    return _dedupe_keep_order(hosts)
+
+
+def _derive_cors_origins() -> list[str]:
+    explicit = _env_csv("FF_CORS_ORIGINS")
+    if explicit:
+        return explicit
+
+    origins: list[str] = []
+    base_url = (os.getenv("APP_BASE_URL") or "").strip().rstrip("/")
+    if base_url:
+        if base_url.startswith(("http://", "https://")):
+            origins.append(base_url)
+        else:
+            origins.append(f"https://{base_url}".rstrip("/"))
+
+    domain = (os.getenv("APP_DOMAIN") or "").strip()
+    if domain:
+        origins.extend([f"https://{domain}", f"https://www.{domain}"])
+
+    if _IS_PYTEST:
+        origins.append("http://testserver")
+    if not _IS_PROD:
+        origins.extend(["http://localhost:8000", "http://127.0.0.1:8000"])
+
+    return _dedupe_keep_order([origin.rstrip("/") for origin in origins])
+
+
+def _configure_security_middleware() -> None:
+    trusted_hosts = _derive_trusted_hosts()
+    if _IS_PROD and not trusted_hosts:
+        raise RuntimeError("Trusted hosts not configured. Set APP_DOMAIN or FF_TRUSTED_HOSTS.")
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts or ["*"])
+
+    cookie_secure_default = "1" if _IS_PROD else "0"
+    cookie_secure = (os.getenv("FF_COOKIE_SECURE") or cookie_secure_default).strip() == "1"
+    cookie_samesite = (os.getenv("FF_COOKIE_SAMESITE") or "strict").strip().lower()
+    if cookie_samesite not in {"lax", "strict", "none"}:
+        cookie_samesite = "strict"
+    if cookie_samesite == "none" and not cookie_secure:
+        raise RuntimeError("FF_COOKIE_SAMESITE=none requires FF_COOKIE_SECURE=1")
+
+    session_cookie = (os.getenv("FF_SESSION_COOKIE") or "ff_session").strip() or "ff_session"
+    session_max_age = _env_int("FF_SESSION_MAX_AGE_SECONDS", 60 * 60 * 24 * 14)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=storage_secret,
+        session_cookie=session_cookie,
+        same_site=cookie_samesite,
+        https_only=cookie_secure,
+        max_age=session_max_age,
+    )
+
+    cors_origins = _derive_cors_origins()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+
+_configure_security_middleware()
+
+
+def _forbidden(detail: str = "Forbidden") -> None:
+    raise HTTPException(status_code=403, detail=detail)
+
+
+def _client_ip(request: Request) -> str:
+    if _TRUST_PROXY_HEADERS:
+        xff = (request.headers.get("x-forwarded-for") or "").strip()
+        if xff:
+            return xff.split(",", 1)[0].strip()
+        real_ip = (request.headers.get("x-real-ip") or "").strip()
+        if real_ip:
+            return real_ip
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+_RATE_LOCK = Lock()
+if _cachetools_spec is not None:
+    _RATE_COUNTERS = TTLCache(maxsize=4096, ttl=60)  # type: ignore[name-defined]
+else:
+    _RATE_COUNTERS: dict[str, tuple[float, int]] = {}
+
+
+def _rate_limit(request: Request, *, bucket: str, limit_per_min: int, key_suffix: str = "") -> None:
+    if limit_per_min <= 0:
+        return
+    client_ip = _client_ip(request)
+    key = f"{bucket}:{client_ip}"
+    if key_suffix:
+        key = f"{key}:{key_suffix}"
+
+    with _RATE_LOCK:
+        if _cachetools_spec is not None:
+            current = int(_RATE_COUNTERS.get(key, 0))  # type: ignore[attr-defined]
+            if current >= limit_per_min:
+                raise HTTPException(status_code=429, detail="Too many requests")
+            _RATE_COUNTERS[key] = current + 1  # type: ignore[index]
+            return
+
+        now = time.monotonic()
+        entry = _RATE_COUNTERS.get(key)
+        if not entry or now >= entry[0]:
+            expires_at, current = now + 60, 0
+        else:
+            expires_at, current = entry
+        if current >= limit_per_min:
+            raise HTTPException(status_code=429, detail="Too many requests")
+        _RATE_COUNTERS[key] = (expires_at, current + 1)
 
 
 class N8NExtractedPayload(BaseModel):
@@ -280,10 +486,12 @@ def _validate_n8n_file_signature(file_bytes: bytes, mime_type: str, ext: str) ->
     if expected == "image/jpeg" and not file_bytes.startswith(b"\xff\xd8"):
         raise HTTPException(status_code=400, detail="File content is not a valid JPEG")
 
-load_env()
-setup_logging()
 app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
-ensure_owner_user()
+if not _IS_PYTEST:
+    try:
+        ensure_owner_user()
+    except Exception:
+        logger.exception("Failed to ensure owner user")
 
 
 def _require_api_auth() -> None:
@@ -402,13 +610,15 @@ N8N_INGEST_OPENAPI = {
 @app.post("/api/webhooks/n8n/ingest", openapi_extra=N8N_INGEST_OPENAPI)
 async def n8n_ingest(request: Request):
     raw_body = await request.body()
+    if len(raw_body) > _MAX_UPLOAD_BYTES * 2:
+        raise HTTPException(status_code=413, detail="Payload too large")
     timestamp_header = (request.headers.get("X-Timestamp") or "").strip()
     secret_header = (request.headers.get("X-N8N-Secret") or request.headers.get("X-API-KEY") or "").strip()
     signature_header = (request.headers.get("X-Signature") or "").strip()
     event_id_header = (request.headers.get("X-Event-Id") or "").strip()
 
     if not timestamp_header:
-        raise HTTPException(status_code=401, detail="Missing auth headers")
+        _forbidden()
 
     try:
         timestamp = int(timestamp_header)
@@ -417,7 +627,7 @@ async def n8n_ingest(request: Request):
 
     drift = abs(int(time.time()) - timestamp)
     if drift > 300:
-        raise HTTPException(status_code=401, detail="Timestamp drift too large")
+        _forbidden()
 
     try:
         payload = json.loads(raw_body.decode("utf-8"))
@@ -441,25 +651,27 @@ async def n8n_ingest(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid company_id")
 
+    _rate_limit(request, bucket="webhooks", limit_per_min=_RATELIMIT_WEBHOOKS_PER_MIN, key_suffix=str(company_id))
+
     with get_session() as session:
         company = session.get(Company, company_id)
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
         if not bool(getattr(company, "n8n_enabled", False)):
-            raise HTTPException(status_code=403, detail="n8n is disabled")
+            _forbidden()
         secret = (getattr(company, "n8n_secret", "") or "").strip()
         if not secret:
-            raise HTTPException(status_code=403, detail="Missing n8n secret")
+            _forbidden()
         if signature_header:
             signature_input = f"{timestamp}.".encode("utf-8") + raw_body
             expected_signature = hmac.new(secret.encode("utf-8"), signature_input, hashlib.sha256).hexdigest()
             if not hmac.compare_digest(expected_signature, signature_header):
-                raise HTTPException(status_code=401, detail="Invalid signature")
+                _forbidden()
         else:
             if not secret_header or not event_id_header:
-                raise HTTPException(status_code=401, detail="Missing auth headers")
+                _forbidden()
             if not hmac.compare_digest(secret, secret_header):
-                raise HTTPException(status_code=401, detail="Invalid secret")
+                _forbidden()
 
         existing_event = session.exec(
             select(WebhookEvent).where(WebhookEvent.event_id == event_id)
@@ -491,6 +703,8 @@ async def n8n_ingest(request: Request):
         original_filename = file_name
         safe_name = safe_filename(file_name)
 
+        validate_document_upload(safe_name, len(file_bytes))
+
         ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
         if ext == "jpeg":
             ext = "jpg"
@@ -498,7 +712,6 @@ async def n8n_ingest(request: Request):
             "pdf": "application/pdf",
             "jpg": "image/jpeg",
             "png": "image/png",
-            "txt": "text/plain",
         }.get(ext, "application/octet-stream")
         _validate_n8n_file_signature(file_bytes, mime_type, ext)
 
@@ -677,6 +890,7 @@ def _validate_extracted_payload(extracted: dict) -> dict:
 
 @app.post("/api/webhooks/n8n/upload")
 async def n8n_upload(
+    request: Request,
     file: UploadFile = File(...),
     payload_json: str = Form(...),
     x_company_id: str | None = Header(None, alias="X-Company-Id"),
@@ -694,11 +908,13 @@ async def n8n_upload(
     keywords: str | None = Form(None),
 ) -> Response:
     if not x_company_id or not x_n8n_secret:
-        raise HTTPException(status_code=401, detail="Missing auth headers")
+        _forbidden()
     try:
         company_id = int(x_company_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid company id")
+
+    _rate_limit(request, bucket="webhooks", limit_per_min=_RATELIMIT_WEBHOOKS_PER_MIN, key_suffix=str(company_id))
 
     try:
         payload = json.loads(payload_json)
@@ -710,6 +926,9 @@ async def n8n_upload(
     if not isinstance(vendor_details, dict):
         vendor_details = {}
 
+    extracted_payload = _resolve_extracted_payload(payload)
+    extracted = _validate_extracted_payload(extracted_payload)
+
     raw_filename = (
         file_name
         or payload.get("file_name")
@@ -719,25 +938,24 @@ async def n8n_upload(
         or "document"
     )
     safe_name = safe_filename(str(raw_filename))
-    is_bnh = str(raw_filename).lower().endswith(".bnh") or (file.filename or "").lower().endswith(".bnh")
-    if safe_name.lower().endswith(".bnh"):
-        is_bnh = True
-    if is_bnh and not safe_name.lower().endswith(".bnh"):
-        safe_name = f"{safe_name}.bnh"
 
     file_bytes = await file.read()
+    validate_document_upload(safe_name, len(file_bytes))
     sha256 = hashlib.sha256(file_bytes).hexdigest()
     mime = (file.content_type or "").strip()
-    if is_bnh:
-        mime = "application/octet-stream"
     if not mime:
         ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
         mime = {
             "pdf": "application/pdf",
             "jpg": "image/jpeg",
-            "jpeg": "image/jpeg",
             "png": "image/png",
         }.get(ext, "application/octet-stream")
+    ext_for_sig = os.path.splitext(safe_name)[1].lower().lstrip(".")
+    if ext_for_sig == "jpeg":
+        ext_for_sig = "jpg"
+    _validate_n8n_file_signature(file_bytes, mime, ext_for_sig)
 
     vendor_value = (vendor or extracted.get("vendor") or payload.get("vendor") or "").strip()
     doc_number_value = (doc_number or extracted.get("doc_number") or payload.get("doc_number") or "").strip()
@@ -756,30 +974,29 @@ async def n8n_upload(
     title_value = (title or extracted.get("title") or payload.get("title") or "").strip()
     if not title_value:
         title_value = build_display_title(
-            vendor_name_value,
-            invoice_date_value,
+            vendor_value,
+            doc_date_value,
             amount_value,
             currency_value,
             safe_name,
         )
-    description_value = (description or _payload_text(payload, "summary")).strip()
-    doc_date_value = invoice_date_value
+    description_value = (description or extracted.get("summary") or _payload_text(payload, "summary")).strip()
 
     with get_session() as session:
         company = session.get(Company, company_id)
         if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
+            _forbidden()
         if not bool(getattr(company, "n8n_enabled", False)):
-            raise HTTPException(status_code=403, detail="n8n is disabled")
+            _forbidden()
         secret = (getattr(company, "n8n_secret", "") or "").strip()
         if not secret or not hmac.compare_digest(secret, x_n8n_secret):
-            raise HTTPException(status_code=401, detail="Invalid secret")
+            _forbidden()
 
         existing = session.exec(
             select(Document).where(
                 Document.company_id == company_id,
                 Document.sha256 == sha256,
-                Document.source == "N8N",
+                Document.source.in_(["n8n", "N8N"]),
             )
         ).first()
         if existing:
@@ -793,19 +1010,18 @@ async def n8n_upload(
             )
 
         ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
-        document = Document(
-            company_id=company_id,
-            filename=safe_name,
-            storage_key="pending",
-            original_filename=str(raw_filename),
+        if ext == "jpeg":
+            ext = "jpg"
+        document = build_document_record(
+            company_id,
+            str(raw_filename),
             mime_type=mime,
             size_bytes=len(file_bytes),
-            source="N8N",
-            doc_type=ext,
-            storage_path="",
-            mime=mime,
-            size=len(file_bytes),
             sha256=sha256,
+            source="n8n",
+            doc_type=ext,
+            storage_key="pending",
+            storage_path="",
             title=title_value,
             description=description_value,
             vendor=vendor_value,
@@ -815,21 +1031,17 @@ async def n8n_upload(
             amount_net=amount_net_value,
             amount_tax=amount_tax_value,
             currency=currency_value,
-            keywords_json=normalize_keywords(keywords_value),
-            amount_vat=vat_amount_value,
-            amount_gross=gross_amount_value,
-            invoice_number=invoice_number_value,
-            invoice_date=invoice_date_value,
-            tax_treatment=tax_treatment_value,
-            document_type=document_type_value,
-            vendor_name=vendor_name_value,
-            vendor_street=vendor_street_value,
-            vendor_zip=vendor_zip_value,
-            vendor_city=vendor_city_value,
-            vendor_country=vendor_country_value,
-            vendor_tax_id=vendor_tax_id_value,
-            vendor_vat_id=vendor_vat_id_value,
         )
+        # Make sure stored filename matches our computed safe name (incl. .bnh adjustments).
+        document.filename = safe_name
+        document.keywords_json = normalize_keywords(keywords_value)
+        # Backfill commonly used derived fields for downstream UI logic.
+        document.invoice_date = doc_date_value
+        document.gross_amount = amount_value
+        document.net_amount = amount_net_value
+        document.tax_amount = amount_tax_value
+        document.tax_treatment = str(extracted.get("tax_treatment") or payload.get("tax_treatment") or "").strip()
+        document.document_type = str(extracted.get("document_type") or payload.get("document_type") or "").strip()
         session.add(document)
         session.flush()
 
@@ -853,6 +1065,29 @@ async def n8n_upload(
             session.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
 
+        raw_payload_json = json.dumps(payload, ensure_ascii=False)
+        line_items_json = _json_text(extracted.get("line_items") if isinstance(extracted, dict) else None, default="[]")
+        compliance_flags_json = _json_text(
+            extracted.get("compliance_flags") if isinstance(extracted, dict) else None,
+            default="[]",
+        )
+        meta = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id == int(document.id or 0))
+        ).first()
+        if meta:
+            meta.raw_payload_json = raw_payload_json
+            meta.line_items_json = line_items_json
+            meta.compliance_flags_json = compliance_flags_json
+        else:
+            session.add(
+                DocumentMeta(
+                    document_id=int(document.id or 0),
+                    raw_payload_json=raw_payload_json,
+                    line_items_json=line_items_json,
+                    compliance_flags_json=compliance_flags_json,
+                )
+            )
+
         session.commit()
 
         return JSONResponse(
@@ -865,36 +1100,9 @@ async def n8n_upload(
         )
 
 
-@app.get("/api/invoices/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: int, rev: str | None = None) -> Response:
-    _require_api_auth()
-    with get_session() as session:
-        invoice = session.get(Invoice, invoice_id)
-        if not invoice:
-            raise HTTPException(status_code=404, detail="Invoice not found")
-
-        customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
-        company = None
-        if customer and customer.company_id:
-            company = session.get(Company, customer.company_id)
-        if not company:
-            company = session.exec(select(Company)).first() or Company()
-
-        pdf_path = _resolve_invoice_pdf_path(invoice.pdf_filename)
-        if pdf_path and pdf_path.exists():
-            return Response(pdf_path.read_bytes(), media_type="application/pdf")
-
-        if invoice.pdf_bytes:
-            pdf_bytes = invoice.pdf_bytes
-        else:
-            pdf_bytes = render_invoice_to_pdf_bytes(invoice, company)
-        if isinstance(pdf_bytes, bytearray):
-            pdf_bytes = bytes(pdf_bytes)
-        return Response(pdf_bytes, media_type="application/pdf")
-
-
 @app.post("/api/documents/upload")
 async def document_upload(
+    request: Request,
     company_id: int = Form(...),
     file: UploadFile = File(...),
     title: str | None = Form(None),
@@ -909,6 +1117,7 @@ async def document_upload(
     keywords: str | None = Form(None),
 ) -> dict:
     _require_api_auth()
+    _rate_limit(request, bucket="upload", limit_per_min=_RATELIMIT_UPLOAD_PER_MIN, key_suffix=str(company_id))
     filename = file.filename or ""
     contents = await file.read()
     validate_document_upload(filename, len(contents))
@@ -1209,15 +1418,15 @@ def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
             max-height: 85vh;
             overflow: auto;
             background: #111827;
+            border: 1px solid #1e293b;
             border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(2, 6, 23, 0.6);
             padding: 12px;
           }}
           .page {{
             margin: 0 auto 16px auto;
-            box-shadow: 0 4px 12px rgba(2, 6, 23, 0.45);
             border-radius: 8px;
             background: white;
+            border: 1px solid rgba(2, 6, 23, 0.18);
           }}
           .status {{
             font-size: 13px;
@@ -1338,7 +1547,7 @@ def set_page(name: str):
 
 
 @app.get("/api/invoices/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: int):
+def invoice_pdf(invoice_id: int, rev: str | None = None):
     if not require_auth():
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -1454,13 +1663,46 @@ def _n8n_documents_today_count() -> int:
     try:
         with get_session() as session:
             stmt = select(Document.id).where(
-                Document.source == "N8N",
+                Document.source.in_(["n8n", "N8N"]),
                 Document.created_at >= start,
                 Document.created_at < end,
             )
             return len(session.exec(stmt).all())
     except Exception:
         return 0
+
+
+_LAYOUT = {
+    "app_root": f"w-full min-h-screen {STYLE_BG}",
+    "shell_row": "w-full min-h-screen items-start",
+    "sidebar": (
+        "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white border border-slate-200 "
+        "shadow-sm items-center py-6 gap-5 z-40"
+    ),
+    "nav_sep": "w-8 h-px bg-slate-200",
+    "nav_btn_base": (
+        "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 "
+        "border border-transparent"
+    ),
+    "nav_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
+    "nav_btn_inactive": "text-slate-600 hover:text-slate-900 hover:border-slate-200 hover:bg-slate-50",
+    "main": "flex-1 w-full relative pl-28 pr-6 pb-8",
+    "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
+    "topbar_left": "flex-1 items-center gap-4",
+    "topbar_right": "flex-1 items-center justify-end gap-2",
+    "icon_btn": "text-slate-600 hover:text-slate-900",
+    "sidebar_logo": "ff-sidebar-logo w-11 h-11 rounded-none object-contain",
+    "header_search": f"{STYLE_INPUT} w-72",
+    "new_invoice_btn": f"{STYLE_BTN_ACCENT} w-[150px]",
+    "menu_wide": "min-w-[240px]",
+    "menu": "min-w-[220px]",
+    "menu_meta": "text-xs text-slate-600 px-3 pt-2",
+    "menu_meta_company": "text-sm text-slate-600 px-3 pb-2",
+    "content": "w-full",
+    "user_btn": "opacity-100 w-10 h-10 rounded-xl bg-white border border-slate-200 hover:bg-slate-50",
+    "user_initials": "text-xs font-semibold text-slate-900",
+    "logout_item": "text-rose-600",
+}
 
 
 def layout_wrapper(content_func):
@@ -1472,39 +1714,37 @@ def layout_wrapper(content_func):
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "dashboard")
 
-    with ui.element("div").classes(f"w-full min-h-screen {C_BG}"):
-        with ui.row().classes("w-full min-h-screen items-start"):
+    with ui.element("div").classes(_LAYOUT["app_root"]):
+        with ui.row().classes(_LAYOUT["shell_row"]):
             # Sidebar
-            with ui.column().classes(
-                "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-transparent "
-                "border border-neutral-400 items-center py-6 gap-5 z-40"
-            ):
-                ui.image(company_logo_url).classes("ff-sidebar-logo w-11 h-11 rounded-none object-contain")
+            with ui.column().classes(_LAYOUT["sidebar"]):
+                ui.image(company_logo_url).classes(_LAYOUT["sidebar_logo"])
 
                 def nav_item(label: str, target: str, icon: str) -> None:
                     active = app.storage.user.get("page", "dashboard") == target
-                    base = "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 border border-transparent"
                     cls = (
-                        f"{base} !text-[#ffc524] border-[#ffc524]/60 shadow-[0_0_18px_rgba(255,197,36,0.25)]"
+                        f'{_LAYOUT["nav_btn_base"]} {_LAYOUT["nav_btn_active"]}'
                         if active
-                        else f"{base} !text-neutral-300 hover:!text-neutral-100 hover:border-neutral-600/80"
+                        else f'{_LAYOUT["nav_btn_base"]} {_LAYOUT["nav_btn_inactive"]}'
                     )
-                    with ui.button(icon=icon, on_click=lambda t=target: set_page(t)).props("flat round no-ripple").classes(cls):
+                    with ui.button(icon=icon, on_click=lambda t=target: set_page(t)).props(
+                        "flat no-caps no-ripple"
+                    ).classes(cls):
                         ui.tooltip(label)
 
                 nav_item("Dashboard", "dashboard", "dashboard")
-                ui.element("div").classes("w-8 h-px bg-neutral-800")
+                ui.element("div").classes(_LAYOUT["nav_sep"])
                 nav_item("Invoices", "invoices", "receipt_long")
                 nav_item("Documents", "documents", "description")
                 nav_item("Ledger", "ledger", "account_balance")
                 nav_item("Exports", "exports", "file_download")
-                ui.element("div").classes("w-8 h-px bg-neutral-800")
+                ui.element("div").classes(_LAYOUT["nav_sep"])
                 nav_item("Customers", "customers", "groups")
                 if is_owner:
                     nav_item("Einladungen", "invites", "mail")
 
             # Main content
-            with ui.column().classes("flex-1 w-full relative pl-28 pr-6 pb-8"):
+            with ui.column().classes(_LAYOUT["main"]):
 
                 def handle_logout() -> None:
                     clear_auth_session()
@@ -1515,19 +1755,17 @@ def layout_wrapper(content_func):
                     app.storage.user["page"] = "ledger"
                     ui.navigate.to("/")
 
-                with ui.row().classes("w-full items-center gap-4 pt-6 pb-2 sticky top-0 z-30"):
-                    with ui.row().classes("flex-1 items-center gap-4"):
+                with ui.row().classes(_LAYOUT["topbar"]):
+                    with ui.row().classes(_LAYOUT["topbar_left"]):
                         ui.input(
-                            "Search Transactions",
+                            "Search transactions",
                             on_change=lambda e: open_ledger_search(e.value or ""),
-                        ).props("borderless dense").classes(f"{C_INPUT} ff-header-search rounded-full w-72")
-                    with ui.row().classes("flex-1 items-center justify-end gap-2"):
+                        ).props("outlined dense").classes(_LAYOUT["header_search"])
+                    with ui.row().classes(_LAYOUT["topbar_right"]):
                         with ui.button(icon="notifications").props("flat round").classes(
-                            "!text-neutral-300 hover:!text-neutral-100"
+                            _LAYOUT["icon_btn"]
                         ):
-                            with ui.menu().classes(
-                                "min-w-[240px] bg-neutral-900 text-neutral-200 border border-neutral-800"
-                            ):
+                            with ui.menu().classes(_LAYOUT["menu_wide"]):
                                 notifications: list[str] = []
                                 if n8n_today_count:
                                     notifications.append(
@@ -1535,38 +1773,25 @@ def layout_wrapper(content_func):
                                     )
                                 if notifications:
                                     for entry in notifications:
-                                        ui.item(entry).classes("text-neutral-200")
+                                        ui.item(entry)
                                 else:
-                                    ui.item("Keine neuen Benachrichtigungen.").classes(
-                                        "text-neutral-400"
-                                    )
+                                    ui.item("Keine neuen Benachrichtigungen.").classes(STYLE_TEXT_MUTED)
                         ui.button(
                             "New Invoice",
                             on_click=lambda: _open_invoice_editor(None),
-                        ).props("flat").classes(
-                            "ff-btn-new-invoice rounded-full w-[150px] justify-center items-center "
-                            "!bg-transparent hover:!bg-transparent shadow-none "
-                            "border border-[var(--brand-accent)] !text-[var(--brand-accent)] "
-                            "active:scale-[0.98] px-4 py-2 text-sm font-semibold transition-all "
-                            "focus-visible:ring-2 focus-visible:ring-[#ffc524]/40"
-                        )
-                        with ui.button().props("flat").classes(
-                            "ff-user-chip opacity-100 w-10 h-10 rounded-[20px] "
-                            "!bg-transparent hover:!bg-transparent "
-                            "shadow-[0_4px_12px_rgba(0,0,0,0.15)] "
-                            "!text-neutral-100"
-                        ):
-                            ui.label(initials).classes("text-xs font-semibold !text-neutral-100")
-                            with ui.menu().classes("min-w-[220px] bg-neutral-900 text-neutral-200"):
+                        ).props("flat no-caps").classes(_LAYOUT["new_invoice_btn"])
+                        with ui.button().props("flat no-caps").classes(_LAYOUT["user_btn"]):
+                            ui.label(initials).classes(_LAYOUT["user_initials"])
+                            with ui.menu().classes(_LAYOUT["menu"]):
                                 if identifier:
-                                    ui.label(identifier).classes("text-xs text-neutral-300 px-3 pt-2")
+                                    ui.label(identifier).classes(_LAYOUT["menu_meta"])
                                 if company_name:
-                                    ui.label(company_name).classes("text-sm text-neutral-300 px-3 pb-2")
+                                    ui.label(company_name).classes(_LAYOUT["menu_meta_company"])
                                 ui.separator().classes("my-1")
-                                ui.item("Settings", on_click=lambda: ui.navigate.to("/settings")).classes("text-neutral-200")
-                                ui.item("Logout", on_click=handle_logout).classes("text-rose-400")
+                                ui.item("Settings", on_click=lambda: ui.navigate.to("/settings"))
+                                ui.item("Logout", on_click=handle_logout).classes(_LAYOUT["logout_item"])
 
-                with ui.element("div").classes("w-full pt-[50px] pb-[50px] bg-neutral-900 rounded-[47px]"):
+                with ui.element("div").classes(_LAYOUT["content"]):
                     content_func()
 
 
@@ -1633,10 +1858,7 @@ def index():
                 return
 
             # Normal pages in container
-            container_classes = C_CONTAINER
-            if page == "ledger":
-                container_classes += " ff-ledger-container"
-            with ui.column().classes(container_classes):
+            with ui.column().classes(STYLE_CONTAINER):
                 if page == "dashboard":
                     render_dashboard(session, comp)
                 elif page == "customers":
@@ -1675,13 +1897,8 @@ def settings_page():
 
 # ... (Code davor bleibt gleich)
 
-# 1. Secret laden
-storage_secret = os.getenv("STORAGE_SECRET")
-if not storage_secret:
-    storage_secret = "dev-secret"
-    print("WARNUNG: STORAGE_SECRET nicht gesetzt!")
-Storage.secret = storage_secret
-if helpers.is_pytest():
+# Pytest helpers: allow setting `app.storage.user` without an active request.
+if _IS_PYTEST:
     _dummy_request = type("DummyRequest", (), {"session": {"id": "pytest"}})()
     request_contextvar.set(_dummy_request)
     if "pytest" not in app.storage._users:

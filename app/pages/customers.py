@@ -1,31 +1,33 @@
 from __future__ import annotations
 from ._shared import *
+from styles import STYLE_TEXT_MUTED
+from ui_components import ff_btn_primary, ff_card
 
 # Auto generated page renderer
 
 def render_customers(session, comp: Company) -> None:
     with ui.row().classes("w-full items-center justify-between mb-4 flex-col sm:flex-row gap-3"):
         ui.label("Kunden").classes(C_PAGE_TITLE)
-        ui.button(
+        ff_btn_primary(
             "Neu",
             icon="add",
             on_click=lambda: (app.storage.user.__setitem__("page", "customer_new"), ui.navigate.to("/")),
-        ).classes(C_BTN_PRIM)
+        )
 
     customers = session.exec(
         select(Customer)
         .where(Customer.archived == False, Customer.company_id == comp.id)
         .order_by(Customer.name)
     ).all()
-    with ui.card().classes(C_CARD + " p-0 overflow-hidden"):
+    with ff_card(pad="p-0", classes="overflow-hidden"):
         with ui.row().classes(C_TABLE_HEADER):
-            ui.label("Name").classes("flex-1 font-bold text-xs text-neutral-400")
-            ui.label("Email").classes("w-64 font-bold text-xs text-neutral-400")
-            ui.label("Details").classes("w-64 font-bold text-xs text-neutral-400")
+            ui.label("Name").classes("flex-1")
+            ui.label("Email").classes("w-64")
+            ui.label("Details").classes("w-64")
 
         if not customers:
             with ui.row().classes(C_TABLE_ROW):
-                ui.label("Noch keine Kunden vorhanden").classes("text-sm text-neutral-400")
+                ui.label("Noch keine Kunden vorhanden").classes(STYLE_TEXT_MUTED)
         else:
             for c in customers:
                 def open_detail(customer_id: int = int(c.id)):
@@ -41,7 +43,9 @@ def render_customers(session, comp: Company) -> None:
                 if c.short_code:
                     details.append(f"Kürzel: {c.short_code}")
 
-                with ui.row().classes(C_TABLE_ROW + " cursor-pointer").on("click", lambda _, x=int(c.id): open_detail(x)):
-                    ui.label(c.display_name).classes("flex-1 text-sm text-neutral-100")
-                    ui.label(c.email or "-").classes("w-64 text-sm text-neutral-300")
-                    ui.label(" · ".join(details) if details else "-").classes("w-64 text-sm text-neutral-300")
+                with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-slate-50").on(
+                    "click", lambda _, x=int(c.id): open_detail(x)
+                ):
+                    ui.label(c.display_name).classes("flex-1 font-medium text-slate-900")
+                    ui.label(c.email or "-").classes("w-64 text-slate-600")
+                    ui.label(" · ".join(details) if details else "-").classes("w-64 text-slate-600")

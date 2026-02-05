@@ -8,6 +8,13 @@ __pycache__/
 venv/
 .env
 
+# Local runtime artifacts
+.nicegui/
+n8n_log.txt
+temp_code_export_state.json
+temp_code_export.txt
+temp_code_export_part*.txt
+
 # FixundFertig Daten (WICHTIG: Keine Finanzdaten hochladen!)
 storage/
 *.db

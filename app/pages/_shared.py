@@ -40,29 +40,39 @@ from actions import cancel_invoice, create_correction, delete_draft, delete_invo
 from invoice_numbering import build_invoice_filename
 
 from styles import (
+    # Legacy/shared exports (imported by many pages via this module)
+    C_BADGE_GRAY,
+    C_BADGE_GREEN,
+    C_BADGE_YELLOW,
+    C_BTN_ORANGE,
+    C_BTN_PRIM,
+    C_BTN_SEC,
     C_CARD,
     C_CARD_HOVER,
+    C_CONTAINER,
+    C_GLASS_CARD,
     C_GLASS_CARD_HOVER,
-    C_BTN_PRIM,
-    C_BTN_ORANGE,
-    C_BTN_SEC,
     C_INPUT,
+    C_NUMERIC,
     C_PAGE_TITLE,
     C_SECTION_TITLE,
     C_TABLE_HEADER,
     C_TABLE_ROW,
-    C_BADGE_GREEN,
-    C_BADGE_GRAY,
-    C_BADGE_YELLOW,
-    C_CONTAINER,
-    C_GLASS_CARD,
-    C_NUMERIC,
+    # New style tokens used directly in shared helpers
+    STYLE_DROPDOWN_LABEL,
+    STYLE_DROPDOWN_OPTION,
+    STYLE_DROPDOWN_OPTION_ACTIVE,
+    STYLE_DROPDOWN_PANEL,
+    STYLE_STEPPER_ACTIVE,
+    STYLE_STEPPER_ARROW,
+    STYLE_STEPPER_INACTIVE,
 )
 
 from ui_components import (
     format_invoice_status,
     invoice_status_badge,
     kpi_card,
+    ff_input,
     settings_card,
     settings_grid,
     settings_two_column_layout,
@@ -227,13 +237,13 @@ def use_address_autocomplete(
         for idx, result in enumerate(state["results"]):
             label = result.get("label") or ""
             is_active = idx == state["active_index"]
-            option_classes = "w-full text-left px-3 py-2 text-sm hover:bg-neutral-900/60"
+            option_classes = STYLE_DROPDOWN_OPTION
             if is_active:
-                option_classes += " bg-neutral-900"
+                option_classes = f"{option_classes} {STYLE_DROPDOWN_OPTION_ACTIVE}"
             with ui.element("button").props(
                 f"type=button role=option aria-selected={'true' if is_active else 'false'}"
             ).classes(option_classes).on("click", lambda _, r=result: apply_result(r)):
-                ui.label(label).classes("text-left text-neutral-200")
+                ui.label(label).classes(STYLE_DROPDOWN_LABEL)
 
     def on_input_change(_) -> None:
         state["query"] = street_input.value or ""
@@ -296,11 +306,11 @@ def customer_contact_card(
 ) -> dict[str, ui.input]:
     with settings_card(title):
         with settings_grid():
-            name = ui.input("Firma", value=name_value).classes(C_INPUT)
-            first = ui.input("Vorname", value=first_value).classes(C_INPUT)
-            last = ui.input("Nachname", value=last_value).classes(C_INPUT)
-            email = ui.input("Email", value=email_value).classes(C_INPUT)
-            short_code = ui.input("Kürzel (optional)", value=short_code_value).classes(C_INPUT)
+            name = ff_input("Firma", value=name_value)
+            first = ff_input("Vorname", value=first_value)
+            last = ff_input("Nachname", value=last_value)
+            email = ff_input("Email", value=email_value)
+            short_code = ff_input("Kürzel (optional)", value=short_code_value)
 
     return {
         "name": name,
@@ -323,13 +333,11 @@ def customer_address_card(
     with settings_card(title):
         with settings_grid():
             with ui.element("div").classes("relative w-full"):
-                street = ui.input("Straße", value=street_value).classes(C_INPUT)
-                street_dropdown = ui.element("div").classes(
-                    "absolute left-0 right-0 mt-1 z-10 bg-neutral-900 border border-neutral-800 rounded-lg shadow-sm"
-                )
-            plz = ui.input("PLZ", value=plz_value).classes(C_INPUT)
-            city = ui.input("Ort", value=city_value).classes(C_INPUT)
-            country = ui.input("Land", value=country_value or country_fallback).classes(C_INPUT)
+                street = ff_input("Straße", value=street_value)
+                street_dropdown = ui.element("div").classes(STYLE_DROPDOWN_PANEL)
+            plz = ff_input("PLZ", value=plz_value)
+            city = ff_input("Ort", value=city_value)
+            country = ff_input("Land", value=country_value or country_fallback)
 
     use_address_autocomplete(
         street,
@@ -354,7 +362,7 @@ def customer_business_meta_card(
 ) -> dict[str, ui.input]:
     with settings_card(title):
         with settings_grid():
-            vat = ui.input("USt-ID", value=vat_value).classes(C_INPUT)
+            vat = ff_input("USt-ID", value=vat_value)
 
     return {"vat": vat}
 
@@ -606,10 +614,10 @@ def _render_status_stepper(invoice: Invoice) -> None:
     with ui.row().classes("items-center gap-2 flex-wrap"):
         for idx, (key, label) in enumerate(steps):
             is_active = key == current
-            cls = "text-neutral-100 font-semibold text-sm" if is_active else "text-neutral-500 text-sm"
+            cls = STYLE_STEPPER_ACTIVE if is_active else STYLE_STEPPER_INACTIVE
             ui.label(label).classes(cls)
             if idx < len(steps) - 1:
-                ui.label("→").classes("text-neutral-600 text-sm")
+                ui.label("→").classes(STYLE_STEPPER_ARROW)
 
 
 
