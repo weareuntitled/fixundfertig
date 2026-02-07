@@ -90,6 +90,11 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     service_from = today
     service_to = today
 
+    preview_summary = None
+    preview_frame = None
+    preview_summary_mobile = None
+    preview_frame_mobile = None
+
     with ui.row().classes("w-full gap-6 items-start flex-col md:flex-row md:flex-nowrap"):
         # LEFT column (35%)
         with ui.column().classes("w-full md:w-[35%] gap-4"):
@@ -175,9 +180,13 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 intro_input.props("autogrow")
 
             with ui.card().props("flat").classes(card_cls):
-                with ui.row().classes("w-full items-center justify-between"):
+                with ui.row().classes("w-full items-center justify-between flex-col md:flex-row gap-2"):
                     ui.label("Positionen").classes("text-lg font-semibold")
-                    add_btn = ff_btn_secondary("Position hinzufügen")
+                    add_btn = ff_btn_secondary("Position hinzufügen").classes("w-full md:w-auto")
+
+                ui.label("Tipp: Nach rechts wischen, um alle Spalten zu sehen.").classes(
+                    "text-xs text-gray-500 md:hidden"
+                )
 
                 columns = [
                     {"name": "description", "label": "Beschreibung", "field": "description", "align": "left"},
@@ -185,8 +194,11 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     {"name": "unit_price", "label": "Preis", "field": "unit_price", "align": "right"},
                     {"name": "tax_rate", "label": "USt", "field": "tax_rate", "align": "right"},
                 ]
-                table = ui.table(columns=columns, rows=items, row_key="id").classes("w-full mt-3")
-                table.props("hide-pagination :pagination='{rowsPerPage:0}'")
+                with ui.element("div").classes("w-full overflow-x-auto"):
+                    table = ui.table(columns=columns, rows=items, row_key="id").classes(
+                        "w-full mt-3 min-w-[560px]"
+                    )
+                    table.props("hide-pagination :pagination='{rowsPerPage:0}'")
 
                 dialog = ui.dialog()
                 with dialog:
@@ -254,12 +266,17 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                 ff_btn_primary(
                     "Rechnung finalisieren",
                     on_click=_finalize_invoice,
-                    classes="mt-4 ff-btn-finalize-invoice",
+                    classes="mt-4 ff-btn-finalize-invoice w-full md:w-auto",
                 )
 
         # RIGHT column preview
         with ui.column().classes("w-full md:flex-1"):
-            with ui.card().props("flat").classes(card_cls_sticky):
+            with ui.expansion("Vorschau", icon="visibility").classes("w-full md:hidden"):
+                with ui.card().props("flat").classes(card_cls):
+                    preview_summary_mobile = ui.html("", sanitize=False).classes("w-full mb-3")
+                    preview_frame_mobile = ui.html("", sanitize=False).classes("w-full")
+
+            with ui.card().props("flat").classes(f"{card_cls_sticky} hidden md:block"):
                 ui.label("Vorschau").classes(card_title_cls)
                 preview_summary = ui.html("", sanitize=False).classes("w-full mb-3")
                 preview_frame = ui.html("", sanitize=False).classes("w-full")
@@ -322,26 +339,40 @@ def render_invoice_create(session: Any, comp: Any) -> None:
         }
 
         preview_html = build_invoice_preview_html(invoice)
-        preview_summary.content = preview_html
+        if preview_summary is not None:
+            preview_summary.content = preview_html
+        if preview_summary_mobile is not None:
+            preview_summary_mobile.content = preview_html
         if not (force_pdf or preview_state["dirty"]):
             return
         preview_state["dirty"] = False
         try:
             pdf_bytes = renderer.render(invoice, template_id=None)
             pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
-            preview_frame.content = (
+            preview_frame_html = (
                 "<div class=\"ff-invoice-preview-frame\">"
                 "<iframe "
                 f"src=\"data:application/pdf;base64,{pdf_b64}\" "
                 "title=\"Invoice preview\"></iframe>"
                 "</div>"
             )
+            if preview_frame is not None:
+                preview_frame.content = preview_frame_html
+            if preview_frame_mobile is not None:
+                preview_frame_mobile.content = preview_frame_html
         except Exception as ex:
-            preview_frame.content = ""
-            preview_summary.content = (
+            if preview_frame is not None:
+                preview_frame.content = ""
+            if preview_frame_mobile is not None:
+                preview_frame_mobile.content = ""
+            preview_error_html = (
                 "<div class='text-orange-700'>PDF Fehler: "
                 f"{ex}</div>{preview_html}"
             )
+            if preview_summary is not None:
+                preview_summary.content = preview_error_html
+            if preview_summary_mobile is not None:
+                preview_summary_mobile.content = preview_error_html
 
     def _is_new_customer_selection(value: Any) -> bool:
         if value == new_customer_value:
