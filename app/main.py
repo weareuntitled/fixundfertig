@@ -1684,20 +1684,20 @@ _LAYOUT = {
         "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 "
         "border border-transparent"
     ),
-    "nav_btn_active": "text-amber-500 border-amber-200 bg-amber-50",
-    "nav_btn_inactive": "text-slate-300 hover:text-amber-500 hover:border-amber-200 hover:bg-amber-50",
+    "nav_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
+    "nav_btn_inactive": "text-slate-600 hover:text-slate-900 hover:border-slate-200 hover:bg-slate-50",
     "main": "flex-1 w-full relative px-4 pb-8 md:pl-28 md:pr-6",
     "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
-    "topbar_actions": "w-full items-center gap-4",
-    "topbar_actions_left": "flex-1 items-center gap-3",
+    "topbar_actions": "w-full items-center justify-between gap-4 flex-wrap",
+    "topbar_actions_left": "items-center gap-3",
     "topbar_search_row": "w-full items-center gap-4",
     "topbar_left": "flex-1 items-center gap-4",
     "topbar_right": "flex-1 items-center justify-end gap-2",
-    "icon_btn": f"{STYLE_TAP_TARGET} text-slate-300 hover:text-amber-500",
-    "mobile_menu_btn": f"md:hidden {STYLE_TAP_TARGET} text-slate-400 hover:text-amber-500",
+    "icon_btn": f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900",
+    "mobile_menu_btn": f"md:hidden {STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900",
     "sidebar_logo": "ff-sidebar-logo w-11 h-11 rounded-none object-contain",
-    "header_search": f"{STYLE_INPUT} w-72",
-    "new_invoice_btn": f"{STYLE_BTN_ACCENT} w-[150px]",
+    "header_search": f"{STYLE_INPUT} w-full sm:w-72",
+    "new_invoice_btn": f"{STYLE_BTN_ACCENT} w-auto sm:w-[150px]",
     "menu_wide": "w-[240px] max-w-[calc(100vw-2rem)]",
     "menu": "w-[220px] max-w-[calc(100vw-2rem)]",
     "menu_meta": "text-xs text-slate-600 px-3 pt-2",
@@ -1751,7 +1751,7 @@ def layout_wrapper(content_func):
     with ui.element("div").classes(_LAYOUT["app_root"]):
         with ui.row().classes(_LAYOUT["shell_row"]):
             # Sidebar
-            with ui.column().classes(f'{_LAYOUT["sidebar"]} hidden md:flex'):
+            with ui.column().classes(_LAYOUT["sidebar"]):
                 ui.image(company_logo_url).classes(_LAYOUT["sidebar_logo"])
 
                 def nav_item(label: str, target: str, icon: str) -> None:

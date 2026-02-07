@@ -30,10 +30,10 @@ from services.iban import lookup_bank_from_iban
 from services.storage import cleanup_company_logos, company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
-from styles import STYLE_DROPDOWN_PANEL, STYLE_TEXT_MUTED
+from styles import STYLE_DROPDOWN_PANEL, STYLE_LINK_BRAND, STYLE_TEXT_ERROR, STYLE_TEXT_MUTED
 
 
-LINK_TEXT = "text-sm text-amber-700 hover:text-amber-800"
+LINK_TEXT = STYLE_LINK_BRAND
 
 
 def _company_select_options(companies: list[Company]) -> dict[int, str]:
@@ -75,7 +75,7 @@ def render_settings(session, comp: Company) -> None:
         with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Neues Unternehmen").classes(C_SECTION_TITLE)
             name_in = ui.input("Name", placeholder="z.B. untitled-ux").props("outlined dense").classes(C_INPUT)
-            err = ui.label("").classes("text-sm text-amber-400")
+            err = ui.label("").classes(STYLE_TEXT_ERROR)
             err.set_visibility(False)
 
             def _do_create() -> None:

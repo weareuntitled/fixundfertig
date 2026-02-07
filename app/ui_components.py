@@ -11,6 +11,8 @@ from styles import (
     STYLE_BADGE_GREEN,
     STYLE_BADGE_RED,
     STYLE_BADGE_YELLOW,
+    STYLE_BTN_DANGER,
+    STYLE_BTN_GHOST,
     STYLE_BTN_MUTED,
     STYLE_BTN_PRIMARY,
     STYLE_BTN_SECONDARY,
@@ -112,11 +114,19 @@ def ff_btn_muted(text: str, *, on_click=None, icon: str | None = None, classes: 
 
 
 def ff_btn_danger(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
-    return ff_btn_muted(text, on_click=on_click, icon=icon, classes=classes, props=props)
+    return (
+        ui.button(text, icon=icon, on_click=on_click)
+        .props(f"unelevated no-caps {props}".strip())
+        .classes(f"{STYLE_BTN_DANGER} {classes}".strip())
+    )
 
 
 def ff_btn_ghost(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
-    return ff_btn_muted(text, on_click=on_click, icon=icon, classes=classes, props=props)
+    return (
+        ui.button(text, icon=icon, on_click=on_click)
+        .props(f"flat no-caps {props}".strip())
+        .classes(f"{STYLE_BTN_GHOST} {classes}".strip())
+    )
 
 def kpi_card(
     label,

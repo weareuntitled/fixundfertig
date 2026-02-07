@@ -25,6 +25,9 @@ from styles import (
     C_CARD,
     C_INPUT,
     C_SECTION_TITLE,
+    STYLE_BADGE_FILE_IMAGE,
+    STYLE_BADGE_FILE_OTHER,
+    STYLE_BADGE_FILE_PDF,
     STYLE_TAP_TARGET,
     STYLE_TEXT_MUTED,
 )
@@ -395,10 +398,10 @@ def render_documents(session, comp: Company) -> None:
         lower_mime = (mime or "").lower()
         lower_name = (filename or "").lower()
         if "pdf" in lower_mime or lower_name.endswith(".pdf"):
-            return "picture_as_pdf", "text-amber-700 bg-amber-50 border border-amber-200"
+            return "picture_as_pdf", STYLE_BADGE_FILE_PDF
         if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
-            return "image", "text-sky-700 bg-sky-50 border border-sky-200"
-        return "insert_drive_file", "text-slate-600 bg-slate-100 border border-slate-200"
+            return "image", STYLE_BADGE_FILE_IMAGE
+        return "insert_drive_file", STYLE_BADGE_FILE_OTHER
 
     # --- HANDLERS ---
 

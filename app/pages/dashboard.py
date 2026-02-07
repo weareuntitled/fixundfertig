@@ -8,7 +8,7 @@ from ._shared import _parse_iso_date
 from data import DocumentMeta
 from services.blob_storage import blob_storage
 from services.documents import resolve_document_path
-from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED
+from styles import STYLE_BADGE_FILE_IMAGE, STYLE_BADGE_FILE_OTHER, STYLE_BADGE_FILE_PDF, STYLE_TAP_TARGET, STYLE_TEXT_MUTED
 from ui_components import ff_btn_danger, ff_btn_secondary
 
 # Auto generated page renderer
@@ -64,10 +64,10 @@ def render_dashboard(session, comp: Company) -> None:
         lower_mime = (mime_value or "").lower()
         lower_name = (filename or "").lower()
         if "pdf" in lower_mime or lower_name.endswith(".pdf"):
-            return "picture_as_pdf", "bg-amber-50 text-amber-700 border border-amber-200"
+            return "picture_as_pdf", STYLE_BADGE_FILE_PDF
         if lower_mime.startswith("image/") or lower_name.endswith((".png", ".jpg", ".jpeg")):
-            return "image", "bg-amber-50 text-amber-700 border border-amber-200"
-        return "insert_drive_file", "bg-slate-100 text-slate-600 border border-slate-200"
+            return "image", STYLE_BADGE_FILE_IMAGE
+        return "insert_drive_file", STYLE_BADGE_FILE_OTHER
 
     def _load_doc_items() -> list[dict]:
         invoice_rows = session.exec(
@@ -90,7 +90,7 @@ def render_dashboard(session, comp: Company) -> None:
                     "type": "Invoice",
                     "status": "Paid" if inv.status == InvoiceStatus.PAID else "Pending",
                     "icon": "description",
-                    "accent": "bg-amber-50 text-amber-700 border border-amber-200",
+                    "accent": STYLE_BADGE_FILE_PDF,
                     "sort_date": _invoice_sort_date(inv),
                     "on_click": lambda _, invoice_id=int(inv.id): _open_invoice_detail(invoice_id),
                 }

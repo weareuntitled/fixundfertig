@@ -366,7 +366,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
             if preview_frame_mobile is not None:
                 preview_frame_mobile.content = ""
             preview_error_html = (
-                "<div class='text-orange-700'>PDF Fehler: "
+                "<div class='text-rose-600'>PDF Fehler: "
                 f"{ex}</div>{preview_html}"
             )
             if preview_summary is not None:

@@ -37,6 +37,9 @@ LAYOUT = {
     # Positionen (von oben gemessen)
     "pos_address": 10 * mm,    # Wo fängt das Adressfeld an? (Ideal für Fensterkuvert)
     "pos_info": 40 * mm,       # Wo fängt der Datumsblock rechts an? (1 cm höher)
+    
+    # Abstände zwischen Header / Empfänger / Meta
+    "header_to_rec_gap_mm": 8,     # Mindestabstand zw. Header und Empfängerblock (in mm)
 
     # Header layout (Logo links, Titel rechts)
     "header_left_w": 60 * mm,          # reservierte Breite links für Logo/Firmenname
@@ -53,6 +56,10 @@ LAYOUT = {
     "col_line": (0.0, 0.0, 0.0),     # Farbe der Trennlinien (Schwarz)
     "col_header_bg": (1.0, 1.0, 1.0), # Hintergrund Tabellenkopf (Weiß)
     "line_width": 1.0,               # Linienbreite
+
+    # Empfänger- / Meta-Layout
+    "recipient_leading_pt": 12,    # Zeilenabstand für Empfängerzeilen (pt)
+    "meta_col_w_mm": 70,           # maximale Breite der rechten Meta-Spalte (in mm)
 
     # Texte
     "txt_small_biz": "Als Kleinunternehmer im Sinne von § 19 Abs. 1 UStG wird keine Umsatzsteuer berechnet.",
@@ -274,7 +281,13 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     right_block_bottom_y = ty
 
     # 4. EMPFÄNGER
-    y_addr = h - LAYOUT["pos_address"]
+    header_bottom_y = min(left_block_bottom_y, right_block_bottom_y)
+    header_to_rec_gap = float(LAYOUT.get("header_to_rec_gap_mm", 8)) * mm
+    meta_col_w = min(float(LAYOUT.get("meta_col_w_mm", 70)) * mm, right_col_w)
+
+    y_addr_raw = h - LAYOUT["pos_address"]
+    # Empfängerblock nie höher als der Header-Bereich minus Sicherheitsabstand
+    y_addr_safe = min(y_addr_raw, header_bottom_y - header_to_rec_gap)
 
     sender_parts = []
     if comp:
@@ -283,22 +296,31 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         s_city = f"{_get(comp, 'postal_code','')} {_get(comp, 'city','')}".strip()
         sender_parts = [p for p in [s_name, s_str, s_city] if p]
 
-    # Empfänger Block
-    y_rec = y_addr - 5*mm
+    # Empfänger Block (mit Umbruch)
+    y_rec = y_addr_safe - 5 * mm
     set_font(size=LAYOUT["fs_text"], color=LAYOUT["col_primary"])
-    
-    rec_lines = [l for l in [rec_name, rec_street, f"{rec_zip} {rec_city}".strip(), rec_country] if l]
-    if not rec_lines: rec_lines = ["(Kein Empfänger hinterlegt)"]
 
-    for ln in rec_lines:
-        c.drawString(mx, y_rec, ln)
-        y_rec -= 12
+    rec_raw_lines = [l for l in [rec_name, rec_street, f"{rec_zip} {rec_city}".strip(), rec_country] if l]
+    if not rec_raw_lines:
+        rec_raw_lines = ["(Kein Empfänger hinterlegt)"]
+
+    # Breite der linken Adressspalte (Plan: content_w * 0.62), mit Obergrenze für Meta-Abstand
+    desired_addr_w = min(float(content_w) * 0.62, left_w + gap_w + 20 * mm)
+    max_addr_w = max(40 * mm, content_w - meta_col_w - 10 * mm)
+    addr_w = min(desired_addr_w, max_addr_w)
+    recipient_leading = float(LAYOUT.get("recipient_leading_pt", 12))
+
+    for base_ln in rec_raw_lines:
+        for ln in _wrap_text(base_ln, font_r, LAYOUT["fs_text"], addr_w):
+            if not ln:
+                continue
+            c.drawString(mx, y_rec, ln)
+            y_rec -= recipient_leading
 
     # 5. META DATEN (RECHTS)
     y_meta = h - LAYOUT["pos_info"]
     meta_x = w - mx
 
-    header_bottom_y = min(left_block_bottom_y, right_block_bottom_y)
     min_gap = float(LAYOUT["header_meta_gap"])
     if y_meta > header_bottom_y - min_gap:
         y_meta = header_bottom_y - min_gap
@@ -324,9 +346,24 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     for label, val in meta_data:
         set_font(bold=True, size=9)
         c.drawRightString(meta_x, y_meta, label)
-        set_font(bold=False, size=9)
-        c.drawRightString(meta_x, y_meta - 11, val)
-        y_meta -= 24
+
+        val_text = _safe_str(val)
+        if val_text:
+            set_font(bold=False, size=9)
+            val_lines = _wrap_text(val_text, font_r, 9, meta_col_w)
+            line_height = 11
+            v_y = y_meta - line_height
+            for ln in val_lines:
+                if not ln:
+                    continue
+                c.drawRightString(meta_x, v_y, ln)
+                v_y -= line_height
+            # Abstand zur nächsten Meta-Zeile
+            used_lines = max(1, len([l for l in val_lines if l]))
+            y_meta = y_meta - (used_lines * line_height + 12)
+        else:
+            # Kein Wert, nur etwas Abstand
+            y_meta -= 24
 
     # Y synchronisieren (unter Empfänger oder Meta, je nachdem was tiefer ist)
     y = min(y_rec, y_meta) - 12*mm

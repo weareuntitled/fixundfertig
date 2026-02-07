@@ -37,7 +37,6 @@ APP_FONT_CSS = f"""
     --ff-text: #0f172a;          /* slate-900 */
     --ff-muted: #64748b;         /* slate-500 */
     --ff-muted-2: #94a3b8;       /* slate-400 */
-    --ff-icon-inactive: #cbd5e1; /* slate-300 */
 
     /* Brand accent (used for focus ring / highlights) */
     --brand-primary: #f59e0b;     /* amber-500 */
@@ -66,56 +65,6 @@ APP_FONT_CSS = f"""
   }}
   .q-btn {{
     box-shadow: none !important;
-  }}
-  @media (max-width: 640px) {{
-    .q-btn {{
-      min-height: 44px;
-      min-width: 44px;
-    }}
-    .q-btn--round,
-    .q-btn--square {{
-      width: 44px;
-      height: 44px;
-      padding: 0 !important;
-    }}
-    .q-btn--dense {{
-      min-height: 44px;
-      min-width: 44px;
-    }}
-  }}
-
-  /* Global icon standard: inactive light gray, active primary orange */
-  .q-icon {{
-    color: var(--ff-icon-inactive);
-  }}
-  .q-btn .q-icon,
-  .q-item .q-icon,
-  .q-tab .q-icon,
-  .q-checkbox .q-icon,
-  .q-radio .q-icon {{
-    color: inherit !important;
-  }}
-  .q-btn--active,
-  .q-btn--active .q-icon,
-  .q-item--active,
-  .q-item--active .q-icon,
-  .q-tab--active,
-  .q-tab--active .q-icon {{
-    color: var(--brand-primary) !important;
-  }}
-
-  /* Button contrast guard: prevents unreadable label/icon combinations */
-  .q-btn[class*="bg-white"],
-  .q-btn[class*="bg-slate-50"],
-  .q-btn[class*="bg-amber-50"] {{
-    color: var(--ff-text) !important;
-  }}
-  .q-btn[class*="bg-slate-900"],
-  .q-btn[class*="bg-rose-600"] {{
-    color: #fff !important;
-  }}
-  .q-btn .q-icon {{
-    color: inherit !important;
   }}
 
   /* --- QUASAR: fields & inputs (outlined dense -> shadcn-like) --- */
@@ -178,7 +127,6 @@ APP_FONT_CSS = f"""
     background: var(--ff-surface) !important;
     border: 1px solid var(--ff-border) !important;
     border-radius: 0.75rem;
-    max-width: calc(100vw - 2rem);
   }}
   .q-menu .q-item {{ color: var(--ff-text) !important; }}
   .q-menu .q-item__label {{ color: var(--ff-text) !important; }}
@@ -255,20 +203,6 @@ APP_FONT_CSS = f"""
     border-color: var(--ff-border) !important;
   }}
 
-  /* Mobile dense input guard: keep tap targets >= 44px */
-  @media (max-width: 640px) {{
-    .q-field--dense .q-field__control {{
-      min-height: 44px !important;
-      padding-top: 6px !important;
-      padding-bottom: 6px !important;
-    }}
-    .q-field--dense .q-field__native,
-    .q-field--dense .q-field__input {{
-      min-height: 44px !important;
-      line-height: 1.25rem !important;
-    }}
-  }}
-
   /* Invoice preview (editor) */
   .ff-invoice-preview-frame {{
     border: 1px solid var(--ff-border) !important;
@@ -297,7 +231,7 @@ APP_FONT_CSS = f"""
 # -------------------------
 
 STYLE_BG = "bg-slate-50 text-slate-900 min-h-screen"
-STYLE_CONTAINER = "w-full sm:max-w-6xl mx-auto px-4 py-4 sm:px-6 sm:py-6 gap-6"
+STYLE_CONTAINER = "w-full max-w-6xl mx-auto px-6 py-6 gap-6"
 
 STYLE_CARD = "bg-white border border-slate-200 shadow-sm rounded-xl"
 STYLE_CARD_HOVER = "transition-colors hover:bg-slate-50 hover:border-slate-300"
@@ -308,23 +242,21 @@ STYLE_SECTION_TITLE = "text-sm font-semibold text-slate-900"
 STYLE_TEXT_MUTED = "text-sm text-slate-600"
 STYLE_TEXT_SUBTLE = "text-sm text-slate-500"
 STYLE_TEXT_HINT = "text-sm text-slate-400"
+STYLE_TEXT_ERROR = "text-sm text-rose-600"
 
 STYLE_BTN_PRIMARY = (
-    "bg-amber-500 text-white hover:bg-amber-600 border border-amber-500 active:scale-[0.99] rounded-lg px-4 py-2 text-sm "
+    "bg-slate-900 text-white hover:bg-slate-800 active:scale-[0.99] rounded-lg px-4 py-2 text-sm "
     "font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
 )
 STYLE_BTN_SECONDARY = (
-    "bg-transparent text-amber-500 border border-amber-500 hover:bg-amber-50 active:scale-[0.99] rounded-lg px-4 py-2 "
-    "text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/30"
+    "bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 active:scale-[0.99] rounded-lg px-4 py-2 "
+    "text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30"
 )
 STYLE_BTN_GHOST = (
     "text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:scale-[0.99] rounded-md px-3 py-2 text-sm "
     "font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30"
 )
-STYLE_BTN_MUTED = (
-    "bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 active:scale-[0.99] rounded-lg px-4 py-2 "
-    "text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30"
-)
+STYLE_BTN_MUTED = STYLE_BTN_GHOST
 STYLE_BTN_DANGER = (
     "bg-rose-600 text-white hover:bg-rose-700 active:scale-[0.99] rounded-lg px-4 py-2 text-sm "
     "font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/30"
@@ -336,10 +268,14 @@ STYLE_BTN_ACCENT = (
 )
 
 STYLE_INPUT = "w-full text-sm"
-STYLE_TAP_TARGET = "min-w-[44px] min-h-[44px]"
 STYLE_INPUT_ROUNDED = "rounded-full"
 
-STYLE_DROPDOWN_PANEL = f"absolute left-0 right-0 mt-1 z-10 {STYLE_CARD} p-1 max-w-[calc(100vw-2rem)]"
+STYLE_TAP_TARGET = "min-w-[44px] min-h-[44px] flex items-center justify-center"
+
+STYLE_LINK_NEUTRAL = "text-sm text-slate-600 hover:text-slate-900 no-underline"
+STYLE_LINK_BRAND = "text-sm text-amber-700 hover:text-amber-800 no-underline"
+
+STYLE_DROPDOWN_PANEL = f"absolute left-0 right-0 mt-1 z-10 {STYLE_CARD} p-1"
 STYLE_DROPDOWN_OPTION = "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-slate-100"
 STYLE_DROPDOWN_OPTION_ACTIVE = "bg-slate-100"
 STYLE_DROPDOWN_LABEL = "text-left text-slate-900"
@@ -357,6 +293,10 @@ STYLE_BADGE_GRAY = "bg-slate-100 text-slate-700 border border-slate-200 px-2 py-
 STYLE_BADGE_YELLOW = "bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 STYLE_BADGE_RED = "bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
 
+STYLE_BADGE_FILE_PDF = "bg-amber-50 text-amber-700 border border-amber-200"
+STYLE_BADGE_FILE_IMAGE = "bg-amber-50 text-amber-700 border border-amber-200"
+STYLE_BADGE_FILE_OTHER = "bg-slate-100 text-slate-600 border border-slate-200"
+
 # -------------------------
 # Backwards-compatible aliases (temporary)
 # -------------------------
@@ -371,8 +311,7 @@ C_GLASS_CARD_HOVER = STYLE_CARD_HOVER
 
 C_BTN_PRIM = STYLE_BTN_PRIMARY
 C_BTN_SEC = STYLE_BTN_SECONDARY
-C_BTN_MUTED = STYLE_BTN_MUTED
-C_BTN_ORANGE = STYLE_BTN_PRIMARY
+C_BTN_ORANGE = STYLE_BTN_ACCENT
 
 C_INPUT = STYLE_INPUT
 C_INPUT_ROUNDED = STYLE_INPUT_ROUNDED
