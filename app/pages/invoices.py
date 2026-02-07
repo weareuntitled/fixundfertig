@@ -8,7 +8,7 @@ from ui_components import ff_btn_muted, ff_btn_primary, ff_btn_secondary, ff_car
 
 def render_invoices(session, comp: Company) -> None:
     _CLS = {
-        "page_header": "w-full justify-between items-center mb-4 gap-3 flex-col sm:flex-row",
+        "page_header": "w-full justify-between items-center mb-4 gap-3 flex-col sm:flex-row flex-wrap",
         "grid": "grid grid-cols-10 gap-4 w-full",
         "left_col": "col-span-10 lg:col-span-7 gap-3",
         "right_col": "col-span-10 lg:col-span-3 gap-5",
@@ -94,7 +94,7 @@ def render_invoices(session, comp: Company) -> None:
     delete_state = {"id": None, "label": ""}
 
     with ui.dialog() as delete_dialog:
-        with ff_card(pad="p-5", classes="w-[520px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-[520px] max-w-[92vw] max-h-[92vh] overflow-y-auto"):
             ui.label("Rechnung löschen").classes(C_SECTION_TITLE)
             delete_label = ui.label("Willst du diese Rechnung wirklich löschen?").classes(STYLE_TEXT_MUTED)
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
@@ -130,66 +130,100 @@ def render_invoices(session, comp: Company) -> None:
         # Left column
         with ui.column().classes(_CLS["left_col"]):
             with ff_card(pad="p-0", classes="overflow-hidden"):
-                with ui.element("div").classes("overflow-x-auto"):
-                    with ui.element("div").classes("w-full sm:min-w-[720px]"):
-                        with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
-                            ui.label("Nr").classes("w-24")
-                            ui.label("Kunde").classes("flex-1")
-                            ui.label("Betrag").classes("w-28 text-right")
-                            ui.label("Status").classes("w-28 text-right")
-                            ui.label("").classes("w-44 text-right")
+                with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
+                    ui.label("Nr").classes("w-24")
+                    ui.label("Kunde").classes("flex-1")
+                    ui.label("Betrag").classes("w-28 text-right")
+                    ui.label("Status").classes("w-28 text-right")
+                    ui.label("").classes("w-44 text-right")
 
-                        if not finals:
-                            with ui.row().classes(C_TABLE_ROW):
-                                ui.label("Noch keine Rechnungen vorhanden").classes(STYLE_TEXT_MUTED)
-                        else:
-                            for idx, inv in enumerate(finals):
-                                row_bg = "bg-white" if idx % 2 == 0 else "bg-slate-50/60"
-                                with ui.row().classes(
-                                    C_TABLE_ROW
-                                    + f" {row_bg} h-16 group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 hover:bg-slate-50"
-                                ):
-                                    with ui.row().classes("flex-1 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 cursor-pointer w-full").on(
+                if not finals:
+                    with ui.row().classes(C_TABLE_ROW):
+                        ui.label("Noch keine Rechnungen vorhanden").classes(STYLE_TEXT_MUTED)
+                else:
+                    with ui.column().classes("sm:hidden"):
+                        for idx, inv in enumerate(finals):
+                            row_bg = "bg-white" if idx % 2 == 0 else "bg-slate-50/60"
+                            with ui.element("div").classes(f"px-4 py-3 border-b border-slate-200 {row_bg}"):
+                                with ui.column().classes("gap-3 w-full"):
+                                    with ui.column().classes("gap-2 cursor-pointer w-full").on(
                                         "click", lambda _, x=inv: _open_invoice_detail(int(x.id))
                                     ):
-                                        with ui.column().classes("w-full sm:w-24 gap-1"):
-                                            ui.label("Nr").classes(_CLS["row_label_sm"])
+                                        with ui.row().classes("items-start justify-between gap-3"):
                                             ui.label(f"#{inv.nr}" if inv.nr else "-").classes("text-xs font-mono text-slate-700")
-                                        with ui.column().classes("w-full sm:flex-1 gap-1"):
-                                            ui.label("Kunde").classes(_CLS["row_label_sm"])
-                                            ui.label(cust_name(inv)).classes("text-sm text-slate-900")
-                                        with ui.column().classes("w-full sm:w-28 gap-1 sm:items-end"):
-                                            ui.label("Betrag").classes(_CLS["row_label_sm"])
-                                            ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes(
-                                                f"text-sm font-mono text-slate-900 sm:text-right {C_NUMERIC}"
-                                            )
-                                        with ui.column().classes("w-full sm:w-28 gap-1 sm:items-end"):
-                                            ui.label("Status").classes(_CLS["row_label_sm"])
-                                            with ui.row().classes("sm:justify-end"):
-                                                ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))
+                                            ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))
+                                        ui.label(cust_name(inv)).classes("text-sm text-slate-900")
+                                        ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes(
+                                            f"text-sm font-mono text-slate-900 {C_NUMERIC}"
+                                        )
+                                    with ui.row().classes("w-full justify-end gap-2 flex-wrap"):
+                                        ui.button(icon="visibility", on_click=lambda x=inv: _open_invoice_detail(int(x.id))).props(
+                                            "flat dense no-parent-event"
+                                        ).classes(_CLS["icon_btn"])
+                                        ui.button(icon="download", on_click=lambda x=inv: run_download(x)).props(
+                                            "flat dense no-parent-event"
+                                        ).classes(_CLS["icon_btn"])
+                                        ui.button(icon="mail", on_click=lambda x=inv: run_send(x)).props(
+                                            "flat dense no-parent-event"
+                                        ).classes(_CLS["icon_btn"])
 
-                                    with ui.column().classes("w-full sm:w-44 gap-2 sm:items-end"):
-                                        ui.label("Aktionen").classes(_CLS["row_label_sm"])
-                                        with ui.row().classes("w-full sm:w-44 justify-end gap-2"):
-                                            ui.button(icon="visibility", on_click=lambda x=inv: _open_invoice_detail(int(x.id))).props(
-                                                "flat dense no-parent-event"
-                                            ).classes(_CLS["icon_btn"])
-                                            ui.button(icon="download", on_click=lambda x=inv: run_download(x)).props(
-                                                "flat dense no-parent-event"
-                                            ).classes(_CLS["icon_btn"])
-                                            ui.button(icon="mail", on_click=lambda x=inv: run_send(x)).props(
-                                                "flat dense no-parent-event"
-                                            ).classes(_CLS["icon_btn"])
+                                        with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(_CLS["icon_btn"]):
+                                            with ui.menu().props("auto-close no-parent-event"):
+                                                if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
+                                                    ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))
+                                                if inv.status == InvoiceStatus.SENT:
+                                                    ui.menu_item("Als bezahlt markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.PAID))
+                                                if inv.status != InvoiceStatus.CANCELLED:
+                                                    ui.menu_item("Stornieren", on_click=lambda x=inv: do_cancel(x))
+                                                ui.menu_item("Löschen", on_click=lambda x=inv: open_delete(x))
 
-                                            with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(_CLS["icon_btn"]):
-                                                with ui.menu().props("auto-close no-parent-event"):
-                                                    if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
-                                                        ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))
-                                                    if inv.status == InvoiceStatus.SENT:
-                                                        ui.menu_item("Als bezahlt markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.PAID))
-                                                    if inv.status != InvoiceStatus.CANCELLED:
-                                                        ui.menu_item("Stornieren", on_click=lambda x=inv: do_cancel(x))
-                                                    ui.menu_item("Löschen", on_click=lambda x=inv: open_delete(x))
+                    with ui.element("div").classes("hidden sm:block"):
+                        for idx, inv in enumerate(finals):
+                            row_bg = "bg-white" if idx % 2 == 0 else "bg-slate-50/60"
+                            with ui.row().classes(
+                                C_TABLE_ROW + f" {row_bg} h-16 group hover:bg-slate-50 hidden sm:flex sm:items-center"
+                            ):
+                                with ui.row().classes("flex-1 flex items-center gap-4 cursor-pointer w-full").on(
+                                    "click", lambda _, x=inv: _open_invoice_detail(int(x.id))
+                                ):
+                                    with ui.column().classes("w-24 gap-1"):
+                                        ui.label("Nr").classes(_CLS["row_label_sm"])
+                                        ui.label(f"#{inv.nr}" if inv.nr else "-").classes("text-xs font-mono text-slate-700")
+                                    with ui.column().classes("flex-1 gap-1"):
+                                        ui.label("Kunde").classes(_CLS["row_label_sm"])
+                                        ui.label(cust_name(inv)).classes("text-sm text-slate-900")
+                                    with ui.column().classes("w-28 gap-1 items-end"):
+                                        ui.label("Betrag").classes(_CLS["row_label_sm"])
+                                        ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes(
+                                            f"text-sm font-mono text-slate-900 text-right {C_NUMERIC}"
+                                        )
+                                    with ui.column().classes("w-28 gap-1 items-end"):
+                                        ui.label("Status").classes(_CLS["row_label_sm"])
+                                        with ui.row().classes("justify-end"):
+                                            ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))
+
+                                with ui.column().classes("w-44 gap-2 items-end"):
+                                    ui.label("Aktionen").classes(_CLS["row_label_sm"])
+                                    with ui.row().classes("w-44 justify-end gap-2 flex-wrap"):
+                                        ui.button(icon="visibility", on_click=lambda x=inv: _open_invoice_detail(int(x.id))).props(
+                                            "flat dense no-parent-event"
+                                        ).classes(_CLS["icon_btn"])
+                                        ui.button(icon="download", on_click=lambda x=inv: run_download(x)).props(
+                                            "flat dense no-parent-event"
+                                        ).classes(_CLS["icon_btn"])
+                                        ui.button(icon="mail", on_click=lambda x=inv: run_send(x)).props(
+                                            "flat dense no-parent-event"
+                                        ).classes(_CLS["icon_btn"])
+
+                                        with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(_CLS["icon_btn"]):
+                                            with ui.menu().props("auto-close no-parent-event"):
+                                                if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
+                                                    ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))
+                                                if inv.status == InvoiceStatus.SENT:
+                                                    ui.menu_item("Als bezahlt markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.PAID))
+                                                if inv.status != InvoiceStatus.CANCELLED:
+                                                    ui.menu_item("Stornieren", on_click=lambda x=inv: do_cancel(x))
+                                                ui.menu_item("Löschen", on_click=lambda x=inv: open_delete(x))
 
         # Right column
         with ui.column().classes(_CLS["right_col"]):
