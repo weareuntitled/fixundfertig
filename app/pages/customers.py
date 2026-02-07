@@ -20,59 +20,41 @@ def render_customers(session, comp: Company) -> None:
         .order_by(Customer.name)
     ).all()
     with ff_card(pad="p-0", classes="overflow-hidden"):
-        with ui.column().classes("sm:hidden w-full"):
-            if not customers:
-                with ui.row().classes(C_TABLE_ROW):
-                    ui.label("Noch keine Kunden vorhanden").classes(STYLE_TEXT_MUTED)
-            else:
-                for c in customers:
-                    def open_detail(customer_id: int = int(c.id)):
-                        app.storage.user["customer_detail_id"] = customer_id
-                        app.storage.user["page"] = "customer_detail"
-                        ui.navigate.to("/")
+        with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
+            ui.label("Name").classes("flex-1")
+            ui.label("Email").classes("w-64")
+            ui.label("Details").classes("w-64")
 
-                    details: list[str] = []
-                    if c.vorname or c.nachname:
-                        details.append(f"{c.vorname} {c.nachname}".strip())
-                    if c.ort or c.plz:
-                        details.append(" ".join([part for part in [c.plz, c.ort] if part]))
-                    if c.short_code:
-                        details.append(f"Kürzel: {c.short_code}")
+        if not customers:
+            with ui.row().classes(C_TABLE_ROW):
+                ui.label("Noch keine Kunden vorhanden").classes(STYLE_TEXT_MUTED)
+        else:
+            for c in customers:
+                def open_detail(customer_id: int = int(c.id)):
+                    app.storage.user["customer_detail_id"] = customer_id
+                    app.storage.user["page"] = "customer_detail"
+                    ui.navigate.to("/")
 
-                    with ui.column().classes("w-full gap-1 p-3 border-b last:border-b-0 cursor-pointer hover:bg-slate-50").on(
-                        "click", lambda _, x=int(c.id): open_detail(x)
-                    ):
-                        ui.label(c.display_name).classes("font-medium text-slate-900")
-                        ui.label(c.email or "-").classes("text-slate-600")
-                        ui.label(" · ".join(details) if details else "-").classes("text-slate-600")
+                details: list[str] = []
+                if c.vorname or c.nachname:
+                    details.append(f"{c.vorname} {c.nachname}".strip())
+                if c.ort or c.plz:
+                    details.append(" ".join([part for part in [c.plz, c.ort] if part]))
+                if c.short_code:
+                    details.append(f"Kürzel: {c.short_code}")
 
-        with ui.column().classes("hidden sm:block"):
-            with ui.row().classes(C_TABLE_HEADER):
-                ui.label("Name").classes("flex-1")
-                ui.label("Email").classes("w-64")
-                ui.label("Details").classes("w-64")
+                with ui.row().classes(C_TABLE_ROW + " hidden sm:flex cursor-pointer hover:bg-slate-50").on(
+                    "click", lambda _, x=int(c.id): open_detail(x)
+                ):
+                    ui.label(c.display_name).classes("flex-1 font-medium text-slate-900")
+                    ui.label(c.email or "-").classes("w-64 text-slate-600")
+                    ui.label(" · ".join(details) if details else "-").classes("w-64 text-slate-600")
 
-            if not customers:
-                with ui.row().classes(C_TABLE_ROW):
-                    ui.label("Noch keine Kunden vorhanden").classes(STYLE_TEXT_MUTED)
-            else:
-                for c in customers:
-                    def open_detail(customer_id: int = int(c.id)):
-                        app.storage.user["customer_detail_id"] = customer_id
-                        app.storage.user["page"] = "customer_detail"
-                        ui.navigate.to("/")
-
-                    details: list[str] = []
-                    if c.vorname or c.nachname:
-                        details.append(f"{c.vorname} {c.nachname}".strip())
-                    if c.ort or c.plz:
-                        details.append(" ".join([part for part in [c.plz, c.ort] if part]))
-                    if c.short_code:
-                        details.append(f"Kürzel: {c.short_code}")
-
-                    with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-slate-50").on(
-                        "click", lambda _, x=int(c.id): open_detail(x)
-                    ):
-                        ui.label(c.display_name).classes("flex-1 font-medium text-slate-900")
-                        ui.label(c.email or "-").classes("w-64 text-slate-600")
-                        ui.label(" · ".join(details) if details else "-").classes("w-64 text-slate-600")
+                with ui.element("div").classes("sm:hidden border-b border-slate-200/70 p-4").on(
+                    "click", lambda _, x=int(c.id): open_detail(x)
+                ):
+                    with ui.column().classes("gap-1"):
+                        ui.label(c.display_name).classes("text-sm font-semibold text-slate-900")
+                        if c.email:
+                            ui.label(c.email).classes("text-xs text-slate-500")
+                        ui.label(" · ".join(details) if details else "-").classes("text-xs text-slate-500")

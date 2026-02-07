@@ -675,7 +675,7 @@ def render_documents(session, comp: Company) -> None:
         _log_client_debug({"step": "upload_method_called"})
 
     with ui.dialog() as upload_dialog:
-        with ff_card(pad="p-5", classes="w-[480px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Upload an n8n").classes(C_SECTION_TITLE)
             ui.label("PDF, JPG oder PNG, maximal 15 MB.").classes("text-xs text-slate-500")
             ui.label("Die Datei wird an n8n gesendet und erscheint nach der Verarbeitung in der Liste.").classes(
@@ -694,7 +694,7 @@ def render_documents(session, comp: Company) -> None:
 
     delete_id = {"value": None}
     with ui.dialog() as delete_all_dialog:
-        with ff_card(pad="p-5", classes="w-[560px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Alle Dokumente löschen").classes(C_SECTION_TITLE)
             ui.label(
                 "Das löscht alle Dokumente inkl. Dateien und Metadaten des aktiven Unternehmens."
@@ -775,7 +775,7 @@ def render_documents(session, comp: Company) -> None:
                 ff_btn_danger("Alle löschen", on_click=_confirm_delete_all)
 
     with ui.dialog() as reset_dialog:
-        with ff_card(pad="p-5", classes="w-[520px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Webhook-Events zurücksetzen").classes(C_SECTION_TITLE)
             ui.label(
                 "Damit werden alle gespeicherten n8n-Events gelöscht, um Duplikate erneut senden zu können."
@@ -794,7 +794,7 @@ def render_documents(session, comp: Company) -> None:
                 ff_btn_danger("Reset", on_click=_confirm_reset)
 
     with ui.dialog() as delete_dialog:
-        with ff_card(pad="p-5", classes="w-[520px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Dokument löschen").classes(C_SECTION_TITLE)
             ui.label("Willst du dieses Dokument wirklich löschen?").classes(STYLE_TEXT_MUTED)
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
@@ -896,7 +896,7 @@ def render_documents(session, comp: Company) -> None:
 
     meta_state = {"doc_id": None, "title": "", "raw": "", "line_items": "", "flags": ""}
     with ui.dialog() as meta_dialog:
-        with ff_card(pad="p-5", classes="w-[96vw] sm:w-[860px] max-w-[96vw]"):
+        with ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             meta_title = ui.label("Metadaten").classes(C_SECTION_TITLE)
             ui.label("JSON bearbeiten, um Metadaten zu aktualisieren.").classes("text-xs text-slate-500 mb-2")
             with ui.column().classes("gap-3 max-h-[65vh] overflow-y-auto pr-1"):
@@ -1036,21 +1036,21 @@ def render_documents(session, comp: Company) -> None:
                 f"{total_docs}",
                 "description",
                 "text-slate-600",
-                classes="w-full",
+                classes="flex-1 min-w-0",
             )
             kpi_card(
                 "Gesamtsumme",
                 _format_amount_eur(total_amount),
                 "payments",
                 "text-amber-600",
-                classes="w-full",
+                classes="flex-1 min-w-0",
             )
             kpi_card(
                 "Steuern gesichert",
                 _format_amount_eur(total_tax),
                 "receipt_long",
                 "text-amber-500",
-                classes="w-full",
+                classes="flex-1 min-w-0",
             )
 
     @ui.refreshable
@@ -1063,13 +1063,13 @@ def render_documents(session, comp: Company) -> None:
 
         # COLUMN WIDTH DEFINITIONS (Must sum to 100%)
         col_w = {
-            "check": "w-full sm:w-[4%]",
-            "file": "w-full sm:w-[28%]",
-            "date": "w-full sm:w-[10%]",
-            "tags": "w-full sm:w-[15%]",
-            "amt": "w-full sm:w-[10%]",
-            "status": "w-full sm:w-[8%]",
-            "action": "w-full sm:w-[5%]",
+            "check": "w-10",
+            "file": "flex-1 min-w-0",
+            "date": "w-24",
+            "tags": "w-32",
+            "amt": "w-24",
+            "status": "w-24",
+            "action": "w-16",
         }
 
         with ff_card(pad="p-0", classes="overflow-hidden w-full"):
@@ -1198,8 +1198,8 @@ def render_documents(session, comp: Company) -> None:
                 # Row Styles
                 # FIXED: Added 'flex-nowrap' here to prevent the button from wrapping
                 row_classes = (
-                    "w-full px-4 py-3 items-start sm:items-center border-b border-slate-200/70 "
-                    "hover:bg-slate-50 transition-colors text-sm group flex-col sm:flex-row sm:flex-nowrap"
+                    "hidden sm:flex w-full px-4 py-3 items-center border-b border-slate-200/70 "
+                    "hover:bg-slate-50 transition-colors text-sm group flex-nowrap"
                 )
                 if highlight_document_id == doc_id:
                      row_classes += " bg-amber-500/5 border-l-2 border-l-amber-500 pl-[14px]"
@@ -1269,7 +1269,7 @@ def render_documents(session, comp: Company) -> None:
                         with ui.button(icon="more_vert").props("round flat dense stop").classes(
                             f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900 transition-colors"
                         ):
-                            with ui.menu().props("auto-close").classes("min-w-[200px]"):
+                            with ui.menu().props("auto-close").classes("w-52"):
                                 ui.menu_item("Bearbeiten", on_click=lambda _, d=doc_id: _open_meta(int(d)))
                                 ui.menu_item("Vorschau", on_click=lambda _, u=open_url: _preview_document(u))
                                 ui.menu_item("Download", on_click=lambda _, u=open_url: _trigger_download(u))
@@ -1277,6 +1277,58 @@ def render_documents(session, comp: Company) -> None:
                                 ui.menu_item("Löschen", on_click=lambda _, d=doc_id: _open_delete(int(d))).classes(
                                     "text-rose-600 hover:text-rose-700"
                                 )
+
+                with ui.column().classes("sm:hidden border-b border-slate-200/70 p-4 gap-3"):
+                    with ui.row().classes("items-start gap-3"):
+                        ui.checkbox(
+                            value=doc_id in selected_ids,
+                            on_change=lambda e, i=doc_id: _update_selected(i, bool(e.value)),
+                        ).props("dense size=xs")
+                        with ui.row().classes("flex-1 gap-3 min-w-0"):
+                            with ui.element("div").classes(
+                                f"w-9 h-9 shrink-0 rounded-md flex items-center justify-center {icon_classes}"
+                            ):
+                                ui.icon(icon_name).classes("text-sm")
+                            with ui.column().classes("gap-1 min-w-0 flex-1"):
+                                ui.link(filename, open_url, new_tab=True).classes(
+                                    "text-slate-900 font-medium leading-tight truncate hover:text-amber-700 hover:underline block w-full"
+                                ).tooltip(filename)
+                                ui.label(display_date or "-").classes("text-xs text-slate-500 font-mono")
+                                if tags_value and tags_value != "-":
+                                    ui.label(tags_value).classes("text-[10px] text-slate-500 truncate")
+                        with ui.element("div").classes("shrink-0"):
+                            with ui.button(icon="more_vert").props("round flat dense stop").classes(
+                                "text-slate-500 hover:text-slate-900 transition-colors"
+                            ):
+                                with ui.menu().props("auto-close").classes("w-52"):
+                                    ui.menu_item("Bearbeiten", on_click=lambda _, d=doc_id: _open_meta(int(d)))
+                                    ui.menu_item("Vorschau", on_click=lambda _, u=open_url: _preview_document(u))
+                                    ui.menu_item("Download", on_click=lambda _, u=open_url: _trigger_download(u))
+                                    ui.separator().classes("bg-slate-200")
+                                    ui.menu_item("Löschen", on_click=lambda _, d=doc_id: _open_delete(int(d))).classes(
+                                        "text-rose-600 hover:text-rose-700"
+                                    )
+
+                    with ui.row().classes("items-center justify-between text-xs text-slate-500"):
+                        ui.label(_format_source(doc.source))
+                        ui.label(status_label).classes(badge_class)
+
+                    with ui.row().classes("w-full gap-4 text-xs text-slate-600"):
+                        with ui.column().classes("gap-0.5"):
+                            ui.label("Brutto").classes("uppercase text-[10px] text-slate-400")
+                            ui.label(_format_amount_value(amount_total, currency_value) if amount_total else "-").classes(
+                                f"font-mono text-slate-700 {C_NUMERIC}"
+                            )
+                        with ui.column().classes("gap-0.5"):
+                            ui.label("Netto").classes("uppercase text-[10px] text-slate-400")
+                            ui.label(_format_amount_value(amount_net, currency_value) if amount_net else "-").classes(
+                                f"font-mono text-slate-700 {C_NUMERIC}"
+                            )
+                        with ui.column().classes("gap-0.5"):
+                            ui.label("Steuer").classes("uppercase text-[10px] text-slate-400")
+                            ui.label(_format_amount_value(amount_tax, currency_value) if amount_tax else "-").classes(
+                                f"font-mono text-slate-700 {C_NUMERIC}"
+                            )
 
     with ui.element("div").classes("w-full flex flex-col gap-6"):
         render_filters()

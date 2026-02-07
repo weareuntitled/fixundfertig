@@ -295,7 +295,7 @@ def render_dashboard(session, comp: Company) -> None:
     delete_state = {"kind": None, "id": None, "label": ""}
 
     with ui.dialog() as delete_dialog:
-        with ui.card().props("flat").classes(C_CARD + " p-5 w-[520px] max-w-[92vw]"):
+        with ui.card().props("flat").classes(C_CARD + " p-5 w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Löschen").classes(C_SECTION_TITLE)
             delete_label = ui.label("Willst du dieses Element wirklich löschen?").classes(STYLE_TEXT_MUTED)
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):

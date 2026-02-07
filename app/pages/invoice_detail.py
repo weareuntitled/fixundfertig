@@ -159,7 +159,7 @@ def render_invoice_detail(session, comp: Company) -> None:
                     ff_btn_secondary("Edit with risk", on_click=lambda: risk_dialog.open())
 
                 with ui.dialog() as risk_dialog:
-                    with ff_card(pad="p-4", classes="w-[520px] max-w-[90vw]"):
+                    with ff_card(pad="p-4", classes="w-full max-w-[90vw] max-h-[85vh] overflow-y-auto"):
                         ui.label("Ändern auf Risiko").classes("text-base font-semibold text-slate-900")
                         ui.label("Erstellt eine Revision als neuen Entwurf. Das Original bleibt nachvollziehbar.").classes(STYLE_TEXT_MUTED)
                         reason_input = ff_textarea("Grund", value="", props='placeholder="Warum musst du das ändern"')
@@ -194,13 +194,19 @@ def render_invoice_detail(session, comp: Company) -> None:
                 ui.label("Keine Positionen hinterlegt").classes(STYLE_TEXT_MUTED)
         else:
             with ff_card(pad="p-0", classes="overflow-hidden"):
-                with ui.row().classes(C_TABLE_HEADER):
+                with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
                     ui.label("Beschreibung").classes("flex-1")
                     ui.label("Menge").classes("w-24 text-right")
                     ui.label("Preis").classes("w-28 text-right")
 
                 for it in items:
-                    with ui.row().classes(C_TABLE_ROW):
+                    with ui.row().classes(C_TABLE_ROW + " hidden sm:flex"):
                         ui.label(it.description).classes("flex-1")
                         ui.label(f"{float(it.quantity or 0):,.2f}").classes("w-24 text-right font-mono text-slate-900")
                         ui.label(f"{float(it.unit_price or 0):,.2f} €").classes("w-28 text-right font-mono text-slate-900")
+
+                    with ui.column().classes("sm:hidden border-b border-slate-200/70 p-4 gap-2"):
+                        ui.label(it.description).classes("text-sm font-medium text-slate-900")
+                        with ui.row().classes("items-center justify-between text-xs text-slate-500"):
+                            ui.label(f"{float(it.quantity or 0):,.2f}").classes("font-mono")
+                            ui.label(f"{float(it.unit_price or 0):,.2f} €").classes("font-mono")

@@ -110,7 +110,7 @@ def render_ledger(session, comp: Company) -> None:
             ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT + " sm:w-auto")
             ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT + " sm:w-auto")
             ui.input("Suche", placeholder="Party oder Beschreibung",
-                     on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh())).props("outlined dense").classes(C_INPUT + " sm:flex-1 sm:w-auto ff-ledger-search")
+                     on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh())).props("outlined dense").classes(C_INPUT + " w-full sm:w-56 ff-ledger-search")
 
     @ui.refreshable
     def render_list():

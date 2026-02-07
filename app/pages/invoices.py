@@ -94,7 +94,7 @@ def render_invoices(session, comp: Company) -> None:
     delete_state = {"id": None, "label": ""}
 
     with ui.dialog() as delete_dialog:
-        with ff_card(pad="p-5", classes="w-[520px] max-w-[92vw] max-h-[92vh] overflow-y-auto"):
+        with ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Rechnung löschen").classes(C_SECTION_TITLE)
             delete_label = ui.label("Willst du diese Rechnung wirklich löschen?").classes(STYLE_TEXT_MUTED)
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
@@ -130,23 +130,26 @@ def render_invoices(session, comp: Company) -> None:
         # Left column
         with ui.column().classes(_CLS["left_col"]):
             with ff_card(pad="p-0", classes="overflow-hidden"):
-                with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
-                    ui.label("Nr").classes("w-24")
-                    ui.label("Kunde").classes("flex-1")
-                    ui.label("Betrag").classes("w-28 text-right")
-                    ui.label("Status").classes("w-28 text-right")
-                    ui.label("").classes("w-44 text-right")
+                with ui.element("div").classes("overflow-x-auto"):
+                    with ui.element("div").classes("w-full"):
+                        with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
+                            ui.label("Nr").classes("w-24")
+                            ui.label("Kunde").classes("flex-1")
+                            ui.label("Betrag").classes("w-28 text-right")
+                            ui.label("Status").classes("w-28 text-right")
+                            ui.label("").classes("w-44 text-right")
 
-                if not finals:
-                    with ui.row().classes(C_TABLE_ROW):
-                        ui.label("Noch keine Rechnungen vorhanden").classes(STYLE_TEXT_MUTED)
-                else:
-                    with ui.column().classes("sm:hidden"):
-                        for idx, inv in enumerate(finals):
-                            row_bg = "bg-white" if idx % 2 == 0 else "bg-slate-50/60"
-                            with ui.element("div").classes(f"px-4 py-3 border-b border-slate-200 {row_bg}"):
-                                with ui.column().classes("gap-3 w-full"):
-                                    with ui.column().classes("gap-2 cursor-pointer w-full").on(
+                        if not finals:
+                            with ui.row().classes(C_TABLE_ROW):
+                                ui.label("Noch keine Rechnungen vorhanden").classes(STYLE_TEXT_MUTED)
+                        else:
+                            for idx, inv in enumerate(finals):
+                                row_bg = "bg-white" if idx % 2 == 0 else "bg-slate-50/60"
+                                with ui.row().classes(
+                                    C_TABLE_ROW
+                                    + f" {row_bg} h-16 group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 hover:bg-slate-50"
+                                ):
+                                    with ui.row().classes("flex-1 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 cursor-pointer w-full").on(
                                         "click", lambda _, x=inv: _open_invoice_detail(int(x.id))
                                     ):
                                         with ui.row().classes("items-start justify-between gap-3"):
