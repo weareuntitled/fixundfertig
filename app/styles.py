@@ -151,6 +151,44 @@ APP_FONT_CSS = f"""
     color: var(--ff-muted) !important;
   }}
 
+  /* Desktop sidebar: ensure it is visible and sized on md+ (no reliance on Tailwind order). */
+  .ff-desktop-sidebar {{
+    display: none !important;
+    flex-direction: column !important;
+    position: fixed !important;
+    left: 1.5rem !important;
+    top: 1.5rem !important;
+    bottom: 1.5rem !important;
+    width: 14rem !important;
+    min-width: 14rem !important;
+    max-width: 14rem !important;
+    z-index: 40 !important;
+  }}
+  @media (min-width: 768px) {{
+    .ff-desktop-sidebar {{
+      display: flex !important;
+    }}
+  }}
+  @media (max-width: 767px) {{
+    .ff-desktop-sidebar {{
+      display: none !important;
+    }}
+  }}
+
+  /* Drawers: we don't use Quasar side drawers for navigation anymore.
+     Hide any leftover drawers on desktop, but DO NOT hide the drawer container
+     (it also wraps the main layout/content in Quasar). */
+  @media (min-width: 768px) {{
+    .q-drawer {{
+      display: none !important;
+      width: 0 !important;
+      max-width: 0 !important;
+    }}
+    .q-drawer__backdrop {{
+      display: none !important;
+    }}
+  }}
+
   /* Checkboxes */
   .q-checkbox__inner--truthy .q-checkbox__bg {{
     background: var(--brand-primary);
@@ -203,7 +241,16 @@ APP_FONT_CSS = f"""
     border-color: var(--ff-border) !important;
   }}
 
-  /* Invoice preview (editor) */
+  /* Invoice preview (editor): desktop preview card – visible on md+ */
+  .ff-invoice-preview-desktop {{
+    display: none !important;
+  }}
+  @media (min-width: 768px) {{
+    .ff-invoice-preview-desktop {{
+      display: block !important;
+    }}
+  }}
+
   .ff-invoice-preview-frame {{
     border: 1px solid var(--ff-border) !important;
     background: var(--ff-surface) !important;

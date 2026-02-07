@@ -30,7 +30,7 @@ from services.iban import lookup_bank_from_iban
 from services.storage import cleanup_company_logos, company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
-from styles import STYLE_DROPDOWN_PANEL, STYLE_LINK_BRAND, STYLE_TEXT_ERROR, STYLE_TEXT_MUTED
+from styles import STYLE_BTN_DANGER, STYLE_DROPDOWN_PANEL, STYLE_LINK_BRAND, STYLE_TEXT_ERROR, STYLE_TEXT_MUTED
 
 
 LINK_TEXT = STYLE_LINK_BRAND
@@ -99,8 +99,8 @@ def render_settings(session, comp: Company) -> None:
                 ui.navigate.to("/")
 
             with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
-                ui.button("Erstellen", on_click=_do_create).classes(C_BTN_PRIM)
+                ui.button("Abbrechen", on_click=dlg.close).props("flat no-caps").classes(C_BTN_SEC)
+                ui.button("Erstellen", on_click=_do_create).props("unelevated no-caps").classes(C_BTN_PRIM)
 
         dlg.open()
 
@@ -149,8 +149,8 @@ def render_settings(session, comp: Company) -> None:
                 ui.navigate.to("/")
 
             with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
-                ui.button("Löschen", on_click=_do_delete).classes(C_BTN_PRIM)
+                ui.button("Abbrechen", on_click=dlg.close).props("flat no-caps").classes(C_BTN_SEC)
+                ui.button("Unternehmen löschen", on_click=_do_delete).props("unelevated no-caps").classes(STYLE_BTN_DANGER)
 
         dlg.open()
 
@@ -195,7 +195,7 @@ def render_settings(session, comp: Company) -> None:
         ).props("outlined dense").classes(C_INPUT)
 
         with ui.row().classes("w-full gap-2 mt-3 flex-wrap"):
-            ui.button("Unternehmen löschen", on_click=_open_delete_dialog).classes(C_BTN_SEC)
+            ui.button("Unternehmen löschen", on_click=_open_delete_dialog).props("flat no-caps").classes(C_BTN_SEC)
 
     # Refresh comp to active company for this user
     with get_session() as s:
@@ -501,9 +501,9 @@ def render_settings(session, comp: Company) -> None:
                             n8n_secret.set_value(secrets.token_urlsafe(32)),
                             ui.notify("Secret generiert", color="grey"),
                         ),
-                    ).classes(C_BTN_SEC)
-                    ui.button("Secret kopieren", on_click=_copy_n8n_secret).classes(C_BTN_SEC)
-                    ui.button("Webhook testen", on_click=_test_n8n_webhook).classes(C_BTN_SEC)
+                    ).props("flat no-caps").classes(C_BTN_SEC)
+                    ui.button("Secret kopieren", on_click=_copy_n8n_secret).props("flat no-caps").classes(C_BTN_SEC)
+                    ui.button("Webhook testen", on_click=_test_n8n_webhook).props("flat no-caps").classes(C_BTN_SEC)
 
             with ui.expansion("Account").classes("w-full"):
                 with ui.element("div").classes("space-y-4 pt-2"):
@@ -533,7 +533,7 @@ def render_settings(session, comp: Company) -> None:
                     confirm_pw.set_value("")
 
                 with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
-                    ui.button("Passwort ändern", on_click=_change_password).classes(C_BTN_SEC)
+                    ui.button("Passwort ändern", on_click=_change_password).props("flat no-caps").classes(C_BTN_SEC)
 
                 ui.separator().classes("my-4")
 
@@ -566,12 +566,12 @@ def render_settings(session, comp: Company) -> None:
                             ui.navigate.to("/signup")
 
                         with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                            ui.button("Abbrechen", on_click=dlg.close).classes(C_BTN_SEC)
-                            ui.button("Account löschen", on_click=_do_delete_account).classes(C_BTN_PRIM)
+                            ui.button("Abbrechen", on_click=dlg.close).props("flat no-caps").classes(C_BTN_SEC)
+                            ui.button("Account löschen", on_click=_do_delete_account).props("unelevated no-caps").classes(STYLE_BTN_DANGER)
 
                     dlg.open()
 
-                ui.button("Account löschen", on_click=_open_delete_account_dialog).classes(C_BTN_PRIM)
+                ui.button("Account löschen", on_click=_open_delete_account_dialog).props("unelevated no-caps").classes(STYLE_BTN_DANGER)
 
     # Wire address autocomplete
     use_address_autocomplete(street, plz, city, country, street_dropdown)
@@ -631,4 +631,4 @@ def render_settings(session, comp: Company) -> None:
         ui.notify("Gespeichert", color="grey")
 
     with ui.element("div").classes("w-full max-w-5xl mx-auto mt-4 flex justify-end"):
-        ui.button("Speichern", on_click=save).classes(C_BTN_PRIM)
+        ui.button("Speichern", on_click=save).props("unelevated no-caps").classes(C_BTN_PRIM)

@@ -1,3 +1,4 @@
+import contextvars
 import logging
 import os
 
@@ -7,11 +8,39 @@ from services.auth import ensure_local_test_user, is_identifier_allowed
 
 logger = logging.getLogger(__name__)
 
+# Current request for localhost detection (set by middleware in main.py).
+_request_cv: contextvars.ContextVar = contextvars.ContextVar("ff_request", default=None)
+
+
+def set_request_for_context(request) -> None:
+    """Set the current request so FF_NO_LOGIN_LOCAL can check the Host header. Called from main middleware."""
+    _request_cv.set(request)
+
+
+def _is_localhost_request() -> bool:
+    """True if the current request Host is localhost or 127.0.0.1."""
+    req = _request_cv.get(None)
+    if req is None:
+        return False
+    headers = getattr(req, "headers", None)
+    if not headers:
+        return False
+    raw = headers.get("host") if hasattr(headers, "get") else getattr(req, "scope", {}).get("headers", {}).get(b"host", b"")
+    if raw is None:
+        return False
+    if isinstance(raw, bytes):
+        raw = raw.decode("latin1")
+    hostname = (raw.split(":")[0] or "").strip().lower()
+    return hostname in ("localhost", "127.0.0.1")
+
 
 def _auth_disabled() -> bool:
     # Never disable auth automatically in test runs (CI/dev machines might have FF_DISABLE_AUTH set).
     if os.getenv("PYTEST_CURRENT_TEST"):
         return False
+    # No-login when accessing from localhost and flag set (works even with FF_ENV=production).
+    if os.getenv("FF_NO_LOGIN_LOCAL") == "1" and _is_localhost_request():
+        return True
     disabled = os.getenv("FF_DISABLE_AUTH") == "1"
     if disabled and (os.getenv("FF_ENV") or "").strip().lower() in {"prod", "production"}:
         raise RuntimeError("FF_DISABLE_AUTH must not be enabled in production")
@@ -26,7 +55,7 @@ def _local_test_password() -> str:
     password = os.getenv("FF_LOCAL_TEST_PASSWORD")
     if password:
         return password
-    raise RuntimeError("FF_LOCAL_TEST_PASSWORD must be set when FF_DISABLE_AUTH=1")
+    raise RuntimeError("FF_LOCAL_TEST_PASSWORD must be set when FF_DISABLE_AUTH=1 or FF_NO_LOGIN_LOCAL=1")
 
 
 def _local_test_email(username: str) -> str:

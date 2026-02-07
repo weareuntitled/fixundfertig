@@ -37,7 +37,7 @@ from logging_setup import setup_logging
 
 setup_logging()
 
-from auth_guard import clear_auth_session, is_authenticated, require_auth
+from auth_guard import clear_auth_session, is_authenticated, require_auth, set_request_for_context
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
 from styles import STYLE_BG, STYLE_BTN_ACCENT, STYLE_CONTAINER, STYLE_INPUT, STYLE_TAP_TARGET, STYLE_TEXT_MUTED
@@ -151,24 +151,27 @@ def _dedupe_keep_order(values: list[str]) -> list[str]:
 def _derive_trusted_hosts() -> list[str]:
     explicit = _env_csv("FF_TRUSTED_HOSTS")
     if explicit:
-        return explicit
+        hosts = list(explicit)
+    else:
+        hosts = []
+        domain = (os.getenv("APP_DOMAIN") or "").strip()
+        if domain:
+            hosts.extend([domain, f"www.{domain}"])
 
-    hosts: list[str] = []
-    domain = (os.getenv("APP_DOMAIN") or "").strip()
-    if domain:
-        hosts.extend([domain, f"www.{domain}"])
+        base_url = (os.getenv("APP_BASE_URL") or "").strip()
+        if base_url:
+            parsed = urlparse(base_url if "://" in base_url else f"https://{base_url}")
+            if parsed.hostname:
+                hosts.append(parsed.hostname)
 
-    base_url = (os.getenv("APP_BASE_URL") or "").strip()
-    if base_url:
-        parsed = urlparse(base_url if "://" in base_url else f"https://{base_url}")
-        if parsed.hostname:
-            hosts.append(parsed.hostname)
+        if _IS_PYTEST:
+            hosts.append("testserver")
+        if not _IS_PROD:
+            hosts.extend(["localhost", "127.0.0.1", "0.0.0.0"])
 
-    if _IS_PYTEST:
-        hosts.append("testserver")
-    if not _IS_PROD:
-        hosts.extend(["localhost", "127.0.0.1", "0.0.0.0"])
-
+    # Allow localhost when explicitly requested (e.g. local Docker on port 3000)
+    if (os.getenv("FF_ALLOW_LOCALHOST") or "").strip() == "1":
+        hosts.extend(["localhost", "127.0.0.1"])
     return _dedupe_keep_order(hosts)
 
 
@@ -232,7 +235,21 @@ def _configure_security_middleware() -> None:
     )
 
 
+class _RequestContextMiddleware:
+    """Set current request in context so auth_guard can detect localhost for FF_NO_LOGIN_LOCAL."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            request = Request(scope, receive, send)
+            set_request_for_context(request)
+        await self.app(scope, receive, send)
+
+
 _configure_security_middleware()
+app.add_middleware(_RequestContextMiddleware)
 
 
 def _forbidden(detail: str = "Forbidden") -> None:
@@ -1675,20 +1692,21 @@ def _n8n_documents_today_count() -> int:
 _LAYOUT = {
     "app_root": f"w-full min-h-screen {STYLE_BG}",
     "shell_row": "w-full min-h-screen items-start gap-6 px-4 md:px-6",
+    # Desktop sidebar: use .ff-desktop-sidebar for guaranteed visibility on md+ (see styles.py).
     "sidebar": (
-        "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white border border-slate-200 "
-        "shadow-sm items-center py-6 gap-5 z-40 hidden md:flex md:flex-col"
+        "ff-desktop-sidebar rounded-3xl bg-white border border-slate-200 shadow-sm "
+        "items-start py-6 px-3 gap-4 shrink-0"
     ),
     "nav_sep": "w-8 h-px bg-slate-200",
     "nav_btn_base": (
-        "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 "
-        "border border-transparent"
+        "w-full h-11 rounded-2xl flex items-center justify-start gap-3 px-3 transition-all duration-150 "
+        "border border-transparent text-sm font-medium"
     ),
     "nav_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
     "nav_btn_inactive": "text-slate-600 hover:text-slate-900 hover:border-slate-200 hover:bg-slate-50",
     "nav_mobile_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
     "nav_mobile_btn_inactive": "text-slate-700 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50",
-    "main": "flex-1 w-full relative px-4 pb-8 md:pl-32 md:pr-6 gap-4",
+    "main": "flex-1 w-full relative px-4 pb-8 md:pl-72 md:pr-6 gap-4",
     "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
     "topbar_actions": "w-full items-center justify-between gap-4 flex-wrap",
     "topbar_actions_left": "items-center gap-3",
@@ -1719,9 +1737,10 @@ def layout_wrapper(content_func):
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "dashboard")
-    drawer = ui.drawer(side="left").classes("md:hidden bg-white").props("overlay bordered")
-    with drawer:
-        with ui.column().classes("w-full gap-2 p-4"):
+    # Mobile navigation: use a dialog instead of a Quasar drawer so nothing overlays on desktop.
+    mobile_menu = ui.dialog().classes("md:hidden").props("position=left maximized")
+    with mobile_menu:
+        with ui.card().classes("w-full max-w-xs h-full rounded-none bg-white flex flex-col gap-2 p-4"):
             ui.image(company_logo_url).classes("w-12 h-12 object-contain")
             ui.element("div").classes("w-full h-px bg-slate-200")
 
@@ -1736,7 +1755,7 @@ def layout_wrapper(content_func):
                 with ui.button(
                     label,
                     icon=icon,
-                    on_click=lambda t=target: (set_page(t), drawer.hide()),
+                    on_click=lambda t=target: (set_page(t), mobile_menu.close()),
                 ).props("flat no-caps").classes(cls):
                     pass
 
@@ -1763,10 +1782,13 @@ def layout_wrapper(content_func):
                         if active
                         else f'{_LAYOUT["nav_btn_base"]} {_LAYOUT["nav_btn_inactive"]}'
                     )
-                    with ui.button(icon=icon, on_click=lambda t=target: set_page(t)).props(
-                        "flat no-caps no-ripple"
-                    ).classes(cls):
-                        ui.tooltip(label)
+                    # Desktop nav: icon + label button for clear navigation between pages.
+                    with ui.button(
+                        label,
+                        icon=icon,
+                        on_click=lambda t=target: set_page(t),
+                    ).props("flat no-caps").classes(cls):
+                        pass
 
                 nav_item("Dashboard", "dashboard", "dashboard")
                 ui.element("div").classes(_LAYOUT["nav_sep"])
@@ -1794,7 +1816,7 @@ def layout_wrapper(content_func):
                 with ui.column().classes(_LAYOUT["topbar"]):
                     with ui.row().classes(_LAYOUT["topbar_actions"]):
                         with ui.row().classes(_LAYOUT["topbar_actions_left"]):
-                            ui.button(icon="menu", on_click=drawer.toggle).props(
+                            ui.button(icon="menu", on_click=mobile_menu.open).props(
                                 "flat round"
                             ).classes(_LAYOUT["mobile_menu_btn"])
                         with ui.row().classes(_LAYOUT["topbar_right"]):

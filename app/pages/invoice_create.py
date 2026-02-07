@@ -276,7 +276,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     preview_summary_mobile = ui.html("", sanitize=False).classes("w-full mb-3")
                     preview_frame_mobile = ui.html("", sanitize=False).classes("w-full")
 
-            with ui.card().props("flat").classes(f"{card_cls_sticky} hidden md:block"):
+            with ui.card().props("flat").classes(f"{card_cls_sticky} ff-invoice-preview-desktop"):
                 ui.label("Vorschau").classes(card_title_cls)
                 preview_summary = ui.html("", sanitize=False).classes("w-full mb-3")
                 preview_frame = ui.html("", sanitize=False).classes("w-full")
