@@ -92,7 +92,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
     with ui.row().classes("w-full gap-6 items-start flex-col md:flex-row md:flex-nowrap"):
         # LEFT column (35%)
-        with ui.column().classes("w-full md:w-[35%] gap-4"):
+        with ui.column().classes("w-full md:w-1/3 gap-4"):
             with ui.card().props("flat").classes(card_cls):
                 ui.label("Stammdaten").classes(card_title_cls)
 
@@ -190,7 +190,7 @@ def render_invoice_create(session: Any, comp: Any) -> None:
 
                 dialog = ui.dialog()
                 with dialog:
-                    with ui.card().props("flat").classes(f"{C_CARD} w-[min(680px,95vw)] p-4"):
+                    with ui.card().props("flat").classes(f"{C_CARD} w-full max-w-[92vw] max-h-[85vh] overflow-y-auto p-4"):
                         ui.label("Position").classes(card_title_cls)
                         d_desc = ui.textarea("Beschreibung", value="").props("outlined dense").classes(C_INPUT)
                         d_desc.props("autogrow")

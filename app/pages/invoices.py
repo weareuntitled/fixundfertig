@@ -94,7 +94,7 @@ def render_invoices(session, comp: Company) -> None:
     delete_state = {"id": None, "label": ""}
 
     with ui.dialog() as delete_dialog:
-        with ff_card(pad="p-5", classes="w-[520px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Rechnung löschen").classes(C_SECTION_TITLE)
             delete_label = ui.label("Willst du diese Rechnung wirklich löschen?").classes(STYLE_TEXT_MUTED)
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
@@ -131,7 +131,7 @@ def render_invoices(session, comp: Company) -> None:
         with ui.column().classes(_CLS["left_col"]):
             with ff_card(pad="p-0", classes="overflow-hidden"):
                 with ui.element("div").classes("overflow-x-auto"):
-                    with ui.element("div").classes("w-full sm:min-w-[720px]"):
+                    with ui.element("div").classes("w-full"):
                         with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
                             ui.label("Nr").classes("w-24")
                             ui.label("Kunde").classes("flex-1")

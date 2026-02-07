@@ -184,7 +184,7 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         ui.label("Keine Rechnungen vorhanden").classes(STYLE_TEXT_MUTED)
     else:
         with ff_card(pad="p-0", classes="overflow-hidden"):
-            with ui.row().classes(C_TABLE_HEADER):
+            with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
                 ui.label("Nr").classes("w-20 font-bold")
                 ui.label("Datum").classes("w-28 font-bold")
                 ui.label("Status").classes("w-28 font-bold")
@@ -197,10 +197,20 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
                     else:
                         _open_invoice_detail(int(target.id))
 
-                with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-slate-50").on(
+                with ui.row().classes(C_TABLE_ROW + " hidden sm:flex cursor-pointer hover:bg-slate-50").on(
                     "click", lambda _, x=inv: open_invoice(x)
                 ):
                     ui.label(f"#{inv.nr}" if inv.nr else "-").classes("w-20 text-xs font-mono")
                     ui.label(inv.date or "-").classes("w-28 text-xs font-mono")
                     ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))
                     ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes("w-24 text-right text-sm font-mono")
+
+                with ui.element("div").classes("sm:hidden border-b border-slate-200/70 p-4").on(
+                    "click", lambda _, x=inv: open_invoice(x)
+                ):
+                    with ui.row().classes("items-center justify-between gap-2"):
+                        ui.label(f"#{inv.nr}" if inv.nr else "-").classes("text-sm font-mono text-slate-900")
+                        ui.label(f"{float(inv.total_brutto or 0):,.2f} €").classes("text-sm font-mono text-slate-900")
+                    with ui.row().classes("items-center justify-between text-xs text-slate-500 mt-1"):
+                        ui.label(inv.date or "-").classes("font-mono")
+                        ui.label(format_invoice_status(inv.status)).classes(invoice_status_badge(inv.status))

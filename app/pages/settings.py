@@ -72,7 +72,7 @@ def render_settings(session, comp: Company) -> None:
 
     def _open_create_dialog() -> None:
         dlg = ui.dialog()
-        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-[420px]"):
+        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Neues Unternehmen").classes(C_SECTION_TITLE)
             name_in = ui.input("Name", placeholder="z.B. untitled-ux").props("outlined dense").classes(C_INPUT)
             err = ui.label("").classes("text-sm text-amber-400")
@@ -110,7 +110,7 @@ def render_settings(session, comp: Company) -> None:
             return
 
         dlg = ui.dialog()
-        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-[520px]"):
+        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Unternehmen löschen").classes(C_SECTION_TITLE)
             ui.label(
                 "Das Unternehmen wird inklusive Kunden, Rechnungen, Ausgaben und Uploads gelöscht."
@@ -539,7 +539,7 @@ def render_settings(session, comp: Company) -> None:
 
                 def _open_delete_account_dialog() -> None:
                     dlg = ui.dialog()
-                    with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-[560px]"):
+                    with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
                         ui.label("Account löschen").classes(C_SECTION_TITLE)
                         ui.label("Das löscht deinen Account und alle Unternehmen inklusive Daten und Uploads.").classes(
                             STYLE_TEXT_MUTED
