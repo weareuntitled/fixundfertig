@@ -1677,7 +1677,7 @@ _LAYOUT = {
     "shell_row": "w-full min-h-screen items-start",
     "sidebar": (
         "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white border border-slate-200 "
-        "shadow-sm items-center py-6 gap-5 z-40 hidden md:flex"
+        "shadow-sm items-center py-6 gap-5 z-40 hidden md:flex md:flex-col"
     ),
     "nav_sep": "w-8 h-px bg-slate-200",
     "nav_btn_base": (
@@ -1686,7 +1686,9 @@ _LAYOUT = {
     ),
     "nav_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
     "nav_btn_inactive": "text-slate-600 hover:text-slate-900 hover:border-slate-200 hover:bg-slate-50",
-    "main": "flex-1 w-full relative px-4 pb-8 md:pl-28 md:pr-6",
+    "nav_mobile_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
+    "nav_mobile_btn_inactive": "text-slate-700 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50",
+    "main": "flex-1 w-full relative px-4 pb-8 md:pl-32 md:pr-6 gap-4",
     "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
     "topbar_actions": "w-full items-center justify-between gap-4 flex-wrap",
     "topbar_actions_left": "items-center gap-3",
@@ -1727,9 +1729,9 @@ def layout_wrapper(content_func):
                 active = app.storage.user.get("page", "dashboard") == target
                 base = "w-full justify-start gap-3 rounded-xl px-3 py-2 text-left border border-transparent"
                 cls = (
-                    f"{base} text-amber-500 border-amber-200 bg-amber-50"
+                    f"{base} {_LAYOUT['nav_mobile_btn_active']}"
                     if active
-                    else f"{base} text-slate-700 hover:text-amber-500 hover:border-amber-200 hover:bg-amber-50"
+                    else f"{base} {_LAYOUT['nav_mobile_btn_inactive']}"
                 )
                 with ui.button(
                     label,
@@ -1794,7 +1796,7 @@ def layout_wrapper(content_func):
                         with ui.row().classes(_LAYOUT["topbar_actions_left"]):
                             ui.button(icon="menu", on_click=drawer.toggle).props(
                                 "flat round"
-                            ).classes("md:hidden text-slate-500")
+                            ).classes(_LAYOUT["mobile_menu_btn"])
                         with ui.row().classes(_LAYOUT["topbar_right"]):
                             with ui.button(icon="notifications").props("flat round").classes(
                                 _LAYOUT["icon_btn"]
@@ -1901,7 +1903,11 @@ def index():
                 return
 
             # Normal pages in container
-            with ui.column().classes(STYLE_CONTAINER):
+            container_classes = STYLE_CONTAINER
+            if page == "dashboard":
+                container_classes = f"{STYLE_CONTAINER} px-4 sm:px-6"
+
+            with ui.column().classes(container_classes):
                 if page == "dashboard":
                     render_dashboard(session, comp)
                 elif page == "customers":

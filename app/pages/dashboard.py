@@ -362,31 +362,27 @@ def render_dashboard(session, comp: Company) -> None:
         actions.append(("Löschen", lambda: _open_delete("document", document_id, "Dokument löschen?")))
         return actions
 
-    def set_filter(value: str) -> None:
-        active_filter["value"] = value
-        render_cards.refresh()
-
-    with ui.row().classes("w-full items-center justify-between mb-6 flex-col lg:flex-row gap-4"):
-        with ui.column().classes("gap-1"):
-            ui.label("Dashboard").classes("text-3xl font-bold tracking-tight text-slate-900")
-            ui.label(f"Welcome back, {greeting_name}").classes("text-sm text-slate-600")
-        with ui.row().classes(
-            "rounded-full bg-white border border-slate-200 shadow-sm p-1 gap-1 mx-0"
-        ):
-            for value in filters:
-                is_active = active_filter["value"] == value
-                cls = (
-                    "px-4 py-1.5 text-sm font-semibold transition-colors rounded-full "
-                    + (
-                        "bg-slate-900 text-white"
-                        if is_active
-                        else "text-slate-600 hover:bg-slate-100"
-                    )
-                )
-                ui.button(value, on_click=lambda v=value: set_filter(v)).props("flat dense no-caps").classes(cls)
-
     @ui.refreshable
-    def render_cards() -> None:
+    def render_panel() -> None:
+        with ui.row().classes("w-full items-center justify-between mb-6 flex-col lg:flex-row gap-4"):
+            with ui.column().classes("gap-1"):
+                ui.label("Dashboard").classes("text-3xl font-bold tracking-tight text-slate-900")
+                ui.label(f"Welcome back, {greeting_name}").classes("text-sm text-slate-600")
+            with ui.row().classes(
+                "rounded-full bg-white border border-slate-200 shadow-sm p-1 gap-1 mx-0"
+            ):
+                for value in filters:
+                    is_active = active_filter["value"] == value
+                    cls = (
+                        "px-4 py-1.5 text-sm font-semibold transition-colors rounded-full "
+                        + (
+                            "bg-slate-900 text-white"
+                            if is_active
+                            else "text-slate-600 hover:bg-slate-100"
+                        )
+                    )
+                    ui.button(value, on_click=lambda v=value: set_filter(v)).props("flat dense no-caps").classes(cls)
+
         if active_filter["value"] == "All":
             visible_items = doc_items
         else:
@@ -426,4 +422,8 @@ def render_dashboard(session, comp: Company) -> None:
                                 )
                             ui.label(item["status"]).classes(status_badge[item["status"]])
 
-    render_cards()
+    def set_filter(value: str) -> None:
+        active_filter["value"] = value
+        render_panel.refresh()
+
+    render_panel()
