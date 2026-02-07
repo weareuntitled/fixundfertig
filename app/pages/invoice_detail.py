@@ -23,7 +23,7 @@ def render_invoice_detail(session, comp: Company) -> None:
     customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
     items = session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == invoice.id)).all()
 
-    with ui.row().classes("w-full justify-between items-start gap-3 flex-col sm:flex-row"):
+    with ui.row().classes("w-full justify-between items-start gap-3 flex-col sm:flex-row flex-wrap"):
         with ui.column().classes("gap-1"):
             ui.label("Rechnung").classes(C_PAGE_TITLE)
             subtitle = f"#{invoice.nr}" if invoice.nr else f"ID {invoice.id}"
@@ -80,31 +80,56 @@ def render_invoice_detail(session, comp: Company) -> None:
                         except Exception as e:
                             ui.notify(f"Fehler: {e}", color="red")
 
-                    def do_correction():
-                        try:
-                            corr, err = create_correction(int(invoice.id), use_negative_items=True)
+                def set_status(target_status: InvoiceStatus):
+                    try:
+                        with get_session() as s:
+                            with s.begin():
+                                _, err = update_status_logic(s, int(invoice.id), target_status)
                             if err:
                                 ui.notify(err, color="red")
                             else:
-                                ui.notify("Korrektur als Entwurf erstellt", color="green")
-                                _open_invoice_editor(int(corr.id))
-                        except Exception as e:
-                            ui.notify(f"Fehler: {e}", color="red")
+                                ui.notify("Status aktualisiert", color="green")
+                                ui.navigate.to("/")
+                    except Exception as e:
+                        ui.notify(f"Fehler: {e}", color="red")
 
-                    if invoice.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
-                        ui.menu_item("Als gesendet markieren", on_click=lambda: set_status(InvoiceStatus.SENT))
-                    if invoice.status == InvoiceStatus.SENT:
-                        ui.menu_item("Als bezahlt markieren", on_click=lambda: set_status(InvoiceStatus.PAID))
-                    if invoice.status not in (InvoiceStatus.DRAFT, InvoiceStatus.CANCELLED):
-                        ui.menu_item("Korrektur erstellen", on_click=do_correction)
-                        ui.menu_item("Stornieren", on_click=do_cancel)
+                def do_cancel():
+                    try:
+                        ok, err = cancel_invoice(int(invoice.id))
+                        if not ok:
+                            ui.notify(err, color="red")
+                        else:
+                            ui.notify("Storniert", color="green")
+                            ui.navigate.to("/")
+                    except Exception as e:
+                        ui.notify(f"Fehler: {e}", color="red")
+
+                def do_correction():
+                    try:
+                        corr, err = create_correction(int(invoice.id), use_negative_items=True)
+                        if err:
+                            ui.notify(err, color="red")
+                        else:
+                            ui.notify("Korrektur als Entwurf erstellt", color="green")
+                            _open_invoice_editor(int(corr.id))
+                    except Exception as e:
+                        ui.notify(f"Fehler: {e}", color="red")
+
+                if invoice.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
+                    ui.menu_item("Als gesendet markieren", on_click=lambda: set_status(InvoiceStatus.SENT))
+                if invoice.status == InvoiceStatus.SENT:
+                    ui.menu_item("Als bezahlt markieren", on_click=lambda: set_status(InvoiceStatus.PAID))
+                if invoice.status not in (InvoiceStatus.DRAFT, InvoiceStatus.CANCELLED):
+                    ui.menu_item("Korrektur erstellen", on_click=do_correction)
+                    ui.menu_item("Stornieren", on_click=do_cancel)
+            menu_button.on("click", lambda: action_menu.open())
 
     with ui.column().classes("w-full gap-4"):
         with ff_card(pad="p-4"):
             _render_status_stepper(invoice)
 
         with ff_card(pad="p-4"):
-            with ui.row().classes("w-full gap-8 flex-wrap"):
+            with ui.row().classes("w-full gap-8 flex-wrap flex-col sm:flex-row"):
                 with ui.column().classes("gap-1"):
                     ui.label("Kunde").classes("text-xs text-slate-500")
                     ui.label(customer.display_name if customer else "-").classes("text-sm font-semibold text-slate-900")

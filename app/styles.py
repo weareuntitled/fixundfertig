@@ -67,6 +67,22 @@ APP_FONT_CSS = f"""
   .q-btn {{
     box-shadow: none !important;
   }}
+  @media (max-width: 640px) {{
+    .q-btn {{
+      min-height: 44px;
+      min-width: 44px;
+    }}
+    .q-btn--round,
+    .q-btn--square {{
+      width: 44px;
+      height: 44px;
+      padding: 0 !important;
+    }}
+    .q-btn--dense {{
+      min-height: 44px;
+      min-width: 44px;
+    }}
+  }}
 
   /* Global icon standard: inactive light gray, active primary orange */
   .q-icon {{
@@ -162,6 +178,7 @@ APP_FONT_CSS = f"""
     background: var(--ff-surface) !important;
     border: 1px solid var(--ff-border) !important;
     border-radius: 0.75rem;
+    max-width: calc(100vw - 2rem);
   }}
   .q-menu .q-item {{ color: var(--ff-text) !important; }}
   .q-menu .q-item__label {{ color: var(--ff-text) !important; }}
@@ -280,7 +297,7 @@ APP_FONT_CSS = f"""
 # -------------------------
 
 STYLE_BG = "bg-slate-50 text-slate-900 min-h-screen"
-STYLE_CONTAINER = "w-full max-w-6xl mx-auto px-6 py-6 gap-6"
+STYLE_CONTAINER = "w-full sm:max-w-6xl mx-auto px-4 py-4 sm:px-6 sm:py-6 gap-6"
 
 STYLE_CARD = "bg-white border border-slate-200 shadow-sm rounded-xl"
 STYLE_CARD_HOVER = "transition-colors hover:bg-slate-50 hover:border-slate-300"
@@ -322,7 +339,7 @@ STYLE_INPUT = "w-full text-sm"
 STYLE_TAP_TARGET = "min-w-[44px] min-h-[44px]"
 STYLE_INPUT_ROUNDED = "rounded-full"
 
-STYLE_DROPDOWN_PANEL = f"absolute left-0 right-0 mt-1 z-10 {STYLE_CARD} p-1"
+STYLE_DROPDOWN_PANEL = f"absolute left-0 right-0 mt-1 z-10 {STYLE_CARD} p-1 max-w-[calc(100vw-2rem)]"
 STYLE_DROPDOWN_OPTION = "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-slate-100"
 STYLE_DROPDOWN_OPTION_ACTIVE = "bg-slate-100"
 STYLE_DROPDOWN_LABEL = "text-left text-slate-900"

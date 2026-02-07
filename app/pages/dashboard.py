@@ -392,7 +392,7 @@ def render_dashboard(session, comp: Company) -> None:
         else:
             visible_items = [item for item in doc_items if item["status"] == active_filter["value"]]
 
-        with ui.element("div").classes("w-full grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"):
+        with ui.element("div").classes("w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"):
             for item in visible_items:
                 with ui.element("div").classes(
                     f"group relative {C_CARD} {C_CARD_HOVER} p-5 hover:-translate-y-1 transition-all duration-200"
@@ -416,7 +416,9 @@ def render_dashboard(session, comp: Company) -> None:
                             ui.label(item["title"]).classes(
                                 "text-sm font-semibold text-slate-900 leading-snug line-clamp-2"
                             )
-                            with ui.row().classes("items-center justify-between gap-2 min-w-0"):
+                            with ui.row().classes(
+                                "flex-col items-start gap-2 min-w-0 sm:flex-row sm:items-center sm:justify-between"
+                            ):
                                 ui.label(item["date"]).classes("text-[11px] text-slate-500")
                                 ui.label(item["type"]).classes(
                                     "bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full "
