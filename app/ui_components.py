@@ -182,12 +182,12 @@ def sticky_header(title, on_cancel, on_save=None, on_finalize=None):
     # z-index 40, damit es unter dem Haupt-Header (z-50) durchscrollt, falls nötig, 
     # oder einfach oben im Content klebt.
     with ui.row().classes(
-        "bg-white/80 backdrop-blur border-b border-slate-200 p-4 sticky top-0 z-60 flex justify-between items-center w-full"
+        "bg-white/90 backdrop-blur border-b border-slate-200 p-3 md:p-4 md:sticky md:top-0 z-60 flex flex-col md:flex-row md:justify-between md:items-center w-full gap-3"
     ):
         with ui.row().classes("items-center gap-2"):
             ui.icon("description", size="sm").classes("text-slate-500")
             ui.label(title).classes("text-lg font-bold text-slate-900")
-        with ui.row().classes("gap-2"):
+        with ui.row().classes("gap-2 flex-wrap w-full md:w-auto md:justify-end"):
             if on_cancel:
                 ff_btn_secondary("Abbrechen", on_click=on_cancel)
             if on_save:

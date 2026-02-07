@@ -11,7 +11,7 @@ def render_invoices(session, comp: Company) -> None:
         "page_header": "w-full justify-between items-center mb-4 gap-3 flex-col sm:flex-row flex-wrap",
         "grid": "grid grid-cols-10 gap-4 w-full",
         "left_col": "col-span-10 lg:col-span-7 gap-3",
-        "right_col": "col-span-10 lg:col-span-3 gap-5",
+        "right_col": "col-span-10 lg:col-span-3 gap-5 order-2 lg:order-none mt-4 lg:mt-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-slate-200",
         "card_header": "px-4 py-3 border-b border-slate-200 items-center justify-between",
         "card_row": "px-4 py-3 border-b border-slate-200 items-center justify-between",
         "row_label_sm": "sm:hidden text-[10px] uppercase text-slate-400",
