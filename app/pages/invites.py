@@ -36,7 +36,7 @@ def render_invites(session, _comp) -> None:
 
     ui.label("Einladungen").classes(C_PAGE_TITLE)
 
-    with ff_card(pad="p-5", classes="w-full max-w-4xl mb-4"):
+    with ff_card(pad="p-5", classes="w-full mb-4"):
         ui.label("Neue Einladung").classes("text-sm font-semibold text-slate-900")
         ui.label("Nur eingeladene E-Mails können sich registrieren und einloggen.").classes(STYLE_TEXT_MUTED)
         email_input = ff_input("E-Mail-Adresse", value="", props='placeholder="name@example.com"')
@@ -49,8 +49,10 @@ def render_invites(session, _comp) -> None:
                 return
             with ui.column().classes("w-full divide-y divide-slate-200"):
                 for invite in invites:
-                    with ui.row().classes("w-full items-center justify-between px-3 py-3 hover:bg-slate-50 transition-colors"):
-                        ui.label(invite.email).classes("text-sm text-slate-900")
+                    with ui.row().classes(
+                        "w-full flex-col gap-2 px-3 py-3 hover:bg-slate-50 transition-colors sm:flex-row sm:items-center sm:justify-between"
+                    ):
+                        ui.label(invite.email).classes("text-sm text-slate-900 break-all")
 
                         def _remove(email: str = invite.email) -> None:
                             if remove_invited_email(email):
@@ -59,7 +61,7 @@ def render_invites(session, _comp) -> None:
                             else:
                                 ui.notify("Einladung nicht gefunden.", color="orange")
 
-                        ff_btn_ghost("Entfernen", on_click=_remove)
+                        ff_btn_ghost("Entfernen", on_click=_remove, classes="w-full sm:w-auto")
 
         def _add_invite() -> None:
             email = (email_input.value or "").strip()
@@ -75,9 +77,9 @@ def render_invites(session, _comp) -> None:
             email_input.set_value("")
             invite_list.refresh()
 
-        with ui.row().classes("w-full gap-2 mt-2 flex-wrap"):
-            ff_btn_primary("Einladen", on_click=_add_invite)
+        with ui.row().classes("w-full gap-2 mt-2 flex-col sm:flex-row"):
+            ff_btn_primary("Einladen", on_click=_add_invite, classes="w-full sm:w-auto")
 
-    with ff_card(pad="p-5", classes="w-full max-w-4xl"):
+    with ff_card(pad="p-5", classes="w-full"):
         ui.label("Aktive Einladungen").classes("text-sm font-semibold text-slate-900 mb-2")
         invite_list()

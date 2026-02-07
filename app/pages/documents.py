@@ -898,15 +898,16 @@ def render_documents(session, comp: Company) -> None:
         with ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             meta_title = ui.label("Metadaten").classes(C_SECTION_TITLE)
             ui.label("JSON bearbeiten, um Metadaten zu aktualisieren.").classes("text-xs text-slate-500 mb-2")
-            raw_area = ui.textarea(label="Raw Payload (JSON)", value="").props("outlined dense rows=8").classes(
-                C_INPUT + " w-full font-mono text-xs"
-            )
-            line_area = ui.textarea(label="Line Items (JSON)", value="").props("outlined dense rows=6").classes(
-                C_INPUT + " w-full font-mono text-xs"
-            )
-            flags_area = ui.textarea(label="Compliance Flags (JSON)", value="").props("outlined dense rows=4").classes(
-                C_INPUT + " w-full font-mono text-xs"
-            )
+            with ui.column().classes("gap-3 max-h-[65vh] overflow-y-auto pr-1"):
+                raw_area = ui.textarea(label="Raw Payload (JSON)", value="").props("outlined dense rows=8").classes(
+                    C_INPUT + " w-full font-mono text-xs"
+                )
+                line_area = ui.textarea(label="Line Items (JSON)", value="").props("outlined dense rows=6").classes(
+                    C_INPUT + " w-full font-mono text-xs"
+                )
+                flags_area = ui.textarea(label="Compliance Flags (JSON)", value="").props("outlined dense rows=4").classes(
+                    C_INPUT + " w-full font-mono text-xs"
+                )
 
             def _parse_json_input(value: str | None, default: object, label: str) -> object | None:
                 cleaned = (value or "").strip()
@@ -1028,7 +1029,7 @@ def render_documents(session, comp: Company) -> None:
             if amount_tax:
                 total_tax += float(amount_tax)
 
-        with ui.row().classes("w-full gap-4 flex-wrap"):
+        with ui.element("div").classes("w-full grid grid-cols-1 sm:grid-cols-3 gap-4"):
             kpi_card(
                 f"Dokumente (Jahr {year_value})",
                 f"{total_docs}",
@@ -1207,10 +1208,12 @@ def render_documents(session, comp: Company) -> None:
                     ui.checkbox(
                         value=doc_id in selected_ids,
                         on_change=lambda e, i=doc_id: _update_selected(i, bool(e.value)),
-                    ).props("dense size=xs").classes(col_w["check"] + " shrink-0")
+                    ).props("dense size=xs").classes(col_w["check"] + " shrink-0 sm:shrink-0")
 
                     # 2. File Info
-                    with ui.row().classes(col_w["file"] + " items-center gap-3 overflow-hidden pr-2 flex-nowrap"):
+                    with ui.row().classes(
+                        col_w["file"] + " items-center gap-3 overflow-hidden pr-2 flex-nowrap"
+                    ):
                         with ui.element("div").classes(
                             f"w-8 h-8 shrink-0 rounded-md flex items-center justify-center {icon_classes}"
                         ):
@@ -1227,7 +1230,9 @@ def render_documents(session, comp: Company) -> None:
                                 ui.label(_format_source(doc.source))
 
                     # 3. Date
-                    ui.label(display_date or "-").classes(col_w["date"] + " text-slate-600 font-mono text-xs shrink-0")
+                    ui.label(display_date or "-").classes(
+                        col_w["date"] + " text-slate-600 font-mono text-xs sm:shrink-0"
+                    )
 
                     # 4. Tags
                     with ui.row().classes(col_w["tags"] + " gap-1 flex-wrap h-6 overflow-hidden"):
@@ -1244,18 +1249,21 @@ def render_documents(session, comp: Company) -> None:
 
                     # 5. Amounts
                     def _amt_lbl(val, width):
-                         ui.label(val).classes(width + f" text-right font-mono text-slate-700 tracking-tight shrink-0 {C_NUMERIC}")
+                         ui.label(val).classes(
+                             width
+                             + f" text-left sm:text-right font-mono text-slate-700 tracking-tight sm:shrink-0 {C_NUMERIC}"
+                         )
                     _amt_lbl(_format_amount_value(amount_total, currency_value) if amount_total else "-", col_w["amt"])
                     _amt_lbl(_format_amount_value(amount_net, currency_value) if amount_net else "-", col_w["amt"])
                     _amt_lbl(_format_amount_value(amount_tax, currency_value) if amount_tax else "-", col_w["amt"])
 
                     # 6. Status
-                    with ui.element("div").classes(col_w["status"] + " pl-2 shrink-0"):
+                    with ui.element("div").classes(col_w["status"] + " pl-2 sm:shrink-0"):
                          ui.label(status_label).classes(badge_class)
 
                     # 7. Action Button (The "...")
                     # FIXED: Added 'flex justify-end' and 'shrink-0' to lock position
-                    with ui.element("div").classes(col_w["action"] + " flex justify-end shrink-0"):
+                    with ui.element("div").classes(col_w["action"] + " flex justify-end sm:shrink-0"):
                         # 'stop' stops click propagation (so clicking menu doesn't select row)
                         with ui.button(icon="more_vert").props("round flat dense stop").classes(
                             "text-slate-500 hover:text-slate-900 transition-colors"

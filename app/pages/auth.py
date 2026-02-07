@@ -22,13 +22,13 @@ from ui_theme import apply_global_ui_theme
 from styles import STYLE_CARD, STYLE_HEADING, STYLE_INPUT, STYLE_TEXT_MUTED
 from ui_components import ff_btn_muted, ff_btn_primary
 
-ERROR_TEXT = "text-sm text-rose-600 ff-auth-error"
+ERROR_TEXT = "text-sm text-rose-600 ff-auth-error w-full break-words"
 LINK_TEXT = "text-sm text-slate-600 hover:text-slate-900 no-underline"
 TITLE_TEXT = f"{STYLE_HEADING} text-center"
 SUBTITLE_TEXT = f"{STYLE_TEXT_MUTED} text-center"
-INPUT_CLASSES = f"w-full {STYLE_INPUT}"
-CARD_CLASSES = f"w-full max-w-[420px] {STYLE_CARD} p-6"
-BG_CLASSES = "min-h-screen w-full bg-slate-50 flex items-center justify-center px-4"
+INPUT_CLASSES = f"w-full min-w-0 {STYLE_INPUT}"
+CARD_CLASSES = f"w-full max-w-[92vw] sm:max-w-[420px] {STYLE_CARD} p-6"
+BG_CLASSES = "min-h-screen w-full bg-slate-50 flex items-center justify-center px-4 overflow-x-hidden"
 logger = logging.getLogger(__name__)
 
 
@@ -157,7 +157,7 @@ def login_page():
                 _set_error(status_error, str(exc))
 
         login_button = ff_btn_primary("Log in", on_click=handle_login, props="loading=false", classes="w-full")
-        with ui.row().classes("w-full justify-between"):
+        with ui.row().classes("w-full justify-between flex-wrap gap-2"):
             ui.link("Forgot password?", "/forgot").classes(LINK_TEXT)
             ui.link("Create account", "/signup").classes(LINK_TEXT)
         owner_button = ff_btn_muted("Owner-Verifizierungslink senden", on_click=handle_owner_verification, classes=LINK_TEXT)
@@ -231,7 +231,7 @@ def signup_page():
                 signup_button.loading = False
 
         signup_button = ff_btn_primary("Create account", on_click=handle_signup, props="loading=false", classes="w-full")
-        with ui.row().classes("w-full justify-between"):
+        with ui.row().classes("w-full justify-between flex-wrap gap-2"):
             ui.link("Already have an account?", "/login").classes(LINK_TEXT)
 
 

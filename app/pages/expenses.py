@@ -188,7 +188,7 @@ def render_expenses(session, comp: Company) -> None:
     with ui.row().classes("w-full justify-between items-center mb-3 gap-3 flex-wrap"):
         ff_btn_primary("Neu", icon="add", on_click=open_new)
 
-        with ui.row().classes("gap-2 items-end flex-wrap"):
+        with ui.row().classes("gap-2 items-end flex-wrap w-full"):
             ui.input(
                 "Suche",
                 placeholder="Kategorie, Lieferant, Beschreibung",
@@ -200,14 +200,14 @@ def render_expenses(session, comp: Company) -> None:
                 label="Kategorie",
                 value=state["category"],
                 on_change=lambda e: (state.__setitem__("category", e.value or "ALL"), render_list.refresh()),
-            ).props("outlined dense").classes(C_INPUT)
+            ).props("outlined dense").classes(C_INPUT + " w-full sm:w-48")
 
             ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props(
                 "outlined dense type=date"
-            ).classes(C_INPUT)
+            ).classes(C_INPUT + " w-full sm:w-40")
             ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props(
                 "outlined dense type=date"
-            ).classes(C_INPUT)
+            ).classes(C_INPUT + " w-full sm:w-40")
 
     @ui.refreshable
     def render_list():

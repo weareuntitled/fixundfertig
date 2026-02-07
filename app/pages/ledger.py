@@ -101,14 +101,14 @@ def render_ledger(session, comp: Company) -> None:
         return filtered
 
     with ff_card(pad="p-4", classes="mb-4 sticky top-0 z-30"):
-        with ui.row().classes("gap-4 w-full items-end flex-wrap"):
+        with ui.row().classes("gap-4 w-full items-end flex-wrap sm:flex-nowrap"):
             ui.select({"ALL": "Alle", "INCOME": "Income", "EXPENSE": "Expense"}, label="Typ", value=state["type"],
-                      on_change=lambda e: (state.__setitem__("type", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT)
+                      on_change=lambda e: (state.__setitem__("type", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT + " sm:w-auto")
             ui.select({"ALL": "Alle", "Draft": "Draft", "Open": "Open", "Sent": "Sent", "Paid": "Paid", "Cancelled": "Cancelled"},
                       label="Status", value=state["status"],
-                      on_change=lambda e: (state.__setitem__("status", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT)
-            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT)
-            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT)
+                      on_change=lambda e: (state.__setitem__("status", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT + " sm:w-auto")
+            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT + " sm:w-auto")
+            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT + " sm:w-auto")
             ui.input("Suche", placeholder="Party oder Beschreibung",
                      on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh())).props("outlined dense").classes(C_INPUT + " w-full sm:w-56 ff-ledger-search")
 
@@ -133,7 +133,8 @@ def render_ledger(session, comp: Company) -> None:
             for it in data:
                 with ui.element("div").classes(
                     C_TABLE_ROW
-                    + " group grid grid-cols-1 sm:grid-cols-[110px_110px_110px_1fr_120px_120px] gap-2 sm:gap-0 items-start sm:items-center hover:bg-slate-50 transition-colors"
+                    + " group grid grid-cols-1 sm:grid-cols-[110px_110px_110px_1fr_120px_120px] gap-2 sm:gap-0 items-start sm:items-center"
+                    + " border border-slate-200 rounded-lg p-3 sm:p-2 sm:border-0 sm:rounded-none hover:bg-slate-50 transition-colors"
                 ):
                     with ui.column().classes("gap-1"):
                         ui.label("Datum").classes("sm:hidden text-[10px] uppercase text-slate-400")
@@ -142,7 +143,7 @@ def render_ledger(session, comp: Company) -> None:
                     with ui.column().classes("gap-1"):
                         ui.label("Typ").classes("sm:hidden text-[10px] uppercase text-slate-400")
                         badge_class = C_BADGE_YELLOW if it["type"] == "INCOME" else C_BADGE_GRAY
-                        ui.label("Income" if it["type"] == "INCOME" else "Expense").classes(badge_class + " w-20")
+                        ui.label("Income" if it["type"] == "INCOME" else "Expense").classes(badge_class + " w-auto sm:w-20")
 
                     with ui.column().classes("gap-1"):
                         ui.label("Status").classes("sm:hidden text-[10px] uppercase text-slate-400")
