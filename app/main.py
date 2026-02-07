@@ -1674,7 +1674,7 @@ def _n8n_documents_today_count() -> int:
 
 _LAYOUT = {
     "app_root": f"w-full min-h-screen {STYLE_BG}",
-    "shell_row": "w-full min-h-screen items-start",
+    "shell_row": "w-full min-h-screen items-start gap-6 px-4 md:px-6",
     "sidebar": (
         "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white border border-slate-200 "
         "shadow-sm items-center py-6 gap-5 z-40 hidden md:flex md:flex-col"
