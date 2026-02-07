@@ -67,6 +67,22 @@ APP_FONT_CSS = f"""
   .q-btn {{
     box-shadow: none !important;
   }}
+  @media (max-width: 640px) {{
+    .q-btn {{
+      min-height: 44px;
+      min-width: 44px;
+    }}
+    .q-btn--round,
+    .q-btn--square {{
+      width: 44px;
+      height: 44px;
+      padding: 0 !important;
+    }}
+    .q-btn--dense {{
+      min-height: 44px;
+      min-width: 44px;
+    }}
+  }}
 
   /* Global icon standard: inactive light gray, active primary orange */
   .q-icon {{
@@ -266,7 +282,7 @@ APP_FONT_CSS = f"""
 # -------------------------
 
 STYLE_BG = "bg-slate-50 text-slate-900 min-h-screen"
-STYLE_CONTAINER = "w-full max-w-6xl mx-auto px-6 py-6 gap-6"
+STYLE_CONTAINER = "w-full sm:max-w-6xl mx-auto px-4 py-4 sm:px-6 sm:py-6 gap-6"
 
 STYLE_CARD = "bg-white border border-slate-200 shadow-sm rounded-xl"
 STYLE_CARD_HOVER = "transition-colors hover:bg-slate-50 hover:border-slate-300"
