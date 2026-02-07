@@ -100,17 +100,17 @@ def render_ledger(session, comp: Company) -> None:
             filtered.append(it)
         return filtered
 
-    with ff_card(pad="p-4", classes="mb-4 sticky top-0 z-30"):
-        with ui.row().classes("gap-4 w-full items-end flex-wrap"):
+    with ff_card(pad="p-4", classes="mb-4 md:sticky md:top-0 z-30 bg-white/90 backdrop-blur"):
+        with ui.row().classes("gap-3 md:gap-4 w-full items-end flex-wrap"):
             ui.select({"ALL": "Alle", "INCOME": "Income", "EXPENSE": "Expense"}, label="Typ", value=state["type"],
-                      on_change=lambda e: (state.__setitem__("type", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT)
+                      on_change=lambda e: (state.__setitem__("type", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT + " w-full sm:w-auto")
             ui.select({"ALL": "Alle", "Draft": "Draft", "Open": "Open", "Sent": "Sent", "Paid": "Paid", "Cancelled": "Cancelled"},
                       label="Status", value=state["status"],
-                      on_change=lambda e: (state.__setitem__("status", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT)
-            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT)
-            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT)
+                      on_change=lambda e: (state.__setitem__("status", e.value or "ALL"), render_list.refresh())).props("outlined dense").classes(C_INPUT + " w-full sm:w-auto")
+            ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT + " w-full sm:w-auto")
+            ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props("outlined dense type=date").classes(C_INPUT + " w-full sm:w-auto")
             ui.input("Suche", placeholder="Party oder Beschreibung",
-                     on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh())).props("outlined dense").classes(C_INPUT + " min-w-[220px] ff-ledger-search")
+                     on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh())).props("outlined dense").classes(C_INPUT + " w-full sm:min-w-[220px] sm:w-auto ff-ledger-search")
 
     @ui.refreshable
     def render_list():

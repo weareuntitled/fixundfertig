@@ -20,13 +20,15 @@ def render_customers(session, comp: Company) -> None:
         .order_by(Customer.name)
     ).all()
     with ff_card(pad="p-0", classes="overflow-hidden"):
-        with ui.row().classes(C_TABLE_HEADER):
+        with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
             ui.label("Name").classes("flex-1")
             ui.label("Email").classes("w-64")
             ui.label("Details").classes("w-64")
 
         if not customers:
-            with ui.row().classes(C_TABLE_ROW):
+            with ui.row().classes(C_TABLE_ROW + " hidden sm:flex"):
+                ui.label("Noch keine Kunden vorhanden").classes(STYLE_TEXT_MUTED)
+            with ui.row().classes("sm:hidden px-4 py-3"):
                 ui.label("Noch keine Kunden vorhanden").classes(STYLE_TEXT_MUTED)
         else:
             for c in customers:
@@ -43,9 +45,17 @@ def render_customers(session, comp: Company) -> None:
                 if c.short_code:
                     details.append(f"Kürzel: {c.short_code}")
 
-                with ui.row().classes(C_TABLE_ROW + " cursor-pointer hover:bg-slate-50").on(
+                with ui.row().classes(C_TABLE_ROW + " hidden sm:flex cursor-pointer hover:bg-slate-50").on(
                     "click", lambda _, x=int(c.id): open_detail(x)
                 ):
                     ui.label(c.display_name).classes("flex-1 font-medium text-slate-900")
                     ui.label(c.email or "-").classes("w-64 text-slate-600")
                     ui.label(" · ".join(details) if details else "-").classes("w-64 text-slate-600")
+                with ui.column().classes(
+                    "sm:hidden w-full gap-1 px-4 py-3 border-b border-slate-100 cursor-pointer hover:bg-slate-50"
+                ).on("click", lambda _, x=int(c.id): open_detail(x)):
+                    ui.label(c.display_name).classes("font-medium text-slate-900")
+                    ui.label(c.email or "-").classes("text-sm text-slate-600 truncate")
+                    ui.label(" · ".join(details) if details else "-").classes(
+                        "text-sm text-slate-600 truncate"
+                    )
