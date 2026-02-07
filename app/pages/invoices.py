@@ -11,7 +11,7 @@ def render_invoices(session, comp: Company) -> None:
         "page_header": "w-full justify-between items-center mb-4 gap-3 flex-col sm:flex-row",
         "grid": "grid grid-cols-10 gap-4 w-full",
         "left_col": "col-span-10 lg:col-span-7 gap-3",
-        "right_col": "col-span-10 lg:col-span-3 gap-5",
+        "right_col": "col-span-10 lg:col-span-3 gap-5 order-2 lg:order-none mt-4 lg:mt-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-slate-200",
         "card_header": "px-4 py-3 border-b border-slate-200 items-center justify-between",
         "card_row": "px-4 py-3 border-b border-slate-200 items-center justify-between",
         "row_label_sm": "sm:hidden text-[10px] uppercase text-slate-400",
@@ -173,16 +173,19 @@ def render_invoices(session, comp: Company) -> None:
                                         with ui.row().classes("w-full sm:w-44 justify-end gap-2"):
                                             ui.button(icon="visibility", on_click=lambda x=inv: _open_invoice_detail(int(x.id))).props(
                                                 "flat dense no-parent-event"
-                                            ).classes(_CLS["icon_btn"])
+                                            ).classes(_CLS["icon_btn"] + " hidden sm:inline-flex")
                                             ui.button(icon="download", on_click=lambda x=inv: run_download(x)).props(
                                                 "flat dense no-parent-event"
-                                            ).classes(_CLS["icon_btn"])
+                                            ).classes(_CLS["icon_btn"] + " hidden sm:inline-flex")
                                             ui.button(icon="mail", on_click=lambda x=inv: run_send(x)).props(
                                                 "flat dense no-parent-event"
-                                            ).classes(_CLS["icon_btn"])
+                                            ).classes(_CLS["icon_btn"] + " hidden sm:inline-flex")
 
                                             with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(_CLS["icon_btn"]):
                                                 with ui.menu().props("auto-close no-parent-event"):
+                                                    ui.menu_item("Öffnen", on_click=lambda x=inv: _open_invoice_detail(int(x.id)))
+                                                    ui.menu_item("PDF herunterladen", on_click=lambda x=inv: run_download(x))
+                                                    ui.menu_item("Per Mail senden", on_click=lambda x=inv: run_send(x))
                                                     if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
                                                         ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))
                                                     if inv.status == InvoiceStatus.SENT:
