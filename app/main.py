@@ -1677,7 +1677,7 @@ _LAYOUT = {
     "shell_row": "w-full min-h-screen items-start",
     "sidebar": (
         "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white border border-slate-200 "
-        "shadow-sm items-center py-6 gap-5 z-40"
+        "shadow-sm items-center py-6 gap-5 z-40 hidden md:flex"
     ),
     "nav_sep": "w-8 h-px bg-slate-200",
     "nav_btn_base": (
@@ -1686,16 +1686,23 @@ _LAYOUT = {
     ),
     "nav_btn_active": "text-amber-500 border-amber-200 bg-amber-50",
     "nav_btn_inactive": "text-slate-300 hover:text-amber-500 hover:border-amber-200 hover:bg-amber-50",
-    "main": "flex-1 w-full relative pl-28 pr-6 pb-8",
-    "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
-    "topbar_left": "flex-1 items-center gap-4",
-    "topbar_right": "flex-1 items-center justify-end gap-2",
+    "main": "flex-1 w-full relative pl-0 sm:pl-6 md:pl-28 pr-6 pb-8",
+    "topbar": "w-full gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
+    "topbar_left": "w-full items-center gap-3",
+    "topbar_right": "w-full sm:flex-1 items-center justify-end gap-2 flex-wrap",
+    "topbar_actions": "w-full items-center justify-between gap-3",
+    "topbar_actions_left": "items-center gap-2",
+    "topbar_search_row": "w-full",
     "icon_btn": "text-slate-300 hover:text-amber-500",
+    "mobile_menu_btn": "md:hidden text-slate-400 hover:text-amber-500",
+    "mobile_drawer": "md:hidden",
+    "mobile_nav": "w-full gap-2 p-4",
+    "mobile_nav_btn": "w-full justify-start text-slate-700",
     "sidebar_logo": "ff-sidebar-logo w-11 h-11 rounded-none object-contain",
     "header_search": f"{STYLE_INPUT} w-72",
     "new_invoice_btn": f"{STYLE_BTN_ACCENT} w-[150px]",
-    "menu_wide": "min-w-[240px]",
-    "menu": "min-w-[220px]",
+    "menu_wide": "w-[240px] max-w-[calc(100vw-2rem)]",
+    "menu": "w-[220px] max-w-[calc(100vw-2rem)]",
     "menu_meta": "text-xs text-slate-600 px-3 pt-2",
     "menu_meta_company": "text-sm text-slate-600 px-3 pb-2",
     "content": "w-full",
@@ -1713,11 +1720,31 @@ def layout_wrapper(content_func):
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "dashboard")
+    drawer = ui.left_drawer().classes("md:hidden bg-white").props("overlay bordered")
 
     with ui.element("div").classes(_LAYOUT["app_root"]):
+        mobile_drawer = ui.drawer().classes(_LAYOUT["mobile_drawer"])
+        with mobile_drawer:
+            with ui.column().classes(_LAYOUT["mobile_nav"]):
+
+                def mobile_nav_item(label: str, target: str, icon: str) -> None:
+                    def handle_nav() -> None:
+                        set_page(target)
+                        mobile_drawer.close()
+
+                    ui.button(label, icon=icon, on_click=handle_nav).props("flat no-caps").classes(
+                        _LAYOUT["mobile_nav_btn"]
+                    )
+
+                mobile_nav_item("Dashboard", "dashboard", "dashboard")
+                mobile_nav_item("Invoices", "invoices", "receipt_long")
+                mobile_nav_item("Documents", "documents", "description")
+                mobile_nav_item("Customers", "customers", "groups")
+                mobile_nav_item("Ledger", "ledger", "account_balance")
+
         with ui.row().classes(_LAYOUT["shell_row"]):
             # Sidebar
-            with ui.column().classes(_LAYOUT["sidebar"]):
+            with ui.column().classes(f'{_LAYOUT["sidebar"]} hidden md:flex'):
                 ui.image(company_logo_url).classes(_LAYOUT["sidebar_logo"])
 
                 def nav_item(label: str, target: str, icon: str) -> None:
@@ -1743,6 +1770,40 @@ def layout_wrapper(content_func):
                 if is_owner:
                     nav_item("Einladungen", "invites", "mail")
 
+            with drawer:
+                with ui.column().classes("w-full gap-2 p-4"):
+                    ui.image(company_logo_url).classes("w-12 h-12 object-contain")
+                    ui.element("div").classes("w-full h-px bg-slate-200")
+
+                    def nav_item_mobile(label: str, target: str, icon: str) -> None:
+                        active = app.storage.user.get("page", "dashboard") == target
+                        base = (
+                            "w-full justify-start gap-3 rounded-xl px-3 py-2 text-left "
+                            "border border-transparent"
+                        )
+                        cls = (
+                            f"{base} text-amber-500 border-amber-200 bg-amber-50"
+                            if active
+                            else f"{base} text-slate-700 hover:text-amber-500 hover:border-amber-200 "
+                            "hover:bg-amber-50"
+                        )
+                        with ui.button(
+                            label,
+                            icon=icon,
+                            on_click=lambda t=target: (set_page(t), drawer.hide()),
+                        ).props("flat no-caps").classes(cls):
+                            pass
+
+                    nav_item_mobile("Dashboard", "dashboard", "dashboard")
+                    nav_item_mobile("Invoices", "invoices", "receipt_long")
+                    nav_item_mobile("Documents", "documents", "description")
+                    nav_item_mobile("Ledger", "ledger", "account_balance")
+                    nav_item_mobile("Exports", "exports", "file_download")
+                    ui.element("div").classes("w-full h-px bg-slate-200 my-1")
+                    nav_item_mobile("Customers", "customers", "groups")
+                    if is_owner:
+                        nav_item_mobile("Einladungen", "invites", "mail")
+
             # Main content
             with ui.column().classes(_LAYOUT["main"]):
 
@@ -1755,41 +1816,50 @@ def layout_wrapper(content_func):
                     app.storage.user["page"] = "ledger"
                     ui.navigate.to("/")
 
-                with ui.row().classes(_LAYOUT["topbar"]):
-                    with ui.row().classes(_LAYOUT["topbar_left"]):
+                with ui.column().classes(_LAYOUT["topbar"]):
+                    with ui.row().classes(_LAYOUT["topbar_actions"]):
+                        with ui.row().classes(_LAYOUT["topbar_actions_left"]):
+                            ui.button(icon="menu", on_click=drawer.toggle).props(
+                                "flat round"
+                            ).classes("md:hidden text-slate-500")
+                        with ui.row().classes(_LAYOUT["topbar_right"]):
+                            with ui.button(icon="notifications").props("flat round").classes(
+                                _LAYOUT["icon_btn"]
+                            ):
+                                with ui.menu().classes(_LAYOUT["menu_wide"]):
+                                    notifications: list[str] = []
+                                    if n8n_today_count:
+                                        notifications.append(
+                                            f"{n8n_today_count} neue N8N-Dokumente heute"
+                                        )
+                                    if notifications:
+                                        for entry in notifications:
+                                            ui.item(entry)
+                                    else:
+                                        ui.item("Keine neuen Benachrichtigungen.").classes(
+                                            STYLE_TEXT_MUTED
+                                        )
+                            ui.button(
+                                "New Invoice",
+                                on_click=lambda: _open_invoice_editor(None),
+                            ).props("flat no-caps").classes(_LAYOUT["new_invoice_btn"])
+                            with ui.button().props("flat no-caps").classes(_LAYOUT["user_btn"]):
+                                ui.label(initials).classes(_LAYOUT["user_initials"])
+                                with ui.menu().classes(_LAYOUT["menu"]):
+                                    if identifier:
+                                        ui.label(identifier).classes(_LAYOUT["menu_meta"])
+                                    if company_name:
+                                        ui.label(company_name).classes(_LAYOUT["menu_meta_company"])
+                                    ui.separator().classes("my-1")
+                                    ui.item("Settings", on_click=lambda: ui.navigate.to("/settings"))
+                                    ui.item("Logout", on_click=handle_logout).classes(
+                                        _LAYOUT["logout_item"]
+                                    )
+                    with ui.row().classes(_LAYOUT["topbar_search_row"]):
                         ui.input(
                             "Search transactions",
                             on_change=lambda e: open_ledger_search(e.value or ""),
                         ).props("outlined dense").classes(_LAYOUT["header_search"])
-                    with ui.row().classes(_LAYOUT["topbar_right"]):
-                        with ui.button(icon="notifications").props("flat round").classes(
-                            _LAYOUT["icon_btn"]
-                        ):
-                            with ui.menu().classes(_LAYOUT["menu_wide"]):
-                                notifications: list[str] = []
-                                if n8n_today_count:
-                                    notifications.append(
-                                        f"{n8n_today_count} neue N8N-Dokumente heute"
-                                    )
-                                if notifications:
-                                    for entry in notifications:
-                                        ui.item(entry)
-                                else:
-                                    ui.item("Keine neuen Benachrichtigungen.").classes(STYLE_TEXT_MUTED)
-                        ui.button(
-                            "New Invoice",
-                            on_click=lambda: _open_invoice_editor(None),
-                        ).props("flat no-caps").classes(_LAYOUT["new_invoice_btn"])
-                        with ui.button().props("flat no-caps").classes(_LAYOUT["user_btn"]):
-                            ui.label(initials).classes(_LAYOUT["user_initials"])
-                            with ui.menu().classes(_LAYOUT["menu"]):
-                                if identifier:
-                                    ui.label(identifier).classes(_LAYOUT["menu_meta"])
-                                if company_name:
-                                    ui.label(company_name).classes(_LAYOUT["menu_meta_company"])
-                                ui.separator().classes("my-1")
-                                ui.item("Settings", on_click=lambda: ui.navigate.to("/settings"))
-                                ui.item("Logout", on_click=handle_logout).classes(_LAYOUT["logout_item"])
 
                 with ui.element("div").classes(_LAYOUT["content"]):
                     content_func()

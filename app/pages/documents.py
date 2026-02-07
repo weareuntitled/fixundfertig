@@ -1028,27 +1028,27 @@ def render_documents(session, comp: Company) -> None:
             if amount_tax:
                 total_tax += float(amount_tax)
 
-        with ui.row().classes("w-full gap-4 flex-wrap"):
+        with ui.element("div").classes("w-full grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"):
             kpi_card(
                 f"Dokumente (Jahr {year_value})",
                 f"{total_docs}",
                 "description",
                 "text-slate-600",
-                classes="flex-1 min-w-[220px]",
+                classes="min-w-0",
             )
             kpi_card(
                 "Gesamtsumme",
                 _format_amount_eur(total_amount),
                 "payments",
                 "text-amber-600",
-                classes="flex-1 min-w-[220px]",
+                classes="min-w-0",
             )
             kpi_card(
                 "Steuern gesichert",
                 _format_amount_eur(total_tax),
                 "receipt_long",
                 "text-amber-500",
-                classes="flex-1 min-w-[220px]",
+                classes="min-w-0",
             )
 
     @ui.refreshable
