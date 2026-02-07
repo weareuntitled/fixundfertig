@@ -1717,10 +1717,10 @@ def layout_wrapper(content_func):
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "dashboard")
-    drawer = ui.left_drawer().classes("md:hidden bg-white").props("overlay bordered")
+    drawer = ui.drawer(side="left").classes("md:hidden bg-white").props("overlay bordered")
 
     with ui.element("div").classes(_LAYOUT["app_root"]):
-        mobile_drawer = ui.drawer().classes(_LAYOUT["mobile_drawer"])
+        mobile_drawer = ui.drawer(side="left").classes(_LAYOUT["mobile_drawer"])
         with mobile_drawer:
             with ui.column().classes(_LAYOUT["mobile_nav"]):
 
