@@ -162,6 +162,7 @@ APP_FONT_CSS = f"""
     background: var(--ff-surface) !important;
     border: 1px solid var(--ff-border) !important;
     border-radius: 0.75rem;
+    max-width: calc(100vw - 2rem);
   }}
   .q-menu .q-item {{ color: var(--ff-text) !important; }}
   .q-menu .q-item__label {{ color: var(--ff-text) !important; }}
@@ -307,7 +308,7 @@ STYLE_BTN_ACCENT = (
 STYLE_INPUT = "w-full text-sm"
 STYLE_INPUT_ROUNDED = "rounded-full"
 
-STYLE_DROPDOWN_PANEL = f"absolute left-0 right-0 mt-1 z-10 {STYLE_CARD} p-1"
+STYLE_DROPDOWN_PANEL = f"absolute left-0 right-0 mt-1 z-10 {STYLE_CARD} p-1 max-w-[calc(100vw-2rem)]"
 STYLE_DROPDOWN_OPTION = "w-full text-left px-3 py-2 text-sm rounded-md hover:bg-slate-100"
 STYLE_DROPDOWN_OPTION_ACTIVE = "bg-slate-100"
 STYLE_DROPDOWN_LABEL = "text-left text-slate-900"
