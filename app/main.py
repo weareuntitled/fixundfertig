@@ -1674,10 +1674,10 @@ def _n8n_documents_today_count() -> int:
 
 _LAYOUT = {
     "app_root": f"w-full min-h-screen {STYLE_BG}",
-    "shell_row": "w-full min-h-screen items-start",
+    "shell_row": "w-full min-h-screen items-start gap-6 px-4 md:px-6",
     "sidebar": (
-        "fixed left-6 top-6 bottom-6 w-20 rounded-3xl bg-white border border-slate-200 "
-        "shadow-sm items-center py-6 gap-5 z-40 hidden md:flex"
+        "w-20 rounded-3xl bg-white border border-slate-200 shadow-sm items-center py-6 gap-5 "
+        "z-40 hidden md:flex md:sticky md:top-6 md:h-[calc(100vh-3rem)]"
     ),
     "nav_sep": "w-8 h-px bg-slate-200",
     "nav_btn_base": (
@@ -1686,7 +1686,7 @@ _LAYOUT = {
     ),
     "nav_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
     "nav_btn_inactive": "text-slate-600 hover:text-slate-900 hover:border-slate-200 hover:bg-slate-50",
-    "main": "flex-1 w-full relative px-4 pb-8 md:pl-28 md:pr-6",
+    "main": "flex-1 w-full min-w-0 relative pb-8",
     "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
     "topbar_actions": "w-full items-center justify-between gap-4 flex-wrap",
     "topbar_actions_left": "items-center gap-3",
