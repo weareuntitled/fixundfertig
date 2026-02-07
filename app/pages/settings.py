@@ -72,7 +72,7 @@ def render_settings(session, comp: Company) -> None:
 
     def _open_create_dialog() -> None:
         dlg = ui.dialog()
-        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-[420px]"):
+        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[420px]"):
             ui.label("Neues Unternehmen").classes(C_SECTION_TITLE)
             name_in = ui.input("Name", placeholder="z.B. untitled-ux").props("outlined dense").classes(C_INPUT)
             err = ui.label("").classes("text-sm text-amber-400")
@@ -110,7 +110,7 @@ def render_settings(session, comp: Company) -> None:
             return
 
         dlg = ui.dialog()
-        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-[520px]"):
+        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[520px]"):
             ui.label("Unternehmen löschen").classes(C_SECTION_TITLE)
             ui.label(
                 "Das Unternehmen wird inklusive Kunden, Rechnungen, Ausgaben und Uploads gelöscht."
@@ -213,8 +213,8 @@ def render_settings(session, comp: Company) -> None:
     ui.label("").classes("mb-1")
 
     with ui.element("div").classes("w-full max-w-5xl mx-auto"):
-        with ui.element("div").classes("grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6"):
-            with ui.element("div").classes("space-y-3"):
+        with ui.element("div").classes("flex flex-col lg:flex-row gap-6"):
+            with ui.element("div").classes("space-y-3 w-full lg:w-64"):
                 ui.label("Logo").classes(C_SECTION_TITLE)
                 with ui.element("div").classes(f"w-full {C_CARD} p-4 space-y-3"):
                     logo_url = ""
@@ -285,7 +285,7 @@ def render_settings(session, comp: Company) -> None:
                         f"w-full {C_BTN_SEC}"
                     ).props("accept=.png,.jpg,.jpeg,image/png,image/jpeg")
 
-            with ui.element("div").classes("space-y-6"):
+            with ui.element("div").classes("space-y-6 w-full flex-1"):
                 ui.label("Unternehmen & Kontakt").classes(C_SECTION_TITLE)
                 with ui.element("div").classes("grid grid-cols-1 md:grid-cols-2 gap-4"):
                     name = ui.input("Firma", value=comp.name).props("outlined dense").classes(C_INPUT)
@@ -539,7 +539,7 @@ def render_settings(session, comp: Company) -> None:
 
                 def _open_delete_account_dialog() -> None:
                     dlg = ui.dialog()
-                    with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-[560px]"):
+                    with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[560px]"):
                         ui.label("Account löschen").classes(C_SECTION_TITLE)
                         ui.label("Das löscht deinen Account und alle Unternehmen inklusive Daten und Uploads.").classes(
                             STYLE_TEXT_MUTED
