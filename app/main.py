@@ -40,7 +40,7 @@ setup_logging()
 from auth_guard import clear_auth_session, is_authenticated, require_auth
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import STYLE_BG, STYLE_BTN_ACCENT, STYLE_CONTAINER, STYLE_INPUT, STYLE_TEXT_MUTED
+from styles import STYLE_BG, STYLE_BTN_ACCENT, STYLE_CONTAINER, STYLE_INPUT, STYLE_TAP_TARGET, STYLE_TEXT_MUTED
 from ui_theme import apply_global_ui_theme
 from invoice_numbering import build_invoice_filename
 from pages import (
@@ -1686,18 +1686,15 @@ _LAYOUT = {
     ),
     "nav_btn_active": "text-amber-500 border-amber-200 bg-amber-50",
     "nav_btn_inactive": "text-slate-300 hover:text-amber-500 hover:border-amber-200 hover:bg-amber-50",
-    "main": "flex-1 w-full relative pl-0 sm:pl-6 md:pl-28 pr-6 pb-8",
-    "topbar": "w-full gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
-    "topbar_left": "w-full items-center gap-3",
-    "topbar_right": "w-full sm:flex-1 items-center justify-end gap-2 flex-wrap",
-    "topbar_actions": "w-full items-center justify-between gap-3",
-    "topbar_actions_left": "items-center gap-2",
-    "topbar_search_row": "w-full",
-    "icon_btn": "text-slate-300 hover:text-amber-500",
-    "mobile_menu_btn": "md:hidden text-slate-400 hover:text-amber-500",
+    "main": "flex-1 w-full relative px-4 pb-8 md:pl-28 md:pr-6",
+    "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
+    "topbar_left": "flex-1 items-center gap-4",
+    "topbar_right": "flex-1 items-center justify-end gap-2",
+    "icon_btn": f"{STYLE_TAP_TARGET} text-slate-300 hover:text-amber-500",
+    "mobile_menu_btn": f"md:hidden {STYLE_TAP_TARGET} text-slate-400 hover:text-amber-500",
     "mobile_drawer": "md:hidden",
     "mobile_nav": "w-full gap-2 p-4",
-    "mobile_nav_btn": "w-full justify-start text-slate-700",
+    "mobile_nav_btn": f"w-full justify-start text-slate-700 {STYLE_TAP_TARGET}",
     "sidebar_logo": "ff-sidebar-logo w-11 h-11 rounded-none object-contain",
     "header_search": f"{STYLE_INPUT} w-72",
     "new_invoice_btn": f"{STYLE_BTN_ACCENT} w-[150px]",
@@ -1706,7 +1703,7 @@ _LAYOUT = {
     "menu_meta": "text-xs text-slate-600 px-3 pt-2",
     "menu_meta_company": "text-sm text-slate-600 px-3 pb-2",
     "content": "w-full",
-    "user_btn": "opacity-100 w-10 h-10 rounded-xl bg-white border border-slate-200 hover:bg-slate-50",
+    "user_btn": f"opacity-100 w-10 h-10 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 {STYLE_TAP_TARGET}",
     "user_initials": "text-xs font-semibold text-slate-900",
     "logout_item": "text-rose-600",
 }

@@ -255,6 +255,20 @@ APP_FONT_CSS = f"""
     border-color: var(--ff-border) !important;
   }}
 
+  /* Mobile dense input guard: keep tap targets >= 44px */
+  @media (max-width: 640px) {{
+    .q-field--dense .q-field__control {{
+      min-height: 44px !important;
+      padding-top: 6px !important;
+      padding-bottom: 6px !important;
+    }}
+    .q-field--dense .q-field__native,
+    .q-field--dense .q-field__input {{
+      min-height: 44px !important;
+      line-height: 1.25rem !important;
+    }}
+  }}
+
   /* Invoice preview (editor) */
   .ff-invoice-preview-frame {{
     border: 1px solid var(--ff-border) !important;
@@ -322,6 +336,7 @@ STYLE_BTN_ACCENT = (
 )
 
 STYLE_INPUT = "w-full text-sm"
+STYLE_TAP_TARGET = "min-w-[44px] min-h-[44px]"
 STYLE_INPUT_ROUNDED = "rounded-full"
 
 STYLE_DROPDOWN_PANEL = f"absolute left-0 right-0 mt-1 z-10 {STYLE_CARD} p-1 max-w-[calc(100vw-2rem)]"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from ._shared import *
 from ._shared import _parse_iso_date
-from styles import STYLE_TEXT_MUTED
+from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED
 from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card
 
 # Auto generated page renderer
@@ -238,10 +238,10 @@ def render_expenses(session, comp: Company) -> None:
                         )
                     with ui.row().classes("justify-end gap-1 mt-2"):
                         ui.button(icon="edit", on_click=lambda _, x=it: open_edit(x)).props("flat dense").classes(
-                            "text-slate-500 hover:text-slate-900"
+                            f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900"
                         )
                         ui.button(icon="delete", on_click=lambda _, x=it: open_delete(x)).props("flat dense").classes(
-                            "text-rose-600 hover:text-rose-700"
+                            f"{STYLE_TAP_TARGET} text-rose-600 hover:text-rose-700"
                         )
 
         with ff_card(pad="p-0", classes="hidden md:block"):

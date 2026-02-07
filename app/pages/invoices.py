@@ -1,7 +1,7 @@
 from __future__ import annotations
 from ._shared import *
 from ._shared import _open_invoice_editor, _parse_iso_date
-from styles import STYLE_TEXT_MUTED
+from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED
 from ui_components import ff_btn_muted, ff_btn_primary, ff_btn_secondary, ff_card
 
 # Auto generated page renderer
@@ -15,7 +15,7 @@ def render_invoices(session, comp: Company) -> None:
         "card_header": "px-4 py-3 border-b border-slate-200 items-center justify-between",
         "card_row": "px-4 py-3 border-b border-slate-200 items-center justify-between",
         "row_label_sm": "sm:hidden text-[10px] uppercase text-slate-400",
-        "icon_btn": "text-slate-500 hover:text-slate-900",
+        "icon_btn": f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900",
     }
 
     with ui.row().classes(_CLS["page_header"]):

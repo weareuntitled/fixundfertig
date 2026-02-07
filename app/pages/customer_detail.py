@@ -1,6 +1,6 @@
 from __future__ import annotations
 from ._shared import *
-from styles import STYLE_TEXT_MUTED
+from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED
 from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card, ff_input
 
 # Auto generated page renderer
@@ -26,7 +26,9 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
         ui.navigate.to("/")
 
     with ui.row().classes("items-center gap-3 mb-2"):
-        ui.button(icon="arrow_back", on_click=back).props("flat round").classes("text-slate-500 hover:text-slate-900")
+        ui.button(icon="arrow_back", on_click=back).props("flat round").classes(
+            f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900"
+        )
         ui.label(customer.display_name).classes(C_PAGE_TITLE)
 
     with settings_two_column_layout():
