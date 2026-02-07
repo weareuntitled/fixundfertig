@@ -8,7 +8,7 @@ from ._shared import _parse_iso_date
 from data import DocumentMeta
 from services.blob_storage import blob_storage
 from services.documents import resolve_document_path
-from styles import STYLE_TEXT_MUTED
+from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED
 from ui_components import ff_btn_danger, ff_btn_secondary
 
 # Auto generated page renderer
@@ -398,8 +398,8 @@ def render_dashboard(session, comp: Company) -> None:
                     f"group relative {C_CARD} {C_CARD_HOVER} p-5 hover:-translate-y-1 transition-all duration-200"
                 ):
                     with ui.button(icon="more_horiz").props("flat round dense").classes(
-                        "absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition "
-                        "text-slate-500 hover:text-slate-900"
+                        f"absolute top-4 right-4 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition "
+                        f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900"
                     ):
                         with ui.menu().props("auto-close"):
                             for label, handler in _actions_for_item(item):

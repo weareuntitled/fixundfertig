@@ -1,7 +1,7 @@
 from __future__ import annotations
 from ._shared import *
 from ._shared import _parse_iso_date
-from styles import STYLE_TEXT_MUTED
+from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED
 from ui_components import ff_card
 
 # Auto generated page renderer
@@ -168,7 +168,9 @@ def render_ledger(session, comp: Company) -> None:
                             ui.button(
                                 icon="open_in_new",
                                 on_click=lambda _, iid=it["invoice_id"]: _open_invoice_detail(int(iid)),
-                            ).props("flat dense").classes("text-slate-500 hover:text-slate-900")
+                            ).props("flat dense").classes(
+                                f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900"
+                            )
                         else:
                             ui.label("-").classes("text-xs text-slate-400")
 

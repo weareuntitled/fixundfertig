@@ -25,6 +25,7 @@ from styles import (
     C_CARD,
     C_INPUT,
     C_SECTION_TITLE,
+    STYLE_TAP_TARGET,
     STYLE_TEXT_MUTED,
 )
 from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card
@@ -1258,7 +1259,7 @@ def render_documents(session, comp: Company) -> None:
                     with ui.element("div").classes(col_w["action"] + " flex justify-end shrink-0"):
                         # 'stop' stops click propagation (so clicking menu doesn't select row)
                         with ui.button(icon="more_vert").props("round flat dense stop").classes(
-                            "text-slate-500 hover:text-slate-900 transition-colors"
+                            f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900 transition-colors"
                         ):
                             with ui.menu().props("auto-close").classes("min-w-[200px]"):
                                 ui.menu_item("Bearbeiten", on_click=lambda _, d=doc_id: _open_meta(int(d)))

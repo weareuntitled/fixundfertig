@@ -1,6 +1,6 @@
 from __future__ import annotations
 from ._shared import *
-from styles import STYLE_TEXT_MUTED, STYLE_TEXT_SUBTLE
+from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED, STYLE_TEXT_SUBTLE
 from ui_components import ff_btn_primary, ff_btn_secondary, ff_card, ff_textarea
 
 # Auto generated page renderer
@@ -52,7 +52,9 @@ def render_invoice_detail(session, comp: Company) -> None:
             ff_btn_secondary("Download", on_click=on_download)
             ff_btn_secondary("Senden", on_click=on_send)
 
-            with ui.button(icon="more_vert").props("flat round").classes("text-slate-500 hover:text-slate-900"):
+            with ui.button(icon="more_vert").props("flat round").classes(
+                f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900"
+            ):
                 with ui.menu().props("auto-close"):
                     def set_status(target_status: InvoiceStatus):
                         try:
