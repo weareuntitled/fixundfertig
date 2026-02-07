@@ -39,7 +39,7 @@ def render_exports(session, comp: Company) -> None:
             ui.label(description).classes(f"{STYLE_TEXT_MUTED} mb-2")
             ff_btn_secondary("Download", icon="download", on_click=action)
 
-    with ui.grid(columns=2).classes("w-full gap-4"):
+    with ui.element("div").classes("w-full grid grid-cols-1 sm:grid-cols-2 gap-4"):
         export_card("Dokumente ZIP", "Alle Dokumente als ZIP-Datei", lambda: run_export(export_documents_zip, "Dokumente ZIP"))
         export_card("Rechnungen CSV", "Alle Rechnungen als CSV-Datei", lambda: run_export(export_invoices_csv, "Rechnungen CSV"))
         export_card("Positionen CSV", "Alle Rechnungspositionen als CSV-Datei", lambda: run_export(export_invoice_items_csv, "Positionen CSV"))
