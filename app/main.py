@@ -1686,11 +1686,15 @@ _LAYOUT = {
     ),
     "nav_btn_active": "text-amber-500 border-amber-200 bg-amber-50",
     "nav_btn_inactive": "text-slate-300 hover:text-amber-500 hover:border-amber-200 hover:bg-amber-50",
-    "main": "flex-1 w-full relative pl-28 pr-6 pb-8",
+    "main": "flex-1 w-full relative px-4 pb-8 md:pl-28 md:pr-6",
     "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
     "topbar_left": "flex-1 items-center gap-4",
     "topbar_right": "flex-1 items-center justify-end gap-2",
     "icon_btn": "text-slate-300 hover:text-amber-500",
+    "mobile_menu_btn": "md:hidden text-slate-400 hover:text-amber-500",
+    "mobile_drawer": "md:hidden",
+    "mobile_nav": "w-full gap-2 p-4",
+    "mobile_nav_btn": "w-full justify-start text-slate-700",
     "sidebar_logo": "ff-sidebar-logo w-11 h-11 rounded-none object-contain",
     "header_search": f"{STYLE_INPUT} w-72",
     "new_invoice_btn": f"{STYLE_BTN_ACCENT} w-[150px]",
@@ -1715,9 +1719,28 @@ def layout_wrapper(content_func):
     current_page = app.storage.user.get("page", "dashboard")
 
     with ui.element("div").classes(_LAYOUT["app_root"]):
+        mobile_drawer = ui.drawer().classes(_LAYOUT["mobile_drawer"])
+        with mobile_drawer:
+            with ui.column().classes(_LAYOUT["mobile_nav"]):
+
+                def mobile_nav_item(label: str, target: str, icon: str) -> None:
+                    def handle_nav() -> None:
+                        set_page(target)
+                        mobile_drawer.close()
+
+                    ui.button(label, icon=icon, on_click=handle_nav).props("flat no-caps").classes(
+                        _LAYOUT["mobile_nav_btn"]
+                    )
+
+                mobile_nav_item("Dashboard", "dashboard", "dashboard")
+                mobile_nav_item("Invoices", "invoices", "receipt_long")
+                mobile_nav_item("Documents", "documents", "description")
+                mobile_nav_item("Customers", "customers", "groups")
+                mobile_nav_item("Ledger", "ledger", "account_balance")
+
         with ui.row().classes(_LAYOUT["shell_row"]):
             # Sidebar
-            with ui.column().classes(_LAYOUT["sidebar"]):
+            with ui.column().classes(f'{_LAYOUT["sidebar"]} hidden md:flex'):
                 ui.image(company_logo_url).classes(_LAYOUT["sidebar_logo"])
 
                 def nav_item(label: str, target: str, icon: str) -> None:
@@ -1757,6 +1780,9 @@ def layout_wrapper(content_func):
 
                 with ui.row().classes(_LAYOUT["topbar"]):
                     with ui.row().classes(_LAYOUT["topbar_left"]):
+                        ui.button(icon="menu", on_click=mobile_drawer.toggle).props("flat round").classes(
+                            _LAYOUT["mobile_menu_btn"]
+                        )
                         ui.input(
                             "Search transactions",
                             on_change=lambda e: open_ledger_search(e.value or ""),
