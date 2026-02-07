@@ -71,7 +71,7 @@ def render_expenses(session, comp: Company) -> None:
     current_id = {"value": None}
 
     with ui.dialog() as edit_dialog:
-        with ff_card(pad="p-5", classes="w-[640px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-[640px] max-w-[92vw] max-h-[92vh] overflow-y-auto"):
             ui.label("Ausgabe").classes(C_SECTION_TITLE)
 
             d_date = ui.input("Datum").props("outlined dense type=date").classes(C_INPUT)
@@ -136,7 +136,7 @@ def render_expenses(session, comp: Company) -> None:
                 ff_btn_primary("Speichern", on_click=_save)
 
     with ui.dialog() as delete_dialog:
-        with ff_card(pad="p-5", classes="w-[520px] max-w-[92vw]"):
+        with ff_card(pad="p-5", classes="w-[520px] max-w-[92vw] max-h-[92vh] overflow-y-auto"):
             ui.label("Löschen").classes(C_SECTION_TITLE)
             ui.label("Willst du diese Ausgabe wirklich löschen.").classes(STYLE_TEXT_MUTED)
 
@@ -188,26 +188,26 @@ def render_expenses(session, comp: Company) -> None:
     with ui.row().classes("w-full justify-between items-center mb-3 gap-3 flex-wrap"):
         ff_btn_primary("Neu", icon="add", on_click=open_new)
 
-        with ui.row().classes("gap-2 items-end flex-wrap"):
+        with ui.row().classes("gap-2 items-end flex-wrap w-full"):
             ui.input(
                 "Suche",
                 placeholder="Kategorie, Lieferant, Beschreibung",
                 on_change=lambda e: (state.__setitem__("search", e.value or ""), render_list.refresh()),
-            ).props("outlined dense").classes(C_INPUT + " min-w-[260px]")
+            ).props("outlined dense").classes(C_INPUT + " w-full sm:min-w-[260px]")
 
             ui.select(
                 category_opts,
                 label="Kategorie",
                 value=state["category"],
                 on_change=lambda e: (state.__setitem__("category", e.value or "ALL"), render_list.refresh()),
-            ).props("outlined dense").classes(C_INPUT)
+            ).props("outlined dense").classes(C_INPUT + " w-full sm:w-48")
 
             ui.input("Von", on_change=lambda e: (state.__setitem__("date_from", e.value or ""), render_list.refresh())).props(
                 "outlined dense type=date"
-            ).classes(C_INPUT)
+            ).classes(C_INPUT + " w-full sm:w-40")
             ui.input("Bis", on_change=lambda e: (state.__setitem__("date_to", e.value or ""), render_list.refresh())).props(
                 "outlined dense type=date"
-            ).classes(C_INPUT)
+            ).classes(C_INPUT + " w-full sm:w-40")
 
     @ui.refreshable
     def render_list():
@@ -224,31 +224,53 @@ def render_expenses(session, comp: Company) -> None:
                 ui.label("Keine Ausgaben gefunden").classes(STYLE_TEXT_MUTED)
             return
 
-        with ff_card(pad="p-0", classes="overflow-hidden"):
-            with ui.row().classes(C_TABLE_HEADER):
-                ui.label("Datum").classes("w-28")
-                ui.label("Kategorie").classes("w-40")
-                ui.label("Lieferant").classes("w-44")
-                ui.label("Beschreibung").classes("flex-1")
-                ui.label("Betrag").classes("w-28 text-right")
-                ui.label("").classes("w-28 text-right")
-
+        with ui.row().classes("gap-3 md:hidden"):
             for it in data:
-                with ui.row().classes(C_TABLE_ROW + " items-start"):
-                    ui.label(it["date"] or "-").classes("w-28 text-xs font-mono text-slate-700")
-                    ui.label(it["category"] or "-").classes("w-40")
-                    ui.label(it["source"] or "-").classes("w-44")
-                    ui.label(it["description"] or "-").classes("flex-1 text-slate-700")
-                    ui.label(f"-{float(it['amount'] or 0):,.2f} €").classes(
-                        f"w-28 text-right text-sm font-mono text-rose-600 {C_NUMERIC}"
-                    )
-
-                    with ui.row().classes("w-28 justify-end gap-1"):
+                with ff_card(pad="p-4", classes="w-full"):
+                    with ui.row().classes("items-start justify-between gap-3"):
+                        with ui.column().classes("gap-1"):
+                            ui.label(it["category"] or "-").classes("font-semibold")
+                            ui.label(it["date"] or "-").classes("text-xs font-mono text-slate-700")
+                            ui.label(it["source"] or "-").classes("text-sm text-slate-600")
+                            ui.label(it["description"] or "-").classes("text-sm text-slate-700")
+                        ui.label(f"-{float(it['amount'] or 0):,.2f} €").classes(
+                            f"text-right text-sm font-mono text-rose-600 {C_NUMERIC}"
+                        )
+                    with ui.row().classes("justify-end gap-1 mt-2"):
                         ui.button(icon="edit", on_click=lambda _, x=it: open_edit(x)).props("flat dense").classes(
                             "text-slate-500 hover:text-slate-900"
                         )
                         ui.button(icon="delete", on_click=lambda _, x=it: open_delete(x)).props("flat dense").classes(
                             "text-rose-600 hover:text-rose-700"
                         )
+
+        with ff_card(pad="p-0", classes="hidden md:block"):
+            with ui.row().classes("overflow-x-auto"):
+                with ui.column().classes("min-w-[720px] w-full"):
+                    with ui.row().classes(C_TABLE_HEADER):
+                        ui.label("Datum").classes("w-28")
+                        ui.label("Kategorie").classes("w-40")
+                        ui.label("Lieferant").classes("w-44")
+                        ui.label("Beschreibung").classes("flex-1")
+                        ui.label("Betrag").classes("w-28 text-right")
+                        ui.label("").classes("w-28 text-right")
+
+                    for it in data:
+                        with ui.row().classes(C_TABLE_ROW + " items-start"):
+                            ui.label(it["date"] or "-").classes("w-28 text-xs font-mono text-slate-700")
+                            ui.label(it["category"] or "-").classes("w-40")
+                            ui.label(it["source"] or "-").classes("w-44")
+                            ui.label(it["description"] or "-").classes("flex-1 text-slate-700")
+                            ui.label(f"-{float(it['amount'] or 0):,.2f} €").classes(
+                                f"w-28 text-right text-sm font-mono text-rose-600 {C_NUMERIC}"
+                            )
+
+                            with ui.row().classes("w-28 justify-end gap-1"):
+                                ui.button(icon="edit", on_click=lambda _, x=it: open_edit(x)).props("flat dense").classes(
+                                    "text-slate-500 hover:text-slate-900"
+                                )
+                                ui.button(icon="delete", on_click=lambda _, x=it: open_delete(x)).props("flat dense").classes(
+                                    "text-rose-600 hover:text-rose-700"
+                                )
 
     render_list()
