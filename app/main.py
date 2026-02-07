@@ -1688,13 +1688,13 @@ _LAYOUT = {
     "nav_btn_inactive": "text-slate-300 hover:text-amber-500 hover:border-amber-200 hover:bg-amber-50",
     "main": "flex-1 w-full relative px-4 pb-8 md:pl-28 md:pr-6",
     "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
+    "topbar_actions": "w-full items-center gap-4",
+    "topbar_actions_left": "flex-1 items-center gap-3",
+    "topbar_search_row": "w-full items-center gap-4",
     "topbar_left": "flex-1 items-center gap-4",
     "topbar_right": "flex-1 items-center justify-end gap-2",
     "icon_btn": f"{STYLE_TAP_TARGET} text-slate-300 hover:text-amber-500",
     "mobile_menu_btn": f"md:hidden {STYLE_TAP_TARGET} text-slate-400 hover:text-amber-500",
-    "mobile_drawer": "md:hidden",
-    "mobile_nav": "w-full gap-2 p-4",
-    "mobile_nav_btn": f"w-full justify-start text-slate-700 {STYLE_TAP_TARGET}",
     "sidebar_logo": "ff-sidebar-logo w-11 h-11 rounded-none object-contain",
     "header_search": f"{STYLE_INPUT} w-72",
     "new_invoice_btn": f"{STYLE_BTN_ACCENT} w-[150px]",
@@ -1718,27 +1718,37 @@ def layout_wrapper(content_func):
     is_owner = _is_owner_user()
     current_page = app.storage.user.get("page", "dashboard")
     drawer = ui.drawer(side="left").classes("md:hidden bg-white").props("overlay bordered")
+    with drawer:
+        with ui.column().classes("w-full gap-2 p-4"):
+            ui.image(company_logo_url).classes("w-12 h-12 object-contain")
+            ui.element("div").classes("w-full h-px bg-slate-200")
+
+            def nav_item_mobile(label: str, target: str, icon: str) -> None:
+                active = app.storage.user.get("page", "dashboard") == target
+                base = "w-full justify-start gap-3 rounded-xl px-3 py-2 text-left border border-transparent"
+                cls = (
+                    f"{base} text-amber-500 border-amber-200 bg-amber-50"
+                    if active
+                    else f"{base} text-slate-700 hover:text-amber-500 hover:border-amber-200 hover:bg-amber-50"
+                )
+                with ui.button(
+                    label,
+                    icon=icon,
+                    on_click=lambda t=target: (set_page(t), drawer.hide()),
+                ).props("flat no-caps").classes(cls):
+                    pass
+
+            nav_item_mobile("Dashboard", "dashboard", "dashboard")
+            nav_item_mobile("Invoices", "invoices", "receipt_long")
+            nav_item_mobile("Documents", "documents", "description")
+            nav_item_mobile("Ledger", "ledger", "account_balance")
+            nav_item_mobile("Exports", "exports", "file_download")
+            ui.element("div").classes("w-full h-px bg-slate-200 my-1")
+            nav_item_mobile("Customers", "customers", "groups")
+            if is_owner:
+                nav_item_mobile("Einladungen", "invites", "mail")
 
     with ui.element("div").classes(_LAYOUT["app_root"]):
-        mobile_drawer = ui.drawer(side="left").classes(_LAYOUT["mobile_drawer"])
-        with mobile_drawer:
-            with ui.column().classes(_LAYOUT["mobile_nav"]):
-
-                def mobile_nav_item(label: str, target: str, icon: str) -> None:
-                    def handle_nav() -> None:
-                        set_page(target)
-                        mobile_drawer.close()
-
-                    ui.button(label, icon=icon, on_click=handle_nav).props("flat no-caps").classes(
-                        _LAYOUT["mobile_nav_btn"]
-                    )
-
-                mobile_nav_item("Dashboard", "dashboard", "dashboard")
-                mobile_nav_item("Invoices", "invoices", "receipt_long")
-                mobile_nav_item("Documents", "documents", "description")
-                mobile_nav_item("Customers", "customers", "groups")
-                mobile_nav_item("Ledger", "ledger", "account_balance")
-
         with ui.row().classes(_LAYOUT["shell_row"]):
             # Sidebar
             with ui.column().classes(f'{_LAYOUT["sidebar"]} hidden md:flex'):
@@ -1766,40 +1776,6 @@ def layout_wrapper(content_func):
                 nav_item("Customers", "customers", "groups")
                 if is_owner:
                     nav_item("Einladungen", "invites", "mail")
-
-            with drawer:
-                with ui.column().classes("w-full gap-2 p-4"):
-                    ui.image(company_logo_url).classes("w-12 h-12 object-contain")
-                    ui.element("div").classes("w-full h-px bg-slate-200")
-
-                    def nav_item_mobile(label: str, target: str, icon: str) -> None:
-                        active = app.storage.user.get("page", "dashboard") == target
-                        base = (
-                            "w-full justify-start gap-3 rounded-xl px-3 py-2 text-left "
-                            "border border-transparent"
-                        )
-                        cls = (
-                            f"{base} text-amber-500 border-amber-200 bg-amber-50"
-                            if active
-                            else f"{base} text-slate-700 hover:text-amber-500 hover:border-amber-200 "
-                            "hover:bg-amber-50"
-                        )
-                        with ui.button(
-                            label,
-                            icon=icon,
-                            on_click=lambda t=target: (set_page(t), drawer.hide()),
-                        ).props("flat no-caps").classes(cls):
-                            pass
-
-                    nav_item_mobile("Dashboard", "dashboard", "dashboard")
-                    nav_item_mobile("Invoices", "invoices", "receipt_long")
-                    nav_item_mobile("Documents", "documents", "description")
-                    nav_item_mobile("Ledger", "ledger", "account_balance")
-                    nav_item_mobile("Exports", "exports", "file_download")
-                    ui.element("div").classes("w-full h-px bg-slate-200 my-1")
-                    nav_item_mobile("Customers", "customers", "groups")
-                    if is_owner:
-                        nav_item_mobile("Einladungen", "invites", "mail")
 
             # Main content
             with ui.column().classes(_LAYOUT["main"]):
