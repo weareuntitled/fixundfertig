@@ -568,16 +568,21 @@ def render_documents(session, comp: Company) -> None:
             _log_client_debug({"step": "payload_ready", "payload_prefix": file_payload[:32]})
             _log_client_debug({"step": "pre_send_stage"})
 
-            logger.info(
-                "ACTION_SUCCESS",
-                extra=_build_action_context(
-                    action,
-                    document_id=document_id,
-                    filename=filename,
-                    storage_key=storage_key,
-                    storage_path=storage_key,
-                ),
-            )
+            _log_client_debug({"step": "action_log_start"})
+            try:
+                logger.info(
+                    "ACTION_SUCCESS",
+                    extra=_build_action_context(
+                        action,
+                        document_id=document_id,
+                        filename=filename,
+                        storage_key=storage_key,
+                        storage_path=storage_key,
+                    ),
+                )
+            except Exception as exc:
+                _log_client_debug({"step": "action_log_failed", "error": str(exc)})
+                raise
             _log_client_debug({"step": "action_logged"})
             if upload_status:
                 upload_status.set_text("Status: Sende an n8n...")
@@ -654,7 +659,7 @@ def render_documents(session, comp: Company) -> None:
                 ui.notify(f"n8n Versand fehlgeschlagen: {exc}", color="orange")
                 _log_client_debug({"step": "send_failed_exception", "error": str(exc)})
             render_list.refresh()
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "ACTION_FAILED",
                 extra=_build_action_context(
@@ -667,7 +672,7 @@ def render_documents(session, comp: Company) -> None:
             )
             doc_id_display = document_id if document_id is not None else "unbekannt"
             ui.notify(f"Fehler beim Upload (Dokument-ID: {doc_id_display})", color="red")
-            _log_client_debug({"step": "upload_failed_unhandled"})
+            _log_client_debug({"step": "upload_failed_unhandled", "error": str(exc)})
         finally:
             _log_client_debug({"step": "upload_handler_done"})
 
