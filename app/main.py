@@ -61,7 +61,7 @@ from pages import (
 from pages._shared import get_current_user_id, get_primary_company, list_companies, _open_invoice_editor
 from services.blob_storage import blob_storage, build_document_key
 from services.storage import company_logo_path
-from services.auth import ensure_owner_user, get_owner_email
+from services.auth import ensure_owner_user, get_owner_email, validate_readonly_share_token
 from services.documents import (
     backfill_document_fields,
     build_document_record,
@@ -514,6 +514,15 @@ if not _IS_PYTEST:
 def _require_api_auth() -> None:
     if not is_authenticated():
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+def _is_readonly_mode() -> bool:
+    return bool(app.storage.user.get("readonly_mode"))
+
+
+def _require_write_access() -> None:
+    if _is_readonly_mode():
+        raise HTTPException(status_code=403, detail="Read-only preview mode")
 
 
 def _resolve_active_company(session, user_id: int) -> Company:
@@ -1134,6 +1143,7 @@ async def document_upload(
     keywords: str | None = Form(None),
 ) -> dict:
     _require_api_auth()
+    _require_write_access()
     _rate_limit(request, bucket="upload", limit_per_min=_RATELIMIT_UPLOAD_PER_MIN, key_suffix=str(company_id))
     filename = file.filename or ""
     contents = await file.read()
@@ -1357,6 +1367,7 @@ def document_file(document_id: int) -> Response:
 @app.delete("/api/documents/{document_id}")
 def delete_document(document_id: int) -> dict:
     _require_api_auth()
+    _require_write_access()
     with get_session() as session:
         user_id = get_current_user_id(session)
         if user_id is None:
@@ -1393,6 +1404,27 @@ def delete_document(document_id: int) -> dict:
         session.delete(document)
         session.commit()
         return {"status": "deleted"}
+
+
+
+
+@app.get("/share/read/{token}")
+def readonly_share_entry(token: str) -> Response:
+    payload = validate_readonly_share_token((token or "").strip())
+    if not payload:
+        raise HTTPException(status_code=400, detail="Invalid or expired share token")
+    scope = payload.get("scope") or {}
+    with get_session() as session:
+        user = session.get(User, int(payload.get("user_id") or 0))
+    if user:
+        app.storage.user["auth_user"] = user.email or user.username
+    app.storage.user["readonly_mode"] = True
+    app.storage.user["readonly_scope"] = scope
+    invoice_id = scope.get("invoice_id")
+    if invoice_id:
+        return Response(status_code=302, headers={"Location": f"/viewer/invoice/{int(invoice_id)}"})
+    app.storage.user["page"] = "dashboard"
+    return Response(status_code=302, headers={"Location": "/"})
 
 
 @app.get("/viewer/invoice/{invoice_id}", response_class=HTMLResponse)
@@ -1836,10 +1868,11 @@ def layout_wrapper(content_func):
                                         ui.item("Keine neuen Benachrichtigungen.").classes(
                                             STYLE_TEXT_MUTED
                                         )
-                            ui.button(
-                                "New Invoice",
-                                on_click=lambda: _open_invoice_editor(None),
-                            ).props("flat no-caps").classes(_LAYOUT["new_invoice_btn"])
+                            if not _is_readonly_mode():
+                                ui.button(
+                                    "New Invoice",
+                                    on_click=lambda: _open_invoice_editor(None),
+                                ).props("flat no-caps").classes(_LAYOUT["new_invoice_btn"])
                             with ui.button().props("flat no-caps").classes(_LAYOUT["user_btn"]):
                                 ui.label(initials).classes(_LAYOUT["user_initials"])
                                 with ui.menu().classes(_LAYOUT["menu"]):
@@ -1870,6 +1903,11 @@ def index():
 
     app.add_static_files("/storage", "storage")
 
+    if _is_readonly_mode():
+        with ui.row().classes("w-full max-w-7xl mx-auto mb-2 px-4 py-2 rounded bg-amber-100 text-amber-900 text-sm font-medium items-center gap-2"):
+            ui.icon("visibility")
+            ui.label("Read-only preview mode")
+
     # Ensure company exists
     with get_session() as session:
         user_id = get_current_user_id(session)
@@ -1885,6 +1923,9 @@ def index():
     if page in {"home", "todos"}:
         page = "dashboard"
         app.storage.user["page"] = page
+    if _is_readonly_mode() and page in {"settings", "customer_new", "invoice_create", "invites"}:
+        page = "dashboard"
+        app.storage.user["page"] = "dashboard"
 
     def content():
         with get_session() as session:

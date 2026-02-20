@@ -61,7 +61,7 @@ def render_invites(session, _comp) -> None:
                             else:
                                 ui.notify("Einladung nicht gefunden.", color="orange")
 
-                        ff_btn_ghost("Entfernen", on_click=_remove, classes="w-full sm:w-auto")
+                        ff_btn_ghost("Entfernen", on_click=_remove, classes="w-full sm:w-auto", write_action=True)
 
         def _add_invite() -> None:
             email = (email_input.value or "").strip()
@@ -78,7 +78,7 @@ def render_invites(session, _comp) -> None:
             invite_list.refresh()
 
         with ui.row().classes("w-full gap-2 mt-2 flex-col sm:flex-row"):
-            ff_btn_primary("Einladen", on_click=_add_invite, classes="w-full sm:w-auto")
+            ff_btn_primary("Einladen", on_click=_add_invite, classes="w-full sm:w-auto", write_action=True)
 
     with ff_card(pad="p-5", classes="w-full"):
         ui.label("Aktive Einladungen").classes("text-sm font-semibold text-slate-900 mb-2")

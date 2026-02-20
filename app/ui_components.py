@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from nicegui import ui
+from nicegui import app, ui
 
 from data import InvoiceStatus
 from styles import (
@@ -89,42 +89,47 @@ def ff_select(label: str, options, *, value=None, classes: str = "", props: str 
     )
 
 
-def ff_btn_primary(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
+
+
+def _readonly_disabled(write_action: bool) -> str:
+    return " disable" if write_action and bool(app.storage.user.get("readonly_mode")) else ""
+
+def ff_btn_primary(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "", write_action: bool = True) -> ui.button:
     return (
         ui.button(text, icon=icon, on_click=on_click)
-        .props(f"unelevated no-caps {props}".strip())
+        .props(f"unelevated no-caps{_readonly_disabled(write_action)} {props}".strip())
         .classes(f"{STYLE_BTN_PRIMARY} {classes}".strip())
     )
 
 
-def ff_btn_secondary(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
+def ff_btn_secondary(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "", write_action: bool = False) -> ui.button:
     return (
         ui.button(text, icon=icon, on_click=on_click)
-        .props(f"flat no-caps {props}".strip())
+        .props(f"flat no-caps{_readonly_disabled(write_action)} {props}".strip())
         .classes(f"{STYLE_BTN_SECONDARY} {classes}".strip())
     )
 
 
-def ff_btn_muted(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
+def ff_btn_muted(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "", write_action: bool = True) -> ui.button:
     return (
         ui.button(text, icon=icon, on_click=on_click)
-        .props(f"flat no-caps {props}".strip())
+        .props(f"flat no-caps{_readonly_disabled(write_action)} {props}".strip())
         .classes(f"{STYLE_BTN_MUTED} {classes}".strip())
     )
 
 
-def ff_btn_danger(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
+def ff_btn_danger(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "", write_action: bool = True) -> ui.button:
     return (
         ui.button(text, icon=icon, on_click=on_click)
-        .props(f"unelevated no-caps {props}".strip())
+        .props(f"unelevated no-caps{_readonly_disabled(write_action)} {props}".strip())
         .classes(f"{STYLE_BTN_DANGER} {classes}".strip())
     )
 
 
-def ff_btn_ghost(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "") -> ui.button:
+def ff_btn_ghost(text: str, *, on_click=None, icon: str | None = None, classes: str = "", props: str = "", write_action: bool = True) -> ui.button:
     return (
         ui.button(text, icon=icon, on_click=on_click)
-        .props(f"flat no-caps {props}".strip())
+        .props(f"flat no-caps{_readonly_disabled(write_action)} {props}".strip())
         .classes(f"{STYLE_BTN_GHOST} {classes}".strip())
     )
 

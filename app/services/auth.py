@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
@@ -22,6 +23,7 @@ load_env()
 
 VERIFY_TOKEN_TTL = timedelta(hours=24)
 RESET_TOKEN_TTL = timedelta(hours=2)
+READONLY_SHARE_TOKEN_TTL = timedelta(hours=24)
 logger = logging.getLogger(__name__)
 
 # Use pbkdf2_sha256 for new passwords; keep legacy bcrypt/sha256 verification for compatibility.
@@ -233,6 +235,10 @@ def _build_verify_link(token: str) -> str:
 
 def _build_reset_link(token: str) -> str:
     return f"{_app_base_url()}/reset?token={token}"
+
+
+def _build_readonly_share_link(token: str) -> str:
+    return f"{_app_base_url()}/share/read/{token}"
 
 
 def _send_welcome_email(email_normalized: str) -> None:
@@ -515,6 +521,53 @@ def reset_password(token_str: str, new_password: str) -> bool:
         session.add(token)
         session.commit()
         return True
+
+
+def create_readonly_share_token(
+    user_id: int,
+    *,
+    expires_in: timedelta | None = None,
+    single_use: bool = False,
+    scope: dict | None = None,
+) -> tuple[str, datetime]:
+    ttl = expires_in or READONLY_SHARE_TOKEN_TTL
+    if ttl.total_seconds() <= 0:
+        raise ValueError("Token expiration must be in the future")
+    scope_json = json.dumps(scope or {}, ensure_ascii=False)
+    with get_session() as session:
+        user = session.exec(select(User).where(User.id == user_id)).first()
+        if not user:
+            raise ValueError("User not found")
+        token = _create_token(user, TokenPurpose.READONLY_SHARE, ttl)
+        token.single_use = bool(single_use)
+        token.scope_json = scope_json
+        session.add(token)
+        token_str = token.token
+        expires_at = token.expires_at
+        session.commit()
+    return token_str, expires_at
+
+
+def validate_readonly_share_token(token_str: str) -> dict | None:
+    with get_session() as session:
+        token = get_valid_token(session, token_str, TokenPurpose.READONLY_SHARE)
+        if not token:
+            return None
+        if token.single_use:
+            token.used_at = datetime.utcnow()
+            session.add(token)
+            session.commit()
+        try:
+            scope = json.loads(token.scope_json or "{}")
+        except Exception:
+            scope = {}
+        return {
+            "user_id": int(token.user_id),
+            "scope": scope if isinstance(scope, dict) else {},
+            "expires_at": token.expires_at,
+            "single_use": bool(token.single_use),
+            "link": _build_readonly_share_link(token.token),
+        }
 
 
 def list_invited_emails() -> list[InvitedEmail]:

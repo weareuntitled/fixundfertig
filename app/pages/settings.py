@@ -7,6 +7,7 @@ import os
 import secrets
 import httpx
 import time
+from datetime import timedelta
 
 from nicegui import app, ui
 from sqlmodel import select
@@ -19,6 +20,7 @@ from ._shared import (
     C_PAGE_TITLE,
     C_SECTION_TITLE,
     Company,
+    User,
     get_current_user_id,
     get_session,
     use_address_autocomplete,
@@ -27,6 +29,7 @@ from auth_guard import clear_auth_session
 from integrations.n8n_client import post_to_n8n
 from services.companies import create_company, delete_company, list_companies, update_company
 from services.iban import lookup_bank_from_iban
+from services.auth import create_readonly_share_token, get_owner_email
 from services.storage import cleanup_company_logos, company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
@@ -157,6 +160,51 @@ def render_settings(session, comp: Company) -> None:
     with ui.row().classes("w-full justify-between items-center mb-6"):
         ui.label("Einstellungen").classes(C_PAGE_TITLE)
         ui.button("Neues Unternehmen", on_click=_open_create_dialog).props("unelevated no-caps").classes(C_BTN_PRIM)
+
+    owner_email = get_owner_email()
+    current_user = session.get(User, int(user_id)) if user_id else None
+    is_owner = bool(current_user and (current_user.email or "").strip().lower() == owner_email)
+    if is_owner:
+        with ui.card().classes(C_CARD + " p-5 w-full max-w-5xl mx-auto mb-4"):
+            ui.label("Read-only Link teilen").classes(C_SECTION_TITLE)
+            with ui.row().classes("w-full gap-2 items-end flex-wrap"):
+                ttl_hours = ui.number("Gültig (Stunden)", value=24, min=1, max=168, step=1).props("outlined dense").classes(C_INPUT)
+                invoice_id_input = ui.input("Rechnung-ID (optional)").props("outlined dense").classes(C_INPUT)
+                single_use = ui.switch("Einmal-Link", value=False)
+            link_output = ui.input("Share-Link", value="").props("outlined dense readonly").classes(C_INPUT + " w-full")
+
+            def _create_link() -> None:
+                hours = int(ttl_hours.value or 24)
+                if hours <= 0:
+                    ui.notify("TTL muss größer als 0 sein.", color="orange")
+                    return
+                scope = {}
+                invoice_raw = (invoice_id_input.value or "").strip()
+                if invoice_raw:
+                    try:
+                        scope["invoice_id"] = int(invoice_raw)
+                    except Exception:
+                        ui.notify("Rechnung-ID ist ungültig.", color="orange")
+                        return
+                token, _ = create_readonly_share_token(
+                    int(user_id),
+                    expires_in=timedelta(hours=hours),
+                    single_use=bool(single_use.value),
+                    scope=scope,
+                )
+                base = os.environ.get("APP_BASE_URL", "http://localhost:8080").rstrip("/")
+                link_output.set_value(f"{base}/share/read/{token}")
+
+            def _copy_link() -> None:
+                if not link_output.value:
+                    ui.notify("Bitte zuerst einen Link erstellen.", color="orange")
+                    return
+                ui.run_javascript(f"navigator.clipboard.writeText({json.dumps(link_output.value)})")
+                ui.notify("Link kopiert.", color="grey")
+
+            with ui.row().classes("w-full gap-2"):
+                ui.button("Link erstellen", on_click=_create_link).props("unelevated no-caps").classes(C_BTN_PRIM)
+                ui.button("Kopieren", on_click=_copy_link).props("flat no-caps").classes(C_BTN_SEC)
 
     # ----------------------------
     # Company switcher + CRUD
