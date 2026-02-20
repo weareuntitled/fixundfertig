@@ -171,13 +171,27 @@ def render_settings(session, comp: Company) -> None:
                 ttl_hours = ui.number("Gültig (Stunden)", value=24, min=1, max=168, step=1).props("outlined dense").classes(C_INPUT)
                 invoice_id_input = ui.input("Rechnung-ID (optional)").props("outlined dense").classes(C_INPUT)
                 single_use = ui.switch("Einmal-Link", value=False)
+                permanent_link = ui.switch("Permanenter Link", value=False)
             link_output = ui.input("Share-Link", value="").props("outlined dense readonly").classes(C_INPUT + " w-full")
 
+            def _toggle_ttl() -> None:
+                if permanent_link.value:
+                    ttl_hours.disable()
+                else:
+                    ttl_hours.enable()
+
+            permanent_link.on_value_change(lambda _: _toggle_ttl())
+            _toggle_ttl()
+
             def _create_link() -> None:
-                hours = int(ttl_hours.value or 24)
-                if hours <= 0:
-                    ui.notify("TTL muss größer als 0 sein.", color="orange")
-                    return
+                if permanent_link.value:
+                    expires_in = timedelta(days=365 * 50)
+                else:
+                    hours = int(ttl_hours.value or 24)
+                    if hours <= 0:
+                        ui.notify("TTL muss größer als 0 sein.", color="orange")
+                        return
+                    expires_in = timedelta(hours=hours)
                 scope = {}
                 invoice_raw = (invoice_id_input.value or "").strip()
                 if invoice_raw:
@@ -188,7 +202,7 @@ def render_settings(session, comp: Company) -> None:
                         return
                 token, _ = create_readonly_share_token(
                     int(user_id),
-                    expires_in=timedelta(hours=hours),
+                    expires_in=expires_in,
                     single_use=bool(single_use.value),
                     scope=scope,
                 )
