@@ -176,6 +176,15 @@ def _open_invoice_editor(draft_id: int | None) -> None:
     ui.navigate.to("/")
 
 
+def is_readonly_mode() -> bool:
+    return bool(app.storage.user.get("readonly_mode"))
+
+
+def readonly_scope() -> dict:
+    scope = app.storage.user.get("readonly_scope") or {}
+    return scope if isinstance(scope, dict) else {}
+
+
 def _fetch_address_autocomplete(query: str, country_code: str) -> list[dict]:
     if len(query.strip()) < 3:
         return []

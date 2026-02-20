@@ -28,6 +28,7 @@ class InvoiceStatus(str, Enum):
 class TokenPurpose(str, Enum):
     VERIFY_EMAIL = "verify_email"
     RESET_PASSWORD = "reset_password"
+    READONLY_SHARE = "readonly_share"
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -57,6 +58,8 @@ class Token(SQLModel, table=True):
     purpose: TokenPurpose
     expires_at: datetime
     used_at: Optional[datetime] = None
+    single_use: bool = True
+    scope_json: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
     user: Optional["User"] = Relationship(back_populates="tokens")
 
@@ -263,6 +266,31 @@ SessionLocal = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
 
 # Create Tables
 SQLModel.metadata.create_all(engine)
+
+
+def ensure_token_schema():
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS token ("
+            "id INTEGER PRIMARY KEY,"
+            "user_id INTEGER NOT NULL,"
+            "token TEXT UNIQUE,"
+            "purpose TEXT NOT NULL,"
+            "expires_at TEXT NOT NULL,"
+            "used_at TEXT,"
+            "single_use BOOLEAN DEFAULT 1,"
+            "scope_json TEXT DEFAULT '',"
+            "created_at TEXT"
+            ")"
+        )
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(token)").fetchall()}
+        if "single_use" not in columns:
+            conn.exec_driver_sql("ALTER TABLE token ADD COLUMN single_use BOOLEAN DEFAULT 1")
+        if "scope_json" not in columns:
+            conn.exec_driver_sql("ALTER TABLE token ADD COLUMN scope_json TEXT DEFAULT ''")
+
+
+ensure_token_schema()
 
 @contextmanager
 def get_session():
