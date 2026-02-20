@@ -31,7 +31,6 @@ tracklistify.untitled-ux.de {
     reverse_proxy tracklistify:5000
 }
 
-# --- NEU: Dein UX-Portfolio ---
-dein-portfolio.untitled-ux.de {
+portfolio.untitled-ux.de {
     reverse_proxy ux-portfolio:3000
 }
