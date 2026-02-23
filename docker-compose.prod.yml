@@ -158,6 +158,8 @@ services:
       - NODE_ENV=production
       - PORT=3000
     logging: *default-logging
+    volumes:
+      - ux_portfolio_data:/app/data    
 
   # --- Reverse Proxy (Caddy) ---
   caddy:
