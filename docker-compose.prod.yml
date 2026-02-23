@@ -54,14 +54,13 @@ services:
       - EXECUTIONS_MODE=regular
       - EXECUTIONS_DATA_PRUNE=true
       - EXECUTIONS_DATA_MAX_AGE=72
-      
+
       # --- TASK RUNNER CONFIG (BROKER) ---
       - N8N_RUNNERS_ENABLED=true
-      - N8N_RUNNERS_MODE=external                # Wichtig: Sagt n8n, dass Runner extern sind
-      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0 # Wichtig: Damit Runner connecten darf
-      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN} # Token für Runner-Verbindung (aus .env)
+      - N8N_RUNNERS_MODE=external
+      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
       # -----------------------------------
-      
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -148,6 +147,18 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
+  # --- NEU: UX Portfolio (Next) ---
+  ux-portfolio:
+    image: ghcr.io/weareuntitled/ux-portfolio:latest
+    container_name: ux-portfolio
+    restart: unless-stopped
+    networks:
+      - internal_net
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    logging: *default-logging
+
   # --- Reverse Proxy (Caddy) ---
   caddy:
     image: caddy:2
@@ -165,6 +176,7 @@ services:
     depends_on:
       - app
       - n8n
+      - ux-portfolio
     restart: unless-stopped
     networks:
       - internal_net
