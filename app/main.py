@@ -1410,7 +1410,8 @@ def delete_document(document_id: int) -> dict:
 
 @app.get("/share/read/{token}")
 def readonly_share_entry(token: str) -> Response:
-    payload = validate_readonly_share_token((token or "").strip())
+    token_value = (token or "").strip()
+    payload = validate_readonly_share_token(token_value)
     if not payload:
         raise HTTPException(status_code=400, detail="Invalid or expired share token")
     scope = payload.get("scope") or {}
@@ -1422,17 +1423,27 @@ def readonly_share_entry(token: str) -> Response:
     app.storage.user["readonly_scope"] = scope
     invoice_id = scope.get("invoice_id")
     if invoice_id:
-        return Response(status_code=302, headers={"Location": f"/viewer/invoice/{int(invoice_id)}"})
+        return Response(status_code=302, headers={"Location": f"/viewer/invoice/{int(invoice_id)}?share_token={token_value}"})
     app.storage.user["page"] = "dashboard"
     return Response(status_code=302, headers={"Location": "/"})
 
 
 @app.get("/viewer/invoice/{invoice_id}", response_class=HTMLResponse)
-def invoice_viewer(invoice_id: int, rev: str | None = None) -> HTMLResponse:
-    if not is_authenticated():
+def invoice_viewer(invoice_id: int, rev: str | None = None, share_token: str | None = None) -> HTMLResponse:
+    token_value = (share_token or "").strip()
+    payload = validate_readonly_share_token(token_value) if token_value else None
+    if payload:
+        scope = payload.get("scope") or {}
+        token_invoice_id = int(scope.get("invoice_id") or 0)
+        if token_invoice_id != int(invoice_id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+    elif not is_authenticated():
         return HTMLResponse(status_code=302, headers={"Location": "/login"})
     rev_query = f"?rev={rev}" if rev else ""
-    pdf_url = f"/api/invoices/{invoice_id}/pdf{rev_query}"
+    token_query = f"share_token={token_value}" if token_value else ""
+    query_parts = [part for part in (rev_query.lstrip("?"), token_query) if part]
+    query = f"?{'&'.join(query_parts)}" if query_parts else ""
+    pdf_url = f"/api/invoices/{invoice_id}/pdf{query}"
     html = f"""
     <!doctype html>
     <html lang="en">
@@ -1596,12 +1607,20 @@ def set_page(name: str):
 
 
 @app.get("/api/invoices/{invoice_id}/pdf")
-def invoice_pdf(invoice_id: int, rev: str | None = None):
-    if not require_auth():
+def invoice_pdf(invoice_id: int, rev: str | None = None, share_token: str | None = None):
+    token_value = (share_token or "").strip()
+    payload = validate_readonly_share_token(token_value) if token_value else None
+    readonly_user_id = int(payload.get("user_id") or 0) if payload else None
+    if payload:
+        scope = payload.get("scope") or {}
+        token_invoice_id = int(scope.get("invoice_id") or 0)
+        if token_invoice_id != int(invoice_id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+    elif not require_auth():
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     with get_session() as session:
-        user_id = get_current_user_id(session)
+        user_id = readonly_user_id if readonly_user_id else get_current_user_id(session)
         if user_id is None:
             raise HTTPException(status_code=401, detail="Unauthorized")
 

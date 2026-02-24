@@ -99,9 +99,13 @@ def test_readonly_mode_blocks_document_mutation_and_share_viewer_redirect(tmp_pa
     share_token, _ = _auth_module.create_readonly_share_token(
         int(user.id or 0),
         expires_in=timedelta(hours=1),
-        single_use=True,
+        single_use=False,
         scope={"invoice_id": 123},
     )
     redirect = client.get(f"/share/read/{share_token}", follow_redirects=False)
     assert redirect.status_code == 302
-    assert redirect.headers.get("location") == "/viewer/invoice/123"
+    assert redirect.headers.get("location") == f"/viewer/invoice/123?share_token={share_token}"
+
+    client = TestClient(main_module.app)
+    viewer = client.get(f"/viewer/invoice/123?share_token={share_token}", follow_redirects=False)
+    assert viewer.status_code == 200
