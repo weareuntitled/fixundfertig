@@ -1,0 +1,22 @@
+# Lokaler Zugriff ohne echte Domain / ohne TLS (ergänzt docker-compose.prod.yml).
+# Start: docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
+# App: http://127.0.0.1:8000   n8n: http://127.0.0.1:5678
+services:
+  app:
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      APP_BASE_URL: http://127.0.0.1:8000
+      FF_TRUSTED_HOSTS: localhost,127.0.0.1
+      FF_ALLOW_LOCALHOST: "1"
+      FF_COOKIE_SECURE: "0"
+      FF_CORS_ORIGINS: http://127.0.0.1:8000,http://localhost:8000
+
+  n8n:
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      N8N_HOST: localhost
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://127.0.0.1:5678/
+      N8N_SECURE_COOKIE: "false"

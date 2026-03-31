@@ -1,8 +1,8 @@
 from __future__ import annotations
 from ._shared import *
 from ._shared import _open_invoice_editor, _parse_iso_date
-from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED
-from ui_components import ff_btn_muted, ff_btn_primary, ff_btn_secondary, ff_card
+from styles import STYLE_TEXT_MUTED
+from ui_components import ff_btn_muted, ff_btn_primary, ff_btn_secondary, ff_card, ff_icon_button
 
 # Auto generated page renderer
 
@@ -14,8 +14,7 @@ def render_invoices(session, comp: Company) -> None:
         "right_col": "col-span-10 lg:col-span-3 gap-5 order-2 lg:order-none mt-4 lg:mt-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-slate-200",
         "card_header": "px-4 py-3 border-b border-slate-200 items-center justify-between",
         "card_row": "px-4 py-3 border-b border-slate-200 items-center justify-between",
-        "row_label_sm": "sm:hidden text-[10px] uppercase text-slate-400",
-        "icon_btn": f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900",
+        "row_label_sm": "sm:hidden text-xs uppercase text-slate-400",
     }
 
     with ui.row().classes(_CLS["page_header"]):
@@ -76,7 +75,7 @@ def render_invoices(session, comp: Company) -> None:
                 ui.notify(err, color="red")
             else:
                 ui.notify("Status aktualisiert", color="green")
-                ui.navigate.to("/")
+                go_app_page("invoices")
         except Exception as e:
             ui.notify(f"Fehler: {e}", color="red")
 
@@ -87,7 +86,7 @@ def render_invoices(session, comp: Company) -> None:
                 ui.notify(err, color="red")
             else:
                 ui.notify("Storniert", color="green")
-                ui.navigate.to("/")
+                go_app_page("invoices")
         except Exception as e:
             ui.notify(f"Fehler: {e}", color="red")
 
@@ -111,7 +110,7 @@ def render_invoices(session, comp: Company) -> None:
                         else:
                             ui.notify("Rechnung gelöscht", color="green")
                             delete_dialog.close()
-                            ui.navigate.to("/")
+                            go_app_page("invoices")
                     except Exception as e:
                         ui.notify(f"Fehler: {e}", color="red")
 
@@ -160,17 +159,23 @@ def render_invoices(session, comp: Company) -> None:
                                             f"text-sm font-mono text-slate-900 {C_NUMERIC}"
                                         )
                                     with ui.row().classes("w-full justify-end gap-2 flex-wrap"):
-                                        ui.button(icon="visibility", on_click=lambda x=inv: _open_invoice_detail(int(x.id))).props(
-                                            "flat dense no-parent-event"
-                                        ).classes(_CLS["icon_btn"])
-                                        ui.button(icon="download", on_click=lambda x=inv: run_download(x)).props(
-                                            "flat dense no-parent-event"
-                                        ).classes(_CLS["icon_btn"])
-                                        ui.button(icon="mail", on_click=lambda x=inv: run_send(x)).props(
-                                            "flat dense no-parent-event"
-                                        ).classes(_CLS["icon_btn"])
+                                        ff_icon_button(
+                                            icon="visibility",
+                                            on_click=lambda x=inv: _open_invoice_detail(int(x.id)),
+                                            props="no-parent-event",
+                                        )
+                                        ff_icon_button(
+                                            icon="download",
+                                            on_click=lambda x=inv: run_download(x),
+                                            props="no-parent-event",
+                                        )
+                                        ff_icon_button(
+                                            icon="mail",
+                                            on_click=lambda x=inv: run_send(x),
+                                            props="no-parent-event",
+                                        )
 
-                                        with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(_CLS["icon_btn"]):
+                                        with ff_icon_button(icon="more_vert", props="no-parent-event"):
                                             with ui.menu().props("auto-close no-parent-event"):
                                                 if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
                                                     ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))
@@ -208,17 +213,23 @@ def render_invoices(session, comp: Company) -> None:
                                 with ui.column().classes("w-44 gap-2 items-end"):
                                     ui.label("Aktionen").classes(_CLS["row_label_sm"])
                                     with ui.row().classes("w-44 justify-end gap-2 flex-wrap"):
-                                        ui.button(icon="visibility", on_click=lambda x=inv: _open_invoice_detail(int(x.id))).props(
-                                            "flat dense no-parent-event"
-                                        ).classes(_CLS["icon_btn"])
-                                        ui.button(icon="download", on_click=lambda x=inv: run_download(x)).props(
-                                            "flat dense no-parent-event"
-                                        ).classes(_CLS["icon_btn"])
-                                        ui.button(icon="mail", on_click=lambda x=inv: run_send(x)).props(
-                                            "flat dense no-parent-event"
-                                        ).classes(_CLS["icon_btn"])
+                                        ff_icon_button(
+                                            icon="visibility",
+                                            on_click=lambda x=inv: _open_invoice_detail(int(x.id)),
+                                            props="no-parent-event",
+                                        )
+                                        ff_icon_button(
+                                            icon="download",
+                                            on_click=lambda x=inv: run_download(x),
+                                            props="no-parent-event",
+                                        )
+                                        ff_icon_button(
+                                            icon="mail",
+                                            on_click=lambda x=inv: run_send(x),
+                                            props="no-parent-event",
+                                        )
 
-                                        with ui.button(icon="more_vert").props("flat dense no-parent-event").classes(_CLS["icon_btn"]):
+                                        with ff_icon_button(icon="more_vert", props="no-parent-event"):
                                             with ui.menu().props("auto-close no-parent-event"):
                                                 if inv.status in (InvoiceStatus.OPEN, InvoiceStatus.FINALIZED):
                                                     ui.menu_item("Als gesendet markieren", on_click=lambda x=inv: set_status(x, InvoiceStatus.SENT))

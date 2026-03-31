@@ -1,8 +1,8 @@
 from __future__ import annotations
 from ._shared import *
 from ._shared import _parse_iso_date
-from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED
-from ui_components import ff_card
+from styles import STYLE_TEXT_MUTED
+from ui_components import ff_card, ff_icon_button
 
 # Auto generated page renderer
 
@@ -123,12 +123,12 @@ def render_ledger(session, comp: Company) -> None:
 
         with ff_card(pad="p-0", classes="overflow-hidden"):
             with ui.element("div").classes(C_TABLE_HEADER + " hidden sm:grid sm:grid-cols-[110px_110px_110px_1fr_120px_120px] items-center"):
-                ui.label("Datum").classes("font-bold")
-                ui.label("Typ").classes("font-bold")
-                ui.label("Status").classes("font-bold")
-                ui.label("Kunde/Lieferant").classes("font-bold")
-                ui.label("Betrag").classes("font-bold text-right")
-                ui.label("").classes("font-bold text-right")
+                ui.label("Datum").classes("font-semibold")
+                ui.label("Typ").classes("font-semibold")
+                ui.label("Status").classes("font-semibold")
+                ui.label("Kunde/Lieferant").classes("font-semibold")
+                ui.label("Betrag").classes("font-semibold text-right")
+                ui.label("").classes("font-semibold text-right")
 
             for it in data:
                 with ui.element("div").classes(
@@ -137,26 +137,26 @@ def render_ledger(session, comp: Company) -> None:
                     + " border border-slate-200 rounded-lg p-3 sm:p-2 sm:border-0 sm:rounded-none hover:bg-slate-50 transition-colors"
                 ):
                     with ui.column().classes("gap-1"):
-                        ui.label("Datum").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Datum").classes("sm:hidden text-xs uppercase text-slate-400")
                         ui.label(it["date"]).classes("text-xs font-mono")
 
                     with ui.column().classes("gap-1"):
-                        ui.label("Typ").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Typ").classes("sm:hidden text-xs uppercase text-slate-400")
                         badge_class = C_BADGE_YELLOW if it["type"] == "INCOME" else C_BADGE_GRAY
                         ui.label("Income" if it["type"] == "INCOME" else "Expense").classes(badge_class + " w-auto sm:w-20")
 
                     with ui.column().classes("gap-1"):
-                        ui.label("Status").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Status").classes("sm:hidden text-xs uppercase text-slate-400")
                         ui.label(it["status"]).classes("text-xs")
 
                     with ui.column().classes("gap-1"):
-                        ui.label("Kunde/Lieferant").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Kunde/Lieferant").classes("sm:hidden text-xs uppercase text-slate-400")
                         ui.label(it["party"]).classes("text-sm")
                         if it.get("description"):
                             ui.label(it["description"]).classes("text-xs text-slate-500")
 
                     with ui.column().classes("gap-1 sm:items-end"):
-                        ui.label("Betrag").classes("sm:hidden text-[10px] uppercase text-slate-400")
+                        ui.label("Betrag").classes("sm:hidden text-xs uppercase text-slate-400")
                         amount_label = f"{it['amount']:,.2f} €" if it["type"] == "INCOME" else f"-{it['amount']:,.2f} €"
                         amount_class = (
                             f"text-right text-sm font-mono {C_NUMERIC} "
@@ -166,11 +166,9 @@ def render_ledger(session, comp: Company) -> None:
 
                     with ui.row().classes("justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition"):
                         if it["invoice_id"]:
-                            ui.button(
+                            ff_icon_button(
                                 icon="open_in_new",
                                 on_click=lambda _, iid=it["invoice_id"]: _open_invoice_detail(int(iid)),
-                            ).props("flat dense").classes(
-                                f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900"
                             )
                         else:
                             ui.label("-").classes("text-xs text-slate-400")

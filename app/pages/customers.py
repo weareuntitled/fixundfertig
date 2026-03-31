@@ -11,7 +11,7 @@ def render_customers(session, comp: Company) -> None:
         ff_btn_primary(
             "Neu",
             icon="add",
-            on_click=lambda: (app.storage.user.__setitem__("page", "customer_new"), ui.navigate.to("/")),
+            on_click=lambda: go_app_page("customer_new"),
         )
 
     customers = session.exec(
@@ -32,8 +32,7 @@ def render_customers(session, comp: Company) -> None:
             for c in customers:
                 def open_detail(customer_id: int = int(c.id)):
                     app.storage.user["customer_detail_id"] = customer_id
-                    app.storage.user["page"] = "customer_detail"
-                    ui.navigate.to("/")
+                    go_app_page("customer_detail")
 
                 details: list[str] = []
                 if c.vorname or c.nachname:
@@ -46,7 +45,7 @@ def render_customers(session, comp: Company) -> None:
                 with ui.row().classes(C_TABLE_ROW + " hidden sm:flex cursor-pointer hover:bg-slate-50").on(
                     "click", lambda _, x=int(c.id): open_detail(x)
                 ):
-                    ui.label(c.display_name).classes("flex-1 font-medium text-slate-900")
+                    ui.label(c.display_name).classes("flex-1 font-semibold text-slate-900")
                     ui.label(c.email or "-").classes("w-64 text-slate-600")
                     ui.label(" · ".join(details) if details else "-").classes("w-64 text-slate-600")
 

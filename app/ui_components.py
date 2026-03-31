@@ -18,6 +18,7 @@ from styles import (
     STYLE_BTN_SECONDARY,
     STYLE_CARD,
     STYLE_CARD_HOVER,
+    STYLE_ICON_TOOLBAR,
     STYLE_INPUT,
     STYLE_PAGE_TITLE,
     STYLE_SECTION_TITLE,
@@ -89,6 +90,15 @@ def ff_select(label: str, options, *, value=None, classes: str = "", props: str 
     )
 
 
+def ff_upload(*, on_upload=None, label: str = "Datei wählen", auto_upload: bool = False, classes: str = "", props: str = ""):
+    """Upload wrapper with unified surface styling."""
+    return (
+        ui.upload(on_upload=on_upload, auto_upload=auto_upload, label=label)
+        .props(props.strip())
+        .classes(f"ff-upload w-full {classes}".strip())
+    )
+
+
 
 
 def _readonly_disabled(write_action: bool) -> str:
@@ -133,6 +143,21 @@ def ff_btn_ghost(text: str, *, on_click=None, icon: str | None = None, classes: 
         .classes(f"{STYLE_BTN_GHOST} {classes}".strip())
     )
 
+
+def ff_icon_button(
+    *,
+    icon: str,
+    on_click=None,
+    classes: str = "",
+    props: str = "",
+    write_action: bool = False,
+    round_button: bool = True,
+) -> ui.button:
+    shape = " round" if round_button else ""
+    p = f"flat dense{shape}{_readonly_disabled(write_action)} {props}".strip()
+    merged = f"{STYLE_ICON_TOOLBAR} {classes}".strip()
+    return ui.button(icon=icon, on_click=on_click).props(p).classes(merged)
+
 def kpi_card(
     label,
     value,
@@ -160,9 +185,9 @@ def kpi_card(
         with ui.column().classes("gap-2 z-10"):
             with ui.row().classes("items-center gap-2"):
                 ui.icon(icon).classes("text-base text-amber-600")
-                ui.label(label).classes("text-xs font-bold text-slate-600 uppercase tracking-wider")
+                ui.label(label).classes("text-xs font-semibold text-slate-600 uppercase tracking-wider")
             ui.element("div").classes("h-px w-10 bg-slate-200")
-            ui.label(value).classes(f"text-[40px] font-bold text-slate-900 {C_NUMERIC}")
+            ui.label(value).classes(f"text-2xl sm:text-3xl font-semibold text-slate-900 {C_NUMERIC}")
             if trend_text:
                 with ui.row().classes("items-center gap-1"):
                     if trend_icon:
@@ -202,7 +227,7 @@ def sticky_header(title, on_cancel, on_save=None, on_finalize=None):
     ):
         with ui.row().classes("items-center gap-2 min-w-0"):
             ui.icon("description", size="sm").classes("text-slate-500")
-            ui.label(title).classes("text-lg font-bold text-slate-900 truncate")
+            ui.label(title).classes(f"{STYLE_SECTION_TITLE} truncate")
         with ui.row().classes("gap-2 w-full sm:w-auto sm:ml-auto justify-start sm:justify-end flex-wrap"):
             if on_cancel:
                 ff_btn_secondary("Abbrechen", on_click=on_cancel)

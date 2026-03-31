@@ -20,6 +20,7 @@ from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from starlette.responses import RedirectResponse
 from nicegui import ui, app, helpers
 from nicegui.storage import Storage, PseudoPersistentDict, request_contextvar
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
@@ -40,8 +41,9 @@ setup_logging()
 from auth_guard import clear_auth_session, is_authenticated, require_auth, set_request_for_context
 from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
 from renderer import render_invoice_to_pdf_bytes
-from styles import STYLE_BG, STYLE_BTN_ACCENT, STYLE_CONTAINER, STYLE_INPUT, STYLE_TAP_TARGET, STYLE_TEXT_MUTED
+from styles import STYLE_BG, STYLE_CONTAINER, STYLE_INPUT, STYLE_TAP_TARGET, STYLE_TEXT_MUTED
 from ui_theme import apply_global_ui_theme
+from ui_components import ff_btn_primary, ff_card, ff_icon_button
 from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
@@ -58,7 +60,15 @@ from pages import (
     render_ledger,
     render_exports,
 )
-from pages._shared import get_current_user_id, get_primary_company, list_companies, _open_invoice_editor
+from pages._shared import (
+    get_current_user_id,
+    get_primary_company,
+    go_app_page,
+    list_companies,
+    _open_invoice_editor,
+    register_shell_navigate,
+    app_shell_nav_items,
+)
 from services.blob_storage import blob_storage, build_document_key
 from services.storage import company_logo_path
 from services.auth import ensure_owner_user, get_owner_email, validate_readonly_share_token
@@ -164,14 +174,17 @@ def _derive_trusted_hosts() -> list[str]:
             if parsed.hostname:
                 hosts.append(parsed.hostname)
 
-        if _IS_PYTEST:
-            hosts.append("testserver")
         if not _IS_PROD:
             hosts.extend(["localhost", "127.0.0.1", "0.0.0.0"])
 
     # Allow localhost when explicitly requested (e.g. local Docker on port 3000)
     if (os.getenv("FF_ALLOW_LOCALHOST") or "").strip() == "1":
         hosts.extend(["localhost", "127.0.0.1"])
+
+    # TestClient uses host "testserver"; always allow it under pytest even if FF_TRUSTED_HOSTS is set.
+    if _IS_PYTEST:
+        hosts.append("testserver")
+
     return _dedupe_keep_order(hosts)
 
 
@@ -504,6 +517,17 @@ def _validate_n8n_file_signature(file_bytes: bytes, mime_type: str, ext: str) ->
         raise HTTPException(status_code=400, detail="File content is not a valid JPEG")
 
 app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
+_FAVICON_PATH = Path(__file__).resolve().parent / "static" / "Logo-fixundfertig.svg"
+
+
+@app.get("/favicon.ico")
+def favicon_ico():
+    """Avoid FileResponse edge cases in some environments; browsers follow redirect."""
+    if not _FAVICON_PATH.is_file():
+        raise HTTPException(status_code=404, detail="favicon not found")
+    return RedirectResponse(url="/static/Logo-fixundfertig.svg", status_code=307)
+
+
 if not _IS_PYTEST:
     try:
         ensure_owner_user()
@@ -1601,9 +1625,47 @@ def invoice_viewer(invoice_id: int, rev: str | None = None, share_token: str | N
     return HTMLResponse(html)
 
 
-def set_page(name: str):
+_content_ref = None
+_shell_sidebar_ref = None
+_shell_mobile_nav_ref = None
+
+
+def _sidebar_highlight_target(logical_page: str) -> str:
+    """Which sidebar item should look active (sub-pages map to their section)."""
+    if logical_page in ("invoice_create", "invoice_detail"):
+        return "invoices"
+    if logical_page in ("customer_new", "customer_detail"):
+        return "customers"
+    return logical_page
+
+
+def _refresh_shell_nav() -> None:
+    for ref in (_shell_sidebar_ref, _shell_mobile_nav_ref):
+        if ref is None:
+            continue
+        try:
+            ref.refresh()
+        except Exception:
+            pass
+
+
+def set_page(name: str) -> None:
+    """Switch logical page inside the shell and refresh only the content."""
+    global _content_ref
     app.storage.user["page"] = name
+    _refresh_shell_nav()
+    ref = _content_ref
+    if ref is not None:
+        try:
+            ref.refresh()
+            return
+        except Exception:
+            # Fallback: full navigation if refreshable content is not available
+            pass
     ui.navigate.to("/")
+
+
+register_shell_navigate(set_page)
 
 
 @app.get("/api/invoices/{invoice_id}/pdf")
@@ -1742,7 +1804,7 @@ def _n8n_documents_today_count() -> int:
 
 _LAYOUT = {
     "app_root": f"w-full min-h-screen {STYLE_BG}",
-    "shell_row": "w-full min-h-screen items-start gap-6 px-4 md:px-6",
+    "shell_row": "w-full min-h-screen flex flex-col md:flex-row items-start gap-6 px-4 md:px-6",
     # Desktop sidebar: use .ff-desktop-sidebar for guaranteed visibility on md+ (see styles.py).
     "sidebar": (
         "ff-desktop-sidebar rounded-3xl bg-white border border-slate-200 shadow-sm "
@@ -1751,74 +1813,86 @@ _LAYOUT = {
     "nav_sep": "w-8 h-px bg-slate-200",
     "nav_btn_base": (
         "w-full h-11 rounded-2xl flex items-center justify-start gap-3 px-3 transition-all duration-150 "
-        "border border-transparent text-sm font-medium"
+        "border border-transparent text-sm font-semibold"
     ),
-    "nav_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
+    "nav_btn_active": "text-slate-900 border-amber-200/80 bg-amber-50/90 border-l-[3px] border-l-amber-500 pl-2.5",
     "nav_btn_inactive": "text-slate-600 hover:text-slate-900 hover:border-slate-200 hover:bg-slate-50",
-    "nav_mobile_btn_active": "text-amber-700 border-amber-200 bg-amber-50",
+    "nav_mobile_btn_active": "text-slate-900 border-amber-200 bg-amber-50",
     "nav_mobile_btn_inactive": "text-slate-700 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50",
-    "main": "flex-1 w-full relative px-4 pb-8 md:pl-72 md:pr-6 gap-4",
-    "topbar": "w-full items-center gap-4 pt-6 pb-4 sticky top-0 z-30 bg-slate-50/80 backdrop-blur",
-    "topbar_actions": "w-full items-center justify-between gap-4 flex-wrap",
-    "topbar_actions_left": "items-center gap-3",
-    "topbar_search_row": "w-full items-center gap-4",
-    "topbar_left": "flex-1 items-center gap-4",
-    "topbar_right": "flex-1 items-center justify-end gap-2",
-    "icon_btn": f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900",
-    "mobile_menu_btn": f"md:hidden {STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900",
+    "main": "flex-1 w-full relative px-4 pt-4 pb-8 md:pl-72 md:pr-6 md:pt-6 gap-4",
+    "topbar": "w-full shrink-0 pt-4 pb-3 md:pt-6 md:pb-4 sticky top-0 z-30 px-4 md:px-0",
+    # Single row: menu | search (flex) | actions — wraps only on very narrow screens
+    "topbar_inner": (
+        "w-full flex flex-row items-center gap-2 sm:gap-3 "
+        "rounded-2xl border border-slate-200/90 bg-white/95 shadow-sm backdrop-blur-sm py-2 px-3 md:px-4"
+    ),
+    "shell_icon_btn": (
+        f"{STYLE_TAP_TARGET} rounded-xl border border-slate-200 bg-white text-slate-600 "
+        "hover:bg-slate-50 hover:text-slate-900 shrink-0"
+    ),
+    "mobile_menu_btn": (
+        f"md:hidden {STYLE_TAP_TARGET} rounded-xl border border-slate-200 bg-white text-slate-600 "
+        "hover:bg-slate-50 hover:text-slate-900 shrink-0"
+    ),
     "sidebar_logo": "ff-sidebar-logo w-11 h-11 rounded-none object-contain",
-    "header_search": f"{STYLE_INPUT} w-full sm:w-72",
-    "new_invoice_btn": f"{STYLE_BTN_ACCENT} w-auto sm:w-[150px]",
+    "header_search": f"{STYLE_INPUT} flex-1 min-w-0 basis-0 sm:max-w-md",
     "menu_wide": "w-[240px] max-w-[calc(100vw-2rem)]",
     "menu": "w-[220px] max-w-[calc(100vw-2rem)]",
     "menu_meta": "text-xs text-slate-600 px-3 pt-2",
     "menu_meta_company": "text-sm text-slate-600 px-3 pb-2",
     "content": "w-full",
-    "user_btn": f"opacity-100 w-10 h-10 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 {STYLE_TAP_TARGET}",
+    "user_btn": (
+        f"{STYLE_TAP_TARGET} rounded-xl border border-slate-200 bg-white text-slate-900 "
+        "hover:bg-slate-50 shrink-0 min-w-[44px] px-2"
+    ),
     "user_initials": "text-xs font-semibold text-slate-900",
     "logout_item": "text-rose-600",
 }
 
 
 def layout_wrapper(content_func):
+    global _shell_sidebar_ref, _shell_mobile_nav_ref
+
     identifier = app.storage.user.get("auth_user")
     initials = _avatar_initials(identifier)
     company_name = _active_company_name()
     company_logo_url = "/static/Logo-fixundfertig.svg"
     n8n_today_count = _n8n_documents_today_count()
     is_owner = _is_owner_user()
-    current_page = app.storage.user.get("page", "dashboard")
     # Mobile navigation: use a dialog instead of a Quasar drawer so nothing overlays on desktop.
     mobile_menu = ui.dialog().classes("md:hidden").props("position=left maximized")
     with mobile_menu:
-        with ui.card().classes("w-full max-w-xs h-full rounded-none bg-white flex flex-col gap-2 p-4"):
+        with ff_card(
+            pad="p-4",
+            classes="w-full max-w-xs h-full !rounded-none flex flex-col gap-2 !shadow-none",
+        ):
             ui.image(company_logo_url).classes("w-12 h-12 object-contain")
             ui.element("div").classes("w-full h-px bg-slate-200")
 
-            def nav_item_mobile(label: str, target: str, icon: str) -> None:
-                active = app.storage.user.get("page", "dashboard") == target
-                base = "w-full justify-start gap-3 rounded-xl px-3 py-2 text-left border border-transparent"
-                cls = (
-                    f"{base} {_LAYOUT['nav_mobile_btn_active']}"
-                    if active
-                    else f"{base} {_LAYOUT['nav_mobile_btn_inactive']}"
-                )
-                with ui.button(
-                    label,
-                    icon=icon,
-                    on_click=lambda t=target: (set_page(t), mobile_menu.close()),
-                ).props("flat no-caps").classes(cls):
-                    pass
+            @ui.refreshable
+            def _shell_mobile_nav() -> None:
+                highlight = _sidebar_highlight_target(app.storage.user.get("page", "dashboard"))
 
-            nav_item_mobile("Dashboard", "dashboard", "dashboard")
-            nav_item_mobile("Invoices", "invoices", "receipt_long")
-            nav_item_mobile("Documents", "documents", "description")
-            nav_item_mobile("Ledger", "ledger", "account_balance")
-            nav_item_mobile("Exports", "exports", "file_download")
-            ui.element("div").classes("w-full h-px bg-slate-200 my-1")
-            nav_item_mobile("Customers", "customers", "groups")
-            if is_owner:
-                nav_item_mobile("Einladungen", "invites", "mail")
+                def nav_item_mobile(label: str, target: str, icon: str) -> None:
+                    active = highlight == target
+                    base = "w-full justify-start gap-3 rounded-xl px-3 py-2 text-left border border-transparent"
+                    cls = (
+                        f"{base} {_LAYOUT['nav_mobile_btn_active']}"
+                        if active
+                        else f"{base} {_LAYOUT['nav_mobile_btn_inactive']}"
+                    )
+                    with ui.button(
+                        label,
+                        icon=icon,
+                        on_click=lambda t=target: (set_page(t), mobile_menu.close()),
+                    ).props("flat no-caps").classes(cls):
+                        pass
+
+                for item in app_shell_nav_items(is_owner=is_owner):
+                    nav_item_mobile(item["label"], item["id"], item["icon"])
+
+            _shell_mobile_nav_ref = _shell_mobile_nav
+            _shell_mobile_nav()
 
     with ui.element("div").classes(_LAYOUT["app_root"]):
         with ui.row().classes(_LAYOUT["shell_row"]):
@@ -1826,31 +1900,35 @@ def layout_wrapper(content_func):
             with ui.column().classes(_LAYOUT["sidebar"]):
                 ui.image(company_logo_url).classes(_LAYOUT["sidebar_logo"])
 
-                def nav_item(label: str, target: str, icon: str) -> None:
-                    active = app.storage.user.get("page", "dashboard") == target
-                    cls = (
-                        f'{_LAYOUT["nav_btn_base"]} {_LAYOUT["nav_btn_active"]}'
-                        if active
-                        else f'{_LAYOUT["nav_btn_base"]} {_LAYOUT["nav_btn_inactive"]}'
-                    )
-                    # Desktop nav: icon + label button for clear navigation between pages.
-                    with ui.button(
-                        label,
-                        icon=icon,
-                        on_click=lambda t=target: set_page(t),
-                    ).props("flat no-caps").classes(cls):
-                        pass
+                @ui.refreshable
+                def _shell_sidebar_nav() -> None:
+                    highlight = _sidebar_highlight_target(app.storage.user.get("page", "dashboard"))
 
-                nav_item("Dashboard", "dashboard", "dashboard")
-                ui.element("div").classes(_LAYOUT["nav_sep"])
-                nav_item("Invoices", "invoices", "receipt_long")
-                nav_item("Documents", "documents", "description")
-                nav_item("Ledger", "ledger", "account_balance")
-                nav_item("Exports", "exports", "file_download")
-                ui.element("div").classes(_LAYOUT["nav_sep"])
-                nav_item("Customers", "customers", "groups")
-                if is_owner:
-                    nav_item("Einladungen", "invites", "mail")
+                    def nav_item(label: str, target: str, icon: str) -> None:
+                        active = highlight == target
+                        cls = (
+                            f'{_LAYOUT["nav_btn_base"]} {_LAYOUT["nav_btn_active"]}'
+                            if active
+                            else f'{_LAYOUT["nav_btn_base"]} {_LAYOUT["nav_btn_inactive"]}'
+                        )
+                        with ui.button(
+                            label,
+                            icon=icon,
+                            on_click=lambda t=target: set_page(t),
+                        ).props("flat no-caps").classes(cls):
+                            pass
+
+                    first = True
+                    for item in app_shell_nav_items(is_owner=is_owner):
+                        # Visuelle Gruppe trennen vor Kunden/Einladungen
+                        if first:
+                            first = False
+                        elif item["id"] in {"customers", "expenses", "invites"}:
+                            ui.element("div").classes(_LAYOUT["nav_sep"])
+                        nav_item(item["label"], item["id"], item["icon"])
+
+                _shell_sidebar_ref = _shell_sidebar_nav
+                _shell_sidebar_nav()
 
             # Main content
             with ui.column().classes(_LAYOUT["main"]):
@@ -1861,19 +1939,22 @@ def layout_wrapper(content_func):
 
                 def open_ledger_search(query: str) -> None:
                     app.storage.user["ledger_search_query"] = (query or "").strip()
-                    app.storage.user["page"] = "ledger"
-                    ui.navigate.to("/")
+                    set_page("ledger")
 
                 with ui.column().classes(_LAYOUT["topbar"]):
-                    with ui.row().classes(_LAYOUT["topbar_actions"]):
-                        with ui.row().classes(_LAYOUT["topbar_actions_left"]):
-                            ui.button(icon="menu", on_click=mobile_menu.open).props(
-                                "flat round"
-                            ).classes(_LAYOUT["mobile_menu_btn"])
-                        with ui.row().classes(_LAYOUT["topbar_right"]):
-                            with ui.button(icon="notifications").props("flat round").classes(
-                                _LAYOUT["icon_btn"]
-                            ):
+                    with ui.row().classes(_LAYOUT["topbar_inner"]):
+                        ff_icon_button(
+                            icon="menu",
+                            on_click=mobile_menu.open,
+                            classes=_LAYOUT["mobile_menu_btn"],
+                            round_button=False,
+                        )
+                        ui.input(
+                            "Search transactions",
+                            on_change=lambda e: open_ledger_search(e.value or ""),
+                        ).props("outlined dense").classes(_LAYOUT["header_search"])
+                        with ui.row().classes("items-center gap-1 sm:gap-2 shrink-0"):
+                            with ff_icon_button(icon="notifications", classes=_LAYOUT["shell_icon_btn"]):
                                 with ui.menu().classes(_LAYOUT["menu_wide"]):
                                     notifications: list[str] = []
                                     if n8n_today_count:
@@ -1888,11 +1969,13 @@ def layout_wrapper(content_func):
                                             STYLE_TEXT_MUTED
                                         )
                             if not _is_readonly_mode():
-                                ui.button(
+                                ff_btn_primary(
                                     "New Invoice",
                                     on_click=lambda: _open_invoice_editor(None),
-                                ).props("flat no-caps").classes(_LAYOUT["new_invoice_btn"])
-                            with ui.button().props("flat no-caps").classes(_LAYOUT["user_btn"]):
+                                    classes="shrink-0 !py-1.5 !min-h-0 h-9 text-sm",
+                                    props="dense",
+                                )
+                            with ui.button().props("flat dense").classes(_LAYOUT["user_btn"]):
                                 ui.label(initials).classes(_LAYOUT["user_initials"])
                                 with ui.menu().classes(_LAYOUT["menu"]):
                                     if identifier:
@@ -1900,18 +1983,19 @@ def layout_wrapper(content_func):
                                     if company_name:
                                         ui.label(company_name).classes(_LAYOUT["menu_meta_company"])
                                     ui.separator().classes("my-1")
-                                    ui.item("Settings", on_click=lambda: ui.navigate.to("/settings"))
+                                    ui.item("Settings", on_click=lambda: go_app_page("settings"))
                                     ui.item("Logout", on_click=handle_logout).classes(
                                         _LAYOUT["logout_item"]
                                     )
-                    with ui.row().classes(_LAYOUT["topbar_search_row"]):
-                        ui.input(
-                            "Search transactions",
-                            on_change=lambda e: open_ledger_search(e.value or ""),
-                        ).props("outlined dense").classes(_LAYOUT["header_search"])
 
-                with ui.element("div").classes(_LAYOUT["content"]):
-                    content_func()
+                @ui.refreshable
+                def _content() -> None:
+                    with ui.element("div").classes(_LAYOUT["content"]):
+                        content_func()
+
+                global _content_ref
+                _content_ref = _content
+                _content()
 
 
 @ui.page("/")
@@ -1923,7 +2007,9 @@ def index():
     app.add_static_files("/storage", "storage")
 
     if _is_readonly_mode():
-        with ui.row().classes("w-full max-w-7xl mx-auto mb-2 px-4 py-2 rounded bg-amber-100 text-amber-900 text-sm font-medium items-center gap-2"):
+        with ui.row().classes(
+            "w-full max-w-7xl mx-auto mb-2 px-4 py-2 rounded bg-amber-100 text-amber-900 text-sm font-semibold items-center gap-2"
+        ):
             ui.icon("visibility")
             ui.label("Read-only preview mode")
 
@@ -1938,15 +2024,17 @@ def index():
         if not companies:
             get_primary_company(session, user_id)
 
-    page = app.storage.user.get("page", "dashboard")
-    if page in {"home", "todos"}:
-        page = "dashboard"
-        app.storage.user["page"] = page
-    if _is_readonly_mode() and page in {"settings", "customer_new", "invoice_create", "invites"}:
-        page = "dashboard"
-        app.storage.user["page"] = "dashboard"
-
     def content():
+        # Read on every render: refreshable content must not close over a stale `page`
+        # from the first `index()` call (would break sidebar navigation after set_page).
+        page = app.storage.user.get("page", "dashboard")
+        if page in {"home", "todos"}:
+            page = "dashboard"
+            app.storage.user["page"] = page
+        if _is_readonly_mode() and page in {"settings", "customer_new", "invoice_create", "invites"}:
+            page = "dashboard"
+            app.storage.user["page"] = "dashboard"
+
         with get_session() as session:
             user_id = get_current_user_id(session)
             if user_id is None:
@@ -2019,6 +2107,7 @@ def index():
 
 @ui.page("/settings")
 def settings_page():
+    """Bookmark/deep-link only: shell lives on `/`. Never render a bare page without layout."""
     apply_global_ui_theme()
     if not require_auth():
         return
@@ -2044,5 +2133,5 @@ if __name__ in {"__main__", "__mp_main__"}:
         port=8000,           # <--- WICHTIG: Muss zum Dockerfile/Docker-Compose passen (war 8080)
         language="de",
         storage_secret=storage_secret,
-        favicon="/static/Logo-fixundfertig-01.ico",
+        favicon="/static/Logo-fixundfertig.svg",
     )

@@ -4,8 +4,13 @@ from ui_components import ff_btn_primary, ff_input
 
 # Auto generated page renderer
 
+
 def render_customer_new(session, comp: Company) -> None:
     ui.label("Neuer Kunde").classes(C_PAGE_TITLE)
+    if app.storage.user.get("return_page") == "invoice_create":
+        ui.label("Dieser Kunde wird nach dem Speichern in der Rechnungserstellung vorausgewählt.").classes(
+            STYLE_TEXT_MUTED + " mb-2"
+        )
 
     with settings_two_column_layout(max_width_class="max-w-4xl"):
         contact_fields = customer_contact_card()
@@ -53,11 +58,11 @@ def render_customer_new(session, comp: Company) -> None:
     same_recipient_checkbox.on("update:model-value", lambda _: _maybe_sync_recipient())
     _maybe_sync_recipient()
 
-    def save():
+    def save() -> None:
         with get_session() as s:
-            c = Customer(
-                company_id=int(comp.id),
-                kdnr=0,
+            c = insert_customer(
+                s,
+                comp,
                 name=name.value or "",
                 vorname=first.value or "",
                 nachname=last.value or "",
@@ -72,9 +77,8 @@ def render_customer_new(session, comp: Company) -> None:
                 recipient_postal_code=recipient_plz.value or "",
                 recipient_city=recipient_city.value or "",
             )
-            s.add(c)
-            s.commit()
             new_customer_id = int(c.id) if c.id is not None else None
+
         return_page = app.storage.user.get("return_page")
         if return_page == "invoice_create" and new_customer_id is not None:
             return_invoice_draft_id = app.storage.user.get("return_invoice_draft_id")
@@ -82,11 +86,11 @@ def render_customer_new(session, comp: Company) -> None:
                 app.storage.user["invoice_draft_id"] = return_invoice_draft_id
             app.storage.user.pop("return_page", None)
             app.storage.user.pop("return_invoice_draft_id", None)
-            app.storage.user["page"] = "customer_detail"
-            app.storage.user["customer_detail_id"] = new_customer_id
-            ui.navigate.to("/")
+            app.storage.user["new_customer_id"] = new_customer_id
+            ui.notify("Kunde gespeichert – zurück zur Rechnung.", type="positive")
+            go_app_page("invoice_create")
             return
-        app.storage.user["page"] = "customers"
-        ui.navigate.to("/")
+
+        go_app_page("customers")
 
     ff_btn_primary("Speichern", on_click=save)

@@ -1,34 +1,30 @@
 from __future__ import annotations
 from ._shared import *
-from styles import STYLE_TAP_TARGET, STYLE_TEXT_MUTED
-from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card, ff_input
+from styles import STYLE_TEXT_MUTED
+from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card, ff_icon_button, ff_input
 
 # Auto generated page renderer
 
 def render_customer_detail(session, comp: Company, customer_id: int | None) -> None:
     if not customer_id:
         ui.notify("Kunde nicht gefunden", color="red")
-        app.storage.user["page"] = "customers"
-        ui.navigate.to("/")
+        go_app_page("customers")
         return
 
     customer = session.get(Customer, int(customer_id))
     if not customer:
         ui.label("Kunde nicht gefunden").classes(C_PAGE_TITLE)
-        ui.button("Zurück", icon="arrow_back", on_click=lambda: (app.storage.user.__setitem__("page", "customers"), ui.navigate.to("/"))).classes(C_BTN_SEC)
+        ff_btn_secondary("Zurück", icon="arrow_back", on_click=lambda: go_app_page("customers"))
         return
 
     invoices = session.exec(select(Invoice).where(Invoice.customer_id == customer.id).order_by(Invoice.id.desc())).all()
     can_delete = len(invoices) == 0
 
     def back():
-        app.storage.user["page"] = "customers"
-        ui.navigate.to("/")
+        go_app_page("customers")
 
     with ui.row().classes("items-center gap-3 mb-2"):
-        ui.button(icon="arrow_back", on_click=back).props("flat round").classes(
-            f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900"
-        )
+        ff_icon_button(icon="arrow_back", on_click=back)
         ui.label(customer.display_name).classes(C_PAGE_TITLE)
 
     with settings_two_column_layout():
@@ -187,10 +183,10 @@ def render_customer_detail(session, comp: Company, customer_id: int | None) -> N
     else:
         with ff_card(pad="p-0", classes="overflow-hidden"):
             with ui.row().classes(C_TABLE_HEADER + " hidden sm:flex"):
-                ui.label("Nr").classes("w-20 font-bold")
-                ui.label("Datum").classes("w-28 font-bold")
-                ui.label("Status").classes("w-28 font-bold")
-                ui.label("Betrag").classes("w-24 font-bold text-right")
+                ui.label("Nr").classes("w-20 font-semibold")
+                ui.label("Datum").classes("w-28 font-semibold")
+                ui.label("Status").classes("w-28 font-semibold")
+                ui.label("Betrag").classes("w-24 font-semibold text-right")
 
             for inv in invoices:
                 def open_invoice(target: Invoice = inv):

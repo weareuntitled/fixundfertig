@@ -28,10 +28,9 @@ from styles import (
     STYLE_BADGE_FILE_IMAGE,
     STYLE_BADGE_FILE_OTHER,
     STYLE_BADGE_FILE_PDF,
-    STYLE_TAP_TARGET,
     STYLE_TEXT_MUTED,
 )
-from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card
+from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card, ff_icon_button, ff_upload
 from data import Document, DocumentMeta, WebhookEvent
 from sqlmodel import delete, select
 import httpx
@@ -684,11 +683,11 @@ def render_documents(session, comp: Company) -> None:
             ui.label("Die Datei wird an n8n gesendet und erscheint nach der Verarbeitung in der Liste.").classes(
                 "text-xs text-slate-500 mb-2"
             )
-            upload_input = ui.upload(
+            upload_input = ff_upload(
                 on_upload=_handle_upload,
                 auto_upload=False,
                 label="Datei wählen",
-            ).classes("w-full")
+            )
             upload_input.on("change", lambda _: _log_client_debug({"step": "file_selected"}))
             upload_status = ui.label("Status: bereit zum Senden").classes("text-xs text-slate-500 mt-1")
             with ui.row().classes("justify-end w-full mt-4 gap-2"):
@@ -1226,9 +1225,9 @@ def render_documents(session, comp: Company) -> None:
                         # min-w-0 required for flex truncation
                         with ui.column().classes("gap-0.5 min-w-0 flex-1"):
                             ui.link(filename, open_url, new_tab=True).classes(
-                                "text-slate-900 font-medium leading-tight truncate hover:text-amber-700 hover:underline block w-full"
+                                "text-slate-900 font-semibold leading-tight truncate hover:text-amber-700 hover:underline block w-full"
                             ).tooltip(filename)
-                            with ui.row().classes("items-center gap-1.5 text-[10px] text-slate-500 leading-none"):
+                            with ui.row().classes("items-center gap-1.5 text-xs text-slate-500 leading-none"):
                                 ui.label(size_display)
                                 ui.element("div").classes("w-0.5 h-0.5 rounded-full bg-slate-300")
                                 ui.label(_format_source(doc.source))
@@ -1244,10 +1243,10 @@ def render_documents(session, comp: Company) -> None:
                         if tag_items:
                             for tag in tag_items[:2]:
                                 ui.label(tag).classes(
-                                    "text-[10px] text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[80px]"
+                                    "text-xs text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[80px]"
                                 )
                             if len(tag_items) > 2:
-                                ui.label(f"+{len(tag_items)-2}").classes("text-[10px] text-slate-400")
+                                ui.label(f"+{len(tag_items)-2}").classes("text-xs text-slate-400")
                         else:
                             ui.label("-").classes("text-slate-400")
 
@@ -1269,8 +1268,10 @@ def render_documents(session, comp: Company) -> None:
                     # FIXED: Added 'flex justify-end' and 'shrink-0' to lock position
                     with ui.element("div").classes(col_w["action"] + " flex justify-end sm:shrink-0"):
                         # 'stop' stops click propagation (so clicking menu doesn't select row)
-                        with ui.button(icon="more_vert").props("round flat dense stop").classes(
-                            f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900 transition-colors"
+                        with ff_icon_button(
+                            icon="more_vert",
+                            classes="transition-colors",
+                            props="stop",
                         ):
                             with ui.menu().props("auto-close").classes("w-52"):
                                 ui.menu_item("Bearbeiten", on_click=lambda _, d=doc_id: _open_meta(int(d)))
@@ -1294,15 +1295,13 @@ def render_documents(session, comp: Company) -> None:
                                 ui.icon(icon_name).classes("text-sm")
                             with ui.column().classes("gap-1 min-w-0 flex-1"):
                                 ui.link(filename, open_url, new_tab=True).classes(
-                                    "text-slate-900 font-medium leading-tight truncate hover:text-amber-700 hover:underline block w-full"
+                                    "text-slate-900 font-semibold leading-tight truncate hover:text-amber-700 hover:underline block w-full"
                                 ).tooltip(filename)
                                 ui.label(display_date or "-").classes("text-xs text-slate-500 font-mono")
                                 if tags_value and tags_value != "-":
-                                    ui.label(tags_value).classes("text-[10px] text-slate-500 truncate")
+                                    ui.label(tags_value).classes("text-xs text-slate-500 truncate")
                         with ui.element("div").classes("shrink-0"):
-                            with ui.button(icon="more_vert").props("round flat dense stop").classes(
-                                "text-slate-500 hover:text-slate-900 transition-colors"
-                            ):
+                            with ff_icon_button(icon="more_vert", classes="transition-colors", props="stop"):
                                 with ui.menu().props("auto-close").classes("w-52"):
                                     ui.menu_item("Bearbeiten", on_click=lambda _, d=doc_id: _open_meta(int(d)))
                                     ui.menu_item("Vorschau", on_click=lambda _, u=open_url: _preview_document(u))
@@ -1318,17 +1317,17 @@ def render_documents(session, comp: Company) -> None:
 
                     with ui.row().classes("w-full gap-4 text-xs text-slate-600"):
                         with ui.column().classes("gap-0.5"):
-                            ui.label("Brutto").classes("uppercase text-[10px] text-slate-400")
+                            ui.label("Brutto").classes("uppercase text-xs text-slate-400")
                             ui.label(_format_amount_value(amount_total, currency_value) if amount_total else "-").classes(
                                 f"font-mono text-slate-700 {C_NUMERIC}"
                             )
                         with ui.column().classes("gap-0.5"):
-                            ui.label("Netto").classes("uppercase text-[10px] text-slate-400")
+                            ui.label("Netto").classes("uppercase text-xs text-slate-400")
                             ui.label(_format_amount_value(amount_net, currency_value) if amount_net else "-").classes(
                                 f"font-mono text-slate-700 {C_NUMERIC}"
                             )
                         with ui.column().classes("gap-0.5"):
-                            ui.label("Steuer").classes("uppercase text-[10px] text-slate-400")
+                            ui.label("Steuer").classes("uppercase text-xs text-slate-400")
                             ui.label(_format_amount_value(amount_tax, currency_value) if amount_tax else "-").classes(
                                 f"font-mono text-slate-700 {C_NUMERIC}"
                             )

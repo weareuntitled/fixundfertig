@@ -8,8 +8,14 @@ from ._shared import _parse_iso_date
 from data import DocumentMeta
 from services.blob_storage import blob_storage
 from services.documents import resolve_document_path
-from styles import STYLE_BADGE_FILE_IMAGE, STYLE_BADGE_FILE_OTHER, STYLE_BADGE_FILE_PDF, STYLE_TAP_TARGET, STYLE_TEXT_MUTED
-from ui_components import ff_btn_danger, ff_btn_secondary
+from styles import (
+    STYLE_BADGE_FILE_IMAGE,
+    STYLE_BADGE_FILE_OTHER,
+    STYLE_BADGE_FILE_PDF,
+    STYLE_SECTION_TITLE,
+    STYLE_TEXT_MUTED,
+)
+from ui_components import ff_btn_danger, ff_btn_muted, ff_btn_primary, ff_btn_secondary, ff_card, ff_icon_button
 
 # Auto generated page renderer
 
@@ -165,8 +171,7 @@ def render_dashboard(session, comp: Company) -> None:
     active_filter = {"value": "All"}
 
     def _open_page(page: str) -> None:
-        app.storage.user["page"] = page
-        ui.navigate.to("/")
+        go_app_page(page)
 
     def _open_invoice(invoice_id: int | None) -> None:
         if not invoice_id:
@@ -295,7 +300,7 @@ def render_dashboard(session, comp: Company) -> None:
     delete_state = {"kind": None, "id": None, "label": ""}
 
     with ui.dialog() as delete_dialog:
-        with ui.card().props("flat").classes(C_CARD + " p-5 w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
+        with ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Löschen").classes(C_SECTION_TITLE)
             delete_label = ui.label("Willst du dieses Element wirklich löschen?").classes(STYLE_TEXT_MUTED)
             with ui.row().classes("justify-end gap-2 mt-3 w-full"):
@@ -366,22 +371,28 @@ def render_dashboard(session, comp: Company) -> None:
     def render_panel() -> None:
         with ui.row().classes("w-full items-center justify-between mb-6 flex-col lg:flex-row gap-4"):
             with ui.column().classes("gap-1"):
-                ui.label("Dashboard").classes("text-3xl font-bold tracking-tight text-slate-900")
-                ui.label(f"Welcome back, {greeting_name}").classes("text-sm text-slate-600")
+                ui.label("Dashboard").classes(C_PAGE_TITLE)
+                ui.label(f"Welcome back, {greeting_name}").classes(STYLE_TEXT_MUTED)
             with ui.row().classes(
                 "rounded-full bg-white border border-slate-200 shadow-sm p-1 gap-1 mx-0"
             ):
                 for value in filters:
                     is_active = active_filter["value"] == value
-                    cls = (
-                        "px-4 py-1.5 text-sm font-semibold transition-colors rounded-full "
-                        + (
-                            "bg-slate-900 text-white"
-                            if is_active
-                            else "text-slate-600 hover:bg-slate-100"
+                    if is_active:
+                        ff_btn_primary(
+                            value,
+                            on_click=lambda v=value: set_filter(v),
+                            classes="!rounded-full !px-4 !py-1.5 !min-h-0 h-auto",
+                            props="dense no-caps",
                         )
-                    )
-                    ui.button(value, on_click=lambda v=value: set_filter(v)).props("flat dense no-caps").classes(cls)
+                    else:
+                        ff_btn_muted(
+                            value,
+                            on_click=lambda v=value: set_filter(v),
+                            classes="!rounded-full !px-4 !py-1.5 !min-h-0 h-auto text-slate-600",
+                            props="dense no-caps",
+                            write_action=False,
+                        )
 
         if active_filter["value"] == "All":
             visible_items = doc_items
@@ -390,12 +401,17 @@ def render_dashboard(session, comp: Company) -> None:
 
         with ui.element("div").classes("w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"):
             for item in visible_items:
-                with ui.element("div").classes(
-                    f"group relative {C_CARD} {C_CARD_HOVER} p-5 hover:-translate-y-1 transition-all duration-200"
+                with ff_card(
+                    pad="p-5",
+                    hover=True,
+                    classes="group relative hover:-translate-y-1 transition-all duration-200",
                 ):
-                    with ui.button(icon="more_horiz").props("flat round dense").classes(
-                        f"absolute top-4 right-4 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition "
-                        f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900"
+                    with ff_icon_button(
+                        icon="more_horiz",
+                        classes=(
+                            "absolute top-4 right-4 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition"
+                        ),
+                        props="dense",
                     ):
                         with ui.menu().props("auto-close"):
                             for label, handler in _actions_for_item(item):
@@ -410,15 +426,15 @@ def render_dashboard(session, comp: Company) -> None:
                                 ui.icon(item["icon"]).classes("text-2xl")
                         with ui.column().classes("gap-2 min-w-0"):
                             ui.label(item["title"]).classes(
-                                "text-sm font-semibold text-slate-900 leading-snug line-clamp-2"
+                                f"{STYLE_SECTION_TITLE} leading-snug line-clamp-2"
                             )
                             with ui.row().classes(
                                 "flex-col items-start gap-2 min-w-0 sm:flex-row sm:items-center sm:justify-between"
                             ):
-                                ui.label(item["date"]).classes("text-[11px] text-slate-500")
+                                ui.label(item["date"]).classes("text-xs text-slate-500")
                                 ui.label(item["type"]).classes(
                                     "bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full "
-                                    "text-[11px] font-semibold truncate max-w-[120px]"
+                                    "text-xs font-semibold truncate max-w-[120px]"
                                 )
                             ui.label(item["status"]).classes(status_badge[item["status"]])
 

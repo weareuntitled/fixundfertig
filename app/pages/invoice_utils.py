@@ -46,23 +46,23 @@ def build_invoice_preview_html(invoice_data: Mapping[str, object]) -> str:
     if filename:
         filename_row = (
             "<div class='text-slate-500'>Dateiname</div>"
-            f"<div class='font-medium text-slate-900 break-all'>{filename}</div>"
+            f"<div class='font-semibold text-slate-900 break-all'>{filename}</div>"
         )
 
     return (
         "<div class='text-sm text-slate-600'>"
         "<div class='grid grid-cols-[140px_1fr] gap-x-3 gap-y-1'>"
         "<div class='text-slate-500'>Rechnungsnummer</div>"
-        f"<div class='font-medium text-slate-900'>{invoice_number}</div>"
+        f"<div class='font-semibold text-slate-900'>{invoice_number}</div>"
         "<div class='text-slate-500'>Rechnungsdatum</div>"
-        f"<div class='font-medium text-slate-900'>{invoice_date}</div>"
+        f"<div class='font-semibold text-slate-900'>{invoice_date}</div>"
         f"{filename_row}"
         "</div>"
         "<div class='mt-3 grid grid-cols-[140px_1fr] gap-x-3 gap-y-1'>"
         "<div class='text-slate-500'>Netto</div>"
-        f"<div class='font-medium text-slate-900'>{net} EUR</div>"
+        f"<div class='font-semibold text-slate-900'>{net} EUR</div>"
         "<div class='text-slate-500'>USt</div>"
-        f"<div class='font-medium text-slate-900'>{vat} EUR</div>"
+        f"<div class='font-semibold text-slate-900'>{vat} EUR</div>"
         "<div class='text-slate-500'>Brutto</div>"
         f"<div class='font-semibold text-slate-900'>{gross} EUR</div>"
         "</div>"

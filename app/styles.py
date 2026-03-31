@@ -8,9 +8,14 @@ from __future__ import annotations
 Strict design system (light slate, shadcn-inspired).
 
 Rules:
-- No Quasar elevation shadows (we reset them globally + wrappers use flat/no-shadow).
+- No Quasar elevation shadows on raw Quasar widgets (we reset them globally); our `STYLE_CARD` / shell may use light Tailwind shadows.
 - Avoid long inline class strings across pages; prefer STYLE_* constants or wrappers in `ui_components.py`.
 - One padding source: outer container/card defines padding; inner layout uses gap only.
+
+Typography (3 sizes × 2 weights: 400 + 600 via Tailwind `font-normal` default / `font-semibold`):
+- Page: `STYLE_PAGE_TITLE` (text-2xl/3xl, semibold)
+- Section / table header: `STYLE_SECTION_TITLE` / `STYLE_TABLE_HEADER` (text-sm / text-xs uppercase, semibold)
+- Body / muted / table rows: `STYLE_TEXT_*` / `STYLE_TABLE_ROW` (text-sm, normal weight unless semibold badge)
 """
 
 # Typography
@@ -21,7 +26,7 @@ C_NUMERIC = "tabular-nums"
 APP_FONT_CSS = f"""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root, body, .q-body {{
     font-family: {C_FONT_STACK};
@@ -29,7 +34,7 @@ APP_FONT_CSS = f"""
     color-scheme: light;
 
     /* Light slate tokens */
-    --ff-bg: #f8fafc;            /* slate-50 */
+    --ff-bg: #f1f5f9;            /* slightly cooler base for gradient */
     --ff-surface: #ffffff;       /* white */
     --ff-surface-2: #f1f5f9;     /* slate-100 */
     --ff-border: #e2e8f0;        /* slate-200 */
@@ -46,8 +51,17 @@ APP_FONT_CSS = f"""
   }}
 
   body, .q-body, .nicegui-content {{
-    background: var(--ff-bg) !important;
+    background-color: var(--ff-bg) !important;
+    background-image: linear-gradient(
+      165deg,
+      #f8fafc 0%,
+      #f1f5f9 45%,
+      color-mix(in srgb, var(--brand-primary) 6%, #f8fafc) 100%
+    ) !important;
+    background-attachment: fixed !important;
     color: var(--ff-text) !important;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }}
 
   a {{ color: var(--brand-accent); }}
@@ -70,7 +84,7 @@ APP_FONT_CSS = f"""
   /* --- QUASAR: fields & inputs (outlined dense -> shadcn-like) --- */
   .q-field__label {{
     color: var(--ff-muted) !important;
-    font-weight: 500;
+    font-weight: 400;
   }}
   .q-field--focused .q-field__label {{
     color: var(--ff-text) !important;
@@ -241,6 +255,23 @@ APP_FONT_CSS = f"""
     border-color: var(--ff-border) !important;
   }}
 
+  /* Unified upload dropzone */
+  .ff-upload {{
+    border: 1px dashed var(--ff-border-strong) !important;
+    background: var(--ff-surface) !important;
+    border-radius: 0.75rem !important;
+    padding: 0.75rem !important;
+  }}
+  .ff-upload:hover {{
+    border-color: var(--brand-accent) !important;
+    background: color-mix(in srgb, var(--brand-primary) 5%, white) !important;
+  }}
+  .ff-upload .q-uploader__list {{
+    border-top: 1px solid var(--ff-border) !important;
+    margin-top: 0.5rem !important;
+    padding-top: 0.5rem !important;
+  }}
+
   /* Invoice preview (editor): desktop preview card – visible on md+ */
   .ff-invoice-preview-desktop {{
     display: none !important;
@@ -277,13 +308,18 @@ APP_FONT_CSS = f"""
 # Design system class tokens
 # -------------------------
 
-STYLE_BG = "bg-slate-50 text-slate-900 min-h-screen"
-STYLE_CONTAINER = "w-full max-w-6xl mx-auto px-6 py-6 gap-6"
+STYLE_BG = (
+    "bg-gradient-to-br from-slate-100 via-slate-50 to-amber-50/35 "
+    "text-slate-900 min-h-screen"
+)
+STYLE_CONTAINER = "w-full max-w-6xl mx-auto px-4 md:px-6 py-6 gap-6"
 
-STYLE_CARD = "bg-white border border-slate-200 shadow-sm rounded-xl"
-STYLE_CARD_HOVER = "transition-colors hover:bg-slate-50 hover:border-slate-300"
+STYLE_CARD = "bg-white border border-slate-200 rounded-xl shadow-sm backdrop-blur-[2px]"
+STYLE_CARD_HOVER = (
+    "transition-all duration-150 hover:bg-white hover:border-slate-300 hover:shadow-md"
+)
 
-STYLE_HEADING = "text-2xl font-bold tracking-tight text-slate-900"
+STYLE_HEADING = "text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900"
 STYLE_PAGE_TITLE = STYLE_HEADING
 STYLE_SECTION_TITLE = "text-sm font-semibold text-slate-900"
 STYLE_TEXT_MUTED = "text-sm text-slate-600"
@@ -319,6 +355,9 @@ STYLE_INPUT_ROUNDED = "rounded-full"
 
 STYLE_TAP_TARGET = "min-w-[44px] min-h-[44px] flex items-center justify-center"
 
+# Icon-only row actions / shell affordances (toolbar); merge with ff_icon_button defaults.
+STYLE_ICON_TOOLBAR = f"{STYLE_TAP_TARGET} text-slate-500 hover:text-slate-900"
+
 STYLE_LINK_NEUTRAL = "text-sm text-slate-600 hover:text-slate-900 no-underline"
 STYLE_LINK_BRAND = "text-sm text-amber-700 hover:text-amber-800 no-underline"
 
@@ -334,11 +373,11 @@ STYLE_STEPPER_ARROW = "text-slate-400 text-sm"
 STYLE_TABLE_HEADER = "w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-600 border-b border-slate-200"
 STYLE_TABLE_ROW = "w-full px-3 py-2 text-sm text-slate-800 border-b border-slate-200/70"
 
-STYLE_BADGE_GREEN = "bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-STYLE_BADGE_BLUE = "bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-STYLE_BADGE_GRAY = "bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-STYLE_BADGE_YELLOW = "bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
-STYLE_BADGE_RED = "bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full text-xs font-medium text-center"
+STYLE_BADGE_GREEN = "bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-semibold text-center"
+STYLE_BADGE_BLUE = "bg-sky-50 text-sky-700 border border-sky-200 px-2 py-0.5 rounded-full text-xs font-semibold text-center"
+STYLE_BADGE_GRAY = "bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-semibold text-center"
+STYLE_BADGE_YELLOW = "bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold text-center"
+STYLE_BADGE_RED = "bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full text-xs font-semibold text-center"
 
 STYLE_BADGE_FILE_PDF = "bg-amber-50 text-amber-700 border border-amber-200"
 STYLE_BADGE_FILE_IMAGE = "bg-amber-50 text-amber-700 border border-amber-200"

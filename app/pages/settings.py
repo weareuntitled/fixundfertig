@@ -13,9 +13,6 @@ from nicegui import app, ui
 from sqlmodel import select
 
 from ._shared import (
-    C_BTN_PRIM,
-    C_BTN_SEC,
-    C_CARD,
     C_INPUT,
     C_PAGE_TITLE,
     C_SECTION_TITLE,
@@ -23,6 +20,7 @@ from ._shared import (
     User,
     get_current_user_id,
     get_session,
+    go_app_page,
     use_address_autocomplete,
 )
 from auth_guard import clear_auth_session
@@ -33,7 +31,8 @@ from services.auth import create_readonly_share_token, get_owner_email
 from services.storage import cleanup_company_logos, company_logo_path, delete_company_dirs, ensure_company_dirs
 
 
-from styles import STYLE_BTN_DANGER, STYLE_DROPDOWN_PANEL, STYLE_LINK_BRAND, STYLE_TEXT_ERROR, STYLE_TEXT_MUTED
+from styles import STYLE_DROPDOWN_PANEL, STYLE_LINK_BRAND, STYLE_TEXT_ERROR, STYLE_TEXT_MUTED
+from ui_components import ff_btn_danger, ff_btn_primary, ff_btn_secondary, ff_card, ff_upload
 
 
 LINK_TEXT = STYLE_LINK_BRAND
@@ -75,7 +74,7 @@ def render_settings(session, comp: Company) -> None:
 
     def _open_create_dialog() -> None:
         dlg = ui.dialog()
-        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
+        with dlg, ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Neues Unternehmen").classes(C_SECTION_TITLE)
             name_in = ui.input("Name", placeholder="z.B. untitled-ux").props("outlined dense").classes(C_INPUT)
             err = ui.label("").classes(STYLE_TEXT_ERROR)
@@ -97,13 +96,12 @@ def render_settings(session, comp: Company) -> None:
 
                 if new_comp and new_comp.id:
                     app.storage.user["active_company_id"] = int(new_comp.id)
-                app.storage.user["page"] = "settings"
                 dlg.close()
-                ui.navigate.to("/")
+                go_app_page("settings")
 
             with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                ui.button("Abbrechen", on_click=dlg.close).props("flat no-caps").classes(C_BTN_SEC)
-                ui.button("Erstellen", on_click=_do_create).props("unelevated no-caps").classes(C_BTN_PRIM)
+                ff_btn_secondary("Abbrechen", on_click=dlg.close)
+                ff_btn_primary("Erstellen", on_click=_do_create)
 
         dlg.open()
 
@@ -113,7 +111,7 @@ def render_settings(session, comp: Company) -> None:
             return
 
         dlg = ui.dialog()
-        with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
+        with dlg, ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
             ui.label("Unternehmen löschen").classes(C_SECTION_TITLE)
             ui.label(
                 "Das Unternehmen wird inklusive Kunden, Rechnungen, Ausgaben und Uploads gelöscht."
@@ -147,25 +145,24 @@ def render_settings(session, comp: Company) -> None:
                 else:
                     app.storage.user.pop("active_company_id", None)
 
-                app.storage.user["page"] = "settings"
                 dlg.close()
-                ui.navigate.to("/")
+                go_app_page("settings")
 
             with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                ui.button("Abbrechen", on_click=dlg.close).props("flat no-caps").classes(C_BTN_SEC)
-                ui.button("Unternehmen löschen", on_click=_do_delete).props("unelevated no-caps").classes(STYLE_BTN_DANGER)
+                ff_btn_secondary("Abbrechen", on_click=dlg.close)
+                ff_btn_danger("Unternehmen löschen", on_click=_do_delete)
 
         dlg.open()
 
     with ui.row().classes("w-full justify-between items-center mb-6"):
         ui.label("Einstellungen").classes(C_PAGE_TITLE)
-        ui.button("Neues Unternehmen", on_click=_open_create_dialog).props("unelevated no-caps").classes(C_BTN_PRIM)
+        ff_btn_primary("Neues Unternehmen", on_click=_open_create_dialog)
 
     owner_email = get_owner_email()
     current_user = session.get(User, int(user_id)) if user_id else None
     is_owner = bool(current_user and (current_user.email or "").strip().lower() == owner_email)
     if is_owner:
-        with ui.card().classes(C_CARD + " p-5 w-full max-w-5xl mx-auto mb-4"):
+        with ff_card(pad="p-5", classes="w-full max-w-5xl mx-auto mb-4"):
             ui.label("Read-only Link teilen").classes(C_SECTION_TITLE)
             with ui.row().classes("w-full gap-2 items-end flex-wrap"):
                 ttl_hours = ui.number("Gültig (Stunden)", value=24, min=1, max=168, step=1).props("outlined dense").classes(C_INPUT)
@@ -217,13 +214,13 @@ def render_settings(session, comp: Company) -> None:
                 ui.notify("Link kopiert.", color="grey")
 
             with ui.row().classes("w-full gap-2"):
-                ui.button("Link erstellen", on_click=_create_link).props("unelevated no-caps").classes(C_BTN_PRIM)
-                ui.button("Kopieren", on_click=_copy_link).props("flat no-caps").classes(C_BTN_SEC)
+                ff_btn_primary("Link erstellen", on_click=_create_link)
+                ff_btn_secondary("Kopieren", on_click=_copy_link)
 
     # ----------------------------
     # Company switcher + CRUD
     # ----------------------------
-    with ui.card().classes(C_CARD + " p-5 w-full max-w-5xl mx-auto mb-4"):
+    with ff_card(pad="p-5", classes="w-full max-w-5xl mx-auto mb-4"):
         ui.label("Unternehmen").classes(C_SECTION_TITLE)
 
         options = _company_select_options(companies)
@@ -246,8 +243,7 @@ def render_settings(session, comp: Company) -> None:
             if options and cid not in options:
                 return
             app.storage.user["active_company_id"] = cid
-            app.storage.user["page"] = "settings"
-            ui.navigate.to("/")
+            go_app_page("settings")
 
         ui.select(
             options=options,         # dict[int, str]
@@ -257,7 +253,7 @@ def render_settings(session, comp: Company) -> None:
         ).props("outlined dense").classes(C_INPUT)
 
         with ui.row().classes("w-full gap-2 mt-3 flex-wrap"):
-            ui.button("Unternehmen löschen", on_click=_open_delete_dialog).props("flat no-caps").classes(C_BTN_SEC)
+            ff_btn_secondary("Unternehmen löschen", on_click=_open_delete_dialog)
 
     # Refresh comp to active company for this user
     with get_session() as s:
@@ -278,7 +274,7 @@ def render_settings(session, comp: Company) -> None:
         with ui.element("div").classes("flex flex-col lg:flex-row gap-6"):
             with ui.element("div").classes("space-y-3 w-full lg:w-64"):
                 ui.label("Logo").classes(C_SECTION_TITLE)
-                with ui.element("div").classes(f"w-full {C_CARD} p-4 space-y-3"):
+                with ff_card(pad="p-4", classes="w-full space-y-3"):
                     logo_url = ""
                     logo_exists = False
                     if comp.id:
@@ -343,9 +339,12 @@ def render_settings(session, comp: Company) -> None:
                         _refresh_logo_preview(cid)
                         ui.notify("Hochgeladen", color="grey")
 
-                    ui.upload(on_upload=on_up, auto_upload=True, label="Bild wählen").classes(
-                        f"w-full {C_BTN_SEC}"
-                    ).props("accept=.png,.jpg,.jpeg,image/png,image/jpeg")
+                    ff_upload(
+                        on_upload=on_up,
+                        auto_upload=True,
+                        label="Bild wählen",
+                        props="accept=.png,.jpg,.jpeg,image/png,image/jpeg",
+                    )
 
             with ui.element("div").classes("space-y-6 w-full flex-1"):
                 ui.label("Unternehmen & Kontakt").classes(C_SECTION_TITLE)
@@ -557,15 +556,15 @@ def render_settings(session, comp: Company) -> None:
                     ui.run_javascript("console.log('n8n_test_debug', {step: 'test_success'});")
 
                 with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
-                    ui.button(
+                    ff_btn_secondary(
                         "Secret generieren",
                         on_click=lambda: (
                             n8n_secret.set_value(secrets.token_urlsafe(32)),
                             ui.notify("Secret generiert", color="grey"),
                         ),
-                    ).props("flat no-caps").classes(C_BTN_SEC)
-                    ui.button("Secret kopieren", on_click=_copy_n8n_secret).props("flat no-caps").classes(C_BTN_SEC)
-                    ui.button("Webhook testen", on_click=_test_n8n_webhook).props("flat no-caps").classes(C_BTN_SEC)
+                    )
+                    ff_btn_secondary("Secret kopieren", on_click=_copy_n8n_secret)
+                    ff_btn_secondary("Webhook testen", on_click=_test_n8n_webhook)
 
             with ui.expansion("Account").classes("w-full"):
                 with ui.element("div").classes("space-y-4 pt-2"):
@@ -595,13 +594,13 @@ def render_settings(session, comp: Company) -> None:
                     confirm_pw.set_value("")
 
                 with ui.row().classes("w-full gap-2 flex-wrap mt-2"):
-                    ui.button("Passwort ändern", on_click=_change_password).props("flat no-caps").classes(C_BTN_SEC)
+                    ff_btn_secondary("Passwort ändern", on_click=_change_password, write_action=True)
 
                 ui.separator().classes("my-4")
 
                 def _open_delete_account_dialog() -> None:
                     dlg = ui.dialog()
-                    with dlg, ui.card().props("flat").classes(f"{C_CARD} p-5 w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
+                    with dlg, ff_card(pad="p-5", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
                         ui.label("Account löschen").classes(C_SECTION_TITLE)
                         ui.label("Das löscht deinen Account und alle Unternehmen inklusive Daten und Uploads.").classes(
                             STYLE_TEXT_MUTED
@@ -628,12 +627,12 @@ def render_settings(session, comp: Company) -> None:
                             ui.navigate.to("/signup")
 
                         with ui.row().classes("justify-end gap-2 w-full mt-3"):
-                            ui.button("Abbrechen", on_click=dlg.close).props("flat no-caps").classes(C_BTN_SEC)
-                            ui.button("Account löschen", on_click=_do_delete_account).props("unelevated no-caps").classes(STYLE_BTN_DANGER)
+                            ff_btn_secondary("Abbrechen", on_click=dlg.close)
+                            ff_btn_danger("Account löschen", on_click=_do_delete_account)
 
                     dlg.open()
 
-                ui.button("Account löschen", on_click=_open_delete_account_dialog).props("unelevated no-caps").classes(STYLE_BTN_DANGER)
+                ff_btn_danger("Account löschen", on_click=_open_delete_account_dialog)
 
     # Wire address autocomplete
     use_address_autocomplete(street, plz, city, country, street_dropdown)
@@ -693,4 +692,4 @@ def render_settings(session, comp: Company) -> None:
         ui.notify("Gespeichert", color="grey")
 
     with ui.element("div").classes("w-full max-w-5xl mx-auto mt-4 flex justify-end"):
-        ui.button("Speichern", on_click=save).props("unelevated no-caps").classes(C_BTN_PRIM)
+        ff_btn_primary("Speichern", on_click=save)

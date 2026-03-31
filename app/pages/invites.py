@@ -7,6 +7,7 @@ from ._shared import (
     User,
     get_current_user_id,
     get_session,
+    go_app_page,
 )
 from styles import STYLE_TEXT_MUTED
 from ui_components import ff_btn_ghost, ff_btn_primary, ff_card, ff_input
@@ -30,14 +31,13 @@ def render_invites(session, _comp) -> None:
     current_email = _resolve_user_email(int(user_id))
     if current_email != get_owner_email():
         ui.notify("Nur der Owner kann Einladungen verwalten.", color="orange")
-        app.storage.user["page"] = "dashboard"
-        ui.navigate.to("/")
+        go_app_page("dashboard")
         return
 
     ui.label("Einladungen").classes(C_PAGE_TITLE)
 
     with ff_card(pad="p-5", classes="w-full mb-4"):
-        ui.label("Neue Einladung").classes("text-sm font-semibold text-slate-900")
+        ui.label("Neue Einladung").classes(C_SECTION_TITLE)
         ui.label("Nur eingeladene E-Mails können sich registrieren und einloggen.").classes(STYLE_TEXT_MUTED)
         email_input = ff_input("E-Mail-Adresse", value="", props='placeholder="name@example.com"')
 
@@ -81,5 +81,5 @@ def render_invites(session, _comp) -> None:
             ff_btn_primary("Einladen", on_click=_add_invite, classes="w-full sm:w-auto", write_action=True)
 
     with ff_card(pad="p-5", classes="w-full"):
-        ui.label("Aktive Einladungen").classes("text-sm font-semibold text-slate-900 mb-2")
+        ui.label("Aktive Einladungen").classes(f"{C_SECTION_TITLE} mb-2")
         invite_list()

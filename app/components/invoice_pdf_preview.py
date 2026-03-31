@@ -3,6 +3,8 @@ from typing import Union
 
 from nicegui import ui
 
+from styles import STYLE_BTN_SECONDARY
+
 
 class InvoicePdfPreview:
     def __init__(self, invoice_id: Union[int, str]) -> None:
@@ -11,15 +13,15 @@ class InvoicePdfPreview:
 
         with ui.column().classes("w-full gap-2"):
             self._open_button = ui.button("Open PDF").props(
-                f"outline href='{self._pdf_url()}' target='_blank'"
-            )
+                f"outline no-caps href='{self._pdf_url()}' target='_blank'"
+            ).classes(STYLE_BTN_SECONDARY)
             self._iframe = ui.html(self._iframe_html(), sanitize=False).classes(
                 "w-full"
             )
 
     def refresh(self) -> None:
         self.rev = self._next_rev()
-        self._open_button.props(f"outline href='{self._pdf_url()}' target='_blank'")
+        self._open_button.props(f"outline no-caps href='{self._pdf_url()}' target='_blank'")
         self._iframe.content = self._iframe_html()
 
     def _next_rev(self) -> int:

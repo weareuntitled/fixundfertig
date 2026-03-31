@@ -19,7 +19,8 @@ from services.auth import (
     verify_password,
 )
 from ui_theme import apply_global_ui_theme
-from styles import STYLE_BTN_PRIMARY, STYLE_CARD, STYLE_HEADING, STYLE_INPUT, STYLE_LINK_NEUTRAL, STYLE_TEXT_MUTED
+from ui_components import ff_btn_ghost, ff_btn_primary
+from styles import STYLE_CARD, STYLE_HEADING, STYLE_INPUT, STYLE_LINK_NEUTRAL, STYLE_TEXT_MUTED
 
 ERROR_TEXT = "text-sm text-rose-600 ff-auth-error"
 LINK_TEXT = STYLE_LINK_NEUTRAL
@@ -27,7 +28,7 @@ TITLE_TEXT = f"{STYLE_HEADING} text-center"
 SUBTITLE_TEXT = f"{STYLE_TEXT_MUTED} text-center"
 INPUT_CLASSES = f"w-full {STYLE_INPUT}"
 CARD_CLASSES = f"w-full max-w-[420px] {STYLE_CARD} p-6"
-BG_CLASSES = "min-h-screen w-full bg-slate-50 flex items-center justify-center px-4"
+BG_CLASSES = "min-h-screen w-full flex items-center justify-center px-4 py-8 sm:py-0"
 logger = logging.getLogger(__name__)
 
 
@@ -155,16 +156,21 @@ def login_page():
             except Exception as exc:
                 _set_error(status_error, str(exc))
 
-        login_button = ui.button("Log in", on_click=handle_login).props("unelevated no-caps loading=false").classes(
-            f"{STYLE_BTN_PRIMARY} w-full"
+        login_button = ff_btn_primary(
+            "Log in",
+            on_click=handle_login,
+            classes="w-full",
+            props="loading=false",
+            write_action=False,
         )
         with ui.row().classes("w-full justify-between"):
             ui.link("Forgot password?", "/forgot").classes(LINK_TEXT)
             ui.link("Create account", "/signup").classes(LINK_TEXT)
-        owner_button = (
-            ui.button("Owner-Verifizierungslink senden", on_click=handle_owner_verification)
-            .props("flat no-caps")
-            .classes(LINK_TEXT)
+        ff_btn_ghost(
+            "Owner-Verifizierungslink senden",
+            on_click=handle_owner_verification,
+            classes="w-full",
+            write_action=False,
         )
 
 
@@ -235,9 +241,13 @@ def signup_page():
             finally:
                 signup_button.loading = False
 
-        signup_button = ui.button("Create account", on_click=handle_signup).props(
-            "unelevated no-caps loading=false"
-        ).classes(f"{STYLE_BTN_PRIMARY} w-full")
+        signup_button = ff_btn_primary(
+            "Create account",
+            on_click=handle_signup,
+            classes="w-full",
+            props="loading=false",
+            write_action=False,
+        )
         with ui.row().classes("w-full justify-between"):
             ui.link("Already have an account?", "/login").classes(LINK_TEXT)
 
@@ -267,9 +277,7 @@ def verify_page(request: Request):
             else:
                 _set_error(status_error, "Invalid or expired token")
 
-        ui.button("Verify email", on_click=handle_verify).props("unelevated no-caps").classes(
-            f"{STYLE_BTN_PRIMARY} w-full"
-        )
+        ff_btn_primary("Verify email", on_click=handle_verify, classes="w-full", write_action=False)
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
@@ -295,9 +303,7 @@ def forgot_page():
                 "/login",
             )
 
-        ui.button("Send reset link", on_click=handle_request).props("unelevated no-caps").classes(
-            f"{STYLE_BTN_PRIMARY} w-full"
-        )
+        ff_btn_primary("Send reset link", on_click=handle_request, classes="w-full", write_action=False)
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
@@ -338,7 +344,5 @@ def reset_page(request: Request):
             else:
                 _set_error(status_error, "Invalid or expired token")
 
-        ui.button("Reset password", on_click=handle_reset).props("unelevated no-caps").classes(
-            f"{STYLE_BTN_PRIMARY} w-full"
-        )
+        ff_btn_primary("Reset password", on_click=handle_reset, classes="w-full", write_action=False)
         ui.link("Back to login", "/login").classes(LINK_TEXT)

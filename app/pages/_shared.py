@@ -12,6 +12,7 @@ import time
 import logging
 import functools
 import inspect
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -96,6 +97,43 @@ from logic import (
 
 logger = logging.getLogger(__name__)
 
+# Set from main.register_shell_navigate(set_page) so Docker (`python main.py`) works (no `app` package).
+_shell_navigate_cb: Callable[[str], None] | None = None
+
+
+def register_shell_navigate(fn: Callable[[str], None]) -> None:
+    global _shell_navigate_cb
+    _shell_navigate_cb = fn
+
+
+def app_shell_nav_items(is_owner: bool) -> list[dict]:
+    """Single source of truth for shell navigation entries."""
+    items: list[dict] = [
+        {"id": "dashboard", "label": "Dashboard", "icon": "dashboard"},
+        {"id": "invoices", "label": "Rechnungen", "icon": "receipt_long"},
+        {"id": "documents", "label": "Belege", "icon": "description"},
+        {"id": "ledger", "label": "Finanzen", "icon": "account_balance"},
+        {"id": "exports", "label": "Export", "icon": "file_download"},
+        {"id": "customers", "label": "Kunden", "icon": "groups"},
+        {"id": "expenses", "label": "Ausgaben", "icon": "shopping_bag"},
+    ]
+    if is_owner:
+        items.append({"id": "invites", "label": "Einladungen", "icon": "mail"})
+    return items
+
+
+def go_app_page(page: str) -> None:
+    """Switch in-app page; refresh shell content when main.set_page is registered."""
+    app.storage.user["page"] = page
+    cb = _shell_navigate_cb
+    if cb is not None:
+        try:
+            cb(page)
+            return
+        except Exception:
+            logger.exception("go_app_page: shell refresh failed for %s", page)
+    ui.navigate.to("/")
+
 
 def ui_handler(context: str, *, notify_message: str = "Aktion fehlgeschlagen.") -> callable:
     def decorator(func: callable) -> callable:
@@ -166,14 +204,12 @@ def _parse_iso_date(value: str | None):
 
 def _open_invoice_detail(invoice_id: int) -> None:
     app.storage.user["invoice_detail_id"] = int(invoice_id)
-    app.storage.user["page"] = "invoice_detail"
-    ui.navigate.to("/")
+    go_app_page("invoice_detail")
 
 
 def _open_invoice_editor(draft_id: int | None) -> None:
     app.storage.user["invoice_draft_id"] = int(draft_id) if draft_id else None
-    app.storage.user["page"] = "invoice_create"
-    ui.navigate.to("/")
+    go_app_page("invoice_create")
 
 
 def is_readonly_mode() -> bool:
@@ -362,6 +398,47 @@ def customer_address_card(
         "city": city,
         "country": country,
     }
+
+
+def insert_customer(
+    session,
+    comp: Company,
+    *,
+    name: str = "",
+    vorname: str = "",
+    nachname: str = "",
+    email: str = "",
+    short_code: str = "",
+    strasse: str = "",
+    plz: str = "",
+    ort: str = "",
+    country: str = "",
+    recipient_name: str = "",
+    recipient_street: str = "",
+    recipient_postal_code: str = "",
+    recipient_city: str = "",
+) -> Customer:
+    c = Customer(
+        company_id=int(comp.id),
+        kdnr=0,
+        name=name,
+        vorname=vorname,
+        nachname=nachname,
+        email=email,
+        short_code=short_code,
+        strasse=strasse,
+        plz=plz,
+        ort=ort,
+        country=country,
+        recipient_name=recipient_name,
+        recipient_street=recipient_street,
+        recipient_postal_code=recipient_postal_code,
+        recipient_city=recipient_city,
+    )
+    session.add(c)
+    session.commit()
+    session.refresh(c)
+    return c
 
 
 def customer_business_meta_card(
