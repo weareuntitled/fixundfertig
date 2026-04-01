@@ -58,7 +58,7 @@ def invoice_status_badge(status: str) -> str:
 
 
 @contextmanager
-def ff_card(*, pad: str = "p-4 sm:p-6", classes: str = "", hover: bool = False):
+def ff_card(*, pad: str = "p-3 sm:p-4", classes: str = "", hover: bool = False):
     """Card wrapper: flat (no Quasar shadow) + single padding source."""
     hover_classes = STYLE_CARD_HOVER if hover else ""
     with ui.card().props("flat").classes(f"{STYLE_CARD} {hover_classes} {pad} {classes}".strip()) as card:
@@ -178,25 +178,33 @@ def kpi_card(
     elif direction == "down":
         trend_color_class = "text-rose-600"
     else:
-        trend_color_class = "text-slate-600"
+        trend_color_class = "text-slate-500"
 
-    with ff_card(pad="p-5", classes=f"relative overflow-hidden flex flex-col justify-between h-[220px] {classes}".strip()):
-        ui.icon(icon).classes("absolute right-4 bottom-4 text-6xl text-slate-200")
-        with ui.column().classes("gap-2 z-10"):
-            with ui.row().classes("items-center gap-2"):
-                ui.icon(icon).classes("text-base text-amber-600")
-                ui.label(label).classes("text-xs font-semibold text-slate-600 uppercase tracking-wider")
-            ui.element("div").classes("h-px w-10 bg-slate-200")
-            ui.label(value).classes(f"text-2xl sm:text-3xl font-semibold text-slate-900 {C_NUMERIC}")
-            if trend_text:
-                with ui.row().classes("items-center gap-1"):
-                    if trend_icon:
-                        ui.icon(trend_icon).classes(f"text-xs {trend_color_class}")
-                    ui.label(trend_text).classes(f"text-xs {trend_color_class}")
+    with ff_card(pad="p-3", classes=f"ff-kpi-card relative overflow-hidden flex flex-col gap-2.5 {classes}".strip()):
+        # Indigo accent strip at top (Stripe-style)
+        ui.element("div").classes(
+            "absolute top-0 left-0 right-0 h-px "
+            "bg-gradient-to-r from-indigo-500 to-violet-500 rounded-t-lg"
+        )
+        # Icon badge + label
+        with ui.row().classes("items-center gap-3 pt-1"):
+            with ui.element("div").classes(
+                "w-7 h-7 rounded-md bg-indigo-50 flex items-center justify-center shrink-0"
+            ):
+                ui.icon(icon).classes("text-sm text-indigo-600")
+            ui.label(label).classes("text-xs font-semibold text-slate-500 uppercase tracking-wider")
+        # Value
+        ui.label(value).classes(f"text-xl font-semibold text-slate-900 {C_NUMERIC}")
+        # Trend
+        if trend_text:
+            with ui.row().classes("items-center gap-1"):
+                if trend_icon:
+                    ui.icon(trend_icon).classes(f"text-xs {trend_color_class}")
+                ui.label(trend_text).classes(f"text-xs {trend_color_class}")
 
 @contextmanager
 def settings_card(title: str | None = None, classes: str = ""):
-    with ff_card(pad="p-4 sm:p-6", classes=f"w-full {classes}".strip()) as card:
+    with ff_card(pad="p-3 sm:p-4", classes=f"w-full {classes}".strip()) as card:
         if title:
             ui.label(title).classes(STYLE_SECTION_TITLE)
         yield card
@@ -218,15 +226,13 @@ def settings_two_column_layout(max_width_class: str = "max-w-5xl"):
 
 def sticky_header(title, on_cancel, on_save=None, on_finalize=None):
     # WICHTIG: Kein ui.header() nutzen, da wir schon im Layout sind!
-    # Stattdessen ein sticky div/row.
-    # z-index 40, damit es unter dem Haupt-Header (z-50) durchscrollt, falls nötig, 
-    # oder einfach oben im Content klebt.
     with ui.row().classes(
-        "bg-white/80 backdrop-blur border-b border-slate-200 p-3 sm:p-4 sticky top-0 z-60 "
-        "flex flex-wrap justify-between items-start sm:items-center gap-2 w-full"
+        "bg-white/90 backdrop-blur-sm border-b border-slate-200/80 px-4 py-3 sticky top-0 z-60 "
+        "shadow-[0_1px_8px_rgba(0,0,0,0.05)] "
+        "flex flex-wrap justify-between items-center gap-2 w-full"
     ):
         with ui.row().classes("items-center gap-2 min-w-0"):
-            ui.icon("description", size="sm").classes("text-slate-500")
+            ui.icon("description", size="sm").classes("text-indigo-500")
             ui.label(title).classes(f"{STYLE_SECTION_TITLE} truncate")
         with ui.row().classes("gap-2 w-full sm:w-auto sm:ml-auto justify-start sm:justify-end flex-wrap"):
             if on_cancel:

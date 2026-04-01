@@ -1044,14 +1044,14 @@ def render_documents(session, comp: Company) -> None:
                 "Gesamtsumme",
                 _format_amount_eur(total_amount),
                 "payments",
-                "text-amber-600",
+                "text-indigo-600",
                 classes="flex-1 min-w-0",
             )
             kpi_card(
                 "Steuern gesichert",
                 _format_amount_eur(total_tax),
                 "receipt_long",
-                "text-amber-500",
+                "text-indigo-500",
                 classes="flex-1 min-w-0",
             )
 
@@ -1204,7 +1204,7 @@ def render_documents(session, comp: Company) -> None:
                     "hover:bg-slate-50 transition-colors text-sm group flex-nowrap"
                 )
                 if highlight_document_id == doc_id:
-                     row_classes += " bg-amber-500/5 border-l-2 border-l-amber-500 pl-[14px]"
+                     row_classes += " bg-indigo-500/5 border-l-2 border-l-indigo-500 pl-[14px]"
 
                 with ui.row().classes(row_classes):
                     # 1. Checkbox
@@ -1225,7 +1225,7 @@ def render_documents(session, comp: Company) -> None:
                         # min-w-0 required for flex truncation
                         with ui.column().classes("gap-0.5 min-w-0 flex-1"):
                             ui.link(filename, open_url, new_tab=True).classes(
-                                "text-slate-900 font-semibold leading-tight truncate hover:text-amber-700 hover:underline block w-full"
+                                "text-slate-900 font-semibold leading-tight truncate hover:text-indigo-700 hover:underline block w-full"
                             ).tooltip(filename)
                             with ui.row().classes("items-center gap-1.5 text-xs text-slate-500 leading-none"):
                                 ui.label(size_display)
@@ -1295,7 +1295,7 @@ def render_documents(session, comp: Company) -> None:
                                 ui.icon(icon_name).classes("text-sm")
                             with ui.column().classes("gap-1 min-w-0 flex-1"):
                                 ui.link(filename, open_url, new_tab=True).classes(
-                                    "text-slate-900 font-semibold leading-tight truncate hover:text-amber-700 hover:underline block w-full"
+                                    "text-slate-900 font-semibold leading-tight truncate hover:text-indigo-700 hover:underline block w-full"
                                 ).tooltip(filename)
                                 ui.label(display_date or "-").classes("text-xs text-slate-500 font-mono")
                                 if tags_value and tags_value != "-":

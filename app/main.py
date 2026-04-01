@@ -1807,45 +1807,51 @@ _LAYOUT = {
     "shell_row": "w-full min-h-screen flex flex-col md:flex-row items-start gap-6 px-4 md:px-6",
     # Desktop sidebar: use .ff-desktop-sidebar for guaranteed visibility on md+ (see styles.py).
     "sidebar": (
-        "ff-desktop-sidebar rounded-3xl bg-white border border-slate-200 shadow-sm "
-        "items-start py-6 px-3 gap-4 shrink-0"
+        "ff-desktop-sidebar rounded-lg bg-white/90 backdrop-blur-sm "
+        "border border-slate-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ring-1 ring-slate-900/[0.03] "
+        "items-start py-3 px-2 gap-1 shrink-0"
     ),
-    "nav_sep": "w-8 h-px bg-slate-200",
+    "nav_sep": "w-8 h-px bg-slate-100 mx-auto",
     "nav_btn_base": (
-        "w-full h-11 rounded-2xl flex items-center justify-start gap-3 px-3 transition-all duration-150 "
-        "border border-transparent text-sm font-semibold"
+        "ff-nav-btn w-full h-7 rounded-md flex items-center justify-start gap-2 px-2 "
+        "border border-transparent text-[12.5px] font-medium"
     ),
-    "nav_btn_active": "text-slate-900 border-amber-200/80 bg-amber-50/90 border-l-[3px] border-l-amber-500 pl-2.5",
-    "nav_btn_inactive": "text-slate-600 hover:text-slate-900 hover:border-slate-200 hover:bg-slate-50",
-    "nav_mobile_btn_active": "text-slate-900 border-amber-200 bg-amber-50",
-    "nav_mobile_btn_inactive": "text-slate-700 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50",
-    "main": "flex-1 w-full relative px-4 pt-4 pb-8 md:pl-72 md:pr-6 md:pt-6 gap-4",
-    "topbar": "w-full shrink-0 pt-4 pb-3 md:pt-6 md:pb-4 sticky top-0 z-30 px-4 md:px-0",
+    "nav_btn_active": "ff-nav-active bg-indigo-600 text-white shadow-sm",
+    "nav_btn_inactive": "text-slate-500 hover:text-slate-900 hover:bg-slate-100/80",
+    "nav_mobile_btn_active": "text-indigo-700 bg-indigo-50 border-indigo-200",
+    "nav_mobile_btn_inactive": "text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200",
+    "main": "flex-1 w-full relative px-3 pt-4 pb-24 md:pb-8 md:pl-[16.5rem] md:pr-6 md:pt-6 gap-4",
+    "topbar": "w-full shrink-0 pt-4 pb-3 md:pt-6 md:pb-4 sticky top-0 z-30 px-3 md:px-0",
     # Single row: menu | search (flex) | actions — wraps only on very narrow screens
     "topbar_inner": (
         "w-full flex flex-row items-center gap-2 sm:gap-3 "
-        "rounded-2xl border border-slate-200/90 bg-white/95 shadow-sm backdrop-blur-sm py-2 px-3 md:px-4"
+        "rounded-lg border border-slate-200/70 bg-white/95 "
+        "shadow-[0_1px_3px_rgba(0,0,0,0.04)] "
+        "backdrop-blur-sm py-1.5 px-3 md:px-4"
     ),
     "shell_icon_btn": (
-        f"{STYLE_TAP_TARGET} rounded-xl border border-slate-200 bg-white text-slate-600 "
-        "hover:bg-slate-50 hover:text-slate-900 shrink-0"
+        "min-w-[32px] min-h-[32px] w-8 h-8 flex items-center justify-center "
+        "rounded-md border border-slate-200/80 bg-white text-slate-500 "
+        "hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-colors shrink-0"
     ),
     "mobile_menu_btn": (
-        f"md:hidden {STYLE_TAP_TARGET} rounded-xl border border-slate-200 bg-white text-slate-600 "
-        "hover:bg-slate-50 hover:text-slate-900 shrink-0"
+        "md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center "
+        "rounded-md border border-slate-200/80 bg-white text-slate-500 "
+        "hover:bg-slate-50 hover:text-slate-900 transition-colors shrink-0"
     ),
-    "sidebar_logo": "ff-sidebar-logo w-11 h-11 rounded-none object-contain",
+    "sidebar_logo": "ff-sidebar-logo w-9 h-9 rounded-none object-contain",
     "header_search": f"{STYLE_INPUT} flex-1 min-w-0 basis-0 sm:max-w-md",
     "menu_wide": "w-[240px] max-w-[calc(100vw-2rem)]",
     "menu": "w-[220px] max-w-[calc(100vw-2rem)]",
     "menu_meta": "text-xs text-slate-600 px-3 pt-2",
     "menu_meta_company": "text-sm text-slate-600 px-3 pb-2",
-    "content": "w-full",
+    "content": "ff-page-enter w-full",
     "user_btn": (
-        f"{STYLE_TAP_TARGET} rounded-xl border border-slate-200 bg-white text-slate-900 "
-        "hover:bg-slate-50 shrink-0 min-w-[44px] px-2"
+        "min-w-[32px] min-h-[32px] w-8 h-8 flex items-center justify-center "
+        "rounded-md border border-indigo-200/60 bg-indigo-50 text-indigo-700 "
+        "hover:bg-indigo-100 transition-colors shrink-0 px-1.5"
     ),
-    "user_initials": "text-xs font-semibold text-slate-900",
+    "user_initials": "text-xs font-semibold text-indigo-700",
     "logout_item": "text-rose-600",
 }
 
@@ -1996,6 +2002,28 @@ def layout_wrapper(content_func):
                 global _content_ref
                 _content_ref = _content
                 _content()
+
+    # Mobile bottom nav bar (position: fixed, hidden on md+)
+    _bottom_nav_items = [
+        {"id": "dashboard", "label": "Home", "icon": "dashboard"},
+        {"id": "invoices", "label": "Rechnungen", "icon": "receipt_long"},
+        {"id": "documents", "label": "Belege", "icon": "description"},
+        {"id": "ledger", "label": "Finanzen", "icon": "account_balance"},
+        {"id": "customers", "label": "Kunden", "icon": "groups"},
+    ]
+    with ui.element("nav").classes("ff-mobile-bottomnav"):
+        for _item in _bottom_nav_items:
+            _item_id = _item["id"]
+            _item_label = _item["label"]
+            _item_icon = _item["icon"]
+            _active = _sidebar_highlight_target(app.storage.user.get("page", "dashboard")) == _item_id
+            _active_cls = "ff-nav-active" if _active else ""
+            with ui.element("div").classes(f"ff-mobile-nav-item {_active_cls}").on(
+                "click", lambda t=_item_id: set_page(t)
+            ):
+                with ui.element("div").classes("ff-nav-dot"):
+                    ui.icon(_item_icon).classes("text-[20px]")
+                ui.label(_item_label).style("font-size:10px;line-height:1")
 
 
 @ui.page("/")

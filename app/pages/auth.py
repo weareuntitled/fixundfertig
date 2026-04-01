@@ -79,7 +79,7 @@ def _show_success(
     card.clear()
     with card:
         if icon:
-            ui.icon(icon).classes("text-amber-500 text-4xl self-center")
+            ui.icon(icon).classes("text-indigo-500 text-4xl self-center")
         ui.label(message).classes(f"{STYLE_TEXT_MUTED} text-center")
         if link_text and link_href:
             ui.link(link_text, link_href).classes(f"{LINK_TEXT} self-center")

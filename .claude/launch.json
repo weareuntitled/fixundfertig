@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "FixundFertig App",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-u", "run_dev.py"],
+      "port": 8000,
+      "cwd": "${workspaceFolder}/app"
+    },
+    {
+      "name": "n8n",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["n8n", "start"],
+      "port": 5678
+    }
+  ]
+}

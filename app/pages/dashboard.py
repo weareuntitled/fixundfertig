@@ -15,7 +15,7 @@ from styles import (
     STYLE_SECTION_TITLE,
     STYLE_TEXT_MUTED,
 )
-from ui_components import ff_btn_danger, ff_btn_muted, ff_btn_primary, ff_btn_secondary, ff_card, ff_icon_button
+from ui_components import ff_btn_danger, ff_btn_ghost, ff_btn_muted, ff_btn_primary, ff_btn_secondary, ff_card, ff_icon_button
 
 # Auto generated page renderer
 
@@ -369,27 +369,27 @@ def render_dashboard(session, comp: Company) -> None:
 
     @ui.refreshable
     def render_panel() -> None:
-        with ui.row().classes("w-full items-center justify-between mb-6 flex-col lg:flex-row gap-4"):
-            with ui.column().classes("gap-1"):
+        # Compact page header — left-aligned, no big welcome banner
+        with ui.row().classes("w-full items-center justify-between gap-3 mb-4"):
+            with ui.row().classes("items-center gap-3 min-w-0"):
                 ui.label("Dashboard").classes(C_PAGE_TITLE)
-                ui.label(f"Welcome back, {greeting_name}").classes(STYLE_TEXT_MUTED)
-            with ui.row().classes(
-                "rounded-full bg-white border border-slate-200 shadow-sm p-1 gap-1 mx-0"
-            ):
+                ui.label(f"· {greeting_name}").classes("text-[12px] text-slate-400 truncate hidden sm:block")
+            # Compact segmented filter
+            with ui.row().classes("bg-slate-100 rounded-md p-0.5 gap-0 shrink-0"):
                 for value in filters:
                     is_active = active_filter["value"] == value
                     if is_active:
                         ff_btn_primary(
                             value,
                             on_click=lambda v=value: set_filter(v),
-                            classes="!rounded-full !px-4 !py-1.5 !min-h-0 h-auto",
+                            classes="!rounded-[5px] !px-3 !py-1 !min-h-0 !h-7 !text-[12px] !shadow-sm",
                             props="dense no-caps",
                         )
                     else:
-                        ff_btn_muted(
+                        ff_btn_ghost(
                             value,
                             on_click=lambda v=value: set_filter(v),
-                            classes="!rounded-full !px-4 !py-1.5 !min-h-0 h-auto text-slate-600",
+                            classes="!rounded-[5px] !px-3 !py-1 !min-h-0 !h-7 !text-[12px] !text-slate-500 hover:!text-slate-900 hover:!bg-white",
                             props="dense no-caps",
                             write_action=False,
                         )
@@ -399,44 +399,44 @@ def render_dashboard(session, comp: Company) -> None:
         else:
             visible_items = [item for item in doc_items if item["status"] == active_filter["value"]]
 
-        with ui.element("div").classes("w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"):
+        # Modern compact list — not a card grid
+        with ui.element("div").classes(
+            "w-full rounded-xl border border-slate-200/80 overflow-hidden bg-white "
+            "ring-1 ring-slate-900/[0.03] divide-y divide-slate-100"
+        ):
+            if not visible_items:
+                with ui.row().classes("px-4 py-8 items-center justify-center"):
+                    ui.label("Keine Einträge").classes("text-[13px] text-slate-400")
             for item in visible_items:
-                with ff_card(
-                    pad="p-5",
-                    hover=True,
-                    classes="group relative hover:-translate-y-1 transition-all duration-200",
+                with ui.row().classes(
+                    "w-full px-4 py-2.5 items-center gap-3 hover:bg-slate-50/60 transition-colors group cursor-default"
                 ):
+                    # Small icon badge
+                    with ui.element("div").classes(
+                        f"w-7 h-7 rounded-lg {item['accent']} flex items-center justify-center shrink-0"
+                    ):
+                        ui.icon(item["icon"]).classes("text-[14px]")
+                    # Title + date
+                    with ui.column().classes("flex-1 min-w-0 gap-0"):
+                        ui.label(item["title"]).classes(
+                            "text-[13px] font-medium text-slate-800 truncate leading-tight"
+                        )
+                        ui.label(item["date"]).classes("text-[11px] text-slate-400 leading-tight")
+                    # Type + status badges
+                    with ui.row().classes("items-center gap-1.5 shrink-0"):
+                        ui.label(item["type"]).classes(
+                            "text-[11px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded hidden sm:block"
+                        )
+                        ui.label(item["status"]).classes(status_badge[item["status"]])
+                    # Actions button
                     with ff_icon_button(
                         icon="more_horiz",
-                        classes=(
-                            "absolute top-4 right-4 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition"
-                        ),
+                        classes="opacity-0 group-hover:opacity-100 transition shrink-0",
                         props="dense",
                     ):
                         with ui.menu().props("auto-close"):
                             for label, handler in _actions_for_item(item):
                                 ui.menu_item(label, on_click=handler)
-                    with ui.column().classes("gap-4"):
-                        with ui.element("div").classes(
-                            "h-24 rounded-2xl flex items-center justify-center"
-                        ):
-                            with ui.element("div").classes(
-                                f"w-14 h-14 rounded-full {item['accent']} flex items-center justify-center"
-                            ):
-                                ui.icon(item["icon"]).classes("text-2xl")
-                        with ui.column().classes("gap-2 min-w-0"):
-                            ui.label(item["title"]).classes(
-                                f"{STYLE_SECTION_TITLE} leading-snug line-clamp-2"
-                            )
-                            with ui.row().classes(
-                                "flex-col items-start gap-2 min-w-0 sm:flex-row sm:items-center sm:justify-between"
-                            ):
-                                ui.label(item["date"]).classes("text-xs text-slate-500")
-                                ui.label(item["type"]).classes(
-                                    "bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full "
-                                    "text-xs font-semibold truncate max-w-[120px]"
-                                )
-                            ui.label(item["status"]).classes(status_badge[item["status"]])
 
     def set_filter(value: str) -> None:
         active_filter["value"] = value

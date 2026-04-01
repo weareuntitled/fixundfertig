@@ -1,3 +1,12 @@
+# GitHub zeigt Secret-Werte nie an — nur Namen. Zum Ändern: Secret → Update → Wert neu eintragen.
+#
+# Erforderlich:
+#   SSH_HOST   — nur IP oder Hostname, z. B. 76.13.4.77 (nicht "ssh root@…", kein User davor)
+#   SSH_USER   — z. B. root
+#   Private Key in SSH_PRIVATE_KEY (oder nur SERVER_SSH_KEY; Fallback siehe unten)
+#
+# SERVER_PORT ist hier nicht der SSH-Port (oft App-Port). SSH-Port bei Bedarf `port:` anpassen.
+
 name: Deploy to Hostinger
 
 on:
@@ -13,7 +22,8 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Bevorzugt SSH_PRIVATE_KEY; falls nur SERVER_SSH_KEY gepflegt ist, wird der genutzt.
+          key: ${{ secrets.SSH_PRIVATE_KEY || secrets.SERVER_SSH_KEY }}
           port: 22
           script: |
             # 1. In den richtigen Ordner wechseln (~ steht für /root/)
