@@ -94,7 +94,7 @@ def _mask_token_prefix(token: str | None, visible: int = 6) -> str:
     return f"{token_str[:visible]}..."
 
 
-@ui.page("/login")
+# DISABLED: @ui.page("/login")
 def login_page():
     apply_global_ui_theme()
     if is_authenticated():
@@ -174,7 +174,7 @@ def login_page():
         )
 
 
-@ui.page("/signup")
+# DISABLED: @ui.page("/signup")
 def signup_page():
     apply_global_ui_theme()
     if is_authenticated():
@@ -252,7 +252,7 @@ def signup_page():
             ui.link("Already have an account?", "/login").classes(LINK_TEXT)
 
 
-@ui.page("/verify")
+# DISABLED: @ui.page("/verify")
 def verify_page(request: Request):
     apply_global_ui_theme()
     token_prefill = (request.query_params.get("token") or "").strip()
@@ -281,7 +281,7 @@ def verify_page(request: Request):
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
-@ui.page("/forgot")
+# DISABLED: @ui.page("/forgot")
 def forgot_page():
     apply_global_ui_theme()
     with auth_layout("Forgot password", "We will email you a reset link") as card:
@@ -307,7 +307,7 @@ def forgot_page():
         ui.link("Back to login", "/login").classes(LINK_TEXT)
 
 
-@ui.page("/reset")
+# DISABLED: @ui.page("/reset")
 def reset_page(request: Request):
     apply_global_ui_theme()
     token_prefill = (request.query_params.get("token") or "").strip()

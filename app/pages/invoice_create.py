@@ -1,54 +1,25 @@
 from __future__ import annotations
 
-import base64
 import time
 from datetime import date
-from types import SimpleNamespace
 from typing import Any
 
 from nicegui import app, ui
 from sqlmodel import select
 
 from renderer import PDFInvoiceRenderer
-
-from data import Customer
+from data import Customer, InvoiceStatus
 from invoice_customer_merge import merge_customer_from_new_id, parse_new_customer_id
-from invoice_numbering import build_invoice_filename, build_invoice_number
 from logic import finalize_invoice_logic
-from .invoice_utils import build_invoice_preview_html, compute_invoice_totals
 from styles import C_INPUT, C_PAGE_TITLE, STYLE_SECTION_TITLE, STYLE_TEXT_SUBTLE
 from ui_components import (
-    ff_btn_primary,
-    ff_btn_secondary,
-    ff_card,
-    ff_input,
-    settings_card,
-    settings_grid,
-    settings_two_column_layout,
+    ff_btn_primary, ff_btn_secondary, ff_card, ff_input,
+    settings_card, settings_grid, settings_two_column_layout,
 )
-from ._shared import (
-    customer_address_card,
-    customer_contact_card,
-    get_session,
-    go_app_page,
-    insert_customer,
-)
+from ._shared import get_session, go_app_page
 
-
-def _get(obj: Any, *names: str, default: Any = "") -> Any:
-    if obj is None:
-        return default
-    if isinstance(obj, dict):
-        for n in names:
-            if n in obj and obj[n] not in (None, ""):
-                return obj[n]
-        return default
-    for n in names:
-        if hasattr(obj, n):
-            v = getattr(obj, n)
-            if v not in (None, ""):
-                return v
-    return default
+from .invoice_create_customer_dialog import create_new_customer_dialog
+from .invoice_create_preview import build_preview_invoice, render_preview_html, render_preview_pdf_frame
 
 
 def render_invoice_create(session: Any, comp: Any) -> None:
@@ -71,131 +42,98 @@ def render_invoice_create(session: Any, comp: Any) -> None:
     customers_by_id = {int(c.id): c for c in all_customers if getattr(c, "id", None) is not None}
     new_customer_value = "__new_customer__"
     new_customer_id = parse_new_customer_id(app.storage.user.pop("new_customer_id", None))
-    merge_customer_from_new_id(
-        session,
-        comp_id=int(comp.id),
-        all_customers=all_customers,
-        customers_by_id=customers_by_id,
-        new_customer_id=new_customer_id,
-    )
+    merge_customer_from_new_id(session, comp_id=int(comp.id), all_customers=all_customers,
+                               customers_by_id=customers_by_id, new_customer_id=new_customer_id)
 
-    # NiceGUI ui.select expects dict[value, label] when using dict options
     def _build_customer_options(filter_text: str | None = None) -> dict[Any, str]:
-        customer_options: dict[Any, str] = {}
+        opts: dict[Any, str] = {}
         normalized = (filter_text or "").strip().lower()
         for i, c in enumerate(all_customers):
             if getattr(c, "id", None) is None:
                 continue
-            label = str(_get(c, "display_name", "name", default=f"Kunde {i+1}"))
+            label = str(getattr(c, "display_name", None) or getattr(c, "name", f"Kunde {i+1}"))
             if normalized and normalized not in label.lower():
                 continue
-            customer_options[int(c.id)] = label
-        customer_options[new_customer_value] = "+ Neuen Kunden anlegen"
-        return customer_options
+            opts[int(c.id)] = label
+        opts[new_customer_value] = "+ Neuen Kunden anlegen"
+        return opts
 
     customer_options = _build_customer_options()
-    # Default: wenn es Kunden gibt, ersten Kunden vorauswählen; sonst kein Default.
     customer_default = next(iter(customers_by_id.keys()), None)
-
     items: list[dict] = []
     service_from = today
     service_to = today
+    preview_summary = preview_frame = preview_summary_mobile = preview_frame_mobile = None
 
-    preview_summary = None
-    preview_frame = None
-    preview_summary_mobile = None
-    preview_frame_mobile = None
+    def _on_customer_saved(new_id, _comp):
+        nonlocal all_customers, customers_by_id
+        with get_session() as s:
+            stmt = select(Customer).where(Customer.company_id == int(_comp.id), Customer.archived == False).order_by(Customer.name)
+            all_customers = list(s.exec(stmt).all())
+            customers_by_id = {int(cu.id): cu for cu in all_customers if getattr(cu, "id", None) is not None}
+        customer_select.options = _build_customer_options()
+        if new_id is not None:
+            customer_select.value = new_id
+
+    new_customer_dialog = create_new_customer_dialog(comp, on_saved=_on_customer_saved)
 
     with ui.row().classes("w-full gap-6 items-start flex-col md:flex-row md:flex-nowrap"):
-        # LEFT column (35%)
         with ui.column().classes("w-full md:w-1/3 gap-4"):
             with settings_card("Stammdaten"):
+                customer_select = ui.select(options=customer_options, value=customer_default, label="Kunde", with_input=True).props("outlined dense use-input").classes(C_INPUT)
 
-                customer_select = ui.select(
-                    options=customer_options,
-                    value=customer_default,
-                    label="Kunde",
-                    with_input=True,
-                ).props("outlined dense use-input").classes(C_INPUT)
                 def _filter_customers(e) -> None:
-                    filter_text = ""
-                    if getattr(e, "value", None) is not None:
-                        filter_text = str(e.value or "")
-                    elif getattr(e, "args", None):
-                        filter_text = str(e.args.get("value", "") or "")
-                    current_value = customer_select.value
-                    customer_select.options = _build_customer_options(filter_text)
-                    if current_value not in customer_select.options:
-                        customer_select.value = current_value
+                    ft = str(e.value or "") if getattr(e, "value", None) is not None else str(e.args.get("value", "") or "") if getattr(e, "args", None) else ""
+                    cv = customer_select.value
+                    customer_select.options = _build_customer_options(ft)
+                    if cv not in customer_select.options:
+                        customer_select.value = cv
 
                 customer_select.on("filter", _filter_customers)
-
                 title_input = ui.input("Titel", value="Rechnung").props("outlined dense").classes(C_INPUT)
-
                 invoice_date_input = ui.input("Rechnungsdatum", value=today).props("outlined dense readonly").classes(C_INPUT)
                 with invoice_date_input.add_slot("append"):
                     ui.icon("event").classes("cursor-pointer")
-
                 with invoice_date_input:
-                    invoice_date_menu = ui.menu().props(
-                        "no-parent-event anchor='bottom left' self='top left'"
-                    )
+                    invoice_date_menu = ui.menu().props("no-parent-event anchor='bottom left' self='top left'")
                     with invoice_date_menu:
                         invoice_date_picker = ui.date(value=today).props('mask="YYYY-MM-DD"')
                         ff_btn_secondary("OK", on_click=invoice_date_menu.close, props="dense")
-
                 invoice_date_input.on("click", lambda: invoice_date_menu.open())
-
-                def _invoice_date_changed(e) -> None:
-                    invoice_date_input.value = e.value
-                    mark_preview_dirty()
-
-                invoice_date_picker.on("update:modelValue", _invoice_date_changed)
+                invoice_date_picker.on("update:modelValue", lambda e: (setattr(invoice_date_input, 'value', e.value), mark_preview_dirty()))
 
                 service_input = ui.input("Leistungszeitraum", value=f"{today} bis {today}").props("outlined dense readonly").classes(C_INPUT)
                 with service_input.add_slot("append"):
                     ui.icon("event").classes("cursor-pointer")
-
                 with service_input:
-                    service_menu = ui.menu().props(
-                        "no-parent-event anchor='bottom left' self='top left'"
-                    )
+                    service_menu = ui.menu().props("no-parent-event anchor='bottom left' self='top left'")
                     with service_menu:
                         service_picker = ui.date(value={"from": today, "to": today}).props('mask="YYYY-MM-DD" range')
                         ff_btn_secondary("OK", on_click=service_menu.close, props="dense")
-
                 service_input.on("click", lambda: service_menu.open())
 
                 def _service_changed(e) -> None:
                     nonlocal service_from, service_to
                     v = e.value or {}
-                    service_from = v.get("from", today)
-                    service_to = v.get("to", today)
+                    service_from, service_to = v.get("from", today), v.get("to", today)
                     service_input.value = f"{service_from} bis {service_to}"
                     mark_preview_dirty()
 
                 service_picker.on("update:modelValue", _service_changed)
-
-                # FIX: use switch (boolean), NOT ui.toggle (choice)
                 vat_switch = ui.switch("USt berechnen", value=False).classes("mt-2")
                 if getattr(comp, "is_small_business", False):
                     vat_switch.props("disable")
                 ui.label("Kleinunternehmer: USt wird automatisch nicht ausgewiesen.").classes(STYLE_TEXT_SUBTLE)
 
             with settings_card("Einleitungstext"):
-                intro_input = ui.textarea(
-                    value="Vielen Dank für Ihren Auftrag. Hiermit berechne ich die folgenden Leistungen."
-                ).props("outlined dense").classes(C_INPUT)
+                intro_input = ui.textarea(value="Vielen Dank für Ihren Auftrag. Hiermit berechne ich die folgenden Leistungen.").props("outlined dense").classes(C_INPUT)
                 intro_input.props("autogrow")
 
             with settings_card("Positionen"):
                 with ui.row().classes("w-full items-center justify-between flex-col md:flex-row gap-2"):
                     ui.label("Positionen").classes(STYLE_SECTION_TITLE)
                     add_btn = ff_btn_secondary("Position hinzufügen").classes("w-full md:w-auto")
-
-                ui.label("Tipp: Nach rechts wischen, um alle Spalten zu sehen.").classes(
-                    "text-xs text-slate-500 md:hidden"
-                )
+                ui.label("Tipp: Nach rechts wischen, um alle Spalten zu sehen.").classes("text-xs text-slate-500 md:hidden")
 
                 columns = [
                     {"name": "description", "label": "Beschreibung", "field": "description", "align": "left"},
@@ -204,45 +142,31 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                     {"name": "tax_rate", "label": "USt", "field": "tax_rate", "align": "right"},
                 ]
                 with ui.element("div").classes("w-full overflow-x-auto"):
-                    table = ui.table(columns=columns, rows=items, row_key="id").classes(
-                        "w-full mt-3 min-w-[560px]"
-                    )
+                    table = ui.table(columns=columns, rows=items, row_key="id").classes("w-full mt-3 min-w-[560px]")
                     table.props("hide-pagination :pagination='{rowsPerPage:0}'")
 
                 dialog = ui.dialog()
                 with dialog:
-                    with ff_card(
-                        pad="p-4",
-                        classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto",
-                    ):
+                    with ff_card(pad="p-4", classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto"):
                         ui.label("Position").classes(card_title_cls)
                         d_desc = ui.textarea("Beschreibung", value="").props("outlined dense").classes(C_INPUT)
                         d_desc.props("autogrow")
                         d_qty = ui.number("Menge", value=1, min=0, step=1).props("outlined dense").classes(C_INPUT)
                         d_price = ui.number("Einzelpreis", value=0.0, min=0, step=0.01).props("outlined dense").classes(C_INPUT)
                         d_tax = ui.number("USt in %", value=0, min=0, step=1).props("outlined dense").classes(C_INPUT)
-
                         with ui.row().classes("w-full justify-end gap-2 mt-4"):
                             ff_btn_secondary("Abbrechen", on_click=dialog.close)
 
                             def _add_item() -> None:
-                                new_item = {
-                                    "id": f"i{len(items)+1}",
-                                    "description": d_desc.value or "",
-                                    "quantity": float(d_qty.value or 0),
-                                    "unit_price": float(d_price.value or 0),
-                                    "tax_rate": float(d_tax.value or 0),
-                                }
-                                items.append(new_item)
+                                items.append({"id": f"i{len(items)+1}", "description": d_desc.value or "", "quantity": float(d_qty.value or 0), "unit_price": float(d_price.value or 0), "tax_rate": float(d_tax.value or 0)})
                                 table.rows = items
                                 dialog.close()
                                 mark_preview_dirty()
 
                             ff_btn_primary("Hinzufügen", on_click=_add_item)
-
                 add_btn.on("click", dialog.open)
 
-                def _finalize_invoice() -> None:
+                def _finalize_invoice(target_status=InvoiceStatus.OPEN) -> None:
                     errors: list[str] = []
                     if customer_select.value in (None, new_customer_value):
                         errors.append("Bitte einen Kunden auswählen.")
@@ -254,260 +178,74 @@ def render_invoice_create(session: Any, comp: Any) -> None:
                         ui.notify("\\n".join(errors), color="red")
                         return
                     try:
-                        new_invoice_id = finalize_invoice_logic(
-                            session=session,
-                            comp_id=int(comp.id),
-                            cust_id=int(customer_select.value),
-                            title=title_input.value or "Rechnung",
-                            date_str=str(invoice_date_input.value or ""),
-                            delivery_str=str(service_input.value or ""),
-                            recipient_data={},
-                            items=items,
-                            ust_enabled=bool(vat_switch.value),
-                            intro_text=intro_input.value or "",
-                            service_from=service_from,
-                            service_to=service_to,
-                        )
-                        app.storage.user["invoice_detail_id"] = int(new_invoice_id)
+                        new_id = finalize_invoice_logic(session=session, comp_id=int(comp.id), cust_id=int(customer_select.value), title=title_input.value or "Rechnung", date_str=str(invoice_date_input.value or ""), delivery_str=str(service_input.value or ""), recipient_data={}, items=items, ust_enabled=bool(vat_switch.value), status=target_status, intro_text=intro_input.value or "", service_from=service_from, service_to=service_to)
+                        app.storage.user["invoice_detail_id"] = int(new_id)
                         go_app_page("invoice_detail")
                     except Exception as exc:
                         ui.notify(f"Fehler beim Speichern der Rechnung: {exc}", color="red")
 
-                ff_btn_primary(
-                    "Rechnung finalisieren",
-                    on_click=_finalize_invoice,
-                    classes="mt-4 ff-btn-finalize-invoice w-full md:w-auto",
-                )
+                ff_btn_primary("Rechnung finalisieren", on_click=lambda: _finalize_invoice(InvoiceStatus.OPEN), classes="mt-4 ff-btn-finalize-invoice w-full md:w-auto")
+                ff_btn_secondary("Als Entwurf speichern", on_click=lambda: _finalize_invoice(InvoiceStatus.DRAFT), classes="mt-2 w-full md:w-auto")
 
-        # RIGHT column preview
         with ui.column().classes("w-full md:flex-1"):
             with ui.expansion("Vorschau", icon="visibility").classes("w-full md:hidden"):
                 with ff_card(pad="p-4", classes=card_cls):
                     preview_summary_mobile = ui.html("", sanitize=False).classes("w-full mb-3")
                     preview_frame_mobile = ui.html("", sanitize=False).classes("w-full min-h-[50vh]")
-
             with ff_card(pad="p-4", classes=f"{card_cls_sticky} ff-invoice-preview-desktop"):
                 ui.label("Vorschau").classes(card_title_cls)
                 preview_summary = ui.html("", sanitize=False).classes("w-full mb-3")
                 preview_frame = ui.html("", sanitize=False).classes("w-full min-h-[480px]")
 
     preview_state = {"dirty": True, "pending": False, "last_change": 0.0}
+    renderer = PDFInvoiceRenderer()
 
     def mark_preview_dirty() -> None:
         preview_state["dirty"] = True
         preview_state["pending"] = True
         preview_state["last_change"] = time.monotonic()
 
-    def _current_customer_obj() -> Any:
-        selected = customer_select.value
-        if selected in (None, new_customer_value):
+    def _current_customer_obj():
+        sel = customer_select.value
+        if sel in (None, new_customer_value):
             return None
         try:
-            return customers_by_id.get(int(selected))
+            return customers_by_id.get(int(sel))
         except (TypeError, ValueError):
             return None
 
-    renderer = PDFInvoiceRenderer()
-
-    def _preview_invoice_number(date_value: str) -> str:
-        seq = getattr(comp, "next_invoice_nr", None)
-        try:
-            return build_invoice_number(comp, _current_customer_obj(), seq, date_value)
-        except Exception:
-            return f"INV-{date_value}" if date_value else "ENTWURF"
-
-    def _preview_filename(number_value: str, date_value: str) -> str:
-        try:
-            preview_invoice = SimpleNamespace(nr=number_value, date=date_value)
-            return build_invoice_filename(comp, preview_invoice, _current_customer_obj())
-        except Exception:
-            return ""
-
     def update_preview(force_pdf: bool = False) -> None:
-        vat_enabled = bool(vat_switch.value)
-        vat_rate = max((float(_get(it, "tax_rate", default=0) or 0) for it in items), default=0.0)
-        net, vat, gross = compute_invoice_totals(items, vat_enabled, vat_rate)
-        invoice_date_value = str(invoice_date_input.value or "")
-        preview_number = _preview_invoice_number(invoice_date_value)
-        preview_filename = _preview_filename(preview_number, invoice_date_value)
-
-        invoice = {
-            "title": title_input.value or "Rechnung",
-            "invoice_number": preview_number,
-            "invoice_date": invoice_date_value,
-            "filename": preview_filename,
-            "service_from": service_from,
-            "service_to": service_to,
-            "intro_text": intro_input.value or "",
-            "company": comp,
-            "customer": _current_customer_obj(),
-            "items": items,
-            "show_tax": vat_enabled,
-            "tax_rate": vat_rate,
-            "kleinunternehmer_note": "Als Kleinunternehmer im Sinne von § 19 UStG wird keine Umsatzsteuer berechnet.",
-            "totals": {"net": net, "vat": vat, "gross": gross},
-        }
-
-        preview_html = build_invoice_preview_html(invoice)
+        invoice = build_preview_invoice(comp, _current_customer_obj(), items, title_input.value or "Rechnung", str(invoice_date_input.value or ""), service_from, service_to, intro_input.value or "", bool(vat_switch.value))
+        html = render_preview_html(invoice)
         if preview_summary is not None:
-            preview_summary.content = preview_html
+            preview_summary.content = html
         if preview_summary_mobile is not None:
-            preview_summary_mobile.content = preview_html
+            preview_summary_mobile.content = html
         if not (force_pdf or preview_state["dirty"]):
             return
         preview_state["dirty"] = False
         try:
-            pdf_bytes = renderer.render(invoice, template_id=None)
-            pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
-            preview_frame_html = (
-                "<div class=\"ff-invoice-preview-frame\">"
-                "<iframe "
-                f"src=\"data:application/pdf;base64,{pdf_b64}\" "
-                "title=\"Invoice preview\"></iframe>"
-                "</div>"
-            )
+            frame_html = render_preview_pdf_frame(invoice, renderer)
             if preview_frame is not None:
-                preview_frame.content = preview_frame_html
+                preview_frame.content = frame_html
             if preview_frame_mobile is not None:
-                preview_frame_mobile.content = preview_frame_html
+                preview_frame_mobile.content = frame_html
         except Exception as ex:
-            if preview_frame is not None:
-                preview_frame.content = ""
-            if preview_frame_mobile is not None:
-                preview_frame_mobile.content = ""
-            preview_error_html = (
-                "<div class='text-rose-600'>PDF Fehler: "
-                f"{ex}</div>{preview_html}"
-            )
-            if preview_summary is not None:
-                preview_summary.content = preview_error_html
-            if preview_summary_mobile is not None:
-                preview_summary_mobile.content = preview_error_html
-
-    # Neukunden-Flow: Dialog auf der Rechnungsseite statt Seitenwechsel
-    new_customer_dialog = ui.dialog()
-    with new_customer_dialog:
-        with ff_card(
-            pad="p-4",
-            classes="w-full max-w-[92vw] max-h-[85vh] overflow-y-auto",
-        ):
-            ui.label("Neuer Kunde").classes(f"{STYLE_SECTION_TITLE} mb-2")
-            with settings_two_column_layout(max_width_class="max-w-4xl"):
-                contact_fields = customer_contact_card()
-                address_fields = customer_address_card(country_value=getattr(comp, "country", None) or "DE")
-                with settings_card("Rechnungsempfänger"):
-                    same_recipient_checkbox = ui.checkbox(
-                        "Rechnungsempfänger = Kontaktadresse",
-                        value=True,
-                    ).classes("mb-2")
-                    with settings_grid():
-                        recipient_name = ff_input("Rechnungsempfänger", value="")
-                        recipient_street = ff_input("Rechnungsstraße", value="")
-                        recipient_plz = ff_input("Rechnungs-PLZ", value="")
-                        recipient_city = ff_input("Rechnungs-Ort", value="")
-
-            name_input = contact_fields["name"]
-            first = contact_fields["first"]
-            last = contact_fields["last"]
-            email = contact_fields["email"]
-            short_code = contact_fields["short_code"]
-            street = address_fields["street"]
-            plz = address_fields["plz"]
-            city = address_fields["city"]
-            country = address_fields["country"]
-
-            def _contact_display_name() -> str:
-                name_value = (name_input.value or "").strip()
-                if name_value:
-                    return name_value
-                return f"{first.value or ''} {last.value or ''}".strip()
-
-            def _sync_recipient_with_contact() -> None:
-                recipient_name.value = _contact_display_name()
-                recipient_street.value = street.value or ""
-                recipient_plz.value = plz.value or ""
-                recipient_city.value = city.value or ""
-
-            def _maybe_sync_recipient() -> None:
-                if same_recipient_checkbox.value:
-                    _sync_recipient_with_contact()
-
-            same_recipient_checkbox.on("update:model-value", lambda _: _maybe_sync_recipient())
-            _maybe_sync_recipient()
-
-            def _reset_new_customer_form(prefill_name: str = "") -> None:
-                name_input.value = prefill_name
-                first.value = ""
-                last.value = ""
-                email.value = ""
-                short_code.value = ""
-                street.value = ""
-                plz.value = ""
-                city.value = ""
-                country.value = getattr(comp, "country", None) or "DE"
-                _maybe_sync_recipient()
-
-            def _save_new_customer() -> None:
-                nonlocal all_customers, customers_by_id
-                display_name = (name_input.value or "").strip()
-                if not display_name and not ((first.value or "").strip() or (last.value or "").strip()):
-                    ui.notify("Bitte mindestens einen Namen für den Kunden angeben.", color="red")
-                    return
-
-                with get_session() as s:
-                    c = insert_customer(
-                        s,
-                        comp,
-                        name=name_input.value or "",
-                        vorname=first.value or "",
-                        nachname=last.value or "",
-                        email=email.value or "",
-                        short_code=short_code.value or "",
-                        strasse=street.value or "",
-                        plz=plz.value or "",
-                        ort=city.value or "",
-                        country=country.value or "",
-                        recipient_name=recipient_name.value or _contact_display_name(),
-                        recipient_street=recipient_street.value or "",
-                        recipient_postal_code=recipient_plz.value or "",
-                        recipient_city=recipient_city.value or "",
-                    )
-                    new_id = int(c.id) if c.id is not None else None
-
-                    # Kundenliste frisch laden, damit Optionen konsistent sind
-                    customer_stmt_local = (
-                        select(Customer)
-                        .where(Customer.company_id == int(comp.id), Customer.archived == False)
-                        .order_by(Customer.name)
-                    )
-                    all_customers = list(s.exec(customer_stmt_local).all())
-                    customers_by_id = {
-                        int(cu.id): cu for cu in all_customers if getattr(cu, "id", None) is not None
-                    }
-
-                customer_select.options = _build_customer_options()
-                if new_id is not None:
-                    customer_select.value = new_id
-                mark_preview_dirty()
-                ui.notify("Kunde gespeichert.", type="positive")
-                new_customer_dialog.close()
-
-            with ui.row().classes("w-full justify-end gap-2 mt-4"):
-                ff_btn_secondary("Abbrechen", on_click=new_customer_dialog.close)
-                ff_btn_primary("Speichern", on_click=_save_new_customer)
-
-    def _is_new_customer_selection(value: Any) -> bool:
-        return value == new_customer_value
+            for f in (preview_frame, preview_frame_mobile):
+                if f is not None:
+                    f.content = ""
+            err = f"<div class='text-rose-600'>PDF Fehler: {ex}</div>{html}"
+            for s in (preview_summary, preview_summary_mobile):
+                if s is not None:
+                    s.content = err
 
     def _on_customer_change(e) -> None:
-        if _is_new_customer_selection(e.value):
-            # Vorherige Eingabe für Firmenname ins Formular übernehmen
-            prefill_name = ""
-            previous_value = getattr(e, "previous_value", None)
-            if isinstance(previous_value, str) and not _is_new_customer_selection(previous_value):
-                prefill_name = previous_value.strip()
-            _reset_new_customer_form(prefill_name=prefill_name)
-            # Auswahl im Select zurücksetzen, damit der Dialog die eigentliche Aktion ist
+        if e.value == new_customer_value:
+            prefill = ""
+            prev = getattr(e, "previous_value", None)
+            if isinstance(prev, str) and prev != new_customer_value:
+                prefill = prev.strip()
+            new_customer_dialog._reset_form(prefill_name=prefill)  # type: ignore[attr-defined]
             customer_select.value = None
             new_customer_dialog.open()
             return

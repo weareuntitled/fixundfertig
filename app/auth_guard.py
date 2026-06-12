@@ -79,6 +79,22 @@ def is_authenticated(*, redirect: bool = False) -> bool:
         _ensure_local_auth_session()
         return True
 
+    # First, try the API's ff_session cookie (used by the React frontend).
+    request = _request_cv.get(None)
+    if request is not None:
+        try:
+            ff_session = request.cookies.get("ff_session") if hasattr(request, "cookies") else None
+        except Exception:
+            ff_session = None
+        if ff_session:
+            try:
+                from api.auth import load_session_token
+                load_session_token(ff_session)
+                return True
+            except Exception:
+                pass
+
+    # Fall back to Starlette session storage (used by NiceGUI pages).
     identifier = app.storage.user.get("auth_user")
     if identifier and is_identifier_allowed(identifier):
         return True

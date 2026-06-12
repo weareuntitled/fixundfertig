@@ -1,0 +1,371 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════════
+ * FixundFertig Design System
+ *
+ * Apple-style refined aesthetic:
+ *  - Generous whitespace
+ *  - Crisp 1px borders
+ *  - Subtle ambient elevation (no heavy shadows)
+ *  - Inter for UI, JetBrains Mono for numbers
+ *  - Neutral grays (no color tints), with navy for primary actions
+ *
+ * Tier 1: Global tokens  — Raw palette
+ * Tier 2: Alias tokens   — Semantic references
+ * Tier 3: Component tokens — Scoped to specific components
+ * ═══════════════════════════════════════════════════════════════════ */
+
+@theme {
+  /* ── Font Families ── */
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
+
+  /* ── Neutral Palette (Apple-inspired, no color tints) ── */
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --color-gray-0: #ffffff;
+  --color-gray-25: #fafafa;
+  --color-gray-50: #f5f5f7;
+  --color-gray-100: #efeff1;
+  --color-gray-150: #e8e8eb;
+  --color-gray-200: #e0e0e3;
+  --color-gray-300: #d1d1d6;
+  --color-gray-400: #aeaeb2;
+  --color-gray-500: #8e8e93;
+  --color-gray-600: #6e6e73;
+  --color-gray-700: #424245;
+  --color-gray-800: #1d1d1f;
+  --color-gray-900: #000000;
+
+  /* ── Blue (Apple systemBlue #007AFF) ── */
+  --color-blue-50: #f2f8ff;
+  --color-blue-100: #e3f0ff;
+  --color-blue-200: #c6e0ff;
+  --color-blue-400: #5ac8fa;
+  --color-blue-500: #007aff;
+  --color-blue-600: #0064d2;
+  --color-blue-700: #0040a3;
+  --color-blue-800: #001a42;
+  --color-blue-900: #001030;
+
+  /* ── Green (systemGreen) ── */
+  --color-green-50: #e8f8ee;
+  --color-green-100: #d1f0db;
+  --color-green-500: #34c759;
+  --color-green-600: #248a3d;
+  --color-green-700: #1c6b2f;
+
+  /* ── Red (systemRed) ── */
+  --color-red-50: #ffeef0;
+  --color-red-100: #ffd9de;
+  --color-red-500: #ff3b30;
+  --color-red-600: #d70015;
+  --color-red-700: #a50010;
+
+  /* ── Amber (systemOrange) ── */
+  --color-amber-50: #fff5e6;
+  --color-amber-100: #ffe6c2;
+  --color-amber-500: #ff9500;
+  --color-amber-600: #c93400;
+  --color-amber-700: #9c2700;
+
+  /* ── Violet ── */
+  --color-violet-50: #f1eafa;
+  --color-violet-100: #e3d5f5;
+  --color-violet-500: #af52de;
+  --color-violet-600: #8e3ec4;
+  --color-violet-700: #6d2a9a;
+
+  /* ── Navy (Lumina tertiary-container) ── */
+  --color-navy-800: #001a42;
+  --color-navy-900: #131b2e;
+
+  /* ── Charcoal (Lumina secondary) ── */
+  --color-charcoal-500: #5f5e5e;
+
+  /* ── Spacing Scale (4px base) ── */
+  --space-base: 4px;
+  --space-0: 0;
+  --space-px: 1px;
+  --space-0_5: 0.125rem;
+  --space-1: 0.25rem;
+  --space-1_5: 0.375rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+  --space-xs: 0.5rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+  --space-gutter: 24px;
+  --space-container-max: 1280px;
+
+  /* ── Border Radius (Apple HIG) ── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-full: 9999px;
+
+  /* ── Elevation (Apple-style ambient) ── */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 50px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-focus: 0 0 0 4px rgba(0, 122, 255, 0.12);
+  --shadow-focus-dark: 0 0 0 4px rgba(0, 0, 0, 0.08);
+
+  /* ── Motion ── */
+  --duration-instant: 50ms;
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 500ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ──────────────────────────────────────────────
+   * TIER 2: ALIAS TOKENS — Semantic
+   * ────────────────────────────────────────────── */
+
+  /* ── Surfaces ── */
+  --color-background: var(--color-gray-25);
+  --color-surface: var(--color-gray-25);
+  --color-surface-card: var(--color-white);
+  --color-surface-raised: var(--color-white);
+  --color-surface-sunken: var(--color-gray-50);
+  --color-surface-overlay: var(--color-gray-100);
+  --color-surface-bright: var(--color-white);
+  --color-surface-dim: var(--color-gray-100);
+  --color-surface-card-hover: var(--color-gray-50);
+  --color-surface-container-lowest: var(--color-white);
+  --color-surface-container-low: var(--color-gray-25);
+  --color-surface-container: var(--color-gray-50);
+  --color-surface-container-high: var(--color-gray-100);
+  --color-surface-container-highest: var(--color-gray-150);
+
+  /* ── Text ── */
+  --color-text-heading: var(--color-gray-900);
+  --color-text-primary: var(--color-gray-800);
+  --color-text-secondary: var(--color-gray-600);
+  --color-text-tertiary: var(--color-gray-500);
+  --color-text-muted: var(--color-gray-500);
+  --color-text-placeholder: var(--color-gray-400);
+  --color-text-on-brand: var(--color-white);
+  --color-text-link: var(--color-blue-500);
+  --color-text-link-hover: var(--color-blue-600);
+  --color-text-danger: var(--color-red-500);
+  --color-text-success: var(--color-green-600);
+  --color-text-warning: var(--color-amber-600);
+
+  /* ── Borders (Apple 1px with hairline) ── */
+  --color-border: var(--color-gray-150);
+  --color-border-strong: var(--color-gray-200);
+  --color-border-subtle: var(--color-gray-100);
+  --color-border-focus: var(--color-blue-500);
+  --color-border-danger: var(--color-red-500);
+  --color-border-divider: rgba(0, 0, 0, 0.06);
+
+  /* ── Brand / Primary ── */
+  --color-brand: var(--color-gray-900);
+  --color-brand-hover: var(--color-gray-800);
+  --color-brand-text: var(--color-blue-500);
+  --color-brand-text-hover: var(--color-blue-600);
+  --color-brand-surface: var(--color-blue-50);
+  --color-brand-surface-subtle: var(--color-blue-50);
+  --color-brand-deep: var(--color-navy-800);
+
+  /* ── Status ── */
+  --color-status-draft: var(--color-gray-600);
+  --color-status-draft-bg: var(--color-gray-100);
+  --color-status-draft-text: var(--color-gray-700);
+  --color-status-open: var(--color-blue-500);
+  --color-status-open-bg: var(--color-blue-50);
+  --color-status-sent: var(--color-violet-500);
+  --color-status-sent-bg: var(--color-violet-50);
+  --color-status-paid: var(--color-green-600);
+  --color-status-paid-bg: var(--color-green-50);
+  --color-status-cancelled: var(--color-red-500);
+  --color-status-cancelled-bg: var(--color-red-50);
+
+  /* ── Semantic ── */
+  --color-info: var(--color-blue-500);
+  --color-info-bg: var(--color-blue-50);
+  --color-success: var(--color-green-500);
+  --color-success-bg: var(--color-green-50);
+  --color-warning: var(--color-amber-500);
+  --color-warning-bg: var(--color-amber-50);
+  --color-danger: var(--color-red-500);
+  --color-danger-bg: var(--color-red-50);
+
+  /* ──────────────────────────────────────────────
+   * TIER 3: COMPONENT TOKENS
+   * ────────────────────────────────────────────── */
+
+  /* ── Button ── */
+  --button-primary-bg: var(--color-gray-900);
+  --button-primary-text: var(--color-white);
+  --button-primary-hover: var(--color-gray-700);
+  --button-secondary-bg: var(--color-white);
+  --button-secondary-text: var(--color-text-primary);
+  --button-secondary-border: var(--color-border-strong);
+  --button-secondary-hover-bg: var(--color-gray-50);
+  --button-ghost-text: var(--color-text-secondary);
+  --button-ghost-hover-bg: var(--color-gray-50);
+  --button-danger-bg: var(--color-red-500);
+  --button-danger-text: var(--color-white);
+
+  /* ── Input ── */
+  --input-bg: var(--color-white);
+  --input-border: var(--color-border-strong);
+  --input-border-focus: var(--color-blue-500);
+  --input-text: var(--color-text-primary);
+  --input-placeholder: var(--color-text-placeholder);
+  --input-prefix-text: var(--color-text-muted);
+
+  /* ── Card ── */
+  --card-bg: var(--color-surface-card);
+  --card-border: var(--color-border);
+  --card-radius: var(--radius-lg);
+  --card-shadow: var(--shadow-xs);
+
+  /* ── Table ── */
+  --table-header-bg: var(--color-gray-50);
+  --table-header-text: var(--color-text-tertiary);
+  --table-row-border: var(--color-border);
+  --table-row-hover: var(--color-gray-25);
+  --table-cell-text: var(--color-text-primary);
+
+  /* ── Sidebar ── */
+  --sidebar-bg: rgba(255, 255, 255, 0.72);
+  --sidebar-width: 260px;
+  --sidebar-border: var(--color-border);
+  --sidebar-nav-active-bg: var(--color-gray-100);
+  --sidebar-nav-active-text: var(--color-gray-900);
+  --sidebar-nav-hover-bg: var(--color-gray-50);
+  --sidebar-nav-text: var(--color-text-secondary);
+
+  /* ── Modal ── */
+  --modal-backdrop: rgba(0, 0, 0, 0.32);
+  --modal-backdrop-blur: 20px;
+  --modal-radius: var(--radius-xl);
+  --modal-shadow: var(--shadow-xl);
+
+  /* ── Header (topbar) ── */
+  --header-height: 56px;
+  --header-bg: rgba(255, 255, 255, 0.72);
+  --header-border: var(--color-border);
+}
+
+/* ── Global Base ── */
+@layer base {
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    font-family: var(--font-body);
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+    border-radius: var(--radius-sm);
+  }
+
+  /* Hairline border on retina screens */
+  @media (-webkit-min-device-pixel-ratio: 2) {
+    .border-hairline { border-width: 0.5px; }
+  }
+
+  /* Smooth scroll */
+  html { scroll-behavior: smooth; }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 4px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); border: 2px solid transparent; background-clip: padding-box; }
+
+  ::selection { background: var(--color-blue-100); color: var(--color-blue-900); }
+}
+
+/* ── Utility Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in { animation: fadeIn 0.25s var(--ease-out-expo) both; }
+.animate-fade-in-scale { animation: fadeInScale 0.2s var(--ease-out-expo) both; }
+.animate-slide-in-right { animation: slideInRight 0.25s var(--ease-out-expo) both; }
+.animate-spin { animation: spin 0.8s linear infinite; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-gray-100) 25%, var(--color-gray-50) 50%, var(--color-gray-100) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+
+/* ── A4 Invoice Sheet ── */
+.a4-sheet { width: 210mm; min-height: 297mm; padding: 20mm; }
+@media (max-width: 1024px) { .a4-sheet { width: 100%; padding: 10mm; min-height: auto; } }
+
+/* ── Material Symbols ── */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined", sans-serif;
+  font-weight: normal; font-style: normal; font-size: 24px;
+  line-height: 1; letter-spacing: normal; text-transform: none;
+  display: inline-block; white-space: nowrap; direction: ltr;
+  -webkit-font-feature-settings: "liga"; -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+/* ── Glass effect (Apple-style backdrop blur) ── */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}

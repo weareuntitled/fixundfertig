@@ -40,6 +40,33 @@ python app/main.py
 
 Optional: im Repo-Root ausführen (damit `app/` als Script-Verzeichnis gilt).
 
+### Frontend (React) — M1 aktiv
+
+Das React-Frontend befindet sich in `frontend/` (Vite + TypeScript + TanStack Router/Query). Es läuft parallel zum NiceGUI-Backend.
+
+```bash
+# Terminal 1: Backend (Port 8080)
+python app/main.py
+
+# Terminal 2: Frontend Dev-Server (Port 5173)
+cd frontend
+npm install     # einmalig
+npm run dev
+# → http://localhost:5173 — Login-Seite
+```
+
+Auth-Flow: `POST /api/auth/login` setzt `ff_session` (httpOnly) + `ff_csrf` Cookies; React sendet bei mutating Calls `X-CSRF-Token`-Header. Vite-Proxy leitet `/api` an Backend weiter — kein CORS-Setup nötig.
+
+Smoke-Tests:
+```bash
+cd frontend
+npm run build       # tsc + vite build, muss grün sein
+npm run test        # Vitest (1 Smoke-Test)
+npm run test:e2e    # Playwright (1 Smoke-Test gegen Login-Seite)
+```
+
+Detaillierter Plan: siehe [`docs/react_handoff.md`](docs/react_handoff.md) (insb. §4 Tag-1-Runbook, §5 Phase-Plan M0–M6).
+
 ### Code-Struktur
 
 - **`app/` ist die einzige Codebasis und der Runtime-Entry-Point.** Docker startet `python main.py` im Container, nachdem der Inhalt von `app/` nach `/app` kopiert wurde. Daher läuft die produktive App immer über `app/main.py`.【F:Dockerfile†L21-L32】

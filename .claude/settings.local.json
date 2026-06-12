@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(grep -rn \"amber\\\\|yellow\\\\|#f59e0b\\\\|#d97706\\\\|#fbbf24\\\\|#f3ad0f\" /c/Users/hi/fixundfertig/app/ --include=*.py)",
+      "Bash(grep -rn \"C_BTN\\\\|C_CARD\\\\|C_PAGE_TITLE\\\\|C_SECTION_TITLE\\\\|C_TABLE_HEADER\\\\|C_TABLE_ROW\\\\|C_BADGE\\\\|C_INPUT\\\\|C_LINK_BRAND\" /c/Users/hi/fixundfertig/app/pages/ --include=*.py)",
+      "Bash(find /c/Users/hi/fixundfertig/app -name \"*.pyc\" -path \"*__pycache__*\" -delete)",
+      "Bash(find /c/Users/hi/fixundfertig/app -type d -name \"__pycache__\" -empty -delete)",
+      "Bash(python3 -c \"import sys; sys.path.insert\\(0, ''/c/Users/hi/fixundfertig/app''\\); from styles import APP_FONT_CSS; print\\(''indigo'' if ''6366f1'' in APP_FONT_CSS else ''amber'' if ''f59e0b'' in APP_FONT_CSS else ''unknown''\\); print\\(APP_FONT_CSS[800:1000]\\)\")",
+      "Bash(python -c \"from styles import APP_FONT_CSS; print\\(''indigo'' if ''6366f1'' in APP_FONT_CSS else ''AMBER_OLD'' if ''f59e0b'' in APP_FONT_CSS else ''unknown''\\)\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill /PID 16580 /F)",
+      "Bash(kill -9 16580)",
+      "Bash(cmd.exe /c \"taskkill /PID 16580 /F\")",
+      "Bash(cmd.exe /c \"netstat -ano | findstr :8000\")",
+      "Bash(powershell.exe -Command \"Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,OwningProcess\")",
+      "Bash(powershell.exe -Command \"Stop-Process -Id 16580 -Force\")",
+      "Bash(powershell.exe -Command \"Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object OwningProcess\")",
+      "Bash(powershell.exe -Command \"Get-Process -Id 16580 -ErrorAction SilentlyContinue | Select-Object Id,Name,Path\")",
+      "Bash(powershell.exe -Command \"Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; [PSCustomObject]@{PID=$_.OwningProcess; Name=$p.Name; Path=$p.Path} }\")",
+      "Bash(powershell.exe -Command \"\\(Get-CimInstance Win32_Process -Filter ''ProcessId=120008''\\).CommandLine\")",
+      "Bash(powershell.exe -Command \"$h = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR\\(''''\\); \\(Get-CimInstance Win32_Process -Filter ''ProcessId=120008''\\).ExecutablePath; $wmi = Get-WmiObject Win32_Process -Filter ''ProcessId=120008''; $wmi.ExecutablePath\")",
+      "Bash(powershell.exe -Command \"Get-CimInstance Win32_Process -Filter ''ProcessId=120008'' | Select-Object CommandLine,WorkingSetSize | Format-List\")",
+      "Bash(ls /c/Users/hi/fixundfertig/.env*)",
+      "Bash(powershell.exe -Command \"Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; Start-Sleep 1; Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Measure-Object | Select-Object Count\")",
+      "Bash(find /c/Users/hi/fixundfertig/app -name \"*.pyc\" -not -path \"*/venv/*\" -delete)"
+    ]
+  }
+}

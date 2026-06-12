@@ -70,6 +70,7 @@ def send_email(
     text: str,
     html: str | None = None,
     smtp_config: dict[str, Any] | None = None,
+    attachments: list[dict[str, Any]] | None = None,
 ) -> bool:
     """
     smtp_config optional:
@@ -98,6 +99,19 @@ def send_email(
     msg.set_content(text)
     if html:
         msg.add_alternative(html, subtype="html")
+
+    for attachment in attachments or []:
+        filename = str(attachment.get("filename") or "attachment.bin").strip() or "attachment.bin"
+        content = attachment.get("content")
+        if isinstance(content, bytearray):
+            content = bytes(content)
+        if not isinstance(content, bytes):
+            raise ValueError(f"Attachment {filename} content must be bytes")
+        mime_type = str(attachment.get("mime_type") or "application/octet-stream")
+        maintype, _, subtype = mime_type.partition("/")
+        maintype = maintype or "application"
+        subtype = subtype or "octet-stream"
+        msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)
 
     host = cfg["host"]
     port = int(cfg["port"])

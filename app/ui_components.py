@@ -18,6 +18,17 @@ from styles import (
     STYLE_BTN_SECONDARY,
     STYLE_CARD,
     STYLE_CARD_HOVER,
+    STYLE_EMPTY,
+    STYLE_EMPTY_BODY,
+    STYLE_EMPTY_TITLE,
+    STYLE_EYEBROW,
+    STYLE_EYEBROW_ASIDE,
+    STYLE_EYEBROW_LABEL,
+    STYLE_EYEBROW_RULE,
+    STYLE_HERO,
+    STYLE_HERO_EYEBROW,
+    STYLE_HERO_META,
+    STYLE_HERO_VALUE,
     STYLE_ICON_TOOLBAR,
     STYLE_INPUT,
     STYLE_PAGE_TITLE,
@@ -201,6 +212,38 @@ def kpi_card(
                 if trend_icon:
                     ui.icon(trend_icon).classes(f"text-xs {trend_color_class}")
                 ui.label(trend_text).classes(f"text-xs {trend_color_class}")
+
+@contextmanager
+def ff_hero(eyebrow: str, value: str, meta: str | None = None, *, classes: str = ""):
+    """Top-of-page hero: large editorial-serif number with an ink-wash background.
+    Use exactly ONE per page (usually above KPI grids or table lists)."""
+    with ui.element("div").classes(f"{STYLE_HERO} {classes}".strip()) as hero:
+        ui.label(eyebrow).classes(STYLE_HERO_EYEBROW)
+        ui.label(value).classes(STYLE_HERO_VALUE)
+        if meta:
+            ui.label(meta).classes(STYLE_HERO_META)
+        yield hero
+
+
+@contextmanager
+def ff_empty_state(title: str, body: str, *, icon: str = "inbox", classes: str = ""):
+    """Editorial empty state. Mono caption, single-line description, single CTA slot."""
+    with ui.element("div").classes(f"{STYLE_EMPTY} {classes}".strip()) as panel:
+        with ui.element("div").classes("ff-empty-glyph"):
+            ui.icon(icon)
+        ui.label(title).classes(STYLE_EMPTY_TITLE)
+        ui.label(body).classes(STYLE_EMPTY_BODY)
+        yield panel
+
+
+def ff_eyebrow(label: str, aside: str | None = None) -> None:
+    """Small uppercase eyebrow + thin rule. Replaces a generic section title."""
+    with ui.element("div").classes(STYLE_EYEBROW):
+        ui.label(label).classes(STYLE_EYEBROW_LABEL)
+        if aside:
+            ui.label(aside).classes(STYLE_EYEBROW_ASIDE)
+        ui.element("div").classes(STYLE_EYEBROW_RULE)
+
 
 @contextmanager
 def settings_card(title: str | None = None, classes: str = ""):

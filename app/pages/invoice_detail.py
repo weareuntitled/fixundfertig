@@ -1,5 +1,7 @@
 from __future__ import annotations
 from ._shared import *
+from ._shared import _render_status_stepper
+from ._shared import _open_invoice_detail
 from styles import STYLE_TEXT_MUTED, STYLE_TEXT_SUBTLE
 from ui_components import ff_btn_primary, ff_btn_secondary, ff_card, ff_icon_button, ff_textarea
 
@@ -82,8 +84,8 @@ def render_invoice_detail(session, comp: Company) -> None:
                             if err:
                                 ui.notify(err, color="red")
                             else:
-                                ui.notify("Korrektur als Entwurf erstellt", color="green")
-                                _open_invoice_editor(int(corr.id))
+                                ui.notify("Korrekturrechnung erstellt", color="green")
+                                _open_invoice_detail(int(corr.id))
                         except Exception as e:
                             ui.notify(f"Fehler: {e}", color="red")
 

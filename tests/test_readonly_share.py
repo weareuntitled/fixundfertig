@@ -28,6 +28,9 @@ def _reset_session(data_module, tmp_path: Path) -> None:
     SessionLocal = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
     data_module.engine = engine
     data_module.SessionLocal = SessionLocal
+    import db as db_module
+    db_module.engine = engine
+    db_module.SessionLocal = SessionLocal
 
 
 def test_readonly_token_valid_single_use_and_expired(tmp_path: Path, monkeypatch) -> None:
@@ -92,6 +95,10 @@ def test_readonly_mode_blocks_document_mutation_and_share_viewer_redirect(tmp_pa
     main_module.app.storage.user["auth_user"] = "owner@example.com"
     main_module.app.storage.user["readonly_mode"] = True
     main_module._require_api_auth = lambda: None
+    # M0-Block: documents router uses dependencies.require_session_auth via FastAPI Depends.
+    # Override it on the app so the request is treated as authenticated.
+    import documents as documents_module
+    main_module.app.dependency_overrides[documents_module.require_session_auth] = lambda: int(user.id or 0)
 
     blocked = client.delete(f"/api/documents/{int(document.id or 0)}")
     assert blocked.status_code == 403

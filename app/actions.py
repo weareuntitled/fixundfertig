@@ -2,7 +2,8 @@ from datetime import datetime
 import os
 from sqlmodel import select
 
-from data import AuditLog, Invoice, InvoiceItem, InvoiceRevision, InvoiceStatus, get_session, log_audit_action
+from data import AuditLog, Company, Customer, Invoice, InvoiceItem, InvoiceRevision, InvoiceStatus, get_session, log_audit_action
+from logic import _next_unique_invoice_number
 
 STATUS_AUDIT_ACTIONS = {
     InvoiceStatus.SENT: "INVOICE_SENT",
@@ -39,13 +40,18 @@ def create_correction(original_invoice_id, use_negative_items=True):
 
         items = session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == original.id)).all()
         reference_text = f"Bezug: Rechnung Nr. {original.nr} vom {original.date}"
+        customer = session.get(Customer, int(original.customer_id)) if original.customer_id else None
+        company = session.get(Company, int(customer.company_id)) if customer and customer.company_id else None
+        nr = str(_next_unique_invoice_number(session, company)) if company else None
+        if company:
+            session.add(company)
 
         correction = Invoice(
             customer_id=original.customer_id,
-            nr=None,
+            nr=nr,
             date=datetime.now().strftime('%Y-%m-%d'),
             total_brutto=-float(original.total_brutto or 0),
-            status=InvoiceStatus.DRAFT,
+            status=InvoiceStatus.OPEN,
             related_invoice_id=original.id
         )
         session.add(correction)
