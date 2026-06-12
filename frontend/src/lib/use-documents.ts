@@ -2,13 +2,22 @@ import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "./api";
 
-const documentSchema = z.object({
+export const documentSchema = z.object({
   id: z.number().int(),
-  filename: z.string().default(""),
   original_filename: z.string().default(""),
+  title: z.string().default(""),
+  vendor: z.string().default(""),
+  doc_number: z.string().default(""),
+  doc_date: z.string().default(""),
+  amount_total: z.number().nullable().default(null),
+  amount_net: z.number().nullable().default(null),
+  amount_tax: z.number().nullable().default(null),
+  currency: z.string().default(""),
   mime: z.string().default(""),
   size: z.number().int().default(0),
   source: z.string().default("MANUAL"),
+  type: z.string().default(""),
+  description: z.string().default(""),
   created_at: z.string().default(""),
 });
 

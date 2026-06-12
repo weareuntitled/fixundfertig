@@ -27,7 +27,7 @@ describe("useDocuments", () => {
       ok: true,
       status: 200,
       json: () => Promise.resolve([
-        { id: 1, company_id: 1, filename: "r.pdf", original_filename: "r.pdf", mime: "application/pdf", size: 1024, source: "MANUAL", created_at: "2026-06-10" },
+        { id: 1, original_filename: "r.pdf", title: "", vendor: "", doc_number: "", doc_date: "", amount_total: null, amount_net: null, amount_tax: null, currency: "", mime: "application/pdf", size: 1024, source: "MANUAL", type: "pdf", description: "", created_at: "2026-06-10" },
       ]),
     } as Response);
 
@@ -36,7 +36,7 @@ describe("useDocuments", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toHaveLength(1);
-    expect(result.current.data![0].filename).toBe("r.pdf");
+    expect(result.current.data![0].original_filename).toBe("r.pdf");
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/documents",
       expect.objectContaining({ credentials: "include" }),
