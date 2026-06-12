@@ -2,22 +2,28 @@
 # APP/MAIN.PY (REPLACE FULL FILE)
 # =========================
 
+import base64
 import hashlib
+import hmac
 import importlib.util
+import json
 import logging
 import re
+import mimetypes
 import os
 import time
 from threading import Lock
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request as UrlRequest, urlopen
 
-from fastapi import HTTPException, Response, UploadFile, File, Form, Request
-from fastapi.responses import JSONResponse
+from fastapi import HTTPException, Response, UploadFile, File, Form, Header, Request
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from starlette.responses import RedirectResponse
 from nicegui import ui, app, helpers
 from nicegui.storage import Storage, PseudoPersistentDict, request_contextvar
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from sqlmodel import select
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -33,10 +39,12 @@ from logging_setup import setup_logging
 setup_logging()
 
 from auth_guard import clear_auth_session, is_authenticated, require_auth, set_request_for_context
-from data import Company, Customer, Document, Invoice, User, get_session
+from data import Company, Customer, Document, DocumentMeta, Invoice, User, WebhookEvent, get_session
+from renderer import render_invoice_to_pdf_bytes
 from styles import STYLE_BG, STYLE_CONTAINER, STYLE_INPUT, STYLE_TAP_TARGET, STYLE_TEXT_MUTED
 from ui_theme import apply_global_ui_theme
 from ui_components import ff_btn_primary, ff_card, ff_icon_button
+from invoice_numbering import build_invoice_filename
 from pages import (
     render_dashboard,
     render_customers,
@@ -62,19 +70,35 @@ from pages._shared import (
     app_shell_nav_items,
 )
 from services.blob_storage import blob_storage, build_document_key
-from services.auth import ensure_owner_user, get_owner_email
+from services.storage import company_logo_path
+from services.auth import ensure_owner_user, get_owner_email, validate_readonly_share_token
 from services.documents import (
+    backfill_document_fields,
     build_document_record,
     build_display_title,
+    document_matches_filters,
+    document_storage_path,
+    resolve_document_path,
     normalize_keywords,
     safe_filename,
     serialize_document,
     validate_document_upload,
 )
-logger = logging.getLogger(__name__)
+_CACHE_TTL_SECONDS = 300
+_CACHE_MAXSIZE = 256
+_CACHE_KEY_TYPE = tuple[int, int]
 _cachetools_spec = importlib.util.find_spec("cachetools")
 if _cachetools_spec is not None:
     from cachetools import TTLCache
+    _invoice_pdf_cache = TTLCache(maxsize=_CACHE_MAXSIZE, ttl=_CACHE_TTL_SECONDS)
+else:
+    _invoice_pdf_cache: dict[_CACHE_KEY_TYPE, tuple[float, bytes]] = {}
+
+_DOCUMENT_STORAGE_ROOT = Path(os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage")
+logger = logging.getLogger(__name__)
+_N8N_MIN_PAYLOAD_BYTES = 32
+_N8N_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_N8N_MONEY_PATTERN = re.compile(r"^-?\d+\.\d{2}$")
 
 _IS_PYTEST = helpers.is_pytest()
 _FF_ENV = (os.getenv("FF_ENV") or "").strip().lower() or ("test" if _IS_PYTEST else "development")
@@ -240,41 +264,9 @@ class _RequestContextMiddleware:
 _configure_security_middleware()
 app.add_middleware(_RequestContextMiddleware)
 
-from api import api_router  # noqa: E402  (after middleware so middleware applies to api routes too)
-app.include_router(api_router)
 
-import webhooks  # noqa: E402  (registers n8n webhook endpoints)
-import viewer  # noqa: E402  (registers invoice viewer/PDF endpoints)
-
-# ── React SPA mount (BEFORE NiceGUI so it takes priority) ──
-from starlette.routing import Mount as _Mount
-from starlette.staticfiles import StaticFiles as _StaticFiles
-from starlette.responses import FileResponse as _FileResponse
-
-_REACT_DIST = Path(__file__).resolve().parent / "static" / "frontend"
-_REACT_INDEX = _REACT_DIST / "index.html"
-
-
-class _ReactSPA(_StaticFiles):
-    """Serves the React SPA: index.html for /app/*, static assets for /app/assets/*."""
-
-    def __init__(self):
-        directory = str(_REACT_DIST) if _REACT_DIST.is_dir() else str(Path(__file__).resolve().parent)
-        super().__init__(directory=directory, html=True)
-
-    async def get_response(self, path, scope):
-        # For /app itself or /app/ with no file extension → serve index.html
-        if not path or path == "" or (not "." in path.split("/")[-1]):
-            if _REACT_INDEX.is_file():
-                return _FileResponse(str(_REACT_INDEX))
-        return await super().get_response(path, scope)
-
-
-if _REACT_DIST.is_dir():
-    app.mount("/static/frontend", _StaticFiles(directory=str(_REACT_DIST), html=True), name="react-static")
-    # React SPA is now the primary UI — mount at root so all browser paths hit it.
-    # API routes, static files, and favicon route are registered above and take priority.
-    app.mount("/", _ReactSPA(), name="react-spa-root")
+def _forbidden(detail: str = "Forbidden") -> None:
+    raise HTTPException(status_code=403, detail=detail)
 
 
 def _client_ip(request: Request) -> str:
@@ -324,6 +316,126 @@ def _rate_limit(request: Request, *, bucket: str, limit_per_min: int, key_suffix
         _RATE_COUNTERS[key] = (expires_at, current + 1)
 
 
+class N8NExtractedPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    vendor: str | None = None
+    doc_date: str | None = None
+    amount_total: str | None = None
+    amount_net: str | None = None
+    amount_tax: str | None = None
+    currency: str | None = None
+    doc_number: str | None = None
+    title: str | None = None
+    summary: str | None = None
+    keywords: list[str] | str | None = None
+    line_items: list[object] | None = None
+    compliance_flags: list[object] | None = None
+    sha256: str | None = None
+
+    @field_validator(
+        "vendor",
+        "doc_date",
+        "currency",
+        "doc_number",
+        "title",
+        "summary",
+        "sha256",
+        mode="before",
+    )
+    @classmethod
+    def _strip_optional_strings(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def _strip_keywords(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    @field_validator("doc_date")
+    @classmethod
+    def _validate_doc_date(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("doc_date must be a string")
+        if not _N8N_DATE_PATTERN.fullmatch(value):
+            raise ValueError("doc_date must be YYYY-MM-DD")
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError("doc_date must be YYYY-MM-DD") from exc
+        return value
+
+    @field_validator("currency")
+    @classmethod
+    def _validate_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("currency must be a string")
+        normalized = value.strip().upper()
+        if len(normalized) != 3:
+            raise ValueError("currency must be 3 letters")
+        return normalized
+
+    @field_validator("amount_total", "amount_net", "amount_tax", mode="before")
+    @classmethod
+    def _validate_amounts(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        if isinstance(value, (int, float)):
+            value = f"{value:.2f}"
+        if not isinstance(value, str):
+            raise ValueError("amount must be a string")
+        stripped = value.strip()
+        if not _N8N_MONEY_PATTERN.fullmatch(stripped):
+            raise ValueError("amount must have 2 decimals")
+        return stripped
+
+
+class N8NIngestPayload(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={"required": ["company_id", "file_base64"]},
+    )
+
+    company_id: int | None = None
+    file_base64: str | None = None
+    event_id: str | None = None
+    file_name: str | None = None
+    extracted: N8NExtractedPayload | None = None
+
+
+def _get_cached_pdf(cache_key: _CACHE_KEY_TYPE) -> bytes | None:
+    if _cachetools_spec is not None:
+        return _invoice_pdf_cache.get(cache_key)
+    entry = _invoice_pdf_cache.get(cache_key)
+    if not entry:
+        return None
+    expires_at, payload = entry
+    if time.monotonic() >= expires_at:
+        _invoice_pdf_cache.pop(cache_key, None)
+        return None
+    return payload
+
+
+def _store_cached_pdf(cache_key: _CACHE_KEY_TYPE, payload: bytes) -> None:
+    if _cachetools_spec is not None:
+        _invoice_pdf_cache[cache_key] = payload
+        return
+    _invoice_pdf_cache[cache_key] = (time.monotonic() + _CACHE_TTL_SECONDS, payload)
+
 
 def _build_document_storage_path(
     company_id: int,
@@ -334,6 +446,75 @@ def _build_document_storage_path(
     timestamp = created_at if isinstance(created_at, datetime) else datetime.utcnow()
     return build_document_key(company_id, document_id, filename, now=timestamp)
 
+
+def _resolve_document_storage_path(storage_path: str | None) -> Path | None:
+    resolved_path = resolve_document_path(storage_path)
+    if not resolved_path:
+        return None
+    candidate = Path(resolved_path)
+    if not candidate.is_absolute():
+        root_name = _DOCUMENT_STORAGE_ROOT.name
+        if not (candidate.parts and candidate.parts[0] == root_name):
+            candidate = _DOCUMENT_STORAGE_ROOT / candidate
+    resolved = candidate.resolve()
+    root = _DOCUMENT_STORAGE_ROOT.resolve()
+    if not str(resolved).startswith(f"{root}{os.sep}"):
+        return None
+    return resolved
+
+
+def _parse_n8n_file_payload(file_base64: object) -> tuple[bytes, str]:
+    raw_value = str(file_base64 or "").strip()
+    if not raw_value:
+        raise HTTPException(status_code=400, detail="Missing file_base64 payload")
+    if "filesystem-v2" in raw_value:
+        raise HTTPException(status_code=400, detail="Invalid file_base64 payload")
+
+    mime_from_prefix = ""
+    payload = raw_value
+    if raw_value.startswith("data:"):
+        if "," not in raw_value:
+            raise HTTPException(status_code=400, detail="Invalid file_base64 prefix")
+        header, payload = raw_value.split(",", 1)
+        if ";base64" not in header:
+            raise HTTPException(status_code=400, detail="Invalid file_base64 prefix")
+        mime_from_prefix = header[5:header.index(";base64")].strip()
+    elif "," in raw_value and "base64" in raw_value.split(",", 1)[0]:
+        raise HTTPException(status_code=400, detail="Invalid file_base64 prefix")
+
+    if "filesystem-v2" in payload:
+        raise HTTPException(status_code=400, detail="Invalid file_base64 payload")
+
+    try:
+        file_bytes = base64.b64decode(payload, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid file_base64 payload") from exc
+    return file_bytes, mime_from_prefix
+
+
+def _validate_n8n_file_signature(file_bytes: bytes, mime_type: str, ext: str) -> None:
+    expected = ""
+    if mime_type.startswith("image/"):
+        expected = mime_type
+    elif ext in {"pdf", "png", "jpg", "jpeg"}:
+        expected = {
+            "pdf": "application/pdf",
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+        }[ext]
+
+    if not expected:
+        return
+    if len(file_bytes) < _N8N_MIN_PAYLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="Decoded file is too small")
+
+    if expected == "application/pdf" and not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="File content is not a valid PDF")
+    if expected == "image/png" and not file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(status_code=400, detail="File content is not a valid PNG")
+    if expected == "image/jpeg" and not file_bytes.startswith(b"\xff\xd8"):
+        raise HTTPException(status_code=400, detail="File content is not a valid JPEG")
 
 app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
 _FAVICON_PATH = Path(__file__).resolve().parent / "static" / "Logo-fixundfertig.svg"
@@ -385,6 +566,308 @@ def _resolve_active_company(session, user_id: int) -> Company:
     return company
 
 
+def _resolve_invoice_pdf_path(filename: str | None) -> Path | None:
+    if not filename:
+        return None
+    if Path(filename).is_absolute() or str(filename).startswith("storage/"):
+        return Path(filename)
+    return Path("storage/invoices") / filename
+
+
+def _json_text(value: object | None, *, default: str) -> str:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or default
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except TypeError:
+        return default
+
+
+def _format_nominatim_result(item: dict) -> dict:
+    address = item.get("address") or {}
+    road = address.get("road") or address.get("pedestrian") or address.get("path") or ""
+    house_number = address.get("house_number") or ""
+    street = " ".join(part for part in [road, house_number] if part).strip()
+    if not street:
+        street = address.get("street") or ""
+    postal_code = address.get("postcode") or ""
+    city = (
+        address.get("city")
+        or address.get("town")
+        or address.get("village")
+        or address.get("municipality")
+        or address.get("county")
+        or ""
+    )
+    country_code = (address.get("country_code") or "").upper()
+    country = address.get("country") or country_code
+    label = item.get("display_name") or ", ".join(
+        part for part in [street, f"{postal_code} {city}".strip(), country] if part
+    )
+    return {
+        "label": label,
+        "street": street,
+        "zip": postal_code,
+        "city": city,
+        "country": country,
+    }
+
+
+@app.get("/api/address-autocomplete")
+def address_autocomplete(q: str = "", country: str = "DE"):
+    query = (q or "").strip()
+    if len(query) < 3:
+        return []
+
+    params = {
+        "q": query,
+        "format": "json",
+        "addressdetails": 1,
+        "limit": 6,
+    }
+    if country:
+        params["countrycodes"] = country.lower()
+    url = f"https://nominatim.openstreetmap.org/search?{urlencode(params)}"
+    request = UrlRequest(
+        url,
+        headers={
+            "User-Agent": "FixundFertig/1.0 (autocomplete)",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urlopen(request, timeout=6) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    if not isinstance(payload, list):
+        return []
+    return [_format_nominatim_result(item) for item in payload]
+
+
+N8N_INGEST_OPENAPI = {
+    "requestBody": {
+        "required": True,
+        "content": {"application/json": {"schema": N8NIngestPayload.model_json_schema()}},
+    }
+}
+
+
+@app.post("/api/webhooks/n8n/ingest", openapi_extra=N8N_INGEST_OPENAPI)
+async def n8n_ingest(request: Request):
+    raw_body = await request.body()
+    if len(raw_body) > _MAX_UPLOAD_BYTES * 2:
+        raise HTTPException(status_code=413, detail="Payload too large")
+    timestamp_header = (request.headers.get("X-Timestamp") or "").strip()
+    secret_header = (request.headers.get("X-N8N-Secret") or request.headers.get("X-API-KEY") or "").strip()
+    signature_header = (request.headers.get("X-Signature") or "").strip()
+    event_id_header = (request.headers.get("X-Event-Id") or "").strip()
+
+    if not timestamp_header:
+        _forbidden()
+
+    try:
+        timestamp = int(timestamp_header)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid timestamp")
+
+    drift = abs(int(time.time()) - timestamp)
+    if drift > 300:
+        _forbidden()
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid payload structure")
+
+    extracted_payload = _resolve_extracted_payload(payload)
+    extracted = _validate_extracted_payload(extracted_payload)
+
+    event_id = event_id_header or str(payload.get("event_id") or "").strip()
+    company_id_raw = payload.get("company_id")
+    file_base64 = payload.get("file_base64")
+    if not event_id or company_id_raw is None or file_base64 is None:
+        raise HTTPException(status_code=400, detail="Missing required payload fields")
+
+    try:
+        company_id = int(company_id_raw)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid company_id")
+
+    _rate_limit(request, bucket="webhooks", limit_per_min=_RATELIMIT_WEBHOOKS_PER_MIN, key_suffix=str(company_id))
+
+    with get_session() as session:
+        company = session.get(Company, company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        if not bool(getattr(company, "n8n_enabled", False)):
+            _forbidden()
+        secret = (getattr(company, "n8n_secret", "") or "").strip()
+        if not secret:
+            _forbidden()
+        if signature_header:
+            signature_input = f"{timestamp}.".encode("utf-8") + raw_body
+            expected_signature = hmac.new(secret.encode("utf-8"), signature_input, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected_signature, signature_header):
+                _forbidden()
+        else:
+            if not secret_header or not event_id_header:
+                _forbidden()
+            if not hmac.compare_digest(secret, secret_header):
+                _forbidden()
+
+        existing_event = session.exec(
+            select(WebhookEvent).where(WebhookEvent.event_id == event_id)
+        ).first()
+        if existing_event:
+            raise HTTPException(status_code=409, detail="Duplicate event")
+
+        try:
+            file_bytes, mime_from_prefix = _parse_n8n_file_payload(file_base64)
+        except HTTPException as exc:
+            logger.warning(
+                "n8n ingest rejected payload event_id=%s company_id=%s reason=%s",
+                event_id,
+                company_id_raw,
+                exc.detail,
+            )
+            raise
+
+        file_name = (payload.get("file_name") or payload.get("filename") or "").strip()
+        if not file_name:
+            if mime_from_prefix == "application/pdf":
+                file_name = f"document_{event_id}.pdf"
+            elif mime_from_prefix == "image/png":
+                file_name = f"document_{event_id}.png"
+            elif mime_from_prefix == "image/jpeg":
+                file_name = f"document_{event_id}.jpg"
+            else:
+                file_name = f"document_{event_id}.bin"
+        original_filename = file_name
+        safe_name = safe_filename(file_name)
+
+        validate_document_upload(safe_name, len(file_bytes))
+
+        ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
+        mime_type = mime_from_prefix or {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "png": "image/png",
+        }.get(ext, "application/octet-stream")
+        _validate_n8n_file_signature(file_bytes, mime_type, ext)
+
+        vendor_value = (extracted.get("vendor") or "").strip()
+        doc_date_value = (extracted.get("doc_date") or "").strip() or None
+        amount_value = _parse_optional_float(extracted.get("amount_total"))
+        amount_net_value = _parse_optional_float(extracted.get("amount_net"))
+        amount_tax_value = _parse_optional_float(extracted.get("amount_tax"))
+        currency_value = (extracted.get("currency") or "").strip() or None
+        doc_number_value = (extracted.get("doc_number") or "").strip()
+        title_value = (extracted.get("title") or "").strip()
+        if not title_value:
+            title_value = build_display_title(
+                vendor_value,
+                doc_date_value,
+                amount_value,
+                currency_value,
+                safe_name,
+            )
+        description_value = (extracted.get("summary") or "").strip()
+        keywords_value = extracted.get("keywords")
+
+        provided_sha256 = (extracted.get("sha256") or "").strip()
+        if re.fullmatch(r"[A-Fa-f0-9]{64}", provided_sha256):
+            sha256 = provided_sha256.lower()
+        else:
+            sha256 = hashlib.sha256(file_bytes).hexdigest()
+        size_bytes = len(file_bytes)
+        document = build_document_record(
+            company_id,
+            original_filename,
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+            sha256=sha256,
+            source="n8n",
+            doc_type=ext,
+            storage_key="pending",
+            storage_path="",
+            title=title_value,
+            description=description_value,
+            vendor=vendor_value,
+            doc_number=doc_number_value,
+            doc_date=doc_date_value,
+            amount_total=amount_value,
+            amount_net=amount_net_value,
+            amount_tax=amount_tax_value,
+            currency=currency_value,
+        )
+        document.keywords_json = normalize_keywords(keywords_value)
+        session.add(document)
+        session.flush()
+
+        storage_path = _build_document_storage_path(
+            company_id,
+            int(document.id or 0),
+            safe_name,
+            document.created_at,
+        )
+        document.storage_path = storage_path
+        document.storage_key = storage_path
+
+        resolved_path = _resolve_document_storage_path(storage_path)
+        if resolved_path is None:
+            session.rollback()
+            raise HTTPException(status_code=500, detail="Invalid storage path")
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            resolved_path.write_bytes(file_bytes)
+        except OSError as exc:
+            session.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
+        session.commit()
+        session.refresh(document)
+
+        raw_payload_json = json.dumps(payload, ensure_ascii=False)
+        line_items_json = _json_text(
+            extracted.get("line_items") if isinstance(extracted, dict) else None,
+            default="[]",
+        )
+        compliance_flags_json = _json_text(
+            extracted.get("compliance_flags") if isinstance(extracted, dict) else None,
+            default="[]",
+        )
+        meta = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id == int(document.id or 0))
+        ).first()
+        if meta:
+            meta.raw_payload_json = raw_payload_json
+            meta.line_items_json = line_items_json
+            meta.compliance_flags_json = compliance_flags_json
+        else:
+            session.add(
+                DocumentMeta(
+                    document_id=int(document.id or 0),
+                    raw_payload_json=raw_payload_json,
+                    line_items_json=line_items_json,
+                    compliance_flags_json=compliance_flags_json,
+                )
+            )
+
+        session.add(WebhookEvent(event_id=event_id, source="n8n"))
+        session.commit()
+        session.refresh(document)
+        return {"status": "ok", "document_id": int(document.id or 0)}
+
+
 def _parse_optional_float(value: object) -> float | None:
     if value is None or value == "":
         return None
@@ -392,6 +875,279 @@ def _parse_optional_float(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _payload_text(payload: dict, key: str) -> str:
+    value = payload.get(key)
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
+def _build_legacy_extracted_payload(payload: dict) -> dict:
+    legacy_keys = (
+        "vendor",
+        "doc_date",
+        "amount_total",
+        "amount_net",
+        "amount_tax",
+        "currency",
+        "doc_number",
+        "title",
+        "summary",
+        "keywords",
+        "line_items",
+        "compliance_flags",
+        "sha256",
+    )
+    extracted: dict = {}
+    for key in legacy_keys:
+        if key not in payload:
+            continue
+        value = payload.get(key)
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                continue
+        if value is None:
+            continue
+        extracted[key] = value
+    return extracted
+
+
+def _resolve_extracted_payload(payload: dict) -> dict:
+    if "extracted" in payload:
+        extracted_raw = payload.get("extracted")
+        if extracted_raw is None:
+            return _build_legacy_extracted_payload(payload)
+        if not isinstance(extracted_raw, dict):
+            raise HTTPException(status_code=400, detail="Invalid extracted payload")
+        return extracted_raw
+    return _build_legacy_extracted_payload(payload)
+
+
+def _validate_extracted_payload(extracted: dict) -> dict:
+    if not extracted:
+        return {}
+    try:
+        validated = N8NExtractedPayload.model_validate(extracted)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail="Invalid extracted payload") from exc
+    return validated.model_dump(exclude_none=True)
+
+
+@app.post("/api/webhooks/n8n/upload")
+async def n8n_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    payload_json: str = Form(...),
+    x_company_id: str | None = Header(None, alias="X-Company-Id"),
+    x_n8n_secret: str | None = Header(None, alias="X-N8N-Secret"),
+    file_name: str | None = Form(None),
+    title: str | None = Form(None),
+    description: str | None = Form(None),
+    vendor: str | None = Form(None),
+    doc_number: str | None = Form(None),
+    doc_date: str | None = Form(None),
+    amount_total: str | None = Form(None),
+    amount_net: str | None = Form(None),
+    amount_tax: str | None = Form(None),
+    currency: str | None = Form(None),
+    keywords: str | None = Form(None),
+) -> Response:
+    if not x_company_id or not x_n8n_secret:
+        _forbidden()
+    try:
+        company_id = int(x_company_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid company id")
+
+    _rate_limit(request, bucket="webhooks", limit_per_min=_RATELIMIT_WEBHOOKS_PER_MIN, key_suffix=str(company_id))
+
+    try:
+        payload = json.loads(payload_json)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid payload_json")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid payload_json")
+    vendor_details = payload.get("vendor_details")
+    if not isinstance(vendor_details, dict):
+        vendor_details = {}
+
+    extracted_payload = _resolve_extracted_payload(payload)
+    extracted = _validate_extracted_payload(extracted_payload)
+
+    raw_filename = (
+        file_name
+        or payload.get("file_name")
+        or payload.get("filename")
+        or payload.get("name")
+        or file.filename
+        or "document"
+    )
+    safe_name = safe_filename(str(raw_filename))
+
+    file_bytes = await file.read()
+    validate_document_upload(safe_name, len(file_bytes))
+    sha256 = hashlib.sha256(file_bytes).hexdigest()
+    mime = (file.content_type or "").strip()
+    if not mime:
+        ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
+        mime = {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg",
+            "png": "image/png",
+        }.get(ext, "application/octet-stream")
+    ext_for_sig = os.path.splitext(safe_name)[1].lower().lstrip(".")
+    if ext_for_sig == "jpeg":
+        ext_for_sig = "jpg"
+    _validate_n8n_file_signature(file_bytes, mime, ext_for_sig)
+
+    vendor_value = (vendor or extracted.get("vendor") or payload.get("vendor") or "").strip()
+    doc_number_value = (doc_number or extracted.get("doc_number") or payload.get("doc_number") or "").strip()
+    doc_date_value = (doc_date or extracted.get("doc_date") or payload.get("doc_date") or "").strip() or None
+    amount_value = _parse_optional_float(
+        amount_total if amount_total is not None else extracted.get("amount_total") or payload.get("amount_total")
+    )
+    amount_net_value = _parse_optional_float(
+        amount_net if amount_net is not None else extracted.get("amount_net") or payload.get("amount_net")
+    )
+    amount_tax_value = _parse_optional_float(
+        amount_tax if amount_tax is not None else extracted.get("amount_tax") or payload.get("amount_tax")
+    )
+    currency_value = (currency or extracted.get("currency") or payload.get("currency") or "").strip() or None
+    keywords_value = keywords or extracted.get("keywords") or payload.get("keywords")
+    title_value = (title or extracted.get("title") or payload.get("title") or "").strip()
+    if not title_value:
+        title_value = build_display_title(
+            vendor_value,
+            doc_date_value,
+            amount_value,
+            currency_value,
+            safe_name,
+        )
+    description_value = (description or extracted.get("summary") or _payload_text(payload, "summary")).strip()
+
+    with get_session() as session:
+        company = session.get(Company, company_id)
+        if not company:
+            _forbidden()
+        if not bool(getattr(company, "n8n_enabled", False)):
+            _forbidden()
+        secret = (getattr(company, "n8n_secret", "") or "").strip()
+        if not secret or not hmac.compare_digest(secret, x_n8n_secret):
+            _forbidden()
+
+        existing = session.exec(
+            select(Document).where(
+                Document.company_id == company_id,
+                Document.sha256 == sha256,
+                Document.source.in_(["n8n", "N8N"]),
+            )
+        ).first()
+        if existing:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "ok": True,
+                    "duplicate": True,
+                    "document_id": int(existing.id or 0),
+                },
+            )
+
+        ext = os.path.splitext(safe_name)[1].lower().lstrip(".")
+        if ext == "jpeg":
+            ext = "jpg"
+        document = build_document_record(
+            company_id,
+            str(raw_filename),
+            mime_type=mime,
+            size_bytes=len(file_bytes),
+            sha256=sha256,
+            source="n8n",
+            doc_type=ext,
+            storage_key="pending",
+            storage_path="",
+            title=title_value,
+            description=description_value,
+            vendor=vendor_value,
+            doc_number=doc_number_value,
+            doc_date=doc_date_value,
+            amount_total=amount_value,
+            amount_net=amount_net_value,
+            amount_tax=amount_tax_value,
+            currency=currency_value,
+        )
+        # Make sure stored filename matches our computed safe name (incl. .bnh adjustments).
+        document.filename = safe_name
+        document.keywords_json = normalize_keywords(keywords_value)
+        # Backfill commonly used derived fields for downstream UI logic.
+        document.invoice_date = doc_date_value
+        document.gross_amount = amount_value
+        document.net_amount = amount_net_value
+        document.tax_amount = amount_tax_value
+        document.tax_treatment = str(extracted.get("tax_treatment") or payload.get("tax_treatment") or "").strip()
+        document.document_type = str(extracted.get("document_type") or payload.get("document_type") or "").strip()
+        session.add(document)
+        session.flush()
+
+        storage_path = _build_document_storage_path(
+            company_id,
+            int(document.id or 0),
+            safe_name,
+            document.created_at,
+        )
+        document.storage_key = storage_path
+        document.storage_path = storage_path
+
+        resolved_path = _resolve_document_storage_path(storage_path)
+        if resolved_path is None:
+            session.rollback()
+            raise HTTPException(status_code=500, detail="Invalid storage path")
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            resolved_path.write_bytes(file_bytes)
+        except OSError as exc:
+            session.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to store file: {exc}") from exc
+
+        raw_payload_json = json.dumps(payload, ensure_ascii=False)
+        line_items_json = _json_text(extracted.get("line_items") if isinstance(extracted, dict) else None, default="[]")
+        compliance_flags_json = _json_text(
+            extracted.get("compliance_flags") if isinstance(extracted, dict) else None,
+            default="[]",
+        )
+        meta = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id == int(document.id or 0))
+        ).first()
+        if meta:
+            meta.raw_payload_json = raw_payload_json
+            meta.line_items_json = line_items_json
+            meta.compliance_flags_json = compliance_flags_json
+        else:
+            session.add(
+                DocumentMeta(
+                    document_id=int(document.id or 0),
+                    raw_payload_json=raw_payload_json,
+                    line_items_json=line_items_json,
+                    compliance_flags_json=compliance_flags_json,
+                )
+            )
+
+        session.commit()
+
+        return JSONResponse(
+            status_code=201,
+            content={
+                "ok": True,
+                "duplicate": False,
+                "document_id": int(document.id or 0),
+            },
+        )
 
 
 @app.post("/api/documents/upload")
@@ -508,14 +1264,365 @@ async def document_upload(
         return serialize_document(document)
 
 
-@app.get("/api/documents/upload")
-def list_documents_upload_marker():
-    """Marker — real upload endpoint follows below. This stub keeps route registration stable."""
-    return Response(status_code=501, content="use POST /api/documents/upload")
+@app.get("/api/documents")
+def list_documents(
+    q: str = "",
+    source: str = "",
+    type: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> list[dict]:
+    _require_api_auth()
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        company = _resolve_active_company(session, user_id)
+        if not company or not company.id:
+            return []
 
-# === Documents API: list, file, delete (moved to app/api/documents.py, see below) ===
+        documents = session.exec(
+            select(Document).where(Document.company_id == int(company.id))
+        ).all()
+        filtered = [
+            doc
+            for doc in documents
+            if document_matches_filters(
+                doc,
+                query=(q or "").strip(),
+                source=(source or "").strip(),
+                doc_type=(type or "").strip(),
+                date_from=(date_from or "").strip(),
+                date_to=(date_to or "").strip(),
+            )
+        ]
+        def _sort_key(doc: Document):
+            created_at = doc.created_at
+            if isinstance(created_at, datetime):
+                return created_at
+            try:
+                return datetime.fromisoformat(str(created_at))
+            except Exception:
+                return datetime.min
+
+        filtered.sort(key=_sort_key, reverse=True)
+        backfill_document_fields(session, filtered)
+        return [serialize_document(doc) for doc in filtered]
 
 
+@app.get("/api/documents/{document_id}/file")
+def document_file(document_id: int) -> Response:
+    _require_api_auth()
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        document = session.get(Document, int(document_id))
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        company = session.get(Company, int(document.company_id))
+        if not company or company.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        storage_path = _resolve_document_storage_path(document.storage_path)
+        storage_key = (document.storage_key or document.storage_path or "").strip()
+        if storage_key.startswith("storage/"):
+            storage_key = storage_key.removeprefix("storage/").lstrip("/")
+        content_type = document.mime or "application/octet-stream"
+        if content_type.endswith("/pdf") or content_type.startswith("image/"):
+            disposition = "inline"
+        else:
+            disposition = "attachment"
+        headers = {
+            "Content-Disposition": f'{disposition}; filename="{document.original_filename or "document"}"'
+        }
+
+        if storage_path and storage_path.exists():
+            return FileResponse(str(storage_path), media_type=content_type, headers=headers)
+
+        blob_exists = None
+        blob_size = None
+        if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+            storage = blob_storage()
+            try:
+                blob_exists = storage.exists(storage_key)
+                if blob_exists:
+                    data = storage.get_bytes(storage_key)
+                    blob_size = len(data)
+                    return Response(content=data, media_type=content_type, headers=headers)
+            except Exception:
+                logger.exception(
+                    "Blob storage lookup failed for document_id=%s storage_key=%s",
+                    document_id,
+                    storage_key,
+                )
+
+        resolved_path = str(storage_path) if storage_path else ""
+        local_exists = os.path.exists(resolved_path) if resolved_path else False
+        local_size = None
+        if local_exists:
+            try:
+                local_size = os.path.getsize(resolved_path)
+            except OSError:
+                local_size = None
+        storage_local_root = os.getenv("STORAGE_LOCAL_ROOT", "storage") or "storage"
+
+        logger.warning(
+            (
+                "Document file missing for document_id=%s expected_storage_path=%s "
+                "resolved_storage_path=%s storage_key=%s storage_local_root=%s "
+                "local_exists=%s local_size=%s blob_exists=%s blob_size=%s"
+            ),
+            document_id,
+            document.storage_path,
+            str(storage_path) if storage_path else None,
+            storage_key,
+            storage_local_root,
+            local_exists,
+            local_size,
+            blob_exists,
+            blob_size,
+        )
+        raise HTTPException(status_code=404, detail="File not found")
+
+
+@app.delete("/api/documents/{document_id}")
+def delete_document(document_id: int) -> dict:
+    _require_api_auth()
+    _require_write_access()
+    with get_session() as session:
+        user_id = get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        document = session.get(Document, int(document_id))
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        company = session.get(Company, int(document.company_id))
+        if not company or company.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        storage_path = _resolve_document_storage_path(document.storage_path)
+        storage_key = (document.storage_key or document.storage_path or "").strip()
+        if storage_key.startswith("storage/"):
+            storage_key = storage_key.removeprefix("storage/").lstrip("/")
+        if storage_path and storage_path.exists():
+            try:
+                storage_path.unlink()
+            except OSError:
+                pass
+        if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+            try:
+                blob_storage().delete(storage_key)
+            except Exception:
+                pass
+
+        meta = session.exec(
+            select(DocumentMeta).where(DocumentMeta.document_id == int(document_id))
+        ).first()
+        if meta:
+            session.delete(meta)
+        session.delete(document)
+        session.commit()
+        return {"status": "deleted"}
+
+
+
+
+@app.get("/share/read/{token}")
+def readonly_share_entry(token: str) -> Response:
+    token_value = (token or "").strip()
+    payload = validate_readonly_share_token(token_value)
+    if not payload:
+        raise HTTPException(status_code=400, detail="Invalid or expired share token")
+    scope = payload.get("scope") or {}
+    with get_session() as session:
+        user = session.get(User, int(payload.get("user_id") or 0))
+    if user:
+        app.storage.user["auth_user"] = user.email or user.username
+    app.storage.user["readonly_mode"] = True
+    app.storage.user["readonly_scope"] = scope
+    invoice_id = scope.get("invoice_id")
+    if invoice_id:
+        return Response(status_code=302, headers={"Location": f"/viewer/invoice/{int(invoice_id)}?share_token={token_value}"})
+    app.storage.user["page"] = "dashboard"
+    return Response(status_code=302, headers={"Location": "/"})
+
+
+@app.get("/viewer/invoice/{invoice_id}", response_class=HTMLResponse)
+def invoice_viewer(invoice_id: int, rev: str | None = None, share_token: str | None = None) -> HTMLResponse:
+    token_value = (share_token or "").strip()
+    payload = validate_readonly_share_token(token_value) if token_value else None
+    if payload:
+        scope = payload.get("scope") or {}
+        token_invoice_id = int(scope.get("invoice_id") or 0)
+        if token_invoice_id != int(invoice_id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+    elif not is_authenticated():
+        return HTMLResponse(status_code=302, headers={"Location": "/login"})
+    rev_query = f"?rev={rev}" if rev else ""
+    token_query = f"share_token={token_value}" if token_value else ""
+    query_parts = [part for part in (rev_query.lstrip("?"), token_query) if part]
+    query = f"?{'&'.join(query_parts)}" if query_parts else ""
+    pdf_url = f"/api/invoices/{invoice_id}/pdf{query}"
+    html = f"""
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Invoice {invoice_id}</title>
+        <style>
+          :root {{
+            color-scheme: dark;
+          }}
+          body {{
+            margin: 0;
+            font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+          }}
+          .viewer-shell {{
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+          }}
+          .viewer-header {{
+            font-size: 14px;
+            color: #fbbf24;
+          }}
+          #viewer {{
+            width: 100%;
+            height: 80vh;
+            min-height: 70vh;
+            max-height: 85vh;
+            overflow: auto;
+            background: #111827;
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            padding: 12px;
+          }}
+          .page {{
+            margin: 0 auto 16px auto;
+            border-radius: 8px;
+            background: white;
+            border: 1px solid rgba(2, 6, 23, 0.18);
+          }}
+          .status {{
+            font-size: 13px;
+            color: #94a3b8;
+          }}
+          @media (max-width: 640px) {{
+            .viewer-shell {{
+              padding: 12px;
+            }}
+            #viewer {{
+              height: 75vh;
+              min-height: 70vh;
+            }}
+          }}
+        </style>
+        <script src="/static/pdfjs/pdf.min.js"></script>
+      </head>
+      <body>
+        <div class="viewer-shell">
+          <div class="viewer-header">Invoice PDF preview</div>
+          <div id="viewer"></div>
+          <div id="status" class="status">Loading PDF…</div>
+        </div>
+        <script>
+          const pdfUrl = {json.dumps(pdf_url)};
+          const viewer = document.getElementById("viewer");
+          const status = document.getElementById("status");
+
+          function waitForPdfJs() {{
+            return new Promise((resolve, reject) => {{
+              if (window.pdfjsLib) {{
+                return resolve();
+              }}
+              if (window.__pdfjsLoadPromise) {{
+                return window.__pdfjsLoadPromise.then(resolve).catch(reject);
+              }}
+              const start = Date.now();
+              const timer = setInterval(() => {{
+                if (window.pdfjsLib) {{
+                  clearInterval(timer);
+                  resolve();
+                }} else if (Date.now() - start > 8000) {{
+                  clearInterval(timer);
+                  reject(new Error("PDF.js failed to load"));
+                }}
+              }}, 100);
+            }});
+          }}
+
+          function clearViewer() {{
+            viewer.innerHTML = "";
+          }}
+
+          function renderPage(page, scale) {{
+            const viewport = page.getViewport({{ scale }});
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            const outputScale = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(viewport.width * outputScale);
+            canvas.height = Math.floor(viewport.height * outputScale);
+            canvas.style.width = Math.floor(viewport.width) + "px";
+            canvas.style.height = Math.floor(viewport.height) + "px";
+            canvas.className = "page";
+            const renderContext = {{
+              canvasContext: context,
+              viewport: viewport,
+              transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null,
+            }};
+            return page.render(renderContext).promise.then(() => {{
+              viewer.appendChild(canvas);
+            }});
+          }}
+
+          function renderDocument(pdf) {{
+            clearViewer();
+            status.textContent = "Loaded " + pdf.numPages + " page" + (pdf.numPages === 1 ? "" : "s");
+            const containerWidth = viewer.clientWidth - 24;
+            const pagePromises = [];
+            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {{
+              pagePromises.push(
+                pdf.getPage(pageNumber).then((page) => {{
+                  const viewport = page.getViewport({{ scale: 1 }});
+                  const scale = containerWidth / viewport.width;
+                  return renderPage(page, scale);
+                }})
+              );
+            }}
+            return Promise.all(pagePromises);
+          }}
+
+          waitForPdfJs()
+            .then(() => {{
+              window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/pdfjs/pdf.worker.min.js";
+              return window.pdfjsLib.getDocument(pdfUrl).promise;
+            }})
+            .then((pdf) => renderDocument(pdf))
+            .catch((error) => {{
+              console.error(error);
+              status.textContent = "Failed to load PDF.";
+            }});
+
+          window.addEventListener("resize", () => {{
+            if (!window.pdfjsLib || !viewer.firstChild) {{
+              return;
+            }}
+            window.pdfjsLib.getDocument(pdfUrl).promise.then((pdf) => renderDocument(pdf));
+          }});
+        </script>
+      </body>
+    </html>
+    """
+    return HTMLResponse(html)
 
 
 _content_ref = None
@@ -559,6 +1666,75 @@ def set_page(name: str) -> None:
 
 
 register_shell_navigate(set_page)
+
+
+@app.get("/api/invoices/{invoice_id}/pdf")
+def invoice_pdf(invoice_id: int, rev: str | None = None, share_token: str | None = None):
+    token_value = (share_token or "").strip()
+    payload = validate_readonly_share_token(token_value) if token_value else None
+    readonly_user_id = int(payload.get("user_id") or 0) if payload else None
+    if payload:
+        scope = payload.get("scope") or {}
+        token_invoice_id = int(scope.get("invoice_id") or 0)
+        if token_invoice_id != int(invoice_id):
+            raise HTTPException(status_code=403, detail="Forbidden")
+    elif not require_auth():
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    with get_session() as session:
+        user_id = readonly_user_id if readonly_user_id else get_current_user_id(session)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        invoice = session.get(Invoice, int(invoice_id))
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+        customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        company = session.get(Company, int(customer.company_id)) if customer.company_id else None
+        if not company or company.user_id != user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        revision = int(invoice.revision_nr or 0)
+        cache_key: _CACHE_KEY_TYPE = (int(invoice.id), revision)
+        cached = _get_cached_pdf(cache_key)
+        if cached is not None:
+            return Response(content=cached, media_type="application/pdf")
+
+        pdf_bytes: bytes | None = None
+        if invoice.pdf_filename:
+            pdf_path = invoice.pdf_filename
+            if not os.path.isabs(pdf_path) and not str(pdf_path).startswith("storage/"):
+                pdf_path = f"storage/invoices/{pdf_path}"
+            if os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as handle:
+                    pdf_bytes = handle.read()
+        if pdf_bytes is None:
+            pdf_bytes = render_invoice_to_pdf_bytes(invoice, company=company, customer=customer)
+            if isinstance(pdf_bytes, bytearray):
+                pdf_bytes = bytes(pdf_bytes)
+            if not isinstance(pdf_bytes, bytes):
+                raise HTTPException(status_code=500, detail="Invalid PDF output")
+            filename = (
+                os.path.basename(invoice.pdf_filename)
+                if invoice.pdf_filename
+                else (build_invoice_filename(company, invoice, customer) if invoice.nr else "rechnung.pdf")
+            )
+            pdf_path = f"storage/invoices/{filename}"
+            os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+            with open(pdf_path, "wb") as handle:
+                handle.write(pdf_bytes)
+
+            invoice.pdf_filename = filename
+            invoice.pdf_storage = "local"
+            session.add(invoice)
+            session.commit()
+
+        _store_cached_pdf(cache_key, pdf_bytes)
+        return Response(content=pdf_bytes, media_type="application/pdf")
 
 
 def _avatar_initials(identifier: str | None) -> str:
@@ -850,7 +2026,7 @@ def layout_wrapper(content_func):
                 ui.label(_item_label).style("font-size:10px;line-height:1")
 
 
-# DISABLED: @ui.page("/")
+@ui.page("/")
 def index():
     apply_global_ui_theme()
     if not require_auth():
@@ -957,7 +2133,7 @@ def index():
     layout_wrapper(content)
 
 
-# DISABLED: @ui.page("/settings")
+@ui.page("/settings")
 def settings_page():
     """Bookmark/deep-link only: shell lives on `/`. Never render a bare page without layout."""
     apply_global_ui_theme()
