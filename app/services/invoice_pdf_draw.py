@@ -29,8 +29,9 @@ def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp) -> Non
         x = mx + content_w - dw
         y = top_y - dh - 2 * mm
         c.drawImage(img, x, y, width=dw, height=dh, preserveAspectRatio=True, mask="auto")
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"draw_logo failed: {e}")
 
 
 def draw_recipient(c: Canvas, w: float, h: float, mx: float, content_w: float,
@@ -74,9 +75,9 @@ def draw_meta(c: Canvas, w: float, h: float, mx: float, comp, top_y: float,
 
     # Sender address block
     if comp:
-        set_font(bold=True, size=9)
+        set_font(bold=True, size=10)
         c.drawRightString(meta_x, y_meta, safe_str(get_attr(comp, "name")))
-        y_meta -= 11
+        y_meta -= 12
         set_font(bold=False, size=9)
         s_str = safe_str(get_attr(comp, "street"))
         if s_str:
@@ -156,11 +157,11 @@ def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bo
         return curr_y - 20
 
     y = draw_header_row(y)
-    set_font(bold=False, size=9)
+    set_font(bold=False, size=10)
 
     for it in items:
-        desc_lines = wrap_text(it.description, font_r, 9, w_desc - 12)
-        row_h = max(16, 8 + len(desc_lines) * 11)
+        desc_lines = wrap_text(it.description, font_r, 10, w_desc - 12)
+        row_h = max(16, 8 + len(desc_lines) * 12)
 
         if y - row_h < my_bot + 50 * mm:
             c.showPage()
@@ -199,7 +200,7 @@ def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_b
     lbl_x = val_x - 30 * mm
 
     def total_line(lbl, val, bold=False, offset=12):
-        set_font(bold=bold, size=10)
+        set_font(bold=bold, size=11 if bold else 10)
         c.drawString(lbl_x, y, lbl)
         c.drawRightString(val_x, y, val)
         return y - offset

@@ -339,7 +339,7 @@ def preview_pdf(
     return Response(content=pdf_bytes, media_type="application/pdf")
 
 
-def _resolve_invoice_pdf_bytes(invoice) -> bytes:
+def _resolve_invoice_pdf_bytes(invoice, session=None) -> bytes:
     """Liefert die PDF-Bytes: erst gespeichert, sonst live rendern.
 
     Beim Live-Render müssen Company und Customer aus den Relationships geladen
@@ -349,9 +349,11 @@ def _resolve_invoice_pdf_bytes(invoice) -> bytes:
         return bytes(invoice.pdf_bytes)
     company = getattr(invoice, "company", None)
     customer = getattr(invoice, "customer", None)
-    # KRITISCH: invoice MUSS als kwarg übergeben werden, sonst gibt
-    # render_invoice_to_pdf_bytes `kwargs.get("invoice") = None` zurück
-    # und der ReportLab-Renderer bekommt eine leere Invoice.
+    # ponytail: lazy-load company/customer if session available and relationships not loaded
+    if session is not None and company is None and getattr(invoice, "company_id", None):
+        company = session.get(Company, int(invoice.company_id))
+    if session is not None and customer is None and getattr(invoice, "customer_id", None):
+        customer = session.get(Customer, int(invoice.customer_id))
     return render_invoice_to_pdf_bytes(
         invoice=invoice, company=company, customer=customer,
     )
@@ -373,7 +375,7 @@ def preview_pdf_for_invoice(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
-    pdf_bytes = _resolve_invoice_pdf_bytes(invoice)
+    pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
     return Response(content=pdf_bytes, media_type="application/pdf")
 
 
@@ -393,7 +395,7 @@ def download_invoice_pdf(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
-    pdf_bytes = _resolve_invoice_pdf_bytes(invoice)
+    pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
     filename = (getattr(invoice, "pdf_filename", "") or "").strip() or f"rechnung-{invoice_id}.pdf"
     return Response(
         content=pdf_bytes,
@@ -546,7 +548,7 @@ def send_invoice_email_endpoint(
             detail="Customer has no email address",
         )
 
-    pdf_bytes = _resolve_invoice_pdf_bytes(invoice)
+    pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
     filename = build_invoice_filename(company, invoice, customer)
 
     inv_nr = invoice.nr or ""
