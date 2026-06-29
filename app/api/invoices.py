@@ -28,6 +28,7 @@ from sqlmodel import select
 
 from data import Company, Customer, Invoice, InvoiceItem as InvoiceItemModel
 from data import InvoiceStatus
+from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import finalize_invoice_logic
@@ -727,3 +728,15 @@ def send_invoice_email_endpoint(
     session.commit()
 
     return {"status": "ok", "message": f"Rechnung an {customer.email} gesendet"}
+
+
+@router.delete("/{invoice_id}")
+def delete_invoice_endpoint(
+    invoice_id: int,
+    _user_id: int = Depends(require_session_auth),
+):
+    """Delete an invoice and all associated records (items, revisions, audit logs, PDF)."""
+    ok, msg = delete_invoice(invoice_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+    return {"status": "ok", "message": f"Rechnung #{invoice_id} gelöscht"}

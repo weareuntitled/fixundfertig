@@ -3,7 +3,7 @@
  * @purpose Full invoice detail matching Lumina Ledger HTML: status timeline, bento cards, client, items, summary
  */
 import { useEffect, useState } from "react";
-import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useInvoice,
@@ -26,6 +26,7 @@ import {
   Info,
   FileText,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { StatusTimeline } from "@/components/ui/status-timeline";
 import { ClientInfoCard } from "@/components/invoice/client-info-card";
@@ -59,8 +60,10 @@ function InvoiceDetailPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [editingHeader, setEditingHeader] = useState(false);
   const [headerDraft, setHeaderDraft] = useState<Record<string, string>>({});
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const { notify } = useNotification();
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   useEffect(() => {
     return () => {
@@ -152,6 +155,21 @@ function InvoiceDetailPage() {
     updateInvoice.mutate(changes);
   };
 
+  const deleteInvoice = useMutation({
+    mutationFn: () => api.delete(`/api/invoices/${invoiceId}`),
+    onSuccess: () => {
+      notify("success", "Rechnung gelöscht");
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      navigate({ to: "/invoices" });
+    },
+    onError: (err: Error) => notify("error", err.message),
+  });
+
+  const handleDeleteInvoice = () => {
+    setDeleteConfirmOpen(false);
+    deleteInvoice.mutate();
+  };
+
   const handleSend = () => {
     if (invoice?.recipient_name && confirm(`Rechnung per E-Mail an ${invoice.recipient_name} senden?`)) {
       sendEmail.mutate();
@@ -222,6 +240,13 @@ function InvoiceDetailPage() {
               className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-low)] transition-colors disabled:opacity-50"
             >
               <Pencil size={16} /> Bearbeiten
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmOpen(true)}
+              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-red-500/50 bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 size={16} /> Löschen
             </button>
             {validTransitions.includes("SENT" as InvoiceStatus) && (
               <button
@@ -372,7 +397,7 @@ function InvoiceDetailPage() {
 
         {/* Right 1/3 */}
         <div className="space-y-[var(--space-gutter)]">
-          <SummaryCard subtotal={invoice.total_brutto} taxRate={19} ustEnabled />
+          <SummaryCard subtotal={invoice.total_brutto} taxRate={19} ustEnabled={!company?.is_small_business} />
 
           {/* Status Actions */}
           {validTransitions.length > 0 && (
@@ -411,6 +436,27 @@ function InvoiceDetailPage() {
 
       <LineItemDialog open={dialogOpen} initial={editingItem ?? undefined} onSave={handleSaveItem} onCancel={() => setDialogOpen(false)} />
       <PdfPreviewModal open={previewOpen} pdfUrl={previewUrl} invoice={invoice} customer={customer ? { name: customer.name || `${customer.vorname} ${customer.nachname}`.trim() || `Kunde #${customer.id}`, email: customer.email || undefined, street: customer.recipient_street || customer.strasse || undefined, postal_code: customer.recipient_postal_code || customer.plz || undefined, city: customer.recipient_city || customer.ort || undefined } : undefined} company={company ? { name: company.name, street: company.street, postal_code: company.postal_code, city: company.city, email: company.email, phone: company.phone, bank_name: company.bank_name, iban: company.iban } : undefined} invoiceNr={invoice.nr || undefined} onClose={() => setPreviewOpen(false)} />
+
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteConfirmOpen(false)} />
+          <div className="relative bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] shadow-xl p-[var(--space-xl)] max-w-sm w-full mx-4 animate-fade-in">
+            <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-2">Rechnung löschen?</h3>
+            <p className="text-[14px] text-[var(--color-text-secondary)] mb-6">
+              Rechnung #{invoice.nr || invoice.id} wird endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+            </p>
+            <div className="flex gap-[var(--space-sm)] justify-end">
+              <button type="button" onClick={() => setDeleteConfirmOpen(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-low)]">
+                Abbrechen
+              </button>
+              <button type="button" onClick={handleDeleteInvoice} disabled={deleteInvoice.isPending} className="px-[var(--space-md)] py-[var(--space-xs)] bg-red-600 text-white rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-red-700 disabled:opacity-50">
+                {deleteInvoice.isPending ? "Lösche…" : "Endgültig löschen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

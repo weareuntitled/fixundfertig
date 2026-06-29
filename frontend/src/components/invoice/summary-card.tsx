@@ -17,8 +17,11 @@ interface SummaryCardProps {
 }
 
 export function SummaryCard({ subtotal, taxRate, ustEnabled, discount = 0 }: SummaryCardProps) {
-  const taxAmount = ustEnabled ? subtotal * (taxRate / 100) : 0;
-  const total = subtotal + taxAmount - discount;
+  // subtotal is gross (total_brutto from backend includes tax or not)
+  // ponytail: derive net from gross, no separate net field on invoice model
+  const net = ustEnabled ? subtotal / (1 + taxRate / 100) : subtotal;
+  const taxAmount = ustEnabled ? subtotal - net : 0;
+  const total = subtotal - discount;
 
   const fmt = (n: number) =>
     n.toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " €";
@@ -32,14 +35,16 @@ export function SummaryCard({ subtotal, taxRate, ustEnabled, discount = 0 }: Sum
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-[var(--color-text-muted)]">Nettobetrag</span>
-          <span className="font-mono text-[var(--color-text-primary)]">{fmt(subtotal)}</span>
+          <span className="font-mono text-[var(--color-text-primary)]">{fmt(net)}</span>
         </div>
+        {ustEnabled && (
         <div className="flex justify-between">
           <span className="text-[var(--color-text-muted)]">
             USt ({taxRate}%)
           </span>
           <span className="font-mono text-[var(--color-text-primary)]">{fmt(taxAmount)}</span>
         </div>
+        )}
         <div className="flex justify-between pb-3 border-b border-[var(--color-border)]">
           <span className="text-[var(--color-text-muted)]">Rabatt</span>
           <span className="font-mono text-[var(--color-success)]">-{fmt(discount)}</span>
