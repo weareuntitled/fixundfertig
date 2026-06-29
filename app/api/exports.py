@@ -27,6 +27,7 @@ from dependencies import get_current_company, require_session_auth
 from logic import (
     export_customers_csv,
     export_database_backup,
+    export_documents_zip,
     export_invoice_items_csv,
     export_invoices_csv,
     export_invoices_pdf_zip,
@@ -97,6 +98,29 @@ def invoices_pdf(
     with get_session() as session:
         zip_bytes = export_invoices_pdf_zip(session, int(company.id), year=year)
     return _zip_response(zip_bytes, f"invoices-{year}.zip")
+
+
+@router.get("/documents-zip", response_class=Response)
+def documents_zip(
+    year: int = Query(default=None, ge=2000, le=2100),
+    date_from: str = "",
+    date_to: str = "",
+    _user_id: int = Depends(require_session_auth),
+    company=Depends(get_current_company),
+):
+    """Download all documents for the given year/range as a ZIP with CSV index."""
+    if year and not date_from:
+        date_from = f"{year}-01-01"
+    if year and not date_to:
+        date_to = f"{year}-12-31"
+    with get_session() as session:
+        zip_bytes = export_documents_zip(
+            session, int(company.id),
+            date_from=date_from,
+            date_to=date_to,
+        )
+    label = f"belege-{year}" if year else f"belege-{date_from or 'alle'}"
+    return _zip_response(zip_bytes, f"{label}.zip")
 
 
 @router.get("/db-backup", response_class=Response)

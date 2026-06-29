@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Upload, FileText, Search, X } from "lucide-react";
+import { Upload, FileText, Search, X, Download, CalendarDays } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/_app/documents")({
   component: DocumentsPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    year: (search.year as string) || "",
+  }),
 });
 
 const documentSchema = z.object({
@@ -67,30 +70,36 @@ function typeBadge(type: string) {
   return colors[type] || "bg-gray-100 text-gray-600";
 }
 
+const YEARS = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
+
+function buildParams(year: string, search: string) {
+  const params = new URLSearchParams();
+  if (year) {
+    params.set("date_from", `${year}-01-01`);
+    params.set("date_to", `${year}-12-31`);
+  }
+  if (search) params.set("q", search);
+  return params.toString();
+}
+
 function DocumentsPage() {
+  const { year } = Route.useSearch();
+  const [selectedYear, setSelectedYear] = useState<string>(year || String(new Date().getFullYear()));
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["documents"],
+    queryKey: ["documents", selectedYear, search],
     queryFn: () =>
       api
-        .get<unknown>("/api/documents")
+        .get<unknown>(`/api/documents?${buildParams(selectedYear, search)}`)
         .then((res) => z.array(documentSchema).parse(res))
         .catch(() => [] as Document[]),
   });
 
-  const filtered = search
-    ? (data ?? []).filter(
-        (d) =>
-          d.title.toLowerCase().includes(search.toLowerCase()) ||
-          d.vendor.toLowerCase().includes(search.toLowerCase()) ||
-          d.doc_number.toLowerCase().includes(search.toLowerCase()) ||
-          d.original_filename.toLowerCase().includes(search.toLowerCase()),
-      )
-    : data ?? [];
+  const filtered = data ?? [];
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -122,11 +131,31 @@ function DocumentsPage() {
     }
   };
 
+  const exportZip = () => {
+    window.open(
+      `/api/exports/documents-zip?${buildParams(selectedYear, "")}`,
+      "_blank",
+    );
+  };
+
   return (
     <div>
       <header className="mb-4 flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-lg font-semibold tracking-tight text-[var(--color-text-heading)]">Belege</h1>
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <CalendarDays size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-tertiary)]" />
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="h-8 rounded-md border border-[var(--color-border)] bg-white pl-7 pr-2 text-xs outline-none focus:border-indigo-400 appearance-none"
+            >
+              <option value="">Alle Jahre</option>
+              {YEARS.map((y) => (
+                <option key={y} value={String(y)}>{y}</option>
+              ))}
+            </select>
+          </div>
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-tertiary)]" />
             <input
@@ -141,6 +170,13 @@ function DocumentsPage() {
               </button>
             )}
           </div>
+          <button
+            onClick={exportZip}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--color-border)] bg-white px-3 py-1.5 text-sm text-[var(--color-text-heading)] hover:bg-[var(--color-gray-50)]"
+          >
+            <Download size={14} />
+            Export
+          </button>
           <label className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-[var(--color-text-heading)] px-3 py-1.5 text-sm font-semibold text-white">
             <Upload size={14} />
             {uploading ? "Lädt hoch…" : "Upload"}

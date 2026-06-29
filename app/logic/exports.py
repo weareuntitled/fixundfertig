@@ -82,6 +82,8 @@ def export_invoices_pdf_zip(*args: Any, **kwargs: Any) -> bytes:
 
 
 def export_documents_zip(*args: Any, **kwargs: Any) -> bytes:
+    date_from = kwargs.pop("date_from", "") or ""
+    date_to = kwargs.pop("date_to", "") or ""
     session, company_id, document_ids = parse_export_args(args, kwargs)
 
     def _display_date(doc: Document) -> str:
@@ -120,6 +122,10 @@ def export_documents_zip(*args: Any, **kwargs: Any) -> bytes:
     stmt = select(Document).where(Document.company_id == int(company_id)).order_by(Document.id.desc())
     if document_ids:
         stmt = stmt.where(Document.id.in_([int(x) for x in document_ids]))
+    if date_from:
+        stmt = stmt.where(Document.doc_date >= date_from)
+    if date_to:
+        stmt = stmt.where(Document.doc_date <= date_to)
     documents = list(session.exec(stmt).all())
 
     storage = blob_storage()
