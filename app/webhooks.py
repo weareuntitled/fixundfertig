@@ -21,13 +21,11 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from sqlmodel import select
 
 from data import Company, Document, DocumentMeta, WebhookEvent, get_session
-from services.blob_storage import blob_storage
 from services.documents import (
     build_document_record,
     build_display_title,
     normalize_keywords,
     safe_filename,
-    serialize_document,
     validate_document_upload,
 )
 
@@ -324,7 +322,6 @@ def _rate_limit(request: Request, *, bucket: str, limit_per_min: int, key_suffix
 
 @app.post("/api/webhooks/n8n/ingest")
 async def n8n_ingest(request: Request):
-    from pages._shared import get_current_user_id
 
     raw_body = await request.body()
     if len(raw_body) > _MAX_UPLOAD_BYTES * 2:

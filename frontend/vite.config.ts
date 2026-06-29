@@ -23,7 +23,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": { target: "http://localhost:8000", changeOrigin: false },
-      "/static": { target: "http://localhost:8000", changeOrigin: false },
+      "/static": {
+        target: "http://localhost:8000",
+        changeOrigin: false,
+        bypass: (req) => {
+          if (req.url?.startsWith("/static/frontend/")) {
+            return req.url;
+          }
+        },
+      },
     },
   },
   test: {

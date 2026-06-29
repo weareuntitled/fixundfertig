@@ -11,7 +11,6 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / "app"
@@ -54,7 +53,6 @@ def test_invoice_has_company_relationship() -> None:
 def test_pdf_rerender_uses_relationships(monkeypatch, tmp_path) -> None:
     """Wenn _resolve_invoice_pdf_bytes eine Invoice OHNE pdf_bytes bekommt,
     soll es company + customer aus den Relationships laden, nicht None."""
-    from app.api import invoices as inv_module
     import sys
     sys.path.insert(0, str(APP_PATH))
 

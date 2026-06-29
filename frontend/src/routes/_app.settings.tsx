@@ -60,6 +60,10 @@ const DEFAULTS: CompanyForm = {
   invoice_number_template: "{seq}",
   invoice_filename_template: "rechnung_{nr}",
   logo_url: "",
+  stripe_secret_key: "",
+  stripe_publishable_key: "",
+  paypal_email: "",
+  payment_enabled: false,
 };
 
 function SettingsPage() {
@@ -75,6 +79,9 @@ function SettingsPage() {
   const [pwCurrent, setPwCurrent] = useState("");
   const [pwNew, setPwNew] = useState("");
   const [pwConfirm, setPwConfirm] = useState("");
+  const [testEmailTo, setTestEmailTo] = useState("");
+  const [testEmailStatus, setTestEmailStatus] = useState<"idle" | "sending" | "ok" | "error">("idle");
+  const [testEmailMsg, setTestEmailMsg] = useState("");
   const [copiedOneTime, setCopiedOneTime] = useState(false);
   const [copiedPermanent, setCopiedPermanent] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -560,6 +567,45 @@ function SettingsPage() {
                   placeholder="Passwort"
                 />
               </div>
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  id="test-email-recipient"
+                  value={testEmailTo}
+                  onChange={(e) => setTestEmailTo(e.target.value)}
+                  placeholder="test@example.com"
+                  className="flex-1 rounded-[var(--radius)] border border-[var(--color-border)] px-3 py-1.5 text-[12px] outline-none focus:border-[#001a42]"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!testEmailTo) return;
+                    setTestEmailStatus("sending");
+                    try {
+                      const res = await fetch("/api/company/test-email", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ to: testEmailTo }),
+                      });
+                      const data = await res.json();
+                      setTestEmailStatus(data.success ? "ok" : "error");
+                      setTestEmailMsg(data.message);
+                    } catch {
+                      setTestEmailStatus("error");
+                      setTestEmailMsg("Fehler beim Senden.");
+                    }
+                  }}
+                  disabled={testEmailStatus === "sending" || !testEmailTo}
+                  className="shrink-0 rounded-[var(--radius)] border border-[var(--color-border)] bg-white px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] hover:bg-[var(--color-surface-bright)] transition-colors disabled:opacity-50"
+                >
+                  {testEmailStatus === "sending" ? "Sende…" : "Test-E-Mail"}
+                </button>
+              </div>
+              {testEmailMsg && (
+                <p className={`mt-1 text-[11px] ${testEmailStatus === "ok" ? "text-emerald-600" : "text-rose-600"}`}>
+                  {testEmailMsg}
+                </p>
+              )}
               <p className="mt-1 text-[11px] text-[var(--color-text-secondary)]">
                 STARTTLS oder SSL/TLS je nach Port erforderlich.
               </p>
@@ -600,6 +646,58 @@ function SettingsPage() {
                   onChange={(v) => set("n8n_secret", v)}
                   placeholder="Geheimer Schlüssel"
                 />
+              </div>
+            </div>
+
+            {/* Stripe / Payment */}
+            <div className="mb-5 border-t border-[var(--color-border)] pt-5">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="flex items-center gap-1.5 text-[14px] font-semibold text-[var(--color-text-primary)]">
+                  <span className="text-[16px]">💳</span> Stripe / Online-Zahlungen
+                </h3>
+                <Toggle
+                  checked={form.payment_enabled}
+                  onChange={(v) => set("payment_enabled", v)}
+                />
+              </div>
+              <div
+                className={`space-y-2 transition-opacity ${
+                  form.payment_enabled ? "" : "pointer-events-none opacity-40"
+                }`}
+              >
+                <Field
+                  type="password"
+                  mono
+                  value={form.stripe_secret_key}
+                  onChange={(v) => set("stripe_secret_key", v)}
+                  placeholder="Stripe Secret Key (sk_live_...)"
+                />
+                <Field
+                  mono
+                  value={form.stripe_publishable_key}
+                  onChange={(v) => set("stripe_publishable_key", v)}
+                  placeholder="Stripe Publishable Key (pk_live_...)"
+                />
+                <Field
+                  value={form.paypal_email}
+                  onChange={(v) => set("paypal_email", v)}
+                  placeholder="PayPal-E-Mail (optional)"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await fetch("/api/company/test-stripe", { method: "POST", credentials: "include" });
+                    const data = await res.json();
+                    if (data.success) {
+                      alert("✅ " + data.message);
+                    } else {
+                      alert("❌ " + data.message);
+                    }
+                  }}
+                  className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-white px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-bright)] transition-colors"
+                >
+                  Stripe-Verbindung testen
+                </button>
               </div>
             </div>
 

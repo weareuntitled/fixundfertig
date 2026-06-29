@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-_KEY_PATTERN = re.compile(r"^companies/\d+/documents/\d{4}/\d{2}/[^/]+/[^/]+$")
+_KEY_PATTERN = re.compile(r"^companies/\d+/documents/(?:\d{4}/\d{2}/)?[^/]+/[^/]+$")
 
 
 class BlobStorage(ABC):

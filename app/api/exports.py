@@ -18,9 +18,8 @@ Backing: `app/logic.py` (`export_invoices_pdf_zip`, `export_invoices_csv`,
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterator
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
 from data import get_session

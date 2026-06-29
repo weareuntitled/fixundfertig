@@ -11,7 +11,7 @@ from typing import Any, List, Optional
 
 from sqlmodel import select
 
-from data import Company, Customer, Document, Invoice, InvoiceItem
+from data import Company, Customer, Document, InvoiceItem
 from renderer import render_invoice_to_pdf_bytes
 from services.blob_storage import blob_storage
 from services.documents import resolve_document_path

@@ -8,7 +8,6 @@ import importlib
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -66,12 +65,16 @@ def _make_company(company_id: int = 1, name: str = "Test GmbH") -> SimpleNamespa
         n8n_webhook_url_test="",
         n8n_webhook_url_prod="",
         n8n_secret="",
-        n8n_enabled=False,
-        google_drive_folder_id="",
-        next_invoice_nr=1,
-        invoice_number_template="RE-{year}-{nr:04d}",
-        invoice_filename_template="rechnung-{nr}.pdf",
-    )
+    n8n_enabled=False,
+    google_drive_folder_id="",
+    next_invoice_nr=1,
+    invoice_number_template="RE-{year}-{nr:04d}",
+    invoice_filename_template="rechnung-{nr}.pdf",
+    stripe_secret_key="",
+    stripe_publishable_key="",
+    paypal_email="",
+    payment_enabled=False,
+)
 
 
 @pytest.fixture

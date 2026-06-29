@@ -35,6 +35,10 @@ const companySchema = z.object({
   invoice_number_template: z.string().default("{seq}"),
   invoice_filename_template: z.string().default("rechnung_{nr}"),
   logo_url: z.string().default(""),
+  stripe_secret_key: z.string().default(""),
+  stripe_publishable_key: z.string().default(""),
+  paypal_email: z.string().default(""),
+  payment_enabled: z.boolean().default(false),
 });
 
 export type Company = z.infer<typeof companySchema>;

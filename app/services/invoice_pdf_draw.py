@@ -5,7 +5,7 @@ import os
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
-from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, safe_float, get_attr, prefixed_value, wrap_text
+from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, get_attr, prefixed_value, wrap_text
 
 
 def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp) -> None:

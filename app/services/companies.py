@@ -46,6 +46,10 @@ ALLOWED_COMPANY_FIELDS = {
     "next_invoice_nr",
     "invoice_number_template",
     "invoice_filename_template",
+    "stripe_secret_key",
+    "stripe_publishable_key",
+    "paypal_email",
+    "payment_enabled",
 }
 
 

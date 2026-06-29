@@ -10,8 +10,8 @@ import os
 
 from env import load_env
 from models.schema import (
-    Invoice, InvoiceStatus, Customer, Company, Expense,
-    AuditLog, Token, TokenPurpose, InvitedEmail,
+    Invoice, InvoiceStatus, Customer, Expense,
+    AuditLog, Token, TokenPurpose,
 )
 
 load_env()
@@ -113,6 +113,10 @@ def ensure_company_schema():
         if "bank_name" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN bank_name TEXT DEFAULT ''")
         if "iban" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN iban TEXT DEFAULT ''")
         if "next_invoice_nr" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
+        if "payment_enabled" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN payment_enabled INTEGER DEFAULT 0")
+        if "stripe_secret_key" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN stripe_secret_key TEXT DEFAULT ''")
+        if "stripe_publishable_key" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN stripe_publishable_key TEXT DEFAULT ''")
+        if "paypal_email" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN paypal_email TEXT DEFAULT ''")
 
 ensure_company_schema()
 
@@ -157,7 +161,13 @@ def ensure_invoice_schema():
                 WHERE company_id = 0 OR company_id IS NULL
             """)
 
-ensure_invoice_schema()
+def ensure_invoice_payment_fields():
+    with engine.begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "payment_link_url" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN payment_link_url TEXT DEFAULT ''")
+        if "payment_provider" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN payment_provider TEXT DEFAULT ''")
+
+ensure_invoice_payment_fields()
 
 def reconcile_invoice_revision_schema():
     with engine.begin() as conn:

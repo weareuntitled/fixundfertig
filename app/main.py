@@ -187,8 +187,6 @@ app.add_middleware(_RequestContextMiddleware)
 from api import api_router
 app.include_router(api_router)
 
-import webhooks
-import viewer
 
 from starlette.staticfiles import StaticFiles as _StaticFiles
 from starlette.responses import FileResponse as _FileResponse
@@ -203,7 +201,7 @@ class _ReactSPA(_StaticFiles):
         super().__init__(directory=directory, html=True)
 
     async def get_response(self, path, scope):
-        if not path or path == "" or (not "." in path.split("/")[-1]):
+        if not path or path == "" or ("." not in path.split("/")[-1]):
             if _REACT_INDEX.is_file():
                 return _FileResponse(str(_REACT_INDEX))
         return await super().get_response(path, scope)

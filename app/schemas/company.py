@@ -42,6 +42,10 @@ class CompanyRead(BaseModel):
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
     logo_url: str = ""
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    paypal_email: str = ""
+    payment_enabled: bool = False
 
 
 class CompanyUpdate(BaseModel):
@@ -76,6 +80,10 @@ class CompanyUpdate(BaseModel):
     next_invoice_nr: int | None = None
     invoice_number_template: str | None = None
     invoice_filename_template: str | None = None
+    stripe_secret_key: str | None = None
+    stripe_publishable_key: str | None = None
+    paypal_email: str | None = None
+    payment_enabled: bool | None = None
 
     def patch_dict(self) -> dict:
         """Nicht-None-Felder als Patch (drop None)."""

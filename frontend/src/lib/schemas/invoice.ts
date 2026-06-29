@@ -102,6 +102,8 @@ export const invoiceReadSchema = z.object({
   revision_nr: z.number().int().default(0),
   updated_at: z.string().default(""),
   related_invoice_id: z.number().int().nullable().optional(),
+  payment_link_url: z.string().default(""),
+  payment_provider: z.string().default(""),
   items: z.array(invoiceItemSchema).default([]),
 });
 

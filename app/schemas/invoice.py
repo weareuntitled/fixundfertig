@@ -90,6 +90,8 @@ class InvoiceRead(BaseModel):
     revision_nr: int = 0
     updated_at: str = ""
     related_invoice_id: int | None = None
+    payment_link_url: str = ""
+    payment_provider: str = ""
     items: list[InvoiceItem] = Field(default_factory=list)
 
 
@@ -102,10 +104,20 @@ class InvoiceStatusUpdate(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
+class BulkStatusUpdate(BaseModel):
+    """Input für POST /api/invoices/bulk-status."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    invoice_ids: list[int] = Field(min_length=1)
+    status: InvoiceStatus
+
+
 __all__ = [
     "InvoiceItem",
     "InvoiceDraft",
     "InvoiceRead",
     "InvoiceStatusUpdate",
+    "BulkStatusUpdate",
     "InvoiceStatus",
 ]

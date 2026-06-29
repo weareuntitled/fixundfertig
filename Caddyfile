@@ -26,8 +26,8 @@
     }
 }
 
-# --- NEU: Dein Tracklistify ---
-tracklistify.untitled-ux.de {
+# --- Tracklistify ---
+{$TRACKLISTIFY_DOMAIN} {
     reverse_proxy tracklistify:5000
 }
 

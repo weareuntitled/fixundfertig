@@ -93,6 +93,10 @@ class Company(SQLModel, table=True):
     n8n_secret: str = ""
     n8n_enabled: bool = False
     google_drive_folder_id: str = ""
+    payment_enabled: bool = False
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    paypal_email: str = ""
     next_invoice_nr: int = 10000
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
@@ -146,6 +150,8 @@ class Invoice(SQLModel, table=True):
     revision_nr: int = 0
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
+    payment_link_url: str = ""
+    payment_provider: str = ""  # "stripe" | "paypal" | ""
     pdf_bytes: Optional[bytes] = Field(default=None)
     pdf_storage: str = ""
     pdf_filename: str = ""

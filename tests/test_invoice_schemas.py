@@ -114,7 +114,7 @@ def test_invoice_read_to_draft_round_trip() -> None:
         status="DRAFT",
     )
     draft = InvoiceDraft(**read.model_dump(
-        exclude={"id", "nr", "status", "total_brutto", "revision_nr", "updated_at", "related_invoice_id", "items"}
+        exclude={"id", "nr", "status", "total_brutto", "revision_nr", "updated_at", "related_invoice_id", "payment_link_url", "payment_provider", "items"}
     ))
     assert draft.customer_id == 1
     assert draft.date == "2026-06-10"

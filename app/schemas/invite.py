@@ -9,9 +9,8 @@ Source of Truth für `/api/invites/*`-Endpoints.
 
 from __future__ import annotations
 
-import re
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .auth import _EMAIL_PATTERN
 

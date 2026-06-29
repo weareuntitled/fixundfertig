@@ -5,13 +5,12 @@ Re-exports everything from shared_helpers and shared_cards for backward compat.
 from __future__ import annotations
 
 import os
-import base64
 import json
 from datetime import datetime
 from io import BytesIO
 from urllib.parse import urlencode
 
-from nicegui import ui, app
+from nicegui import ui
 from sqlmodel import select
 
 from data import (
@@ -19,63 +18,22 @@ from data import (
     Customer,
     Invoice,
     InvoiceItem,
-    InvoiceItemTemplate,
-    Expense,
     InvoiceRevision,
-    Document,
     log_audit_action,
     InvoiceStatus,
     get_session,
-    User,
 )
 
 from renderer import render_invoice_to_pdf_bytes
-from actions import cancel_invoice, create_correction, delete_draft, delete_invoice, update_status_logic
 from invoice_numbering import build_invoice_filename
 
 from styles import (
-    C_BADGE_GRAY,
-    C_BADGE_GREEN,
-    C_BADGE_YELLOW,
-    C_BTN_ORANGE,
-    C_BTN_PRIM,
-    C_BTN_SEC,
-    C_CARD,
-    C_CARD_HOVER,
-    C_CONTAINER,
-    C_GLASS_CARD,
-    C_GLASS_CARD_HOVER,
-    C_INPUT,
-    C_NUMERIC,
-    C_PAGE_TITLE,
-    C_SECTION_TITLE,
-    C_TABLE_HEADER,
-    C_TABLE_ROW,
     STYLE_STEPPER_ACTIVE,
     STYLE_STEPPER_ARROW,
     STYLE_STEPPER_INACTIVE,
 )
 
-from ui_components import (
-    format_invoice_status,
-    invoice_status_badge,
-    kpi_card,
-    ff_input,
-    settings_card,
-    settings_grid,
-    settings_two_column_layout,
-    sticky_header,
-)
 
-from logic import (
-    finalize_invoice_logic,
-    export_invoices_pdf_zip,
-    export_documents_zip,
-    export_invoices_csv,
-    export_invoice_items_csv,
-    export_customers_csv,
-    export_database_backup,
-)
 from services.email import send_email
 
 # Re-export everything from extracted modules
@@ -109,7 +67,6 @@ from pages.shared_cards import (  # noqa: F401
 # -------------------------
 
 def download_invoice_file(invoice: Invoice) -> None:
-    from pages.shared_helpers import log_invoice_action
 
     if invoice and invoice.id:
         log_invoice_action("EXPORT_CREATED", invoice.id)

@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from sqlmodel import select
 
-from data import Company, Document, DocumentMeta, get_session
+from data import Company, Document, DocumentMeta
 from dependencies import db_session, get_current_company, require_session_auth
 from services.blob_storage import blob_storage
 from services.documents import (

@@ -31,9 +31,7 @@ from styles import (
     STYLE_HERO_VALUE,
     STYLE_ICON_TOOLBAR,
     STYLE_INPUT,
-    STYLE_PAGE_TITLE,
     STYLE_SECTION_TITLE,
-    STYLE_TEXT_MUTED,
 )
 
 def format_invoice_status(status: str) -> str:

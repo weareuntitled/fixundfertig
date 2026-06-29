@@ -21,8 +21,6 @@ durch echtes JWT (PyJWT) ersetzt werden, ohne die Endpoints oder die Schemas zu 
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import os
 from typing import Annotated
 

@@ -8,7 +8,6 @@ import os
 from fastapi import HTTPException, Response
 from fastapi.responses import HTMLResponse
 from nicegui import app
-from sqlmodel import select
 
 from auth_guard import is_authenticated, require_auth
 from data import Company, Customer, Invoice, User, get_session

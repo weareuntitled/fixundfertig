@@ -20,7 +20,7 @@ from typing import Iterator
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import select
 
-from data import InvitedEmail, get_session
+from data import InvitedEmail
 from dependencies import db_session, require_session_auth
 from schemas.invite import InviteCreate, InviteRead
 

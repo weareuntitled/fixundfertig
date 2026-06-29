@@ -172,6 +172,7 @@ services:
     environment:
       - APP_DOMAIN=${APP_DOMAIN}
       - N8N_DOMAIN=${N8N_DOMAIN}
+      - TRACKLISTIFY_DOMAIN=${TRACKLISTIFY_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

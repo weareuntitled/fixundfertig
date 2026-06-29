@@ -95,6 +95,22 @@ function InvoiceDetailPage() {
     },
   });
 
+  const paymentLink = useMutation({
+    mutationFn: () => api.post<{ payment_link_url?: string }>(`/api/invoices/${invoiceId}/payment-link`),
+    onSuccess: (data) => {
+      const url = data?.payment_link_url;
+      if (url) {
+        window.open(url, "_blank", "noopener");
+        notify("success", "Zahlungslink geöffnet");
+      } else {
+        notify("error", "Stripe nicht konfiguriert");
+      }
+    },
+    onError: (err: Error) => {
+      notify("error", err.message);
+    },
+  });
+
   const handleSend = () => {
     if (invoice?.recipient_name && confirm(`Rechnung per E-Mail an ${invoice.recipient_name} senden?`)) {
       sendEmail.mutate();
@@ -143,6 +159,21 @@ function InvoiceDetailPage() {
             >
               <ExternalLink size={16} /> Vorschau
             </button>
+            {!isDraft && invoice.status !== "PAID" && (
+              <button
+                type="button"
+                onClick={() => paymentLink.mutate()}
+                disabled={paymentLink.isPending}
+                className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-low)] transition-colors disabled:opacity-50"
+              >
+                {paymentLink.isPending ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <ExternalLink size={16} />
+                )}
+                {paymentLink.isPending ? "Erstelle…" : "Zahlungslink"}
+              </button>
+            )}
             {isDraft && (
               <button
                 type="button"
@@ -270,6 +301,18 @@ function InvoiceDetailPage() {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Payment Link */}
+          {invoice.payment_link_url && (
+            <div className="bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] p-[var(--space-md)] shadow-sm">
+              <h3 className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] mb-3">Zahlungslink</h3>
+              <a href={invoice.payment_link_url} target="_blank" rel="noopener"
+                className="flex items-center gap-2 text-[13px] text-[var(--color-brand-text)] hover:underline break-all">
+                <ExternalLink size={14} />
+                {invoice.payment_link_url}
+              </a>
             </div>
           )}
 

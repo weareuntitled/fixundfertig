@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from io import BytesIO
-from typing import Any
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
-from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, safe_float, get_attr, wrap_text
+from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, safe_float, get_attr
 from .invoice_pdf_draw import (
     draw_logo, draw_recipient, draw_meta, draw_intro,
     draw_table, draw_totals, draw_footer,

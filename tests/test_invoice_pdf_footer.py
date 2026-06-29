@@ -58,7 +58,7 @@ def test_pdf_footer_contains_kontakt() -> None:
     pdf = render_invoice_to_pdf_bytes(invoice, company=company)
     text = _extract_text(pdf)
     assert "FixundFertig" in text, f"Company name missing. Got: {text[:500]}"
-    assert "info@fixundfertig.de" in text, f"Email missing"
+    assert "info@fixundfertig.de" in text, "Email missing"
 
 
 def test_pdf_footer_contains_bank() -> None:
@@ -67,8 +67,8 @@ def test_pdf_footer_contains_bank() -> None:
     invoice = _make_invoice()
     pdf = render_invoice_to_pdf_bytes(invoice, company=company)
     text = _extract_text(pdf)
-    assert "DE89370400440532013000" in text, f"IBAN missing"
-    assert "COBADEFFXXX" in text, f"BIC missing"
+    assert "DE89370400440532013000" in text, "IBAN missing"
+    assert "COBADEFFXXX" in text, "BIC missing"
 
 
 def test_pdf_footer_contains_legal() -> None:
@@ -77,8 +77,8 @@ def test_pdf_footer_contains_legal() -> None:
     invoice = _make_invoice()
     pdf = render_invoice_to_pdf_bytes(invoice, company=company)
     text = _extract_text(pdf)
-    assert "DE999999999" in text or "123/456/78901" in text, f"No tax/VAT ID"
-    assert "Freiberufler" in text, f"Business type missing"
+    assert "DE999999999" in text or "123/456/78901" in text, "No tax/VAT ID"
+    assert "Freiberufler" in text, "Business type missing"
 
 
 def test_pdf_footer_small_business_shows_notice() -> None:
