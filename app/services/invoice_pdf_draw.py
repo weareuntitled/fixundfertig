@@ -8,16 +8,17 @@ from reportlab.pdfgen.canvas import Canvas
 from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, get_attr, prefixed_value, wrap_text
 
 
-def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp) -> None:
+def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp) -> float:
+    """Draw company logo top-left. Returns logo height used (mm) for spacing."""
     if comp is None:
-        return
+        return 0.0
     cid = getattr(comp, "id", None)
     if cid is None:
-        return
+        return 0.0
     from services.storage import company_logo_path
     path = company_logo_path(int(cid))
     if not os.path.exists(path):
-        return
+        return 0.0
     try:
         from reportlab.lib.utils import ImageReader
         img = ImageReader(path)
@@ -26,12 +27,14 @@ def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp) -> Non
         max_h = LAYOUT["logo_max_h"]
         scale = min(max_w / iw, max_h / ih, 1.0)
         dw, dh = iw * scale, ih * scale
-        x = mx + content_w - dw
-        y = top_y - dh - 2 * mm
+        x = mx
+        y = top_y - dh
         c.drawImage(img, x, y, width=dw, height=dh, preserveAspectRatio=True, mask="auto")
+        return dh / mm + 4  # logo height + 4mm gap
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"draw_logo failed: {e}")
+        return 0.0
 
 
 def draw_recipient(c: Canvas, w: float, h: float, mx: float, content_w: float,

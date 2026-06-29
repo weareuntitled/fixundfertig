@@ -92,9 +92,10 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     top_y = h - LAYOUT["margin_top"]
     right_col_w = min(70 * mm, content_w * 0.38)
 
-    draw_logo(c, mx, top_y, content_w, comp)
+    logo_h = draw_logo(c, mx, top_y, content_w, comp)
+    rec_top = top_y - logo_h * mm
     y_rec = draw_recipient(c, w, h, mx, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country,
-                           comp, top_y, right_col_w, font_r, set_font)
+                           comp, rec_top if logo_h else top_y, right_col_w, font_r, set_font)
     y_meta, company_tax_id, company_vat_id = draw_meta(
         c, w, h, mx, comp, top_y, right_col_w, nr, inv_date, service_date, due_str, font_r, font_b, set_font)
 
