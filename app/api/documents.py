@@ -114,7 +114,7 @@ def document_file(
         "Content-Disposition": f'{disposition}; filename="{document.original_filename or "document"}"'
     }
 
-    if storage_path and storage_path.exists():
+    if storage_path and os.path.exists(storage_path):
         return FileResponse(str(storage_path), media_type=content_type, headers=headers)
 
     if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
@@ -156,9 +156,9 @@ def delete_document(
     storage_key = (document.storage_key or document.storage_path or "").strip()
     if storage_key.startswith("storage/"):
         storage_key = storage_key.removeprefix("storage/").lstrip("/")
-    if storage_path and storage_path.exists():
+    if storage_path and os.path.exists(storage_path):
         try:
-            storage_path.unlink()
+            os.unlink(storage_path)
         except OSError:
             pass
     if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
