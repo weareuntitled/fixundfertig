@@ -1,5 +1,8 @@
 
 
+from styles_css import APP_FONT_CSS, C_FONT_STACK, C_DISPLAY_STACK, C_NUMERIC  # noqa: F401 — re-exported
+
+
 # -------------------------
 # Design system class tokens
 # -------------------------
