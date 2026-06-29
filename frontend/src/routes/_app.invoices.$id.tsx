@@ -57,6 +57,8 @@ function InvoiceDetailPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InvoiceItem | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [editingHeader, setEditingHeader] = useState(false);
+  const [headerDraft, setHeaderDraft] = useState<Record<string, string>>({});
   const { notify } = useNotification();
   const qc = useQueryClient();
 
@@ -110,6 +112,45 @@ function InvoiceDetailPage() {
       notify("error", err.message);
     },
   });
+
+  const updateInvoice = useMutation({
+    mutationFn: (data: Record<string, string>) =>
+      api.put(`/api/invoices/${invoiceId}`, data),
+    onSuccess: () => {
+      notify("success", "Rechnung aktualisiert");
+      setEditingHeader(false);
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoices", invoiceId] });
+    },
+    onError: (err: Error) => notify("error", err.message),
+  });
+
+  const handleEditHeader = () => {
+    setHeaderDraft({
+      title: invoice?.title || "Rechnung",
+      date: invoice?.date || "",
+      delivery_date: invoice?.delivery_date || "",
+      recipient_name: invoice?.recipient_name || "",
+      recipient_street: invoice?.recipient_street || "",
+      recipient_postal_code: invoice?.recipient_postal_code || "",
+      recipient_city: invoice?.recipient_city || "",
+    });
+    setEditingHeader(true);
+  };
+
+  const handleSaveHeader = () => {
+    const changes: Record<string, string> = {};
+    for (const [k, v] of Object.entries(headerDraft)) {
+      const current = (invoice as Record<string, unknown>)?.[k] ?? "";
+      if (String(v) !== String(current)) changes[k] = String(v);
+    }
+    if (Object.keys(changes).length === 0) {
+      setEditingHeader(false);
+      return;
+    }
+    changes.reason = "Manuelle Bearbeitung";
+    updateInvoice.mutate(changes);
+  };
 
   const handleSend = () => {
     if (invoice?.recipient_name && confirm(`Rechnung per E-Mail an ${invoice.recipient_name} senden?`)) {
@@ -174,14 +215,14 @@ function InvoiceDetailPage() {
                 {paymentLink.isPending ? "Erstelle…" : "Zahlungslink"}
               </button>
             )}
-            {isDraft && (
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-low)] transition-colors"
-              >
-                <Pencil size={16} /> Bearbeiten
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleEditHeader}
+              disabled={editingHeader}
+              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-low)] transition-colors disabled:opacity-50"
+            >
+              <Pencil size={16} /> Bearbeiten
+            </button>
             {validTransitions.includes("SENT" as InvoiceStatus) && (
               <button
                 type="button"
@@ -200,6 +241,50 @@ function InvoiceDetailPage() {
           </>
         }
       />
+
+      {/* ── Inline Edit Form ── */}
+      {editingHeader && (
+        <div className="bg-white border border-[var(--color-border)] rounded-[var(--radius-xl)] p-[var(--space-lg)] mb-[var(--space-xl)] shadow-sm animate-fade-in">
+          <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-[var(--space-md)]">Bearbeiten</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-md)]">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Titel</span>
+              <input value={headerDraft.title || "Rechnung"} onChange={(e) => setHeaderDraft({...headerDraft, title: e.target.value})} className="border border-[var(--color-border)] rounded-[var(--radius-lg)] px-3 py-2 text-[14px] text-[var(--color-text-primary)]" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Datum</span>
+              <input type="date" value={headerDraft.date || ""} onChange={(e) => setHeaderDraft({...headerDraft, date: e.target.value})} className="border border-[var(--color-border)] rounded-[var(--radius-lg)] px-3 py-2 text-[14px] text-[var(--color-text-primary)]" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Lieferdatum</span>
+              <input value={headerDraft.delivery_date || ""} onChange={(e) => setHeaderDraft({...headerDraft, delivery_date: e.target.value})} className="border border-[var(--color-border)] rounded-[var(--radius-lg)] px-3 py-2 text-[14px] text-[var(--color-text-primary)]" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Empfänger</span>
+              <input value={headerDraft.recipient_name || ""} onChange={(e) => setHeaderDraft({...headerDraft, recipient_name: e.target.value})} className="border border-[var(--color-border)] rounded-[var(--radius-lg)] px-3 py-2 text-[14px] text-[var(--color-text-primary)]" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Strasse</span>
+              <input value={headerDraft.recipient_street || ""} onChange={(e) => setHeaderDraft({...headerDraft, recipient_street: e.target.value})} className="border border-[var(--color-border)] rounded-[var(--radius-lg)] px-3 py-2 text-[14px] text-[var(--color-text-primary)]" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">PLZ / Ort</span>
+              <div className="flex gap-2">
+                <input value={headerDraft.recipient_postal_code || ""} onChange={(e) => setHeaderDraft({...headerDraft, recipient_postal_code: e.target.value})} placeholder="PLZ" className="w-1/3 border border-[var(--color-border)] rounded-[var(--radius-lg)] px-3 py-2 text-[14px] text-[var(--color-text-primary)]" />
+                <input value={headerDraft.recipient_city || ""} onChange={(e) => setHeaderDraft({...headerDraft, recipient_city: e.target.value})} placeholder="Ort" className="flex-1 border border-[var(--color-border)] rounded-[var(--radius-lg)] px-3 py-2 text-[14px] text-[var(--color-text-primary)]" />
+              </div>
+            </label>
+          </div>
+          <div className="flex gap-[var(--space-sm)] mt-[var(--space-md)] pt-[var(--space-md)] border-t border-[var(--color-border)]">
+            <button type="button" onClick={handleSaveHeader} disabled={updateInvoice.isPending} className="px-[var(--space-md)] py-[var(--space-xs)] bg-black text-white rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-blue-990)] disabled:opacity-50">
+              {updateInvoice.isPending ? "Speichere…" : "Speichern"}
+            </button>
+            <button type="button" onClick={() => setEditingHeader(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-low)]">
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Status Timeline Card ── */}
       <div className="bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] p-[var(--space-lg)] mb-[var(--space-xl)] shadow-sm">

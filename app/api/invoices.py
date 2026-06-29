@@ -38,6 +38,7 @@ from schemas.invoice import (
     InvoiceItem,
     InvoiceRead,
     InvoiceStatusUpdate,
+    InvoiceUpdate,
 )
 from services.email import send_email
 from services.payment import check_payment, create_payment_link
@@ -250,6 +251,79 @@ def update_invoice_status(
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
+    return _to_read_model(invoice)
+
+
+@router.put("/{invoice_id}", response_model=InvoiceRead)
+def update_invoice(
+    invoice_id: int,
+    payload: InvoiceUpdate,
+    _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
+):
+    """Update invoice header fields. Creates revision record, re-renders PDF."""
+    from datetime import datetime
+    from types import SimpleNamespace
+    from data import InvoiceRevision, Company, Customer
+
+    invoice = session.get(Invoice, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+
+    changed = False
+    for field in ("title", "date", "delivery_date", "recipient_name",
+                  "recipient_street", "recipient_postal_code", "recipient_city",
+                  "intro_text"):
+        val = getattr(payload, field, None)
+        if val is not None and val != getattr(invoice, field, ""):
+            setattr(invoice, field, val)
+            changed = True
+    if payload.service_from is not None:
+        f = payload.service_from
+        t = payload.service_to or ""
+        if t and t != f:
+            invoice.delivery_date = f"{f} bis {t}"
+        else:
+            invoice.delivery_date = f or ""
+        changed = True
+
+    if changed:
+        invoice.revision_nr = int(invoice.revision_nr or 0) + 1
+        invoice.updated_at = datetime.now().isoformat()
+        # Create revision snapshot
+        comp = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
+        cust = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+        items = list(getattr(invoice, "items", None) or [])
+        clean_items = [{"description": it.description or "",
+                        "quantity": float(it.quantity or 0),
+                        "unit_price": float(it.unit_price or 0),
+                        "tax_rate": 0} for it in items]
+        preview = SimpleNamespace(
+            company=comp, customer=cust, title=invoice.title,
+            invoice_number=invoice.nr, date=invoice.date,
+            delivery_date=invoice.delivery_date, payment_terms="",
+            address_name=invoice.recipient_name,
+            address_street=invoice.recipient_street,
+            address_zip=invoice.recipient_postal_code,
+            address_city=invoice.recipient_city,
+            address_country=getattr(cust, "country", "") or "",
+            ust_enabled=not bool(getattr(comp, "is_small_business", False)) if comp else True,
+        )
+        preview.__dict__["intro_text"] = invoice.intro_text or ""
+        preview.__dict__["line_items"] = clean_items
+        preview.__dict__["totals"] = {"gross": float(invoice.total_brutto or 0)}
+        invoice.pdf_bytes = render_invoice_to_pdf_bytes(preview)
+
+        session.add(InvoiceRevision(
+            invoice_id=invoice_id,
+            revision_nr=int(invoice.revision_nr),
+            reason=payload.reason or "Bearbeitung",
+            pdf_filename_previous=invoice.pdf_filename or "",
+        ))
+        session.add(invoice)
+        session.commit()
+        session.refresh(invoice)
+
     return _to_read_model(invoice)
 
 

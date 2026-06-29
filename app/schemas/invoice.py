@@ -104,6 +104,24 @@ class InvoiceStatusUpdate(BaseModel):
     reason: str = Field(default="", max_length=500)
 
 
+class InvoiceUpdate(BaseModel):
+    """Input für PUT /api/invoices/{id} — Header-Felder aktualisieren."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: str | None = Field(default=None, max_length=200)
+    date: str | None = Field(default=None, max_length=20)
+    delivery_date: str | None = Field(default=None, max_length=20)
+    service_from: str | None = Field(default=None, max_length=20)
+    service_to: str | None = Field(default=None, max_length=20)
+    recipient_name: str | None = Field(default=None, max_length=200)
+    recipient_street: str | None = Field(default=None, max_length=200)
+    recipient_postal_code: str | None = Field(default=None, max_length=20)
+    recipient_city: str | None = Field(default=None, max_length=100)
+    intro_text: str | None = Field(default=None, max_length=2000)
+    reason: str = Field(default="", max_length=500)
+
+
 class BulkStatusUpdate(BaseModel):
     """Input für POST /api/invoices/bulk-status."""
 
@@ -118,6 +136,7 @@ __all__ = [
     "InvoiceDraft",
     "InvoiceRead",
     "InvoiceStatusUpdate",
+    "InvoiceUpdate",
     "BulkStatusUpdate",
     "InvoiceStatus",
 ]
