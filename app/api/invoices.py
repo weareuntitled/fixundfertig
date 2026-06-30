@@ -215,9 +215,10 @@ def check_invoice_payment(
 def list_invoices(
     _user_id: int = Depends(require_session_auth),
     session: Iterator = Depends(db_session),
+    company: Company = Depends(get_current_company),
 ):
-    """List all invoices. Filter (year, customer, status) kommt in M5."""
-    statement = select(Invoice)
+    """List invoices for current company, ordered by id descending."""
+    statement = select(Invoice).where(Invoice.company_id == int(company.id)).order_by(Invoice.id.desc())
     invoices = session.exec(statement).all()
     return [_to_read_model(inv) for inv in invoices]
 
