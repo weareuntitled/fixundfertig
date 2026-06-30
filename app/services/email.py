@@ -134,6 +134,19 @@ def send_email(
                 smtp.send_message(msg)
     except (smtplib.SMTPException, OSError) as exc:
         logger.exception("smtp.failed to=%s subject=%s", to, subject)
-        raise RuntimeError("Failed to send email via SMTP") from exc
+        detail = str(exc)
+        # ponytail: decode bytes in SMTP error responses
+        if isinstance(exc, smtplib.SMTPAuthenticationError):
+            try:
+                smtp_resp = exc.smtp_error.decode() if isinstance(exc.smtp_error, bytes) else exc.smtp_error
+                if "Application-specific password" in str(smtp_resp):
+                    detail = f"Gmail App-Passwort erforderlich: {smtp_resp}. https://myaccount.google.com/apppasswords"
+                elif "InvalidSecondFactor" in str(smtp_resp):
+                    detail = f"Gmail: 2FA aktiviert — App-Passwort nötig. https://myaccount.google.com/apppasswords"
+                else:
+                    detail = str(smtp_resp)
+            except Exception:
+                detail = str(exc)
+        raise RuntimeError(f"SMTP-Fehler: {detail}") from exc
 
     return True
