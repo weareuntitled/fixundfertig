@@ -200,7 +200,7 @@ def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_b
         y = h - LAYOUT["margin_top"]
 
     val_x = w - mx - 10
-    lbl_x = val_x - 30 * mm
+    lbl_x = val_x - 50 * mm
 
     def total_line(lbl, val, bold=False, offset=12):
         set_font(bold=bold, size=11 if bold else 10)
