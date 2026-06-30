@@ -217,8 +217,8 @@ def list_invoices(
     session: Iterator = Depends(db_session),
     company: Company = Depends(get_current_company),
 ):
-    """List invoices for current company, ordered by id descending."""
-    statement = select(Invoice).where(Invoice.company_id == int(company.id)).order_by(Invoice.id.desc())
+    """List invoices for current company, ordered by invoice nr ascending."""
+    statement = select(Invoice).where(Invoice.company_id == int(company.id)).order_by(Invoice.nr.asc())
     invoices = session.exec(statement).all()
     return [_to_read_model(inv) for inv in invoices]
 
