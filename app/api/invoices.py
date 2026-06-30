@@ -291,29 +291,32 @@ def update_invoice(
     if changed:
         invoice.revision_nr = int(invoice.revision_nr or 0) + 1
         invoice.updated_at = datetime.now().isoformat()
-        # Create revision snapshot
-        comp = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
-        cust = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
-        items = list(getattr(invoice, "items", None) or [])
-        clean_items = [{"description": it.description or "",
-                        "quantity": float(it.quantity or 0),
-                        "unit_price": float(it.unit_price or 0),
-                        "tax_rate": 0} for it in items]
-        preview = SimpleNamespace(
-            company=comp, customer=cust, title=invoice.title,
-            invoice_number=invoice.nr, date=invoice.date,
-            delivery_date=invoice.delivery_date, payment_terms="",
-            address_name=invoice.recipient_name,
-            address_street=invoice.recipient_street,
-            address_zip=invoice.recipient_postal_code,
-            address_city=invoice.recipient_city,
-            address_country=getattr(cust, "country", "") or "",
-            ust_enabled=not bool(getattr(comp, "is_small_business", False)) if comp else True,
-        )
-        preview.__dict__["intro_text"] = invoice.intro_text or ""
-        preview.__dict__["line_items"] = clean_items
-        preview.__dict__["totals"] = {"gross": float(invoice.total_brutto or 0)}
-        invoice.pdf_bytes = render_invoice_to_pdf_bytes(preview)
+        try:
+            comp = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
+            cust = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+            items = list(getattr(invoice, "items", None) or [])
+            clean_items = [{"description": it.description or "",
+                            "quantity": float(it.quantity or 0),
+                            "unit_price": float(it.unit_price or 0),
+                            "tax_rate": 0} for it in items]
+            preview = SimpleNamespace(
+                company=comp, customer=cust, title=invoice.title,
+                invoice_number=invoice.nr, date=invoice.date,
+                delivery_date=invoice.delivery_date, payment_terms="",
+                address_name=invoice.recipient_name,
+                address_street=invoice.recipient_street,
+                address_zip=invoice.recipient_postal_code,
+                address_city=invoice.recipient_city,
+                address_country=getattr(cust, "country", "") or "",
+                ust_enabled=not bool(getattr(comp, "is_small_business", False)) if comp else True,
+            )
+            preview.__dict__["intro_text"] = invoice.intro_text or ""
+            preview.__dict__["line_items"] = clean_items
+            preview.__dict__["totals"] = {"gross": float(invoice.total_brutto or 0)}
+            invoice.pdf_bytes = render_invoice_to_pdf_bytes(preview)
+        except Exception as e:
+            logger.exception("PDF re-render failed on invoice update")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"PDF-Neuerstellung fehlgeschlagen: {e}") from e
 
         session.add(InvoiceRevision(
             invoice_id=invoice_id,

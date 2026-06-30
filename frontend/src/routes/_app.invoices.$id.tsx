@@ -206,7 +206,7 @@ function InvoiceDetailPage() {
           <>
             <a
               href={`/api/invoices/${invoice.id}/download`}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-low)] transition-colors"
+              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
             >
               <Download size={16} />
               PDF herunterladen
@@ -214,7 +214,7 @@ function InvoiceDetailPage() {
             <button
               type="button"
               onClick={() => setPreviewOpen(true)}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-low)] transition-colors"
+              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
             >
               <ExternalLink size={16} /> Vorschau
             </button>
@@ -223,7 +223,7 @@ function InvoiceDetailPage() {
                 type="button"
                 onClick={() => paymentLink.mutate()}
                 disabled={paymentLink.isPending}
-                className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-low)] transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
               >
                 {paymentLink.isPending ? (
                   <Loader2 size={16} className="animate-spin" />
@@ -237,7 +237,7 @@ function InvoiceDetailPage() {
               type="button"
               onClick={handleEditHeader}
               disabled={editingHeader}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-low)] transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
             >
               <Pencil size={16} /> Bearbeiten
             </button>
@@ -304,7 +304,7 @@ function InvoiceDetailPage() {
             <button type="button" onClick={handleSaveHeader} disabled={updateInvoice.isPending} className="px-[var(--space-md)] py-[var(--space-xs)] bg-black text-white rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-blue-990)] disabled:opacity-50">
               {updateInvoice.isPending ? "Speichere…" : "Speichern"}
             </button>
-            <button type="button" onClick={() => setEditingHeader(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-low)]">
+            <button type="button" onClick={() => setEditingHeader(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-high)]">
               Abbrechen
             </button>
           </div>
@@ -350,7 +350,7 @@ function InvoiceDetailPage() {
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-low)] transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
                 >
                   + Position
                 </button>
@@ -447,7 +447,7 @@ function InvoiceDetailPage() {
               Rechnung #{invoice.nr || invoice.id} wird endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
             </p>
             <div className="flex gap-[var(--space-sm)] justify-end">
-              <button type="button" onClick={() => setDeleteConfirmOpen(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-low)]">
+              <button type="button" onClick={() => setDeleteConfirmOpen(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-high)]">
                 Abbrechen
               </button>
               <button type="button" onClick={handleDeleteInvoice} disabled={deleteInvoice.isPending} className="px-[var(--space-md)] py-[var(--space-xs)] bg-red-600 text-white rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-red-700 disabled:opacity-50">

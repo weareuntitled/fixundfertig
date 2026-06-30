@@ -233,7 +233,8 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                   max="100"
                   value={value.vat_rate}
                   onChange={(e) => setField("vat_rate", Number(e.target.value))}
-                  className="w-14 text-right bg-[var(--color-surface-bright)] border border-[var(--color-border)] rounded px-1 py-0.5 font-mono text-sm text-[var(--color-text-primary)] focus:border-[var(--color-black)] focus:ring-1 focus:ring-[var(--color-black)] transition-all duration-150 outline-none"
+                  disabled={!value.ust_enabled}
+                  className="w-14 text-right bg-[var(--color-surface-bright)] border border-[var(--color-border)] rounded px-1 py-0.5 font-mono text-sm text-[var(--color-text-primary)] focus:border-[var(--color-black)] focus:ring-1 focus:ring-[var(--color-black)] transition-all duration-150 outline-none disabled:opacity-30"
                 />
                 <span className="font-mono text-sm text-[var(--color-text-secondary)] ml-1">%</span>
               </div>
@@ -243,6 +244,21 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                 ? taxAmount.toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " €"
                 : "0,00 €"}
             </span>
+          </div>
+          <div className="flex items-center gap-2 px-[var(--space-sm)]">
+            <input
+              type="checkbox"
+              id="kleinunternehmer"
+              checked={!value.ust_enabled}
+              onChange={(e) => {
+                setField("ust_enabled", !e.target.checked);
+                if (e.target.checked) setField("vat_rate", 0);
+              }}
+              className="h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-black)] focus:ring-[var(--color-black)]"
+            />
+            <label htmlFor="kleinunternehmer" className="text-[12px] text-[var(--color-text-muted)] cursor-pointer select-none">
+              Kleinunternehmer (§19 UStG) — keine Umsatzsteuer
+            </label>
           </div>
           <div className="flex justify-between items-center px-[var(--space-sm)] py-[var(--space-xs)] bg-[var(--color-surface-container-low)] rounded-[var(--radius-lg)] mt-[var(--space-sm)]">
             <span className="text-[20px] font-bold text-[var(--color-text-primary)]">Gesamtbetrag</span>
