@@ -28,6 +28,23 @@ def _company_read(company) -> CompanyRead:
     return data
 
 
+class CompanyListEntry(BaseModel):
+    id: int
+    name: str
+
+
+@router.get("/list", response_model=list[CompanyListEntry])
+def list_companies_endpoint(
+    user_id: int = Depends(require_session_auth),
+) -> list[CompanyListEntry]:
+    """List all companies for the authenticated user."""
+    from data import get_session
+    from pages.shared_helpers import list_companies as _list_companies
+    with get_session() as session:
+        companies = _list_companies(session, user_id)
+        return [CompanyListEntry(id=c.id, name=c.name) for c in companies]
+
+
 @router.get("", response_model=CompanyRead)
 def get_company(
     company=Depends(get_current_company),

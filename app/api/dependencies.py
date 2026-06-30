@@ -69,9 +69,20 @@ def get_current_user(user_id: int = Depends(require_session_auth)) -> User:
         return user
 
 
-def get_current_company(user_id: int = Depends(require_session_auth)) -> Company:
-    """Loads the primary Company of the authenticated user."""
+def get_current_company(
+    user_id: int = Depends(require_session_auth),
+    ff_company: Annotated[Optional[str], Cookie(alias="ff_company")] = None,
+) -> Company:
+    """Loads the Company for the authenticated user. Respects ff_company cookie for switching."""
     with get_session() as session:
+        # ponytail: cookie-based company switching, no DB migration needed
+        if ff_company:
+            try:
+                comp = session.get(Company, int(ff_company))
+                if comp and (comp.user_id == user_id or comp.user_id is None):
+                    return comp
+            except (ValueError, TypeError):
+                pass
         comp = get_primary_company(session, user_id)
         if not comp:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No company for user")

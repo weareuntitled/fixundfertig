@@ -5,7 +5,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { useNotification } from "@/lib/use-notifications";
-import { Search, Bell, HelpCircle, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { Search, Bell, HelpCircle, X, Building2 } from "lucide-react";
+
+interface CompanyEntry { id: number; name: string }
 
 interface TopBarProps {
   className?: string;
@@ -15,19 +19,40 @@ export function TopBar({ className = "" }: TopBarProps) {
   const { data: user } = useAuth();
   const { notifications, dismiss } = useNotification();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [coDropdownOpen, setCoDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const coDropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ["companies"],
+    queryFn: () => api.get<CompanyEntry[]>("/api/company/list"),
+    staleTime: 60_000,
+  });
+
+  const switchCompany = (id: number) => {
+    document.cookie = `ff_company=${id}; path=/; max-age=${60*60*24*365}`;
+    window.location.reload();
+  };
+
+  // ponytail: read cookie once on mount, reload handles updates
+  const companyIdFromCookie = (() => {
+    const m = document.cookie.match(/ff_company=(\d+)/);
+    return m ? parseInt(m[1]) : 0;
+  })();
+  const activeCompanyName = companies.find(c => c.id === companyIdFromCookie)?.name || companies[0]?.name;
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
       }
+      if (coDropdownRef.current && !coDropdownRef.current.contains(e.target as Node)) {
+        setCoDropdownOpen(false);
+      }
     }
-    if (dropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [dropdownOpen]);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <header
@@ -109,6 +134,33 @@ export function TopBar({ className = "" }: TopBarProps) {
         >
           <HelpCircle size={16} strokeWidth={1.75} />
         </button>
+
+        {/* ponytail: company switcher — cookie-based, reloads on change */}
+        {companies.length > 1 && (
+          <div className="relative" ref={coDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setCoDropdownOpen(!coDropdownOpen)}
+              className="h-8 inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 text-[12px] font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-high)] transition-colors"
+            >
+              <Building2 size={14} />
+              {activeCompanyName}
+            </button>
+            {coDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1 w-48 rounded-xl border border-[var(--color-border)] bg-white shadow-lg overflow-hidden z-50">
+                {companies.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => switchCompany(c.id)}
+                    className="w-full text-left px-3 py-2 text-[13px] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-high)] transition-colors"
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="h-8 w-8 ml-1.5 rounded-full bg-gradient-to-br from-[var(--color-blue-100)] to-[var(--color-blue-200)] flex items-center justify-center text-[12px] font-semibold text-[var(--color-blue-700)] cursor-pointer ring-2 ring-white">
           {user?.email?.charAt(0).toUpperCase() || "?"}
