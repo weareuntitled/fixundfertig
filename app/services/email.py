@@ -49,7 +49,7 @@ def _normalize_config(cfg: dict[str, Any] | None) -> dict[str, Any] | None:
         return None
     host = (cfg.get("host") or "").strip()
     user = (cfg.get("user") or "").strip()
-    password = (cfg.get("password") or "").strip()
+    password = (cfg.get("password") or "").strip().replace(" ", "")
     sender = (cfg.get("sender") or "").strip() or user
     port = cfg.get("port")
 

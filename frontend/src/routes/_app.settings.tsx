@@ -585,7 +585,13 @@ function SettingsPage() {
                         method: "POST",
                         credentials: "include",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ to: testEmailTo }),
+                        body: JSON.stringify({
+                          to: testEmailTo,
+                          smtp_host: form.smtp_server,
+                          smtp_port: form.smtp_port,
+                          smtp_user: form.smtp_user,
+                          smtp_password: form.smtp_password,
+                        }),
                       });
                       const data = await res.json();
                       setTestEmailStatus(data.success ? "ok" : "error");

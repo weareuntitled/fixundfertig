@@ -98,6 +98,10 @@ def test_stripe_connection(
 
 class TestEmailRequest(BaseModel):
     to: str = ""
+    smtp_host: str = ""
+    smtp_port: int | None = None
+    smtp_user: str = ""
+    smtp_password: str = ""
 
 
 class TestEmailResponse(BaseModel):
@@ -116,10 +120,10 @@ def test_email(
         return TestEmailResponse(success=False, message="Keine E-Mail-Adresse angegeben und keine Firmen-E-Mail hinterlegt.")
 
     smtp_config = {
-        "host": company.smtp_server,
-        "port": company.smtp_port or 587,
-        "user": company.smtp_user,
-        "password": company.smtp_password,
+        "host": payload.smtp_host or company.smtp_server,
+        "port": payload.smtp_port or company.smtp_port or 587,
+        "user": payload.smtp_user or company.smtp_user,
+        "password": payload.smtp_password or company.smtp_password,
         "sender": company.default_sender_email or company.email or company.smtp_user,
     }
 
