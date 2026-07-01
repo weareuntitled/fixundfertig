@@ -34,3 +34,7 @@
 portfolio.untitled-ux.de {
     reverse_proxy ux-portfolio:3000
 }
+
+smartlinks.untitled-ux.de {
+    reverse_proxy spotify-smartlinks:3000
+}
