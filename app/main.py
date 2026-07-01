@@ -25,7 +25,7 @@ setup_logging()
 
 from auth_guard import set_request_for_context
 from services.auth import ensure_owner_user
-import webhooks
+import webhooks  # noqa: F401 (side-effect: registers FastAPI routes)
 
 logger = logging.getLogger(__name__)
 
