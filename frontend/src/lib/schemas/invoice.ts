@@ -100,6 +100,7 @@ export const invoiceReadSchema = z.object({
   recipient_street: z.string().default(""),
   recipient_postal_code: z.string().default(""),
   recipient_city: z.string().default(""),
+  legacy: z.boolean().default(false),
   total_brutto: z.number().default(0),
   status: invoiceStatusSchema.default("OPEN"),
   revision_nr: z.number().int().default(0),

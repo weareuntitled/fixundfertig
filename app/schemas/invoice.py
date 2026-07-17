@@ -87,6 +87,7 @@ class InvoiceRead(BaseModel):
     recipient_street: str = ""
     recipient_postal_code: str = ""
     recipient_city: str = ""
+    legacy: bool = False
     total_brutto: float
     status: InvoiceStatus = "DRAFT"
     revision_nr: int = 0

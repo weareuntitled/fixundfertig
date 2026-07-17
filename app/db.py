@@ -168,6 +168,13 @@ def ensure_invoice_subject_field():
 
 ensure_invoice_subject_field()
 
+def ensure_invoice_legacy_field():
+    with engine.begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "legacy" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN legacy INTEGER DEFAULT 0")
+
+ensure_invoice_legacy_field()
+
 def ensure_invoice_payment_fields():
     with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}

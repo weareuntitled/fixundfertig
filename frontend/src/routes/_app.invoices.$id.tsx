@@ -201,7 +201,7 @@ function InvoiceDetailPage() {
       <PageHeader
         backTo="/invoices"
         backLabel="Rechnungen"
-        title={<>Rechnung #{invoice.nr || invoice.id}</>}
+        title={<span>Rechnung #{invoice.nr || invoice.id}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
         subtitle={<>Erstellt am {invoice.date || "Kein Datum"}</>}
         actions={
           <>

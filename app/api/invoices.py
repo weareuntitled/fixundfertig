@@ -122,6 +122,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         recipient_street=invoice.recipient_street or "",
         recipient_postal_code=invoice.recipient_postal_code or "",
         recipient_city=invoice.recipient_city or "",
+        legacy=bool(invoice.legacy) if hasattr(invoice, 'legacy') else False,
         total_brutto=float(invoice.total_brutto or 0.0),
         status=invoice.status.value if hasattr(invoice.status, "value") else str(invoice.status),
         revision_nr=int(invoice.revision_nr or 0),

@@ -172,9 +172,12 @@ function InvoicesListPage() {
             <div className="flex flex-1 items-center gap-5 px-5 py-3.5">
               {/* Nr + Date */}
               <div className="w-28 shrink-0">
-                <div className="font-mono text-[12.5px] font-semibold text-[var(--color-text-primary)]">
-                  {inv.nr || `#${inv.id}`}
-                </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-[12.5px] font-semibold text-[var(--color-text-primary)]">
+                      {inv.nr || `#${inv.id}`}
+                    </span>
+                    {inv.legacy && <span className="inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] text-[var(--color-amber-700)]">Legacy</span>}
+                  </div>
                 <div className="mt-0.5 text-[11.5px] text-[var(--color-text-tertiary)]">
                   {inv.date || "—"}
                 </div>
