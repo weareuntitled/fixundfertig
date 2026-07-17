@@ -148,6 +148,7 @@ class Invoice(SQLModel, table=True):
     total_brutto: float
     status: InvoiceStatus = InvoiceStatus.DRAFT
     revision_nr: int = 0
+    subject: str = ""
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
     payment_link_url: str = ""

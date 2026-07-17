@@ -77,6 +77,7 @@ def duplicate_invoice(
             comp_id=int(company.id),
             cust_id=int(invoice.customer_id),
             title=invoice.title or "Rechnung",
+            subject=invoice.subject or "",
             date_str="",
             delivery_str="",
             recipient_data={
@@ -114,6 +115,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         customer_id=int(invoice.customer_id),
         nr=invoice.nr,
         title=invoice.title or "Rechnung",
+        subject=invoice.subject or "",
         date=invoice.date or "",
         delivery_date=invoice.delivery_date or "",
         recipient_name=invoice.recipient_name or "",
@@ -273,7 +275,7 @@ def update_invoice(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
     changed = False
-    for field in ("title", "date", "delivery_date", "recipient_name",
+    for field in ("title", "subject", "date", "delivery_date", "recipient_name",
                   "recipient_street", "recipient_postal_code", "recipient_city",
                   "intro_text"):
         val = getattr(payload, field, None)
@@ -433,6 +435,7 @@ def create_invoice(
             items=[it.model_dump() | {"tax_rate": payload.vat_rate} for it in payload.items],
             ust_enabled=payload.ust_enabled,
             status=InvoiceStatus(payload.status),
+            subject=payload.subject,
             intro_text=payload.intro_text,
             service_from=payload.service_from,
             service_to=payload.service_to,
@@ -700,10 +703,12 @@ def send_invoice_email_endpoint(
 </body>
 </html>"""
 
+    email_subject = (invoice.subject or "").strip() or f"Rechnung {inv_nr} von {company_name} — {amount_german} €"
+
     try:
         success = send_email(
             to=customer.email,
-            subject=f"Rechnung {inv_nr} von {company_name} — {amount_german} €",
+            subject=email_subject,
             text=text_body,
             html=html_body,
             smtp_config=smtp_config,

@@ -131,6 +131,7 @@ function InvoiceDetailPage() {
   const handleEditHeader = () => {
     setHeaderDraft({
       title: invoice?.title || "Rechnung",
+      subject: invoice?.subject || "",
       date: invoice?.date || "",
       delivery_date: invoice?.delivery_date || "",
       recipient_name: invoice?.recipient_name || "",
@@ -275,6 +276,10 @@ function InvoiceDetailPage() {
             <label className="flex flex-col gap-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Titel</span>
               <input value={headerDraft.title || "Rechnung"} onChange={(e) => setHeaderDraft({...headerDraft, title: e.target.value})} className="border border-[var(--color-border)] rounded-[var(--radius-lg)] px-3 py-2 text-[14px] text-[var(--color-text-primary)]" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Betreff</span>
+              <input value={headerDraft.subject || ""} onChange={(e) => setHeaderDraft({...headerDraft, subject: e.target.value})} placeholder="E-Mail-Betreff (optional)" className="border border-[var(--color-border)] rounded-[var(--radius-lg)] px-3 py-2 text-[14px] text-[var(--color-text-primary)]" />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Datum</span>

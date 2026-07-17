@@ -43,6 +43,7 @@ export type InvoiceStatus = z.infer<typeof invoiceStatusSchema>;
 export const invoiceDraftSchema = z.object({
   customer_id: z.number().int().positive("Kunde erforderlich"),
   title: z.string().max(200).default("Rechnung"),
+  subject: z.string().max(200).default(""),
   date: isoDate.default(""),
   delivery_date: optionalIsoDate.default(""),
   service_from: optionalIsoDate.default(""),
@@ -64,6 +65,7 @@ export type InvoiceDraft = z.infer<typeof invoiceDraftSchema>;
 export const emptyInvoiceDraft = (customerId: number): InvoiceDraft => ({
   customer_id: customerId,
   title: "Rechnung",
+  subject: "",
   date: new Date().toISOString().slice(0, 10),
   delivery_date: "",
   service_from: "",
@@ -91,6 +93,7 @@ export const invoiceReadSchema = z.object({
   customer_id: z.number().int(),
   nr: z.string().nullable().optional(),
   title: z.string().default("Rechnung"),
+  subject: z.string().default(""),
   date: z.string().default(""),
   delivery_date: z.string().default(""),
   recipient_name: z.string().default(""),

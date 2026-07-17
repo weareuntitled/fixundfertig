@@ -161,6 +161,13 @@ def ensure_invoice_schema():
                 WHERE company_id = 0 OR company_id IS NULL
             """)
 
+def ensure_invoice_subject_field():
+    with engine.begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "subject" not in columns: conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN subject TEXT DEFAULT ''")
+
+ensure_invoice_subject_field()
+
 def ensure_invoice_payment_fields():
     with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}

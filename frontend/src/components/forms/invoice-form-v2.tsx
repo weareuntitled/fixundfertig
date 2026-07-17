@@ -73,6 +73,18 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
             />
           </div>
 
+          <div>
+            <label className="block text-[14px] font-bold text-[var(--color-text-primary)] mb-[var(--space-xs)]">
+              Betreff
+            </label>
+            <input
+              type="text"
+              value={value.subject}
+              onChange={(e) => setField("subject", e.target.value)}
+              placeholder="Rechnungsbetreff (optional)"
+              className="w-full bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-black)] focus:ring-1 focus:ring-[var(--color-black)] transition-all duration-150 outline-none"
+            />
+          </div>
         </div>
 
         {/* Right: Invoice Number + Dates */}

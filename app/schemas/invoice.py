@@ -42,6 +42,7 @@ class InvoiceDraft(BaseModel):
 
     customer_id: int = Field(gt=0)
     title: str = Field(default="Rechnung", max_length=200)
+    subject: str = Field(default="", max_length=200)
     date: str = Field(default="", max_length=20)
     delivery_date: str = Field(default="", max_length=20)
     service_from: str = Field(default="", max_length=20)
@@ -79,6 +80,7 @@ class InvoiceRead(BaseModel):
     customer_id: int
     nr: str | None = None
     title: str = "Rechnung"
+    subject: str = ""
     date: str = ""
     delivery_date: str = ""
     recipient_name: str = ""
@@ -110,6 +112,7 @@ class InvoiceUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     title: str | None = Field(default=None, max_length=200)
+    subject: str | None = Field(default=None, max_length=200)
     date: str | None = Field(default=None, max_length=20)
     delivery_date: str | None = Field(default=None, max_length=20)
     service_from: str | None = Field(default=None, max_length=20)
