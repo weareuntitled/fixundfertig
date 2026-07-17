@@ -338,11 +338,11 @@ function InvoiceDetailPage() {
         <div className="lg:col-span-2 space-y-[var(--space-xl)]">
           <ClientInfoCard
             client={{
-              name: invoice.recipient_name,
+              name: invoice.recipient_name || customer?.name || "",
               email: customer?.email,
-              strasse: invoice.recipient_street,
-              plz: invoice.recipient_postal_code,
-              ort: invoice.recipient_city,
+              strasse: invoice.recipient_street || customer?.recipient_street || customer?.strasse || "",
+              plz: invoice.recipient_postal_code || customer?.recipient_postal_code || customer?.plz || "",
+              ort: invoice.recipient_city || customer?.recipient_city || customer?.ort || "",
             }}
             dueDate={invoice.delivery_date}
           />
