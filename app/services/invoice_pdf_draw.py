@@ -129,6 +129,12 @@ def draw_meta(c: Canvas, w: float, h: float, mx: float, comp, top_y: float,
 
 def draw_intro(c: Canvas, mx: float, y: float, content_w: float, invoice, comp,
                font_r: str, set_font) -> float:
+    subject = safe_str(get_attr(invoice, "subject", default=""))
+    if subject:
+        set_font(bold=True, size=LAYOUT["fs_text"])
+        c.drawString(mx, y, subject)
+        y -= 14
+
     intro = safe_str(get_attr(invoice, "intro_text", "intro", default=""))
     if not intro:
         intro = safe_str(get_attr(comp, "invoice_intro", default="")) if comp is not None else ""
