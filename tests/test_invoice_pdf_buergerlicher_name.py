@@ -230,6 +230,30 @@ def test_pdf_shows_identity_line_when_artist_name_is_only_part_of_a_longer_word(
     assert strings.count("DanEP (Daniel Peters)") == 1
 
 
+def test_pdf_hides_identity_line_when_a_line_contains_the_artist_name() -> None:
+    """The identity line is absent once a line item names the artist."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DJ-Set DanEP, 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DJ-Set DanEP (Daniel Peters), 19.10." in strings
+    assert "DanEP (Daniel Peters)" not in strings
+
+
+def test_pdf_shows_identity_line_without_quantity_or_price_when_there_are_no_lines() -> None:
+    """An empty service list still names the person once, without a fake line item."""
+    company = _make_company()
+    invoice = _make_invoice({"line_items": []})
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert strings.count("DanEP (Daniel Peters)") == 1
+    assert strings.index("Vielen Dank für den Auftrag.") < strings.index("DanEP (Daniel Peters)") < strings.index("Beschreibung")
+    assert "1,00" not in strings
+    assert strings.count("0,00 €") == 2
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
@@ -277,7 +301,7 @@ def _pdf_literal_strings(stream: str) -> list[str]:
                 break
             chars.append(char)
             i += 1
-        found.append("".join(chars))
+        found.append("".join(chars).replace("\x80", "€"))
     return found
 
 
