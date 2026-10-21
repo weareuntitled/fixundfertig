@@ -68,6 +68,19 @@ def test_pdf_appends_legal_name_after_artist_name_in_line_description() -> None:
     assert "DJ-Set DanEP (Daniel Peters), 19.10." in text
 
 
+def test_pdf_leaves_existing_legal_name_parentheses_once() -> None:
+    """DanEP (Daniel Peters) stays as it is."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DanEP (Daniel Peters)", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DanEP (Daniel Peters) (Daniel Peters)" not in text
+    assert "DanEP (Daniel Peters)" in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 

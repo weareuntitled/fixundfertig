@@ -43,7 +43,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     for it in item_iter:
         description = safe_str(get_attr(it, "description", "desc", default=""))
         if artist_name and legal_name:
-            description = description.replace(artist_name, f"{artist_name} ({legal_name})")
+            description = _append_legal_name(description, artist_name, legal_name)
         items.append(InvItem(
             description=description,
             quantity=safe_float(get_attr(it, "quantity", "qty", default=0)),
@@ -112,3 +112,11 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
     c.save()
     return buf.getvalue()
+
+
+def _append_legal_name(description: str, artist_name: str, legal_name: str) -> str:
+    marked = f"{artist_name} ({legal_name})"
+    placeholder = "\x00"
+    protected = description.replace(marked, placeholder)
+    replaced = protected.replace(artist_name, marked)
+    return replaced.replace(placeholder, marked)
