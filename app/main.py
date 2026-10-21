@@ -189,6 +189,11 @@ from api import api_router
 app.include_router(api_router)
 
 
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    return {"status": "ok"}
+
+
 from starlette.staticfiles import StaticFiles as _StaticFiles
 from starlette.responses import FileResponse as _FileResponse
 

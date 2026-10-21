@@ -20,6 +20,9 @@ storage/
 *.db
 app/storage/
 
+# Production backup archives live on the server, outside source control.
+backups/*.tar.gz
+
 # Editor Settings
 .vscode/
 .idea/

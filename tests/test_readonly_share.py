@@ -116,3 +116,12 @@ def test_readonly_mode_blocks_document_mutation_and_share_viewer_redirect(tmp_pa
     client = TestClient(main_module.app)
     viewer = client.get(f"/viewer/invoice/123?share_token={share_token}", follow_redirects=False)
     assert viewer.status_code == 200
+
+
+def test_healthz_reports_app_readiness() -> None:
+    _data_module, _auth_module, main_module = _load_modules()
+
+    response = TestClient(main_module.app).get("/healthz")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}

@@ -14,7 +14,42 @@ on:
     branches: [ "main" ]
 
 jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Run backend tests
+        run: python -m pytest -q
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run frontend tests and production build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build
+
   deploy:
+    needs: checks
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
@@ -26,18 +61,39 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY || secrets.SERVER_SSH_KEY }}
           port: 22
           script: |
-            # 1. In den richtigen Ordner wechseln (~ steht für /root/)
+            set -eu
             cd ~/fixundfertig
-            
-            # 2. Eventuelle lokale Änderungen (wie requirements) verwerfen, 
-            # damit der Pull nicht blockiert wird (Vorsicht!)
-            git reset --hard
-            
-            # 3. Neuesten Code holen
-            git pull origin main
-            
-            # 4. Bauen und Starten (Mit Leerzeichen statt Bindestrich!)
+
+            git fetch origin main
+            if ! git diff --quiet -- . ':(exclude)backups/**' || ! git diff --cached --quiet -- . ':(exclude)backups/**'; then
+              echo "Refusing deploy: tracked server changes exist outside backups/."
+              git status --short
+              exit 1
+            fi
+            untracked=$(git ls-files --others --exclude-standard | grep -v '^backups/' || true)
+            if [ -n "$untracked" ]; then
+              echo "Refusing deploy: untracked server files exist outside backups/."
+              printf '%s\n' "$untracked"
+              exit 1
+            fi
+
+            git checkout main
+            git pull --ff-only origin main
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
-            
-            # 5. Aufräumen
+            for attempt in $(seq 1 60); do
+              health=$(docker inspect --format '{{.State.Health.Status}}' fixundfertig_app 2>/dev/null || true)
+              if [ "$health" = healthy ]; then
+                break
+              fi
+              if [ "$attempt" -eq 60 ]; then
+                echo "App did not become healthy."
+                docker compose -f docker-compose.prod.yml ps
+                docker logs --tail 100 fixundfertig_app
+                exit 1
+              fi
+              sleep 2
+            done
+            docker compose -f docker-compose.prod.yml ps
             docker image prune -f

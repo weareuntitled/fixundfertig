@@ -19,6 +19,16 @@ services:
     restart: unless-stopped
     networks:
       - internal_net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os,urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8000/healthz', headers={'Host': os.getenv('APP_DOMAIN', 'localhost')}), timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     deploy:
       resources:
         limits:
