@@ -411,6 +411,18 @@ def test_pdf_shows_the_stored_account_holder() -> None:
     assert "Kontoinhaber: Virginie Konto" in text
 
 
+def test_contact_footer_uses_account_holder_or_legal_name() -> None:
+    invoice = _make_invoice()
+
+    for fields, expected in [
+        ({"account_holder": "Kontoinhaber Beispiel"}, "Kontoinhaber Beispiel"),
+        ({"account_holder": ""}, "Daniel Peters"),
+    ]:
+        strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=_make_company(fields)))
+        contact_index = strings.index("Kontakt")
+        assert strings[contact_index + 1] == expected
+
+
 def test_pdf_omits_account_holder_when_the_field_is_empty() -> None:
     """An empty account holder does not fall back to the legal name."""
     company = _make_company({"account_holder": ""})

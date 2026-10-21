@@ -261,9 +261,10 @@ def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
     set_font(size=7, color=(0.4, 0.4, 0.4))
 
     comp_name = safe_str(get_attr(comp, "name"))
+    contact_name = safe_str(get_attr(comp, "account_holder")) or company_legal_name(comp) or comp_name
     comp_street = safe_str(get_attr(comp, "street"))
     comp_city = f"{safe_str(get_attr(comp, 'postal_code'))} {safe_str(get_attr(comp, 'city'))}".strip()
-    f_addr = [comp_name]
+    f_addr = [contact_name]
     if comp_street:
         f_addr.append(comp_street)
     if comp_city:
