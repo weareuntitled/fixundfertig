@@ -9,7 +9,7 @@ from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, safe_float, get_attr
 from .invoice_pdf_draw import (
-    draw_logo, draw_recipient, draw_meta, draw_intro,
+    draw_logo, draw_recipient, draw_meta, draw_intro, draw_identity_line,
     draw_table, draw_totals, draw_footer, company_legal_name,
 )
 
@@ -40,8 +40,11 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     item_iter = raw_items if isinstance(raw_items, list) else (getattr(invoice, "items", []) or [])
     artist_name = safe_str(get_attr(comp, "name")) if comp is not None else ""
     legal_name = company_legal_name(comp)
+    has_artist_hit = False
     for it in item_iter:
         description = safe_str(get_attr(it, "description", "desc", default=""))
+        if artist_name and artist_name in description:
+            has_artist_hit = True
         if artist_name and legal_name:
             description = _append_legal_name(description, artist_name, legal_name)
         items.append(InvItem(
@@ -106,6 +109,8 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
     y = min(y_rec, y_meta) - 12 * mm
     y = draw_intro(c, mx, y, content_w, invoice, comp, font_r, set_font)
+    if artist_name and legal_name and not has_artist_hit:
+        y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
     y = draw_table(c, w, mx, y, content_w, my_bot, items, h, font_r, set_font)
     draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, h, set_font)
     draw_footer(c, w, mx, content_w, my_bot, comp, company_tax_id, company_vat_id, font_r, font_b, set_font)

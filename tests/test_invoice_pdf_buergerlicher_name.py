@@ -204,6 +204,19 @@ def test_pdf_appends_legal_name_when_a_comma_precedes_existing_parentheses() -> 
     assert "DanEP (Daniel Peters), (Daniel Peters)" in text
 
 
+def test_pdf_shows_identity_line_when_no_line_contains_the_artist_name() -> None:
+    """DanEP (Daniel Peters) appears once between the intro and the table."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="Webdesign", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert strings.count("DanEP (Daniel Peters)") == 1
+    assert strings.index("Vielen Dank für den Auftrag.") < strings.index("DanEP (Daniel Peters)") < strings.index("Beschreibung")
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 

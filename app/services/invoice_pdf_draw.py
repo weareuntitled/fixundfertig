@@ -162,6 +162,12 @@ def draw_intro(c: Canvas, mx: float, y: float, content_w: float, invoice, comp,
     return y - 12
 
 
+def draw_identity_line(c: Canvas, mx: float, y: float, text: str, set_font) -> float:
+    set_font(bold=False, size=LAYOUT["fs_text"])
+    c.drawString(mx, y, text)
+    return y - 16
+
+
 def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
                items: list[InvItem], h: float, font_r: str, set_font) -> float:
     w_desc = content_w * LAYOUT["col_w_desc"]
