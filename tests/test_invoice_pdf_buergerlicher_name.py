@@ -141,6 +141,45 @@ def test_pdf_leaves_artist_name_when_a_digit_precedes_it() -> None:
     assert "Slot 2DanEP bleibt" in text
 
 
+def test_pdf_matches_artist_name_case_sensitively() -> None:
+    """danep is not treated as DanEP."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="danep am 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "danep am 19.10." in text
+    assert "danep (Daniel Peters)" not in text
+
+
+def test_pdf_matches_artist_name_with_special_characters_literally() -> None:
+    """A dot in the artist name is that character, not a pattern."""
+    company = _make_company({"name": "Dan.EP"})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DanXEP bleibt", quantity=1.0, unit_price=80.0),
+            SimpleNamespace(description="Show Dan.EP!", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DanXEP bleibt" in text
+    assert "Show Dan.EP (Daniel Peters)!" in text
+
+
+def test_pdf_matches_artist_name_with_parentheses_literally() -> None:
+    """Parentheses in the artist name are characters, not a pattern."""
+    company = _make_company({"name": "Dan(EP)"})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="Live Dan(EP).", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "Live Dan(EP) (Daniel Peters)." in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
