@@ -217,6 +217,19 @@ def test_pdf_shows_identity_line_when_no_line_contains_the_artist_name() -> None
     assert strings.index("Vielen Dank für den Auftrag.") < strings.index("DanEP (Daniel Peters)") < strings.index("Beschreibung")
 
 
+def test_pdf_shows_identity_line_when_artist_name_is_only_part_of_a_longer_word() -> None:
+    """DanEPSet is not a hit, so the identity line still appears."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DanEPSet am 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DanEPSet am 19.10." in strings
+    assert strings.count("DanEP (Daniel Peters)") == 1
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 

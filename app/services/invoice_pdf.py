@@ -43,7 +43,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     has_artist_hit = False
     for it in item_iter:
         description = safe_str(get_attr(it, "description", "desc", default=""))
-        if artist_name and artist_name in description:
+        if artist_name and _has_artist_name(description, artist_name):
             has_artist_hit = True
         if artist_name and legal_name:
             description = _append_legal_name(description, artist_name, legal_name)
@@ -121,6 +121,20 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
 def _is_name_token_char(char: str) -> bool:
     return char.isalpha() or char.isdigit()
+
+
+def _has_artist_name(description: str, artist_name: str) -> bool:
+    cursor = 0
+    while True:
+        found = description.find(artist_name, cursor)
+        if found < 0:
+            return False
+        end = found + len(artist_name)
+        preceded_by_token = found > 0 and _is_name_token_char(description[found - 1])
+        followed_by_token = end < len(description) and _is_name_token_char(description[end])
+        if not preceded_by_token and not followed_by_token:
+            return True
+        cursor = end
 
 
 def _append_legal_name(description: str, artist_name: str, legal_name: str) -> str:
