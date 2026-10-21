@@ -129,6 +129,18 @@ def test_pdf_leaves_artist_name_inside_a_longer_preceding_word() -> None:
     assert "Mix xDanEP bleibt" in text
 
 
+def test_pdf_leaves_artist_name_when_a_digit_precedes_it() -> None:
+    """A digit immediately before the artist name keeps the longer token intact."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="Slot 2DanEP bleibt", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "Slot 2DanEP bleibt" in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
