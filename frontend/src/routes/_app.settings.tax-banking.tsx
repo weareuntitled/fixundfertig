@@ -16,6 +16,7 @@ function TaxBankingPage() {
     iban: "",
     bic: "",
     bank_name: "",
+    account_holder: "",
   });
 
   useEffect(() => {
@@ -26,6 +27,7 @@ function TaxBankingPage() {
         iban: company.iban,
         bic: company.bic,
         bank_name: company.bank_name,
+        account_holder: company.account_holder,
       });
     }
   }, [company]);
@@ -70,6 +72,15 @@ function TaxBankingPage() {
             />
           </FormField>
         </div>
+
+        <FormField label="Kontoinhaber">
+          <input
+            value={form.account_holder}
+            onChange={(e) => setForm({ ...form, account_holder: e.target.value })}
+            className="w-full rounded-md border border-[var(--color-border-strong)] px-3 py-2 text-sm"
+            data-testid="account-holder"
+          />
+        </FormField>
 
         <FormField label="IBAN">
           <input

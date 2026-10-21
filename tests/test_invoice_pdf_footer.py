@@ -15,6 +15,8 @@ def _make_company(fields: dict | None = None) -> SimpleNamespace:
     defaults = {
         "id": 1,
         "name": "FixundFertig GmbH",
+        "first_name": "Daniel",
+        "last_name": "Peters",
         "street": "Musterstra\u00dfe 1",
         "postal_code": "12345",
         "city": "Berlin",
@@ -24,6 +26,7 @@ def _make_company(fields: dict | None = None) -> SimpleNamespace:
         "bank_name": "Musterbank",
         "iban": "DE89370400440532013000",
         "bic": "COBADEFFXXX",
+        "account_holder": "Daniel Peters",
         "business_type": "Freiberufler",
         "tax_id": "123/456/78901",
         "vat_id": "",
@@ -69,6 +72,26 @@ def test_pdf_footer_contains_bank() -> None:
     text = _extract_text(pdf)
     assert "DE89370400440532013000" in text, "IBAN missing"
     assert "COBADEFFXXX" in text, "BIC missing"
+
+
+def test_pdf_footer_contains_account_holder() -> None:
+    """Footer must show the account holder name."""
+    company = _make_company()
+    invoice = _make_invoice()
+    pdf = render_invoice_to_pdf_bytes(invoice, company=company)
+    text = _extract_text(pdf)
+    assert "Kontoinhaber" in text, "Account holder label missing"
+    assert "Daniel Peters" in text, "Account holder name missing"
+
+
+def test_pdf_sender_shows_legal_name() -> None:
+    """Sender block must show the legal name below the artist/company name."""
+    company = _make_company()
+    invoice = _make_invoice()
+    pdf = render_invoice_to_pdf_bytes(invoice, company=company)
+    text = _extract_text(pdf)
+    assert "FixundFertig" in text
+    assert "Daniel Peters" in text
 
 
 def test_pdf_footer_contains_legal() -> None:

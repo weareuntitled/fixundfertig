@@ -111,6 +111,7 @@ def ensure_company_schema():
         if "vat_id" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN vat_id TEXT DEFAULT ''")
         if "bic" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN bic TEXT DEFAULT ''")
         if "bank_name" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN bank_name TEXT DEFAULT ''")
+        if "account_holder" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN account_holder TEXT DEFAULT ''")
         if "iban" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN iban TEXT DEFAULT ''")
         if "next_invoice_nr" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
         if "payment_enabled" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN payment_enabled INTEGER DEFAULT 0")

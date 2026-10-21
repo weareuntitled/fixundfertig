@@ -25,6 +25,7 @@ class CompanyRead(BaseModel):
     iban: str = ""
     bic: str = ""
     bank_name: str = ""
+    account_holder: str = ""
     tax_id: str = ""
     vat_id: str = ""
     smtp_server: str = ""
@@ -64,6 +65,7 @@ class CompanyUpdate(BaseModel):
     iban: str | None = None
     bic: str | None = None
     bank_name: str | None = None
+    account_holder: str | None = None
     tax_id: str | None = None
     vat_id: str | None = None
     smtp_server: str | None = None

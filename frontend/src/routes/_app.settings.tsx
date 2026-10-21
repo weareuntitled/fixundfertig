@@ -43,6 +43,7 @@ const DEFAULTS: CompanyForm = {
   iban: "",
   bic: "",
   bank_name: "",
+  account_holder: "",
   tax_id: "",
   vat_id: "",
   smtp_server: "",
@@ -335,6 +336,13 @@ function SettingsPage() {
               options={["Einzelunternehmen", "Kleinunternehmer", "GmbH", "GbR", "UG", "AG"]}
             />
             <div className="mt-3 grid grid-cols-1 gap-3 border-b border-[var(--color-border)] pb-3 md:grid-cols-2">
+              <Field
+                className="md:col-span-2"
+                label="Kontoinhaber"
+                value={form.account_holder}
+                onChange={(v) => set("account_holder", v)}
+                placeholder="Daniel Peters"
+              />
               <Field
                 className="md:col-span-2"
                 label="IBAN"

@@ -18,6 +18,7 @@ const companySchema = z.object({
   iban: z.string().default(""),
   bic: z.string().default(""),
   bank_name: z.string().default(""),
+  account_holder: z.string().default(""),
   tax_id: z.string().default(""),
   vat_id: z.string().default(""),
   smtp_server: z.string().default(""),

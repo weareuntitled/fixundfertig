@@ -80,6 +80,7 @@ class Company(SQLModel, table=True):
     iban: str = ""
     bic: str = ""
     bank_name: str = ""
+    account_holder: str = ""
     tax_id: str = ""
     vat_id: str = ""
     smtp_server: str = ""

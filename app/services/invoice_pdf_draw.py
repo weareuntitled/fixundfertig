@@ -8,6 +8,14 @@ from reportlab.pdfgen.canvas import Canvas
 from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, get_attr, prefixed_value, wrap_text
 
 
+def company_legal_name(comp) -> str:
+    if comp is None:
+        return ""
+    first = safe_str(get_attr(comp, "first_name"))
+    last = safe_str(get_attr(comp, "last_name"))
+    return f"{first} {last}".strip()
+
+
 def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp) -> float:
     """Draw company logo top-left. Returns logo height used (mm) for spacing."""
     if comp is None:
@@ -81,6 +89,11 @@ def draw_meta(c: Canvas, w: float, h: float, mx: float, comp, top_y: float,
         set_font(bold=True, size=10)
         c.drawRightString(meta_x, y_meta, safe_str(get_attr(comp, "name")))
         y_meta -= 12
+        legal_name = company_legal_name(comp)
+        if legal_name:
+            set_font(bold=False, size=9)
+            c.drawRightString(meta_x, y_meta, legal_name)
+            y_meta -= 11
         set_font(bold=False, size=9)
         s_str = safe_str(get_attr(comp, "street"))
         if s_str:
@@ -251,7 +264,9 @@ def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
         f_addr.append(comp_city)
     f_addr.append(safe_str(get_attr(comp, "email")))
     f_addr.append(safe_str(get_attr(comp, "phone")))
+    account_holder = safe_str(get_attr(comp, "account_holder")) or company_legal_name(comp)
     f_bank = [
+        prefixed_value("Kontoinhaber: ", account_holder),
         safe_str(get_attr(comp, "bank_name")),
         prefixed_value("IBAN: ", get_attr(comp, "iban")),
         prefixed_value("BIC: ", get_attr(comp, "bic", "swift", "swift_code")),
