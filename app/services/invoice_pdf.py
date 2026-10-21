@@ -129,7 +129,8 @@ def _append_legal_name(description: str, artist_name: str, legal_name: str) -> s
             return "".join(parts)
         end = found + len(artist_name)
         parts.append(description[cursor:end])
+        preceded_by_letter = found > 0 and description[found - 1].isalpha()
         followed_by_token = end < len(description) and _is_name_token_char(description[end])
-        if not followed_by_token and not description.startswith(suffix, end):
+        if not preceded_by_letter and not followed_by_token and not description.startswith(suffix, end):
             parts.append(suffix)
         cursor = end

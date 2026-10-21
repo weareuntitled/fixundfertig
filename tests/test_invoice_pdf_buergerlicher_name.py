@@ -117,6 +117,18 @@ def test_pdf_leaves_artist_name_when_a_digit_continues_the_word() -> None:
     assert "Code DanEP2 bleibt" in text
 
 
+def test_pdf_leaves_artist_name_inside_a_longer_preceding_word() -> None:
+    """A letter immediately before the artist name means it is not its own word."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="Mix xDanEP bleibt", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "Mix xDanEP bleibt" in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
