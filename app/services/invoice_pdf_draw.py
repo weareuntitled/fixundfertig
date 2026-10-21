@@ -270,7 +270,7 @@ def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
         f_addr.append(comp_city)
     f_addr.append(safe_str(get_attr(comp, "email")))
     f_addr.append(safe_str(get_attr(comp, "phone")))
-    account_holder = safe_str(get_attr(comp, "account_holder")) or company_legal_name(comp)
+    account_holder = safe_str(get_attr(comp, "account_holder"))
     f_bank = [
         prefixed_value("Kontoinhaber: ", account_holder),
         safe_str(get_attr(comp, "bank_name")),

@@ -390,6 +390,82 @@ def test_pdf_prints_the_same_description_when_rendered_twice() -> None:
     assert "DanEP (Daniel Peters) (Daniel Peters)" not in second
 
 
+def test_pdf_shows_the_stored_account_holder() -> None:
+    """Kontoinhaber: prints the name stored in the bank field."""
+    company = _make_company({"account_holder": "Virginie Konto"})
+    invoice = _make_invoice()
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "Kontoinhaber: Virginie Konto" in text
+
+
+def test_pdf_omits_account_holder_when_the_field_is_empty() -> None:
+    """An empty account holder does not fall back to the legal name."""
+    company = _make_company({"account_holder": ""})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="Webdesign", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert not any(line.startswith("Kontoinhaber") for line in strings)
+    assert "Daniel Peters" in strings
+
+
+def test_pdf_omits_account_holder_when_the_field_is_only_whitespace() -> None:
+    """Spaces in the account holder field are an empty field."""
+    company = _make_company({"account_holder": "   "})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="Webdesign", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert not any(line.startswith("Kontoinhaber") for line in strings)
+    assert strings.index("DanEP") < strings.index("Daniel Peters")
+
+
+def test_pdf_names_a_line_that_is_only_the_artist_name_once() -> None:
+    """DanEP becomes DanEP (Daniel Peters) once, without a second identity line."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DanEP", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert strings.count("DanEP (Daniel Peters)") == 1
+
+
+def test_pdf_keeps_bank_and_legal_footer_lines_when_account_holder_is_empty() -> None:
+    """IBAN, tax id, and the small-business notice stay when Kontoinhaber is omitted."""
+    company = _make_company({
+        "account_holder": "",
+        "is_small_business": True,
+        "vat_id": "DE999999999",
+    })
+    invoice = _make_invoice()
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "Kontoinhaber" not in text
+    assert "IBAN: DE89370400440532013000" in text
+    assert "Kleinunternehmer" in text
+    assert "DE999999999" in text
+    assert "Daniel Peters" in text
+
+
+def test_pdf_does_not_put_the_account_holder_in_the_description() -> None:
+    """The bank name and the legal name stay on different lines."""
+    company = _make_company({"account_holder": "Virginie Konto"})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DJ-Set DanEP, 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DJ-Set DanEP (Daniel Peters), 19.10." in text
+    assert "Kontoinhaber: Virginie Konto" in text
+    assert "DJ-Set DanEP (Virginie Konto)" not in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
