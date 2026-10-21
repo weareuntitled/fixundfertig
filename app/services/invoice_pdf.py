@@ -114,6 +114,10 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     return buf.getvalue()
 
 
+def _is_name_token_char(char: str) -> bool:
+    return char.isalpha() or char.isdigit()
+
+
 def _append_legal_name(description: str, artist_name: str, legal_name: str) -> str:
     suffix = f" ({legal_name})"
     parts: list[str] = []
@@ -125,7 +129,7 @@ def _append_legal_name(description: str, artist_name: str, legal_name: str) -> s
             return "".join(parts)
         end = found + len(artist_name)
         parts.append(description[cursor:end])
-        followed_by_letter = end < len(description) and description[end].isalpha()
-        if not followed_by_letter and not description.startswith(suffix, end):
+        followed_by_token = end < len(description) and _is_name_token_char(description[end])
+        if not followed_by_token and not description.startswith(suffix, end):
             parts.append(suffix)
         cursor = end

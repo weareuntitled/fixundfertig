@@ -105,6 +105,18 @@ def test_pdf_appends_legal_name_after_every_artist_name_in_one_line() -> None:
     assert "DanEP (Daniel Peters) und DanEP (Daniel Peters)" in text
 
 
+def test_pdf_leaves_artist_name_when_a_digit_continues_the_word() -> None:
+    """A digit glued to the artist name keeps the longer token intact."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="Code DanEP2 bleibt", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "Code DanEP2 bleibt" in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
