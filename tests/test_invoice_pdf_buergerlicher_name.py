@@ -243,6 +243,19 @@ def test_pdf_hides_identity_line_when_a_line_contains_the_artist_name() -> None:
     assert "DanEP (Daniel Peters)" not in strings
 
 
+def test_pdf_annotates_artist_name_that_stands_alone_inside_a_longer_candidate() -> None:
+    """xA.A.A holds A.A after the dot, so that hit is annotated and the identity line stays off."""
+    company = _make_company({"name": "A.A"})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="xA.A.A", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "xA.A.A (Daniel Peters)" in strings
+    assert "A.A (Daniel Peters)" not in strings
+
+
 def test_pdf_shows_identity_line_without_quantity_or_price_when_there_are_no_lines() -> None:
     """An empty service list still names the person once, without a fake line item."""
     company = _make_company()

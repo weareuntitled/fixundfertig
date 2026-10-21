@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -40,11 +41,11 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     item_iter = raw_items if isinstance(raw_items, list) else (getattr(invoice, "items", []) or [])
     artist_name = safe_str(get_attr(comp, "name")) if comp is not None else ""
     legal_name = company_legal_name(comp)
-    has_artist_hit = False
+    line_holds_artist_name_as_its_own_token = False
     for it in item_iter:
         description = safe_str(get_attr(it, "description", "desc", default=""))
         if artist_name and _has_artist_name(description, artist_name):
-            has_artist_hit = True
+            line_holds_artist_name_as_its_own_token = True
         if artist_name and legal_name:
             description = _append_legal_name(description, artist_name, legal_name)
         items.append(InvItem(
@@ -109,7 +110,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
     y = min(y_rec, y_meta) - 12 * mm
     y = draw_intro(c, mx, y, content_w, invoice, comp, font_r, set_font)
-    if artist_name and legal_name and not has_artist_hit:
+    if artist_name and legal_name and not line_holds_artist_name_as_its_own_token:
         y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
     y = draw_table(c, w, mx, y, content_w, my_bot, items, h, font_r, set_font)
     draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, h, set_font)
@@ -123,33 +124,35 @@ def _is_name_token_char(char: str) -> bool:
     return char.isalpha() or char.isdigit()
 
 
-def _has_artist_name(description: str, artist_name: str) -> bool:
+def _standalone_artist_hits(description: str, artist_name: str) -> Iterator[tuple[int, int]]:
     cursor = 0
     while True:
         found = description.find(artist_name, cursor)
         if found < 0:
-            return False
+            return
         end = found + len(artist_name)
         preceded_by_token = found > 0 and _is_name_token_char(description[found - 1])
         followed_by_token = end < len(description) and _is_name_token_char(description[end])
-        if not preceded_by_token and not followed_by_token:
-            return True
+        if preceded_by_token or followed_by_token:
+            cursor = found + 1
+            continue
+        yield found, end
         cursor = end
+
+
+def _has_artist_name(description: str, artist_name: str) -> bool:
+    return any(_standalone_artist_hits(description, artist_name))
 
 
 def _append_legal_name(description: str, artist_name: str, legal_name: str) -> str:
     suffix = f" ({legal_name})"
     parts: list[str] = []
     cursor = 0
-    while True:
-        found = description.find(artist_name, cursor)
-        if found < 0:
-            parts.append(description[cursor:])
-            return "".join(parts)
-        end = found + len(artist_name)
-        parts.append(description[cursor:end])
-        preceded_by_token = found > 0 and _is_name_token_char(description[found - 1])
-        followed_by_token = end < len(description) and _is_name_token_char(description[end])
-        if not preceded_by_token and not followed_by_token and not description.startswith(suffix, end):
+    for start, end in _standalone_artist_hits(description, artist_name):
+        parts.append(description[cursor:start])
+        parts.append(description[start:end])
+        if not description.startswith(suffix, end):
             parts.append(suffix)
         cursor = end
+    parts.append(description[cursor:])
+    return "".join(parts)
