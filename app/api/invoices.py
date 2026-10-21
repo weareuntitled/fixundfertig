@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import select
 
 from data import Company, Customer, Invoice, InvoiceItem as InvoiceItemModel
-from data import InvoiceStatus
+from data import InvoiceRevision, InvoiceStatus
 from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
@@ -333,6 +333,39 @@ def update_invoice(
         session.refresh(invoice)
 
     return _to_read_model(invoice)
+
+
+@router.post("/{invoice_id}/regenerate-pdf")
+def regenerate_invoice_pdf(
+    invoice_id: int,
+    _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
+):
+    """Replace the stored PDF from current invoice and company data, retaining its number."""
+    from datetime import datetime
+
+    invoice = session.get(Invoice, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+
+    company = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
+    customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+    pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer)
+
+    next_revision = int(invoice.revision_nr or 0) + 1
+    invoice.pdf_bytes = pdf_bytes
+    invoice.pdf_storage = "db"
+    invoice.revision_nr = next_revision
+    invoice.updated_at = datetime.now().isoformat()
+    session.add(InvoiceRevision(
+        invoice_id=invoice_id,
+        revision_nr=next_revision,
+        reason="PDF mit aktuellen Firmendaten neu erzeugt",
+        pdf_filename_previous=invoice.pdf_filename or "",
+    ))
+    session.add(invoice)
+    session.commit()
+    return {"invoice_id": invoice_id, "invoice_number": invoice.nr, "revision_nr": next_revision}
 
 
 @router.post("/preview-pdf", responses={200: {"content": {"application/pdf": {}}}})

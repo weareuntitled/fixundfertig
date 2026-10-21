@@ -26,6 +26,7 @@ import {
   Info,
   FileText,
   Loader2,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { StatusTimeline } from "@/components/ui/status-timeline";
@@ -114,6 +115,15 @@ function InvoiceDetailPage() {
     onError: (err: Error) => {
       notify("error", err.message);
     },
+  });
+
+  const regeneratePdf = useMutation({
+    mutationFn: () => api.post<{ invoice_number?: string }>(`/api/invoices/${invoiceId}/regenerate-pdf`),
+    onSuccess: (result) => {
+      notify("success", `PDF für Rechnung ${result.invoice_number || invoiceId} neu erzeugt`);
+      qc.invalidateQueries({ queryKey: ["invoice-preview-pdf", invoiceId] });
+    },
+    onError: (err: Error) => notify("error", err.message),
   });
 
   const updateInvoice = useMutation({
@@ -218,6 +228,15 @@ function InvoiceDetailPage() {
               className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
             >
               <ExternalLink size={16} /> Vorschau
+            </button>
+            <button
+              type="button"
+              onClick={() => confirm(`Gespeicherte PDF von Rechnung ${invoice.nr || invoice.id} mit aktuellen Firmendaten ersetzen? Rechnungsnummer und Rechnungsdaten bleiben gleich.`) && regeneratePdf.mutate()}
+              disabled={regeneratePdf.isPending}
+              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
+            >
+              {regeneratePdf.isPending ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              {regeneratePdf.isPending ? "Erzeuge…" : "PDF neu erzeugen"}
             </button>
             {!isDraft && invoice.status !== "PAID" && (
               <button

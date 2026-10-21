@@ -137,3 +137,33 @@ def test_download_returns_404_for_unknown_invoice(invoices_app) -> None:
     app.dependency_overrides[dependencies_module.db_session] = _db_session_override(session_mock)
     response = TestClient(app).get("/api/invoices/999/download")
     assert response.status_code == 404
+
+
+@pytest.mark.skipif(build_invoices_router is None, reason="app.api.invoices.router not yet implemented")
+def test_regenerate_pdf_keeps_number_and_replaces_stored_bytes(invoices_app, monkeypatch) -> None:
+    app = invoices_app
+    invoice = _make_invoice_with_pdf(7, pdf_bytes=b"old-pdf")
+    invoice.company_id = 2
+    invoice.status = "SENT"
+    company = SimpleNamespace(id=2, name="DanEP", first_name="Daniel", last_name="Peters")
+    customer = SimpleNamespace(id=1)
+    mock_session = MagicMock()
+
+    def get_record(model, record_id):
+        if record_id == 7:
+            return invoice
+        return company if record_id == 2 else customer
+
+    mock_session.get.side_effect = get_record
+    app.dependency_overrides[dependencies_module.db_session] = _db_session_override(mock_session)
+    monkeypatch.setattr(invoices_module, "render_invoice_to_pdf_bytes", lambda **kwargs: b"new-pdf-with-Daniel-Peters")
+
+    response = TestClient(app).post("/api/invoices/7/regenerate-pdf")
+
+    assert response.status_code == 200
+    assert response.json()["invoice_number"] == "RE-2026-0001"
+    assert invoice.nr == "RE-2026-0001"
+    assert invoice.pdf_bytes == b"new-pdf-with-Daniel-Peters"
+    assert invoice.revision_nr == 1
+    assert invoice.status == "SENT"
+    mock_session.commit.assert_called_once()
