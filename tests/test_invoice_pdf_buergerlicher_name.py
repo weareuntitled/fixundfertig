@@ -81,6 +81,18 @@ def test_pdf_leaves_existing_legal_name_parentheses_once() -> None:
     assert "DanEP (Daniel Peters)" in text
 
 
+def test_pdf_leaves_longer_word_that_starts_with_artist_name() -> None:
+    """A longer word that starts with the artist name stays untouched."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DanEPSet am 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DanEPSet am 19.10." in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 

@@ -115,8 +115,17 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
 
 def _append_legal_name(description: str, artist_name: str, legal_name: str) -> str:
-    marked = f"{artist_name} ({legal_name})"
-    placeholder = "\x00"
-    protected = description.replace(marked, placeholder)
-    replaced = protected.replace(artist_name, marked)
-    return replaced.replace(placeholder, marked)
+    suffix = f" ({legal_name})"
+    parts: list[str] = []
+    cursor = 0
+    while True:
+        found = description.find(artist_name, cursor)
+        if found < 0:
+            parts.append(description[cursor:])
+            return "".join(parts)
+        end = found + len(artist_name)
+        parts.append(description[cursor:end])
+        followed_by_letter = end < len(description) and description[end].isalpha()
+        if not followed_by_letter and not description.startswith(suffix, end):
+            parts.append(suffix)
+        cursor = end
