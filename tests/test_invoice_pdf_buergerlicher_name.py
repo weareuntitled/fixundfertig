@@ -180,6 +180,30 @@ def test_pdf_matches_artist_name_with_parentheses_literally() -> None:
     assert "Live Dan(EP) (Daniel Peters)." in text
 
 
+def test_pdf_appends_legal_name_when_parentheses_lack_the_leading_space() -> None:
+    """DanEP(Daniel Peters) is not the required form and gets the parenthesis too."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DanEP(Daniel Peters)", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DanEP (Daniel Peters)(Daniel Peters)" in text
+
+
+def test_pdf_appends_legal_name_when_a_comma_precedes_existing_parentheses() -> None:
+    """DanEP, (Daniel Peters) is not the required form and gets the parenthesis too."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DanEP, (Daniel Peters)", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DanEP (Daniel Peters), (Daniel Peters)" in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
