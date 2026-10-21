@@ -254,6 +254,33 @@ def test_pdf_shows_identity_line_without_quantity_or_price_when_there_are_no_lin
     assert strings.count("0,00 €") == 2
 
 
+def test_pdf_omits_parentheses_when_no_legal_name_is_set() -> None:
+    """Without first and last name the description stays free of parentheses."""
+    company = _make_company({"first_name": "", "last_name": ""})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DJ-Set DanEP, 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DJ-Set DanEP, 19.10." in strings
+    assert "()" not in "".join(strings)
+
+
+def test_pdf_omits_identity_line_when_legal_name_is_blank() -> None:
+    """Whitespace-only first and last name leave no identity line."""
+    company = _make_company({"first_name": "   ", "last_name": "   "})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="Webdesign", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DanEP ()" not in strings
+    assert "()" not in "".join(strings)
+    assert "DanEP (Daniel Peters)" not in strings
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
