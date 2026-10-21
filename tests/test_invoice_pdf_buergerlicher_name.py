@@ -281,6 +281,54 @@ def test_pdf_omits_identity_line_when_legal_name_is_blank() -> None:
     assert "DanEP (Daniel Peters)" not in strings
 
 
+def test_pdf_uses_only_the_first_name_when_the_last_name_is_missing() -> None:
+    """A stored first name alone becomes (Daniel)."""
+    company = _make_company({"first_name": " Daniel ", "last_name": ""})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DJ-Set DanEP, 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DJ-Set DanEP (Daniel), 19.10." in text
+
+
+def test_pdf_uses_only_the_last_name_when_the_first_name_is_missing() -> None:
+    """A stored last name alone becomes (Peters)."""
+    company = _make_company({"first_name": "", "last_name": " Peters "})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DJ-Set DanEP, 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DJ-Set DanEP (Peters), 19.10." in text
+
+
+def test_pdf_identity_line_uses_only_the_stored_last_name() -> None:
+    """The identity line uses the same trimmed legal name as the description."""
+    company = _make_company({"first_name": "", "last_name": " Peters "})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="Webdesign", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert strings.count("DanEP (Peters)") == 1
+
+
+def test_pdf_trims_the_artist_name_before_matching() -> None:
+    """Surrounding spaces on the company name do not change the printed stage name."""
+    company = _make_company({"name": "  DanEP  "})
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DJ-Set DanEP, 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DJ-Set DanEP (Daniel Peters), 19.10." in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
