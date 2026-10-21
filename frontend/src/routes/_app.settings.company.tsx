@@ -87,6 +87,9 @@ function CompanySettingsPage() {
             />
           </FormField>
         </div>
+        <p className="-mt-2 text-xs text-[var(--color-text-secondary)]">
+          Der Inhabername erscheint im PDF-Kontakt, wenn unter „Steuern & Bank“ kein Kontoinhaber gepflegt ist.
+        </p>
         <FormField label="Rechtsform / Branche">
           <input
             value={form.business_type}

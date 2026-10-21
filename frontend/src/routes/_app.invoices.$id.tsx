@@ -2,7 +2,7 @@
  * @schema InvoiceDetailPage
  * @purpose Full invoice detail matching Lumina Ledger HTML: status timeline, bento cards, client, items, summary
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -52,7 +52,10 @@ function InvoiceDetailPage() {
   const updateItem = useUpdateInvoiceItem();
   const deleteItem = useDeleteInvoiceItem();
   const preview = useInvoicePreviewPdf(invoiceId);
-  const previewUrl = preview.data ? URL.createObjectURL(preview.data) : null;
+  const previewUrl = useMemo(
+    () => (preview.data ? URL.createObjectURL(preview.data) : null),
+    [preview.data],
+  );
   const { data: customer } = useCustomer(invoice?.customer_id ?? 0);
   const { data: company } = useCompany();
 
@@ -459,7 +462,12 @@ function InvoiceDetailPage() {
       </div>
 
       <LineItemDialog open={dialogOpen} initial={editingItem ?? undefined} onSave={handleSaveItem} onCancel={() => setDialogOpen(false)} />
-      <PdfPreviewModal open={previewOpen} pdfUrl={previewUrl} invoice={invoice} customer={customer ? { name: customer.name || `${customer.vorname} ${customer.nachname}`.trim() || `Kunde #${customer.id}`, email: customer.email || undefined, street: customer.recipient_street || customer.strasse || undefined, postal_code: customer.recipient_postal_code || customer.plz || undefined, city: customer.recipient_city || customer.ort || undefined } : undefined} company={company ? { name: company.name, street: company.street, postal_code: company.postal_code, city: company.city, email: company.email, phone: company.phone, bank_name: company.bank_name, iban: company.iban } : undefined} invoiceNr={invoice.nr || undefined} onClose={() => setPreviewOpen(false)} />
+      <PdfPreviewModal
+        open={previewOpen}
+        pdfUrl={previewUrl}
+        invoiceNr={invoice.nr || undefined}
+        onClose={() => setPreviewOpen(false)}
+      />
 
       {/* ── Delete Confirmation Modal ── */}
       {deleteConfirmOpen && (

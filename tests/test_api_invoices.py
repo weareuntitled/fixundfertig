@@ -43,6 +43,7 @@ def _make_invoice(invoice_id: int = 1, status: str = "DRAFT", customer_id: int =
         customer_id=customer_id,
         nr=None,
         title="Rechnung",
+        subject="",
         date="2026-06-10",
         delivery_date="",
         recipient_name="",
@@ -50,6 +51,7 @@ def _make_invoice(invoice_id: int = 1, status: str = "DRAFT", customer_id: int =
         recipient_postal_code="",
         recipient_city="",
         total_brutto=0.0,
+        legacy=False,
         status=status,
         revision_nr=0,
         updated_at="",
@@ -225,6 +227,7 @@ def test_duplicate_invoice_creates_draft_copy(invoices_app, monkeypatch) -> None
         company_id=1,
         nr="RE-10042",
         title="Rechnung",
+        subject="",
         date="2026-06-10",
         delivery_date="",
         recipient_name="Boring GmbH",
@@ -232,6 +235,7 @@ def test_duplicate_invoice_creates_draft_copy(invoices_app, monkeypatch) -> None
         recipient_postal_code="85643",
         recipient_city="Köln",
         total_brutto=250.0,
+        legacy=False,
         status="SENT",
         revision_nr=0,
         updated_at="",
@@ -249,6 +253,7 @@ def test_duplicate_invoice_creates_draft_copy(invoices_app, monkeypatch) -> None
         company_id=1,
         nr="RE-10043",
         title="Rechnung",
+        subject="",
         date="2026-06-12",
         delivery_date="",
         recipient_name="Boring GmbH",
@@ -256,6 +261,7 @@ def test_duplicate_invoice_creates_draft_copy(invoices_app, monkeypatch) -> None
         recipient_postal_code="85643",
         recipient_city="Köln",
         total_brutto=250.0,
+        legacy=False,
         status="DRAFT",
         revision_nr=0,
         updated_at="",
@@ -300,6 +306,7 @@ def _make_mock_invoice(id: int, status: str = "DRAFT") -> MagicMock:
     inv.customer_id = 1
     inv.nr = None
     inv.title = "Rechnung"
+    inv.subject = ""
     inv.date = ""
     inv.delivery_date = ""
     inv.recipient_name = ""

@@ -5,15 +5,13 @@
  * @output Renders page with header (3 buttons) and single white card with form
  * @tokens Uses: color-background, color-surface-card, color-border, color-text-*
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { InvoiceFormV2 } from "@/components/forms/invoice-form-v2";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
 import { useInvoicePreview } from "@/lib/use-invoice-preview";
 import { emptyInvoiceDraft, type InvoiceDraft } from "@/lib/schemas/invoice";
-import { useCustomer } from "@/lib/use-customers";
-import { useCompany } from "@/lib/use-company";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/_app/invoices/new")({
@@ -30,12 +28,11 @@ function NewInvoicePage() {
     setDraft(emptyInvoiceDraft(1));
   }, []);
 
-  const customerId = draft?.customer_id ?? 0;
-  const { data: customer } = useCustomer(customerId);
-  const { data: company } = useCompany();
-
   const preview = useInvoicePreview(draft ?? emptyInvoiceDraft(1), 800);
-  const previewUrl = preview.data ? URL.createObjectURL(preview.data) : null;
+  const previewUrl = useMemo(
+    () => (preview.data ? URL.createObjectURL(preview.data) : null),
+    [preview.data],
+  );
 
   useEffect(() => {
     return () => {
@@ -133,24 +130,6 @@ function NewInvoicePage() {
       <PdfPreviewModal
         open={previewOpen}
         pdfUrl={previewUrl}
-        invoice={draft}
-        customer={customer ? {
-          name: customer.name || `${customer.vorname} ${customer.nachname}`.trim() || `Kunde #${customer.id}`,
-          email: customer.email || undefined,
-          street: customer.recipient_street || customer.strasse || undefined,
-          postal_code: customer.recipient_postal_code || customer.plz || undefined,
-          city: customer.recipient_city || customer.ort || undefined,
-        } : undefined}
-        company={company ? {
-          name: company.name,
-          street: company.street,
-          postal_code: company.postal_code,
-          city: company.city,
-          email: company.email,
-          phone: company.phone,
-          bank_name: company.bank_name,
-          iban: company.iban,
-        } : undefined}
         invoiceNr="entwurf"
         onClose={() => setPreviewOpen(false)}
       />

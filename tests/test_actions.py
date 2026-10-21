@@ -40,6 +40,7 @@ def temp_db_engine(tmp_path):
     original_engine = data_module.engine
     original_session_local = data_module.SessionLocal
     original_get_session = data_module.get_session
+    original_actions_get_session = actions_module.get_session
 
     data_module.engine = test_engine
     data_module.SessionLocal = TestSessionLocal
@@ -52,6 +53,7 @@ def temp_db_engine(tmp_path):
         finally:
             s.close()
     data_module.get_session = _patched_get_session
+    actions_module.get_session = _patched_get_session
 
     try:
         yield test_engine
@@ -59,6 +61,7 @@ def temp_db_engine(tmp_path):
         data_module.engine = original_engine
         data_module.SessionLocal = original_session_local
         data_module.get_session = original_get_session
+        actions_module.get_session = original_actions_get_session
 
 
 def test_create_correction_creates_open_invoice(temp_db_engine) -> None:

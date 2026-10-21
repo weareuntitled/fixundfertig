@@ -73,7 +73,7 @@ function TaxBankingPage() {
           </FormField>
         </div>
 
-        <FormField label="Kontoinhaber">
+        <FormField label="Kontoinhaber (Bankkonto)">
           <input
             value={form.account_holder}
             onChange={(e) => setForm({ ...form, account_holder: e.target.value })}
@@ -81,6 +81,9 @@ function TaxBankingPage() {
             data-testid="account-holder"
           />
         </FormField>
+        <p className="-mt-2 text-xs text-[var(--color-text-secondary)]">
+          Erscheint als „Kontoinhaber“ in der PDF-Bankverbindung. Der Kontaktblock nutzt diesen Namen, andernfalls den Inhabernamen aus „Firma“.
+        </p>
 
         <FormField label="IBAN">
           <input

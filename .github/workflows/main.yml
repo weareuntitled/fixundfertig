@@ -12,9 +12,11 @@ name: Deploy to Hostinger
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
-  checks:
+  backend-checks:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -31,6 +33,9 @@ jobs:
       - name: Run backend tests
         run: python -m pytest -q
 
+  frontend-checks:
+    runs-on: ubuntu-latest
+    steps:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -49,7 +54,8 @@ jobs:
           npm run build
 
   deploy:
-    needs: checks
+    needs: [backend-checks, frontend-checks]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
