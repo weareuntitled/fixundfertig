@@ -329,6 +329,67 @@ def test_pdf_trims_the_artist_name_before_matching() -> None:
     assert "DJ-Set DanEP (Daniel Peters), 19.10." in text
 
 
+def test_pdf_keeps_typed_quantity_and_unit_price() -> None:
+    """Naming the person does not change the typed quantity or unit price."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DJ-Set DanEP, 19.10.", quantity=3.0, unit_price=180.50),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DJ-Set DanEP (Daniel Peters), 19.10." in strings
+    assert "3,00" in strings
+    assert "180,50 €" in strings
+
+
+def test_pdf_leaves_subject_and_intro_unchanged() -> None:
+    """Subject and intro keep the artist name without a legal-name parenthesis."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "subject": "Auftrag DanEP",
+        "intro_text": "Hallo DanEP.",
+        "line_items": [
+            SimpleNamespace(description="Webdesign", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "Auftrag DanEP" in strings
+    assert "Hallo DanEP." in strings
+    assert "Auftrag DanEP (Daniel Peters)" not in strings
+    assert "Hallo DanEP (Daniel Peters)." not in strings
+
+
+def test_pdf_annotates_only_lines_that_name_the_artist() -> None:
+    """A line with the artist name is annotated, a line without it stays, and the identity line is absent."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DJ-Set DanEP, 19.10.", quantity=1.0, unit_price=250.0),
+            SimpleNamespace(description="Webdesign", quantity=2.0, unit_price=80.0),
+        ],
+    })
+    strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DJ-Set DanEP (Daniel Peters), 19.10." in strings
+    assert "Webdesign" in strings
+    assert "DanEP (Daniel Peters)" not in strings
+
+
+def test_pdf_prints_the_same_description_when_rendered_twice() -> None:
+    """A second render does not add a second pair of parentheses."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DJ-Set DanEP, 19.10.", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    first = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    second = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert first == second
+    assert "DJ-Set DanEP (Daniel Peters), 19.10." in second
+    assert "DanEP (Daniel Peters) (Daniel Peters)" not in second
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
