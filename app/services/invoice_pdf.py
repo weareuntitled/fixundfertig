@@ -10,7 +10,7 @@ from reportlab.pdfgen.canvas import Canvas
 from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, safe_float, get_attr
 from .invoice_pdf_draw import (
     draw_logo, draw_recipient, draw_meta, draw_intro,
-    draw_table, draw_totals, draw_footer,
+    draw_table, draw_totals, draw_footer, company_legal_name,
 )
 
 
@@ -38,9 +38,14 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
     items: list[InvItem] = []
     item_iter = raw_items if isinstance(raw_items, list) else (getattr(invoice, "items", []) or [])
+    artist_name = safe_str(get_attr(comp, "name")) if comp is not None else ""
+    legal_name = company_legal_name(comp)
     for it in item_iter:
+        description = safe_str(get_attr(it, "description", "desc", default=""))
+        if artist_name and legal_name:
+            description = description.replace(artist_name, f"{artist_name} ({legal_name})")
         items.append(InvItem(
-            description=safe_str(get_attr(it, "description", "desc", default="")),
+            description=description,
             quantity=safe_float(get_attr(it, "quantity", "qty", default=0)),
             unit_price=safe_float(get_attr(it, "unit_price", "price", default=0)),
         ))
