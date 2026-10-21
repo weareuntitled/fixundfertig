@@ -93,6 +93,18 @@ def test_pdf_leaves_longer_word_that_starts_with_artist_name() -> None:
     assert "DanEPSet am 19.10." in text
 
 
+def test_pdf_appends_legal_name_after_every_artist_name_in_one_line() -> None:
+    """Every standalone occurrence in the same line is annotated."""
+    company = _make_company()
+    invoice = _make_invoice({
+        "line_items": [
+            SimpleNamespace(description="DanEP und DanEP", quantity=1.0, unit_price=250.0),
+        ],
+    })
+    text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
+    assert "DanEP (Daniel Peters) und DanEP (Daniel Peters)" in text
+
+
 def _extract_text(pdf_bytes: bytes) -> str:
     return "\n".join(_extract_strings(pdf_bytes))
 
