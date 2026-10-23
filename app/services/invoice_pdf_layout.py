@@ -59,7 +59,7 @@ def load_fonts() -> dict[str, str]:
 # ---------------------------------------------------------
 LAYOUT = {
     "margin_x": 16 * mm,
-    "margin_top": 20 * mm,
+    "margin_top": 15 * mm,
     "margin_bottom": 20 * mm,
     "font_reg": "Helvetica",
     "font_bold": "Helvetica-Bold",

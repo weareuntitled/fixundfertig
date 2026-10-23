@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import importlib
 
-from pdf_text import pdf_pages, pdf_text
+from pdf_text import pdf_pages, pdf_strings, pdf_text
 from test_api_invoice_artist_identity import artist_api  # noqa: F401  (fixture)
 
 layout = importlib.import_module("services.invoice_pdf_layout")
@@ -87,3 +87,49 @@ def test_footer_leaves_out_columns_without_data(artist_api):
     assert "KONTAKT" not in text
     assert "STEUER" not in text
     assert "RECHNUNGSAUSSTELLER" in text
+
+
+def test_top_of_the_invoice_reads_in_order(artist_api):
+    client, _, payload, _ = artist_api
+    payload["subject"] = "DJ-Set Hammahalle"
+    strings = pdf_strings(_preview(client, payload))
+    order = ["DANIEL S.", "DJ / PRODUCER", "RECHNUNG AN", "Club Beispiel", "RECHNUNG", "DJ-Set Hammahalle"]
+    positions = [strings.index(entry) for entry in order]
+    assert positions == sorted(positions)
+    intro = next(line for line in strings if line.startswith("Vielen Dank"))
+    assert positions[-1] < strings.index(intro)
+
+
+def test_invoice_number_stands_between_the_label_and_the_subject(artist_api):
+    client, _, payload, _ = artist_api
+    created = client.post("/api/invoices", json=payload)
+    assert created.status_code == 201, created.text
+    invoice = created.json()
+    strings = pdf_strings(client.get(f"/api/invoices/{invoice['id']}/download").content)
+    number_index = next(i for i, line in enumerate(strings) if line.startswith("Nr. "))
+    assert strings[number_index - 1] == "RECHNUNG"
+    assert strings[number_index] == f"Nr. {invoice['nr']}"
+
+
+def test_profession_is_named_once_in_the_header(artist_api):
+    client, _, payload, _ = artist_api
+    text = pdf_text(_preview(client, payload))
+    assert text.lower().count("dj / producer") == 1
+
+
+def test_dates_are_plain_label_and_value_lines(artist_api):
+    client, _, payload, _ = artist_api
+    payload["date"] = "2026-10-23"
+    payload["delivery_date"] = "2026-09-19"
+    strings = pdf_strings(_preview(client, payload))
+    for label, value in (("Leistungsdatum:", "19.09.2026"), ("Rechnungsdatum:", "23.10.2026")):
+        assert label in strings
+        assert value in strings
+
+
+def test_company_without_wordmark_keeps_its_name_in_the_header(artist_api):
+    client, company, payload, _ = artist_api
+    company.name = "Muster GmbH"
+    company.business_type = "GmbH"
+    strings = pdf_strings(_preview(client, payload))
+    assert strings[0] == "Muster GmbH"

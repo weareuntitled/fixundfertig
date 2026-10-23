@@ -62,7 +62,7 @@ def test_preview_names_the_artist_and_legal_issuer(artist_api):
     response = client.post("/api/invoices/preview-pdf", json=payload)
     assert response.status_code == 200, response.text
     text = _extract_text(response.content)
-    assert "DANIEL S. · DJ / Producer" in text
+    assert "DANIEL S. DJ / PRODUCER" in _flat(text)
     assert "RECHNUNGSAUSSTELLER Daniel Beispiel" in _flat(text)
     assert "Musterstraße 1" in text
     assert "10115 Berlin" in text
@@ -96,7 +96,7 @@ def test_new_invoice_download_matches_preview_identity(artist_api, descriptions)
     assert invoice["total_brutto"] == 300 * len(descriptions)
     for pdf in (preview.content, downloaded.content):
         text = " ".join(_extract_text(pdf).split())
-        assert "DANIEL S. · DJ / Producer" in text
+        assert "DANIEL S. DJ / PRODUCER" in _flat(text)
         assert text.count("Daniel S. ist der Künstlername von Daniel Beispiel.") == 1
         assert "RECHNUNGSAUSSTELLER Daniel Beispiel" in _flat(text)
         assert "(Daniel Beispiel) (Daniel Beispiel)" not in text
