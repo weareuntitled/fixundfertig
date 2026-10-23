@@ -76,7 +76,7 @@ def get_attr(obj, *names, default=""):
     return default
 
 
-_ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+_ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?")  # a time part is ignored
 
 
 def format_date(value) -> str:

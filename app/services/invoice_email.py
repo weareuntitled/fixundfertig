@@ -11,7 +11,6 @@ INK = "#14161a"
 MUTED = "#6b6f78"
 SOFT = "#e9e5dd"
 PAPER = "#f6f3ee"
-ACCENT = "#0f3d3e"
 FONT = "'Helvetica Neue', Helvetica, Arial, sans-serif"
 
 
@@ -41,15 +40,18 @@ def build_invoice_email(*, company, customer, invoice) -> InvoiceEmail:
     gross = float(get_attr(invoice, "total_brutto", default=0) or 0)
 
     small_business = bool(get_attr(company, "is_small_business", default=False))
-    net = gross if small_business else gross / 1.19
-    vat = gross - net
-    show_vat = not small_business and vat > 0
-
     items = []
     for item in get_attr(invoice, "items", default=None) or []:
         quantity = float(get_attr(item, "quantity", default=1) or 1)
         price = float(get_attr(item, "unit_price", default=0) or 0)
         items.append((safe_str(get_attr(item, "description")), quantity, price))
+
+    # VAT is whatever the total adds on top of the positions.
+    net = sum(quantity * price for _, quantity, price in items) if items else gross
+    vat = gross - net
+    show_vat = vat > 0.005 and net > 0
+    vat_rate = f"{round(vat / net * 100, 1):g}".replace(".", ",") if show_vat else ""
+    vat_label = f"MwSt. {vat_rate} %"
 
     recipient = safe_str(get_attr(customer, "display_name", "name"))
     greeting = f"Hallo {recipient}," if recipient else "Hallo,"
@@ -68,7 +70,7 @@ def build_invoice_email(*, company, customer, invoice) -> InvoiceEmail:
         lines.append(f"  {description}{detail}: {_money(quantity * price)}")
     lines.append("")
     if show_vat:
-        lines += [f"Zwischensumme: {_money(net)}", f"MwSt. 19 %: {_money(vat)}"]
+        lines += [f"Zwischensumme: {_money(net)}", f"{vat_label}: {_money(vat)}"]
     lines.append(f"Das macht: {_money(gross)}")
     if pay_line:
         lines.append(pay_line)
@@ -97,7 +99,7 @@ def build_invoice_email(*, company, customer, invoice) -> InvoiceEmail:
         item_row(description, f"{quantity:g} × {_money(price)}" if quantity != 1 else "", _money(quantity * price))
         for description, quantity, price in items
     )
-    extras = small_row("Zwischensumme", _money(net)) + small_row("MwSt. 19 %", _money(vat)) if show_vat else ""
+    extras = small_row("Zwischensumme", _money(net)) + small_row(vat_label, _money(vat)) if show_vat else ""
 
     subject_html = (
         f'<p style="margin:0 0 4px;font-size:15px;font-weight:700;color:{INK};">{escape(subject_line)}</p>'
