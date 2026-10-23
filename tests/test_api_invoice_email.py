@@ -91,3 +91,20 @@ def test_mail_escapes_what_users_typed(sent):
     mail, _ = send(customer_name="<script>alert(1)</script>")
     assert "<script>" not in mail["html"]
     assert "&lt;script&gt;" in mail["html"]
+
+
+def test_mail_shows_vat_taken_from_the_invoice_total(sent):
+    send, company = sent
+    company.is_small_business = False
+    mail, _ = send(vat_rate=19)
+    for body in (mail["text"], mail["html"]):
+        assert "MwSt. 19 %" in body
+        assert "57,00 €" in body
+        assert "357,00 €" in body
+    assert "Kleinunternehmer" not in mail["text"]
+
+
+def test_due_date_is_found_when_the_invoice_date_carries_a_time(sent):
+    send, _ = sent
+    mail, _ = send(date="2026-10-23T10:00:00")
+    assert "28.10.2026" in mail["text"]

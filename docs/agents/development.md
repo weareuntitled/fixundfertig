@@ -22,7 +22,7 @@ Python 3.11 und führt folgende Prüfungen aus:
 
 ```bash
 python -m ruff check --select E9,F63,F7,F82 app tests scripts
-python -m mypy --follow-imports=skip --ignore-missing-imports app/renderer.py app/services/invoice_pdf.py app/services/invoice_pdf_draw.py app/services/invoice_pdf_layout.py
+python -m mypy --follow-imports=skip --ignore-missing-imports app/renderer.py app/services/invoice_pdf.py app/services/invoice_pdf_draw.py app/services/invoice_pdf_layout.py app/services/invoice_email.py
 python -m pytest -q
 ```
 
