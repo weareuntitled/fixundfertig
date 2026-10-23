@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
@@ -24,7 +23,7 @@ def uses_artist_wordmark(comp) -> bool:
     )
 
 
-def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp) -> float:
+def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp, font_b: str) -> float:
     """Draw a personal wordmark or company logo; return occupied height in mm."""
     if comp is None:
         return 0.0
@@ -34,10 +33,10 @@ def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp) -> flo
         profession = safe_str(get_attr(comp, "business_type"))
         if profession:
             heading += f" · {profession}"
-        c.setFont(LAYOUT["font_bold"], LAYOUT["fs_title"])
+        c.setFont(font_b, LAYOUT["fs_title"])
         c.setFillColorRGB(*LAYOUT["col_primary"])
         y = top_y
-        for line in wrap_text(heading, LAYOUT["font_bold"], LAYOUT["fs_title"], content_w):
+        for line in wrap_text(heading, font_b, LAYOUT["fs_title"], content_w):
             c.drawString(mx, y, line)
             y -= 20
         return (top_y - y) / mm + 8
@@ -140,9 +139,6 @@ def draw_meta(c: Canvas, w: float, h: float, mx: float, comp, top_y: float,
     y_meta -= 14
 
     # Invoice metadata
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", service_date or ""):
-        y_, m_, d_ = service_date.split("-")
-        service_date = f"{d_}.{m_}.{y_}"
     meta_data = [
         ("Rechnungsnr.:", nr or "-"),
         ("Datum:", inv_date or "-"),

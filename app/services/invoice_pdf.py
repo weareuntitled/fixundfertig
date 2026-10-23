@@ -8,7 +8,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
-from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, safe_float, get_attr
+from .invoice_pdf_layout import (
+    LAYOUT, InvItem, format_date, format_service_period, get_attr, load_fonts, safe_float, safe_str,
+)
 from .invoice_pdf_draw import (
     draw_logo, draw_recipient, draw_meta, draw_intro, draw_identity_line,
     draw_table, draw_totals, draw_footer, company_legal_name, uses_artist_wordmark,
@@ -64,14 +66,12 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     gross = net + tax
 
     inv_date = safe_str(get_attr(invoice, "date", "invoice_date", default=""))
-    service_date = safe_str(get_attr(invoice, "delivery_date", default=""))
+    service_date = format_date(get_attr(invoice, "delivery_date", default=""))
     if not service_date:
-        service_from = safe_str(get_attr(invoice, "service_from", default=""))
-        service_to = safe_str(get_attr(invoice, "service_to", default=""))
-        if service_from and service_to and service_from != service_to:
-            service_date = f"{service_from} bis {service_to}"
-        else:
-            service_date = service_from or service_to
+        service_date = format_service_period(
+            get_attr(invoice, "service_from", default=""),
+            get_attr(invoice, "service_to", default=""),
+        )
 
     due_str = ""
     try:
@@ -91,8 +91,9 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     mx = LAYOUT["margin_x"]
     my_bot = LAYOUT["margin_bottom"]
     content_w = w - (2 * mx)
-    font_r = LAYOUT["font_reg"]
-    font_b = LAYOUT["font_bold"]
+    fonts = load_fonts()
+    font_r = fonts["regular"]
+    font_b = fonts["bold"]
 
     def set_font(bold=False, size=10, color=LAYOUT["col_primary"]):
         c.setFont(font_b if bold else font_r, size)
@@ -101,7 +102,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     top_y = h - LAYOUT["margin_top"]
     right_col_w = min(70 * mm, content_w * 0.38)
 
-    logo_h = draw_logo(c, mx, top_y, content_w, comp)
+    logo_h = draw_logo(c, mx, top_y, content_w, comp, font_b)
     rec_top = top_y - logo_h * mm
     y_rec = draw_recipient(c, w, h, mx, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country,
                            comp, rec_top if logo_h else top_y, right_col_w, font_r, set_font)

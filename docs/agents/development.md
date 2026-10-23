@@ -14,7 +14,7 @@ Lege eine lokale Umgebung mit `uv venv --python 3.11` an. Installiere darin
 die bestehenden Abhängigkeiten und Prüfwerkzeuge:
 
 ```bash
-uv pip install -r requirements.txt pytest ruff mypy
+uv pip install -r requirements.txt pytest ruff mypy pypdf
 ```
 
 Führe Python-Kommandos mit dem Interpreter dieser Umgebung aus. CI nutzt

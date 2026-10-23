@@ -1,13 +1,11 @@
 """Invoice PDF names the legal person behind the artist name."""
-import re
-import zlib
-from base64 import a85decode
 from pathlib import Path
 from types import SimpleNamespace
 import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "app"))
 
+from pdf_text import pdf_strings, pdf_text
 from services.invoice_pdf import render_invoice_to_pdf_bytes
 
 
@@ -492,84 +490,8 @@ def test_pdf_does_not_put_the_account_holder_in_the_description() -> None:
 
 
 def _extract_text(pdf_bytes: bytes) -> str:
-    return "\n".join(_extract_strings(pdf_bytes))
+    return pdf_text(pdf_bytes)
 
 
 def _extract_strings(pdf_bytes: bytes) -> list[str]:
-    strings: list[str] = []
-    for stream in _content_streams(pdf_bytes):
-        strings.extend(_pdf_literal_strings(stream))
-    return strings
-
-
-def _content_streams(pdf_bytes: bytes) -> list[str]:
-    streams: list[str] = []
-    for match in re.finditer(
-        rb"/Filter\s*\[\s*/ASCII85Decode\s+/FlateDecode\s*\].*?/Length\s+(\d+).*?>>\s*\nstream\n(.*?)endstream",
-        pdf_bytes,
-        re.DOTALL,
-    ):
-        stream_data = match.group(2).rstrip(b"\r\n")
-        try:
-            decoded = a85decode(stream_data, adobe=True)
-            streams.append(zlib.decompress(decoded).decode("latin-1", errors="replace"))
-        except Exception:
-            pass
-    return streams
-
-
-def _pdf_literal_strings(stream: str) -> list[str]:
-    found: list[str] = []
-    i = 0
-    while i < len(stream):
-        if stream[i] != "(":
-            i += 1
-            continue
-        i += 1
-        chars: list[str] = []
-        while i < len(stream):
-            char = stream[i]
-            if char == "\\":
-                chars.append(_unescape_pdf_char(stream, i))
-                i += _escape_length(stream, i)
-                continue
-            if char == ")":
-                i += 1
-                break
-            chars.append(char)
-            i += 1
-        found.append("".join(chars).replace("\x80", "€"))
-    return found
-
-
-def _unescape_pdf_char(stream: str, slash: int) -> str:
-    if slash + 1 >= len(stream):
-        return ""
-    char = stream[slash + 1]
-    named = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "(": "(", ")": ")", "\\": "\\"}
-    if char in named:
-        return named[char]
-    if char.isdigit():
-        octal = char
-        for offset in (2, 3):
-            if slash + offset < len(stream) and stream[slash + offset].isdigit():
-                octal += stream[slash + offset]
-            else:
-                break
-        return chr(int(octal, 8))
-    return char
-
-
-def _escape_length(stream: str, slash: int) -> int:
-    if slash + 1 >= len(stream):
-        return 1
-    char = stream[slash + 1]
-    if not char.isdigit():
-        return 2
-    length = 2
-    for offset in (2, 3):
-        if slash + offset < len(stream) and stream[slash + offset].isdigit():
-            length += 1
-        else:
-            break
-    return length
+    return pdf_strings(pdf_bytes)
