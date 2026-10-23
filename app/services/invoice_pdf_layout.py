@@ -147,6 +147,21 @@ def format_service_period(service_from, service_to) -> str:
     return start or end
 
 
+def format_amount(value: float) -> str:
+    """1500 -> '1.500,00'"""
+    return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def format_money(value: float) -> str:
+    return f"{format_amount(value)} €"
+
+
+def group_iban(value) -> str:
+    """DE89370400440532013000 -> 'DE89 3704 0044 0532 0130 00'"""
+    compact = "".join(safe_str(value).split()).upper()
+    return " ".join(compact[i:i + 4] for i in range(0, len(compact), 4))
+
+
 def prefixed_value(prefix: str, value) -> str:
     text = safe_str(value)
     return f"{prefix}{text}" if text else ""

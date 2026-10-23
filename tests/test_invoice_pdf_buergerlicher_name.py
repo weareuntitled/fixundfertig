@@ -212,7 +212,7 @@ def test_pdf_shows_identity_line_when_no_line_contains_the_artist_name() -> None
     })
     strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
     assert strings.count("DanEP (Daniel Peters)") == 1
-    assert strings.index("Vielen Dank für den Auftrag.") < strings.index("DanEP (Daniel Peters)") < strings.index("Beschreibung")
+    assert strings.index("Vielen Dank für den Auftrag.") < strings.index("DanEP (Daniel Peters)") < strings.index("BESCHREIBUNG")
 
 
 def test_pdf_shows_identity_line_when_artist_name_is_only_part_of_a_longer_word() -> None:
@@ -260,7 +260,7 @@ def test_pdf_shows_identity_line_without_quantity_or_price_when_there_are_no_lin
     invoice = _make_invoice({"line_items": []})
     strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
     assert strings.count("DanEP (Daniel Peters)") == 1
-    assert strings.index("Vielen Dank für den Auftrag.") < strings.index("DanEP (Daniel Peters)") < strings.index("Beschreibung")
+    assert strings.index("Vielen Dank für den Auftrag.") < strings.index("DanEP (Daniel Peters)") < strings.index("BESCHREIBUNG")
     assert "1,00" not in strings
     assert strings.count("0,00 €") == 2
 

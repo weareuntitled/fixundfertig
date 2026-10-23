@@ -133,3 +133,42 @@ def test_company_without_wordmark_keeps_its_name_in_the_header(artist_api):
     company.business_type = "GmbH"
     strings = pdf_strings(_preview(client, payload))
     assert strings[0] == "Muster GmbH"
+
+
+def test_table_shows_position_quantity_price_and_amount(artist_api):
+    client, _, payload, _ = artist_api
+    payload["items"] = [
+        {"description": "DJ-Set", "quantity": 2, "unit_price": 150},
+        {"description": "Technik", "quantity": 1, "unit_price": 49.9},
+    ]
+    strings = pdf_strings(_preview(client, payload))
+    headers = ["POS.", "BESCHREIBUNG", "MENGE", "EINZELPREIS", "BETRAG"]
+    header_positions = [strings.index(header) for header in headers]
+    assert header_positions == sorted(header_positions)
+    start = header_positions[-1] + 1
+    assert strings[start:start + 5] == ["1", "DJ-Set", "2,00", "150,00 €", "300,00 €"]
+    assert strings[start + 5:start + 10] == ["2", "Technik", "1,00", "49,90 €", "49,90 €"]
+
+
+def test_long_description_is_wrapped_and_complete(artist_api):
+    client, _, payload, _ = artist_api
+    words = " ".join(f"Leistung{number}" for number in range(1, 40))
+    payload["items"] = [{"description": words, "quantity": 1, "unit_price": 100}]
+    strings = pdf_strings(_preview(client, payload))
+    start = strings.index("1", strings.index("BETRAG")) + 1
+    end = strings.index("1,00", start)
+    assert end - start >= 2
+    assert " ".join(strings[start:end]) == words
+
+
+def test_following_pages_repeat_the_table_header(artist_api):
+    client, _, payload, _ = artist_api
+    payload["items"] = [
+        {"description": f"Position {number}", "quantity": 1, "unit_price": 10}
+        for number in range(1, 61)
+    ]
+    pages = pdf_pages(_preview(client, payload))
+    assert len(pages) >= 2
+    for page in pages:
+        assert "BESCHREIBUNG" in page
+        assert "BETRAG" in page
