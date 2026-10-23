@@ -17,7 +17,8 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      // In CI the runner's own Chrome is used, so no browser has to be downloaded.
+      use: { ...devices["Desktop Chrome"], ...(process.env.CI ? { channel: "chrome" } : {}) },
     },
   ],
   webServer: [

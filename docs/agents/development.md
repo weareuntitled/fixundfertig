@@ -54,7 +54,9 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Playwright startet einen eigenen Vite-Server mit der Basis `/` und strikt
+In der CI nutzt Playwright das auf dem Runner vorinstallierte Google Chrome
+(`CI` ist gesetzt), lokal den mit `npx playwright install chromium` geladenen
+Browser. Playwright startet einen eigenen Vite-Server mit der Basis `/` und strikt
 belegtem Port. `PLAYWRIGHT_FRONTEND_PORT` wählt bei Bedarf einen anderen Port.
 Der Produktionsbuild verwendet weiter `/static/frontend/`; der Build-Check
 prüft diesen Pfad und die Revisionsmetadaten.

@@ -16,9 +16,15 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+# A newer push to the same pull request replaces the older run; runs on main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   backend-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -44,6 +50,7 @@ jobs:
 
   frontend-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -69,10 +76,8 @@ jobs:
           npm run build
           npm run test:deploy-build
 
-      - name: Install Playwright browser
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-
+      # The runner ships Google Chrome; playwright.config.ts uses it when CI is set, so there is no
+      # browser download or apt install that can stall.
       - name: Run browser tests
         working-directory: frontend
         run: npm run test:e2e
