@@ -212,3 +212,53 @@ def test_payment_deadline_is_a_sentence_under_the_totals(artist_api):
     assert "Zahlbar bis 06.11.2026." in text
     assert strings.index("GESAMTBETRAG") < strings.index("Zahlbar bis")
     assert "Zahlbar bis:" not in strings
+
+
+def test_payment_box_lists_account_details(artist_api):
+    client, company, payload, _ = artist_api
+    company.bank_name = "N26"
+    created = client.post("/api/invoices", json=payload)
+    assert created.status_code == 201, created.text
+    invoice = created.json()
+    strings = pdf_strings(client.get(f"/api/invoices/{invoice['id']}/download").content)
+    start = strings.index("ZAHLUNGSINFORMATIONEN")
+    box = strings[start:]
+    assert "Ich bitte um Überweisung des Betrags auf das folgende Konto." in " ".join(box)
+    rows = box[box.index("Kontoinhaber"):box.index("Verwendungszweck") + 2]
+    assert rows == [
+        "Kontoinhaber", "Anderer Kontoinhaber", "Bank", "N26",
+        "IBAN", "DE89 3704 0044 0532 0130 00",
+        "Verwendungszweck", f"Rechnung {invoice['nr']}",
+    ]
+
+
+def test_account_holder_falls_back_to_the_legal_name(artist_api):
+    client, company, payload, _ = artist_api
+    company.account_holder = ""
+    strings = pdf_strings(_preview(client, payload))
+    assert strings[strings.index("Kontoinhaber") + 1] == "Daniel Beispiel"
+
+
+def test_iban_is_written_once_in_groups_of_four(artist_api):
+    client, _, payload, _ = artist_api
+    text = pdf_text(_preview(client, payload))
+    assert text.count("DE89 3704 0044 0532 0130 00") == 1
+    assert "DE89370400440532013000" not in text
+
+
+def test_payment_sentence_is_neutral_for_companies_without_artist_wordmark(artist_api):
+    client, company, payload, _ = artist_api
+    company.name = "Muster GmbH"
+    company.business_type = "GmbH"
+    text = " ".join(pdf_strings(_preview(client, payload)))
+    assert "Bitte überweisen Sie den Betrag auf das folgende Konto." in text
+    assert "Ich bitte um" not in text
+
+
+def test_no_payment_box_without_bank_details(artist_api):
+    client, company, payload, _ = artist_api
+    company.iban = ""
+    company.bank_name = ""
+    text = pdf_text(_preview(client, payload))
+    assert "ZAHLUNGSINFORMATIONEN" not in text
+    assert "Kontoinhaber" not in text

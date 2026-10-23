@@ -7,7 +7,7 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import (
-    LAYOUT, InvItem, format_amount, format_money, get_attr, prefixed_value, safe_str, wrap_text,
+    LAYOUT, InvItem, format_amount, format_money, get_attr, group_iban, prefixed_value, safe_str, wrap_text,
 )
 
 
@@ -144,11 +144,11 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
     dates = [(label, value) for label, value in dates if value]
     date_y = y + 13.5 + (len(dates) - 1) * 13.5
     for label, value in dates:
-        c.setFillColorRGB(*ink)
         c.setFont(fonts["regular"], 9)
-        c.drawRightString(right, date_y, value)
         c.setFillColorRGB(*muted)
         c.drawRightString(right - stringWidth(value, fonts["regular"], 9) - 4, date_y, label)
+        c.setFillColorRGB(*ink)
+        c.drawRightString(right, date_y, value)
         date_y -= 13.5
     return y
 
@@ -277,6 +277,90 @@ def draw_note(c: Canvas, mx: float, y: float, content_w: float, text: str, fonts
     return y
 
 
+def account_holder_name(comp) -> str:
+    return (
+        safe_str(get_attr(comp, "account_holder"))
+        or company_legal_name(comp)
+        or safe_str(get_attr(comp, "name"))
+    )
+
+
+def draw_payment_box(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
+                     comp, nr: str, new_page, fonts: dict[str, str]) -> float:
+    iban = group_iban(get_attr(comp, "iban"))
+    bank = safe_str(get_attr(comp, "bank_name"))
+    if not iban and not bank:
+        return y
+
+    rows = [
+        ("Kontoinhaber", account_holder_name(comp), "regular"),
+        ("Bank", bank, "regular"),
+        ("IBAN", iban, "mono"),
+        ("BIC", safe_str(get_attr(comp, "bic", "swift", "swift_code")), "mono"),
+        ("Verwendungszweck", f"Rechnung {nr}" if nr else "", "mono"),
+    ]
+    rows = [row for row in rows if row[1]]
+    sentence = (
+        "Ich bitte um Überweisung des Betrags auf das folgende Konto."
+        if uses_artist_wordmark(comp)
+        else "Bitte überweisen Sie den Betrag auf das folgende Konto."
+    )
+
+    pad_x, pad_y, gap = 15, 13.5, 21
+    inner_w = content_w - 2 * pad_x
+    left_w = (inner_w - gap) / 2.5
+    right_x = mx + pad_x + left_w + gap
+    right = mx + content_w - pad_x
+
+    def row_font(kind: str) -> tuple[str, float]:
+        return (fonts["mono"], 8.6) if kind == "mono" else (fonts["regular"], 9)
+
+    laid_out = []
+    for label, value, kind in rows:
+        font, size = row_font(kind)
+        value_w = right - right_x - stringWidth(label, fonts["regular"], 9) - 10
+        laid_out.append((label, wrap_text(value, font, size, value_w), kind))
+    row_heights = [13.5 * len(lines) + 7.5 for _, lines, _ in laid_out]
+
+    sentence_lines = wrap_text(sentence, fonts["regular"], 9, left_w)
+    left_h = 20 + 13.5 * len(sentence_lines)
+    right_h = sum(row_heights) - 7.5
+    box_h = 2 * pad_y + max(left_h, right_h)
+
+    y -= 21
+    if y - box_h < my_bot + 20 * mm:
+        y = new_page()
+    c.setFillColorRGB(*LAYOUT["col_surface"])
+    c.roundRect(mx, y - box_h, content_w, box_h, 1.5, stroke=0, fill=1)
+
+    c.setFillColorRGB(*LAYOUT["col_muted"])
+    draw_tracked(c, mx + pad_x, y - pad_y - 6, "ZAHLUNGSINFORMATIONEN", fonts["medium"], 7, 1.0)
+    c.setFillColorRGB(*LAYOUT["col_ink"])
+    c.setFont(fonts["regular"], 9)
+    ty = y - pad_y - 20
+    for line in sentence_lines:
+        c.drawString(mx + pad_x, ty, line)
+        ty -= 13.5
+
+    top = y - pad_y
+    for index, (label, lines, kind) in enumerate(laid_out):
+        base = top - 10
+        c.setFont(fonts["regular"], 9)
+        c.setFillColorRGB(*LAYOUT["col_muted"])
+        c.drawString(right_x, base, label)
+        font, size = row_font(kind)
+        c.setFont(font, size)
+        c.setFillColorRGB(*LAYOUT["col_ink"])
+        for line in lines:
+            c.drawRightString(right, base, line)
+            base -= 13.5
+        if index < len(laid_out) - 1:
+            c.setStrokeColorRGB(*LAYOUT["col_hair"])
+            c.line(right_x, top - row_heights[index] + 1.5, right, top - row_heights[index] + 1.5)
+        top -= row_heights[index]
+    return y - box_h
+
+
 def draw_tracked(c: Canvas, x: float, y: float, text: str, font: str, size: float,
                  tracking: float, align: str = "left") -> None:
     if align == "right":
@@ -311,20 +395,9 @@ def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
     muted = LAYOUT["col_muted"]
     size = 7
 
-    contact_name = (
-        safe_str(get_attr(comp, "account_holder"))
-        or company_legal_name(comp)
-        or safe_str(get_attr(comp, "name"))
-    )
     columns = [
         (1.5, "RECHNUNGSAUSSTELLER", issuer_lines(comp)),
         (1.0, "KONTAKT", [safe_str(get_attr(comp, "email")), safe_str(get_attr(comp, "phone"))]),
-        (1.5, "BANKVERBINDUNG", [
-            prefixed_value("Kontoinhaber: ", contact_name),
-            safe_str(get_attr(comp, "bank_name")),
-            prefixed_value("IBAN: ", get_attr(comp, "iban")),
-            prefixed_value("BIC: ", get_attr(comp, "bic", "swift", "swift_code")),
-        ]),
         (1.2, "STEUER", [
             prefixed_value("Steuernr.: ", company_tax_id),
             prefixed_value("USt-IdNr.: ", company_vat_id),

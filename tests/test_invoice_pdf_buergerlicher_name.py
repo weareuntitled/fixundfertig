@@ -406,7 +406,7 @@ def test_pdf_shows_the_stored_account_holder() -> None:
     company = _make_company({"account_holder": "Virginie Konto"})
     invoice = _make_invoice()
     text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
-    assert "Kontoinhaber: Virginie Konto" in text
+    assert "Kontoinhaber Virginie Konto" in " ".join(text.split())
 
 
 def test_contact_footer_lists_email_and_phone() -> None:
@@ -424,7 +424,7 @@ def test_pdf_uses_legal_name_as_account_holder_when_the_field_is_empty() -> None
         ],
     })
     strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
-    assert "Kontoinhaber: Daniel Peters" in strings
+    assert strings[strings.index("Kontoinhaber") + 1] == "Daniel Peters"
     assert "Daniel Peters" in strings
 
 
@@ -437,7 +437,7 @@ def test_pdf_uses_legal_name_as_account_holder_when_the_field_is_only_whitespace
         ],
     })
     strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
-    assert "Kontoinhaber: Daniel Peters" in strings
+    assert strings[strings.index("Kontoinhaber") + 1] == "Daniel Peters"
     assert strings.index("DanEP") < strings.index("Daniel Peters")
 
 
@@ -462,8 +462,8 @@ def test_pdf_keeps_bank_and_legal_footer_lines_when_account_holder_is_empty() ->
     })
     invoice = _make_invoice()
     text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
-    assert "Kontoinhaber: Daniel Peters" in text
-    assert "IBAN: DE89370400440532013000" in text
+    assert "Kontoinhaber Daniel Peters" in " ".join(text.split())
+    assert "IBAN DE89 3704 0044 0532 0130 00" in " ".join(text.split())
     assert "Kleinunternehmer" in text
     assert "DE999999999" in text
     assert "Daniel Peters" in text
@@ -479,7 +479,7 @@ def test_pdf_does_not_put_the_account_holder_in_the_description() -> None:
     })
     text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
     assert "DJ-Set DanEP (Daniel Peters), 19.10." in text
-    assert "Kontoinhaber: Virginie Konto" in text
+    assert "Kontoinhaber Virginie Konto" in " ".join(text.split())
     assert "DJ-Set DanEP (Virginie Konto)" not in text
 
 
