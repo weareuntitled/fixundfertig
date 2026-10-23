@@ -32,6 +32,7 @@ import {
 import { StatusTimeline } from "@/components/ui/status-timeline";
 import { ClientInfoCard } from "@/components/invoice/client-info-card";
 import { SummaryCard } from "@/components/invoice/summary-card";
+import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { PageHeader } from "@/components/ui/page-header";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
@@ -65,6 +66,7 @@ function InvoiceDetailPage() {
   const [editingHeader, setEditingHeader] = useState(false);
   const [headerDraft, setHeaderDraft] = useState<Record<string, string>>({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
   const { notify } = useNotification();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -92,9 +94,10 @@ function InvoiceDetailPage() {
   };
 
   const sendEmail = useMutation({
-    mutationFn: () => api.post(`/api/invoices/${invoiceId}/send`),
+    mutationFn: (message: string) => api.post(`/api/invoices/${invoiceId}/send`, { message }),
     onSuccess: (data: unknown) => {
       const msg = (data as { message?: string })?.message || "Rechnung gesendet";
+      setSendOpen(false);
       notify("success", msg);
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoices", invoiceId] });
@@ -185,9 +188,7 @@ function InvoiceDetailPage() {
   };
 
   const handleSend = () => {
-    if (invoice?.recipient_name && confirm(`Rechnung per E-Mail an ${invoice.recipient_name} senden?`)) {
-      sendEmail.mutate();
-    }
+    if (invoice?.recipient_name) setSendOpen(true);
   };
 
   if (isLoading) return (
@@ -467,6 +468,15 @@ function InvoiceDetailPage() {
         pdfUrl={previewUrl}
         invoiceNr={invoice.nr || undefined}
         onClose={() => setPreviewOpen(false)}
+      />
+
+      <SendInvoiceSheet
+        open={sendOpen}
+        recipientName={invoice.recipient_name || customer?.name || ""}
+        recipientEmail={customer?.email}
+        pending={sendEmail.isPending}
+        onSend={(message) => sendEmail.mutate(message)}
+        onCancel={() => setSendOpen(false)}
       />
 
       {/* ── Delete Confirmation Modal ── */}
