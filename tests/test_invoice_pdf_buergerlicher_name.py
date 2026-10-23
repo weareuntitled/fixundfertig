@@ -262,7 +262,7 @@ def test_pdf_shows_identity_line_without_quantity_or_price_when_there_are_no_lin
     assert strings.count("DanEP (Daniel Peters)") == 1
     assert strings.index("Vielen Dank für den Auftrag.") < strings.index("DanEP (Daniel Peters)") < strings.index("BESCHREIBUNG")
     assert "1,00" not in strings
-    assert strings.count("0,00 €") == 2
+    assert strings.count("0,00 €") == 3  # subtotal, VAT and total
 
 
 def test_pdf_omits_parentheses_when_no_legal_name_is_set() -> None:
