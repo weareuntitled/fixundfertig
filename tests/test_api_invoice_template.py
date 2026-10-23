@@ -262,3 +262,11 @@ def test_no_payment_box_without_bank_details(artist_api):
     text = pdf_text(_preview(client, payload))
     assert "ZAHLUNGSINFORMATIONEN" not in text
     assert "Kontoinhaber" not in text
+
+
+def test_service_date_line_is_always_there(artist_api):
+    client, _, payload, _ = artist_api
+    payload["date"] = "2026-10-23"
+    strings = pdf_strings(_preview(client, payload))
+    assert strings[strings.index("Leistungsdatum:") + 1] == "wie Rechnungsdatum"
+    assert strings[strings.index("Rechnungsdatum:") + 1] == "23.10.2026"

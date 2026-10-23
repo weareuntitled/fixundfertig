@@ -140,7 +140,8 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
         y -= 13.5
 
     # Dates sit on the right, level with the last line of the intro.
-    dates = [("Leistungsdatum:", service_date), ("Rechnungsdatum:", inv_date)]
+    # The service date is a mandatory invoice detail: without one it is the invoice date.
+    dates = [("Leistungsdatum:", service_date or ("wie Rechnungsdatum" if inv_date else "")), ("Rechnungsdatum:", inv_date)]
     dates = [(label, value) for label, value in dates if value]
     date_y = y + 13.5 + (len(dates) - 1) * 13.5
     for label, value in dates:
