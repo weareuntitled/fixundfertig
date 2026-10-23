@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from reportlab.lib.units import mm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, get_attr, prefixed_value, wrap_text
@@ -104,38 +105,6 @@ def draw_meta(c: Canvas, w: float, h: float, mx: float, comp, top_y: float,
     company_tax_id = safe_str(get_attr(comp, "tax_id"))
     company_vat_id = safe_str(get_attr(comp, "vat_id"))
 
-    # Sender address block
-    if comp:
-        legal_name = company_legal_name(comp)
-        artist_name = safe_str(get_attr(comp, "name"))
-        sender_lines = []
-        if uses_artist_wordmark(comp):
-            sender_lines.append(f"Rechnungsaussteller: {legal_name}")
-        else:
-            sender_lines.append(artist_name)
-            if legal_name:
-                sender_lines.append(legal_name)
-        set_font(bold=False, size=9)
-        s_str = safe_str(get_attr(comp, "street"))
-        if s_str:
-            sender_lines.append(s_str)
-        s_city = f"{safe_str(get_attr(comp, 'postal_code'))} {safe_str(get_attr(comp, 'city'))}".strip()
-        if s_city:
-            sender_lines.append(s_city)
-        country = safe_str(get_attr(comp, "country"))
-        if country and country.upper() not in ("DE", "DEUTSCHLAND", "GERMANY"):
-            sender_lines.append(country)
-        for text in sender_lines:
-            for line in wrap_text(text, font_r, 9, meta_col_w):
-                c.drawRightString(meta_x, y_meta, line)
-                y_meta -= 11
-        if uses_artist_wordmark(comp):
-            set_font(bold=False, size=7.5, color=(0.4, 0.4, 0.4))
-            for line in wrap_text(f"{artist_name} ist der Künstlername von {legal_name}.", font_r, 7.5, meta_col_w):
-                c.drawRightString(meta_x, y_meta, line)
-                y_meta -= 10
-            set_font(bold=False, size=9)
-
     y_meta -= 14
 
     # Invoice metadata
@@ -187,7 +156,7 @@ def draw_identity_line(c: Canvas, mx: float, y: float, text: str, set_font) -> f
 
 
 def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
-               items: list[InvItem], h: float, font_r: str, set_font) -> float:
+               items: list[InvItem], new_page, font_r: str, set_font) -> float:
     w_desc = content_w * LAYOUT["col_w_desc"]
     w_qty = content_w * LAYOUT["col_w_qty"]
 
@@ -210,10 +179,7 @@ def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bo
         row_h = max(16, 8 + len(desc_lines) * 12)
 
         if y - row_h < my_bot + 50 * mm:
-            c.showPage()
-            c.setLineWidth(LAYOUT["line_width"])
-            y = h - LAYOUT["margin_top"]
-            y = draw_header_row(y)
+            y = draw_header_row(new_page())
             set_font(bold=False, size=9)
 
         ty = y - 12
@@ -235,12 +201,10 @@ def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bo
 
 def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
                 net: float, tax: float, gross: float, tax_rate: float, is_small_business: bool,
-                h: float, set_font) -> float:
+                new_page, set_font) -> float:
     y -= 20
     if y < my_bot + 60 * mm:
-        c.showPage()
-        c.setLineWidth(LAYOUT["line_width"])
-        y = h - LAYOUT["margin_top"]
+        y = new_page()
 
     val_x = w - mx - 10
     lbl_x = val_x - 50 * mm
@@ -269,42 +233,80 @@ def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_b
     return y
 
 
+def draw_tracked(c: Canvas, x: float, y: float, text: str, font: str, size: float,
+                 tracking: float, align: str = "left") -> None:
+    if align == "right":
+        x -= stringWidth(text, font, size) + tracking * len(text)
+    t = c.beginText(x, y)
+    t.setFont(font, size)
+    t.setCharSpace(tracking)
+    t.textOut(text)
+    c.drawText(t)
+
+
+def issuer_lines(comp) -> list[str]:
+    legal_name = company_legal_name(comp)
+    artist_name = safe_str(get_attr(comp, "name"))
+    lines = [legal_name] if uses_artist_wordmark(comp) else [artist_name, legal_name]
+    street = safe_str(get_attr(comp, "street"))
+    city = f"{safe_str(get_attr(comp, 'postal_code'))} {safe_str(get_attr(comp, 'city'))}".strip()
+    lines.append(", ".join(part for part in (street, city) if part))
+    country = safe_str(get_attr(comp, "country"))
+    if country and country.upper() not in ("DE", "DEUTSCHLAND", "GERMANY"):
+        lines.append(country)
+    if uses_artist_wordmark(comp):
+        lines.append(f"{artist_name} ist der Künstlername von {legal_name}.")
+    return [line for line in lines if line]
+
+
 def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
                 comp, company_tax_id: str, company_vat_id: str,
-                font_r: str, font_b: str, set_font):
-    footer_y = my_bot + 25 * mm
-    c.setStrokeColorRGB(*LAYOUT["col_line"])
-    c.line(mx, footer_y, w - mx, footer_y)
-    footer_y -= 5 * mm
-    set_font(size=7, color=(0.4, 0.4, 0.4))
+                font_r: str, font_b: str, set_font, page_no: int, page_total: int):
+    footer_y = my_bot + 16 * mm
+    muted = LAYOUT["col_muted"]
+    size = 7
 
-    comp_name = safe_str(get_attr(comp, "name"))
-    contact_name = safe_str(get_attr(comp, "account_holder")) or company_legal_name(comp) or comp_name
-    # The postal address already appears in the sender block above.
-    f_addr = [contact_name, safe_str(get_attr(comp, "email")), safe_str(get_attr(comp, "phone"))]
-    account_holder = contact_name
-    f_bank = [
-        prefixed_value("Kontoinhaber: ", account_holder),
-        safe_str(get_attr(comp, "bank_name")),
-        prefixed_value("IBAN: ", get_attr(comp, "iban")),
-        prefixed_value("BIC: ", get_attr(comp, "bic", "swift", "swift_code")),
+    contact_name = (
+        safe_str(get_attr(comp, "account_holder"))
+        or company_legal_name(comp)
+        or safe_str(get_attr(comp, "name"))
+    )
+    columns = [
+        (1.5, "RECHNUNGSAUSSTELLER", issuer_lines(comp)),
+        (1.0, "KONTAKT", [safe_str(get_attr(comp, "email")), safe_str(get_attr(comp, "phone"))]),
+        (1.5, "BANKVERBINDUNG", [
+            prefixed_value("Kontoinhaber: ", contact_name),
+            safe_str(get_attr(comp, "bank_name")),
+            prefixed_value("IBAN: ", get_attr(comp, "iban")),
+            prefixed_value("BIC: ", get_attr(comp, "bic", "swift", "swift_code")),
+        ]),
+        (1.2, "STEUER", [
+            prefixed_value("Steuernr.: ", company_tax_id),
+            prefixed_value("USt-IdNr.: ", company_vat_id),
+            "" if uses_artist_wordmark(comp) else safe_str(get_attr(comp, "business_type")),
+        ]),
     ]
-    f_legal = [
-        prefixed_value("Steuernr.: ", company_tax_id),
-        prefixed_value("USt-ID: ", company_vat_id),
-        "" if uses_artist_wordmark(comp) else safe_str(get_attr(comp, "business_type")),
-    ]
+    columns = [column for column in columns if any(column[2])]
+    page_col_w = 30
+    gap = 12
+    weights = sum(weight for weight, _, _ in columns)
+    unit = (content_w - page_col_w - gap * len(columns)) / weights
 
-    col_w = content_w / 3
-    for i, (head, lines) in enumerate(zip(["Kontakt", "Bankverbindung", "Rechtliches"], [f_addr, f_bank, f_legal])):
-        tx = mx + (i * col_w)
-        ty = footer_y
-        c.setFont(font_b, 7)
-        c.drawString(tx, ty, head)
-        c.setFont(font_r, 7)
-        ty -= 8
-        for l in lines:
-            if l:
-                for line in wrap_text(str(l), font_r, 7, col_w - 12):
+    tx = mx
+    for weight, head, lines in columns:
+        col_w = weight * unit
+        c.setFillColorRGB(*muted)
+        draw_tracked(c, tx, footer_y, head, font_b, size, 0.6)
+        c.setFont(font_r, size)
+        ty = footer_y - 9
+        for text in lines:
+            if text:
+                for line in wrap_text(text, font_r, size, col_w):
                     c.drawString(tx, ty, line)
-                    ty -= 8
+                    ty -= 8.5
+        tx += col_w + gap
+
+    right = w - mx
+    draw_tracked(c, right, footer_y, "SEITE", font_b, size, 0.6, align="right")
+    c.setFont(font_r, size)
+    c.drawRightString(right, footer_y - 9, f"{page_no} / {page_total}")

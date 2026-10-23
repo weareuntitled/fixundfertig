@@ -84,42 +84,60 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
     nr = safe_str(get_attr(invoice, "nr", "invoice_number", default=""))
 
-    buf = BytesIO()
-    c = Canvas(buf, pagesize=A4)
-    w, h = A4
-    c.setLineWidth(LAYOUT["line_width"])
-    mx = LAYOUT["margin_x"]
-    my_bot = LAYOUT["margin_bottom"]
-    content_w = w - (2 * mx)
     fonts = load_fonts()
     font_r = fonts["regular"]
     font_b = fonts["bold"]
+    w, h = A4
+    mx = LAYOUT["margin_x"]
+    my_bot = LAYOUT["margin_bottom"]
+    content_w = w - (2 * mx)
+    company_tax_id = safe_str(get_attr(comp, "tax_id"))
+    company_vat_id = safe_str(get_attr(comp, "vat_id"))
 
-    def set_font(bold=False, size=10, color=LAYOUT["col_primary"]):
-        c.setFont(font_b if bold else font_r, size)
-        c.setFillColorRGB(*color)
+    def draw_document(total_pages: int) -> tuple[bytes, int]:
+        buf = BytesIO()
+        c = Canvas(buf, pagesize=A4)
+        c.setLineWidth(LAYOUT["line_width"])
 
-    top_y = h - LAYOUT["margin_top"]
-    right_col_w = min(70 * mm, content_w * 0.38)
+        def set_font(bold=False, size=10, color=LAYOUT["col_primary"]):
+            c.setFont(font_b if bold else font_r, size)
+            c.setFillColorRGB(*color)
 
-    logo_h = draw_logo(c, mx, top_y, content_w, comp, font_b)
-    rec_top = top_y - logo_h * mm
-    y_rec = draw_recipient(c, w, h, mx, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country,
-                           comp, rec_top if logo_h else top_y, right_col_w, font_r, set_font)
-    y_meta, company_tax_id, company_vat_id = draw_meta(
-        c, w, h, mx, comp, rec_top if uses_artist_wordmark(comp) else top_y,
-        right_col_w, nr, inv_date, service_date, due_str, font_r, font_b, set_font)
+        def page_footer() -> None:
+            draw_footer(c, w, mx, content_w, my_bot, comp, company_tax_id, company_vat_id,
+                        font_r, font_b, set_font, c.getPageNumber(), total_pages or 1)
 
-    y = min(y_rec, y_meta) - 12 * mm
-    y = draw_intro(c, mx, y, content_w, invoice, comp, font_r, set_font)
-    if artist_name and legal_name and not uses_artist_wordmark(comp) and not line_holds_artist_name_as_its_own_token:
-        y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
-    y = draw_table(c, w, mx, y, content_w, my_bot, items, h, font_r, set_font)
-    draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, h, set_font)
-    draw_footer(c, w, mx, content_w, my_bot, comp, company_tax_id, company_vat_id, font_r, font_b, set_font)
+        def new_page() -> float:
+            page_footer()
+            c.showPage()
+            c.setLineWidth(LAYOUT["line_width"])
+            return h - LAYOUT["margin_top"]
 
-    c.save()
-    return buf.getvalue()
+        top_y = h - LAYOUT["margin_top"]
+        right_col_w = min(70 * mm, content_w * 0.38)
+
+        logo_h = draw_logo(c, mx, top_y, content_w, comp, font_b)
+        rec_top = top_y - logo_h * mm
+        y_rec = draw_recipient(c, w, h, mx, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country,
+                               comp, rec_top if logo_h else top_y, right_col_w, font_r, set_font)
+        y_meta, _tax_id, _vat_id = draw_meta(
+            c, w, h, mx, comp, rec_top if uses_artist_wordmark(comp) else top_y,
+            right_col_w, nr, inv_date, service_date, due_str, font_r, font_b, set_font)
+
+        y = min(y_rec, y_meta) - 12 * mm
+        y = draw_intro(c, mx, y, content_w, invoice, comp, font_r, set_font)
+        if artist_name and legal_name and not uses_artist_wordmark(comp) and not line_holds_artist_name_as_its_own_token:
+            y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
+        y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, font_r, set_font)
+        draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, new_page, set_font)
+        page_footer()
+
+        pages = c.getPageNumber()
+        c.save()
+        return buf.getvalue(), pages
+
+    _, page_count = draw_document(0)
+    return draw_document(page_count)[0]
 
 
 def _is_name_token_char(char: str) -> bool:

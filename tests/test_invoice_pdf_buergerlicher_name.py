@@ -409,16 +409,10 @@ def test_pdf_shows_the_stored_account_holder() -> None:
     assert "Kontoinhaber: Virginie Konto" in text
 
 
-def test_contact_footer_uses_account_holder_or_legal_name() -> None:
-    invoice = _make_invoice()
-
-    for fields, expected in [
-        ({"account_holder": "Kontoinhaber Beispiel"}, "Kontoinhaber Beispiel"),
-        ({"account_holder": ""}, "Daniel Peters"),
-    ]:
-        strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=_make_company(fields)))
-        contact_index = strings.index("Kontakt")
-        assert strings[contact_index + 1] == expected
+def test_contact_footer_lists_email_and_phone() -> None:
+    strings = _extract_strings(render_invoice_to_pdf_bytes(_make_invoice(), company=_make_company()))
+    contact_index = strings.index("KONTAKT")
+    assert strings[contact_index + 1:contact_index + 3] == ["info@fixundfertig.de", "030 1234567"]
 
 
 def test_pdf_uses_legal_name_as_account_holder_when_the_field_is_empty() -> None:
