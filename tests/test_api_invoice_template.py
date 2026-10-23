@@ -1,7 +1,6 @@
 """The shared invoice template, observed through the invoice API with real PDFs."""
 from __future__ import annotations
 
-import importlib
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,8 +12,6 @@ from services.invoice_pdf import render_invoice_to_pdf_bytes
 from test_api_invoice_artist_identity import artist_api  # noqa: F401  (fixture)
 from test_invoice_pdf_buergerlicher_name import _make_company, _make_invoice
 
-layout = importlib.import_module("services.invoice_pdf_layout")
-
 
 def _preview(client, payload):
     response = client.post("/api/invoices/preview-pdf", json=payload)
@@ -22,21 +19,11 @@ def _preview(client, payload):
     return response.content
 
 
-def test_preview_embeds_the_bundled_fonts(artist_api):
+def test_invoice_is_set_in_helvetica_like_the_website(artist_api):
     client, _, payload, _ = artist_api
     pdf = _preview(client, payload)
-    assert b"IBMPlexSans" in pdf
-    text = pdf_text(pdf)
-    assert "Musterstraße" in text
-    assert "300,00 €" in text
-
-
-def test_invoice_is_still_created_without_the_font_files(artist_api, monkeypatch, tmp_path):
-    client, _, payload, _ = artist_api
-    monkeypatch.setattr(layout, "FONT_DIR", tmp_path)
-    pdf = _preview(client, payload)
-    assert b"IBMPlex" not in pdf
     assert b"Helvetica" in pdf
+    assert b"IBMPlex" not in pdf
     text = pdf_text(pdf)
     assert "Musterstraße" in text
     assert "300,00 €" in text
