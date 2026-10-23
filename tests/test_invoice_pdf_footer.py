@@ -118,5 +118,5 @@ def test_pdf_footer_section_headers_present() -> None:
     invoice = _make_invoice()
     pdf = render_invoice_to_pdf_bytes(invoice, company=company)
     text = _extract_text(pdf)
-    for header in ("RECHNUNGSAUSSTELLER", "KONTAKT", "STEUER", "SEITE", "ZAHLUNGSINFORMATIONEN"):
+    for header in ("RECHNUNGSAUSSTELLER", "KONTAKT", "STEUER", "ZAHLUNGSINFORMATIONEN"):
         assert header in text, f"Footer header '{header}' missing"

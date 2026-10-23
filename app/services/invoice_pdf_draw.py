@@ -298,7 +298,7 @@ def draw_payment_box(c: Canvas, w: float, mx: float, y: float, content_w: float,
         ("Bank", bank, "regular"),
         ("IBAN", iban, "mono"),
         ("BIC", safe_str(get_attr(comp, "bic", "swift", "swift_code")), "mono"),
-        ("Verwendungszweck", f"Rechnung {nr}" if nr else "", "mono"),
+        ("Verwendungszweck", nr, "mono"),
     ]
     rows = [row for row in rows if row[1]]
     sentence = (
@@ -391,7 +391,7 @@ def issuer_lines(comp) -> list[str]:
 
 def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
                 comp, company_tax_id: str, company_vat_id: str,
-                font_r: str, font_b: str, set_font, page_no: int, page_total: int):
+                fonts: dict[str, str], page_no: int, page_total: int):
     footer_y = my_bot + 16 * mm
     muted = LAYOUT["col_muted"]
     size = 7
@@ -406,7 +406,7 @@ def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
         ]),
     ]
     columns = [column for column in columns if any(column[2])]
-    page_col_w = 30
+    page_col_w = 48
     gap = 12
     weights = sum(weight for weight, _, _ in columns)
     unit = (content_w - page_col_w - gap * len(columns)) / weights
@@ -415,17 +415,16 @@ def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
     for weight, head, lines in columns:
         col_w = weight * unit
         c.setFillColorRGB(*muted)
-        draw_tracked(c, tx, footer_y, head, font_b, size, 0.6)
-        c.setFont(font_r, size)
+        draw_tracked(c, tx, footer_y, head, fonts["bold"], size, 0.6)
+        c.setFont(fonts["regular"], size)
         ty = footer_y - 9
         for text in lines:
             if text:
-                for line in wrap_text(text, font_r, size, col_w):
+                for line in wrap_text(text, fonts["regular"], size, col_w):
                     c.drawString(tx, ty, line)
                     ty -= 8.5
         tx += col_w + gap
 
-    right = w - mx
-    draw_tracked(c, right, footer_y, "SEITE", font_b, size, 0.6, align="right")
-    c.setFont(font_r, size)
-    c.drawRightString(right, footer_y - 9, f"{page_no} / {page_total}")
+    c.setFillColorRGB(*muted)
+    c.setFont(fonts["regular"], size)
+    c.drawRightString(w - mx, footer_y, f"Seite {page_no} / {page_total}")

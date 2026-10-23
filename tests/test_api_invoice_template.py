@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import importlib
+import sys
+from pathlib import Path
 from types import SimpleNamespace
+
+sys.path.append(str(Path(__file__).resolve().parents[1] / "app"))
 
 from pdf_text import pdf_pages, pdf_strings, pdf_text
 from services.invoice_pdf import render_invoice_to_pdf_bytes
@@ -76,8 +80,7 @@ def test_every_page_of_a_long_invoice_has_footer_and_page_number(artist_api):
     assert len(pages) >= 2
     for number, page in enumerate(pages, start=1):
         assert "RECHNUNGSAUSSTELLER" in page
-        assert "SEITE" in page
-        assert f"{number} / {len(pages)}" in page
+        assert f"Seite {number} / {len(pages)}" in page
 
 
 def test_footer_leaves_out_columns_without_data(artist_api):
@@ -228,7 +231,7 @@ def test_payment_box_lists_account_details(artist_api):
     assert rows == [
         "Kontoinhaber", "Anderer Kontoinhaber", "Bank", "N26",
         "IBAN", "DE89 3704 0044 0532 0130 00",
-        "Verwendungszweck", f"Rechnung {invoice['nr']}",
+        "Verwendungszweck", invoice["nr"],
     ]
 
 
@@ -270,3 +273,4 @@ def test_service_date_line_is_always_there(artist_api):
     strings = pdf_strings(_preview(client, payload))
     assert strings[strings.index("Leistungsdatum:") + 1] == "wie Rechnungsdatum"
     assert strings[strings.index("Rechnungsdatum:") + 1] == "23.10.2026"
+

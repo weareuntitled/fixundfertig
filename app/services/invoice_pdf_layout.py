@@ -44,7 +44,7 @@ def load_fonts() -> dict[str, str]:
     names: dict[str, str] = {}
     for role, filename in FONT_FILES.items():
         path = FONT_DIR / filename
-        name = f"{path.stem}@{abs(hash(str(path))):x}"
+        name = f"{path.stem}@{path}"
         if name not in pdfmetrics.getRegisteredFontNames():
             try:
                 pdfmetrics.registerFont(TTFont(name, str(path)))
@@ -61,25 +61,10 @@ LAYOUT = {
     "margin_x": 16 * mm,
     "margin_top": 15 * mm,
     "margin_bottom": 20 * mm,
-    "font_reg": "Helvetica",
-    "font_bold": "Helvetica-Bold",
-    "fs_title": 16,
     "fs_text": 10,
-    "fs_small": 8,
-    "pos_address": 10 * mm,
-    "pos_info": 40 * mm,
-    "header_to_rec_gap_mm": 8,
-    "header_left_w": 60 * mm,
-    "header_gap": 10 * mm,
     "logo_max_w": 45 * mm,
     "logo_max_h": 25 * mm,
-    "header_baseline_offset": 2 * mm,
-    "header_title_leading": 6 * mm,
-    "header_sub_leading": 4.5 * mm,
-    "header_meta_gap": 6 * mm,
     "col_primary": (0, 0, 0),
-    "col_line": (0.0, 0.0, 0.0),
-    "col_header_bg": (1.0, 1.0, 1.0),
     # Designwerte der neuen Vorlage
     "col_ink": rgb("#14161a"),
     "col_muted": rgb("#5b606a"),
@@ -87,12 +72,7 @@ LAYOUT = {
     "col_surface": rgb("#f4f5f6"),
     "col_accent": rgb("#0f3d3e"),
     "line_width": 1.0,
-    "recipient_leading_pt": 12,
-    "meta_col_w_mm": 70,
     "txt_small_biz": "Als Kleinunternehmer im Sinne von § 19 Abs. 1 UStG wird keine Umsatzsteuer berechnet.",
-    "col_w_desc": 0.50,
-    "col_w_qty": 0.15,
-    "col_w_price": 0.30,
 }
 
 
