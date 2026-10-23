@@ -63,12 +63,12 @@ def test_pdf_footer_contains_kontakt() -> None:
 
 
 def test_pdf_footer_contains_bank() -> None:
-    """Footer must include IBAN and BIC."""
+    """The payment box must include IBAN and BIC."""
     company = _make_company()
     invoice = _make_invoice()
     pdf = render_invoice_to_pdf_bytes(invoice, company=company)
     text = _extract_text(pdf)
-    assert "DE89370400440532013000" in text, "IBAN missing"
+    assert "DE89 3704 0044 0532 0130 00" in text, "IBAN missing"
     assert "COBADEFFXXX" in text, "BIC missing"
 
 
@@ -113,10 +113,10 @@ def test_pdf_footer_small_business_shows_notice() -> None:
 
 
 def test_pdf_footer_section_headers_present() -> None:
-    """Footer section headers: Rechnungsaussteller, Kontakt, Bankverbindung, Steuer, Seite."""
+    """Section headers: footer columns and the payment box."""
     company = _make_company()
     invoice = _make_invoice()
     pdf = render_invoice_to_pdf_bytes(invoice, company=company)
     text = _extract_text(pdf)
-    for header in ("RECHNUNGSAUSSTELLER", "KONTAKT", "BANKVERBINDUNG", "STEUER", "SEITE"):
+    for header in ("RECHNUNGSAUSSTELLER", "KONTAKT", "STEUER", "SEITE", "ZAHLUNGSINFORMATIONEN"):
         assert header in text, f"Footer header '{header}' missing"

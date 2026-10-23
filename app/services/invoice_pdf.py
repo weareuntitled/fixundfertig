@@ -12,7 +12,7 @@ from .invoice_pdf_layout import (
 )
 from .invoice_pdf_draw import (
     draw_header, draw_recipient, draw_title_block, draw_identity_line,
-    draw_table, draw_totals, draw_footer, company_legal_name, uses_artist_wordmark,
+    draw_table, draw_totals, draw_payment_box, draw_footer, company_legal_name, uses_artist_wordmark,
 )
 
 
@@ -120,7 +120,8 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
             y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
         y -= 22
         y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, fonts)
-        draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, due_str, new_page, fonts)
+        y = draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, due_str, new_page, fonts)
+        draw_payment_box(c, w, mx, y, content_w, my_bot, comp, nr, new_page, fonts)
         page_footer()
 
         pages = c.getPageNumber()

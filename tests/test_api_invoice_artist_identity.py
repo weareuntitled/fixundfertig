@@ -69,7 +69,7 @@ def test_preview_names_the_artist_and_legal_issuer(artist_api):
     assert "Daniel S. ist der Künstlername von Daniel Beispiel." in text.replace("\n", " ")
     assert "DJ-Set Daniel S. (Daniel Beispiel)" in text
     assert "RECHNUNGSAUSSTELLER Anderer Kontoinhaber" not in _flat(text)
-    assert "Kontoinhaber: Anderer Kontoinhaber" in text
+    assert "Kontoinhaber Anderer Kontoinhaber" in _flat(text)
     assert "danep" not in text.lower()
     assert company.next_invoice_nr == 10000
     assert client.get("/api/invoices").json() == []
@@ -161,8 +161,8 @@ def test_preview_wraps_long_issuer_and_bank_details(artist_api):
     lines = _extract_strings(response.content)
     text = " ".join(lines)
     assert "RECHNUNGSAUSSTELLER Daniel Alexander Maximilian Beispielmann-Sonnenfeld" in _flat(text)
-    assert "Kontoinhaber: Daniel Alexander Maximilian Beispielmann-Sonnenfeld" in text
-    assert "Kontoinhaber: Daniel Alexander Maximilian Beispielmann-Sonnenfeld" not in lines
+    assert "Kontoinhaber Daniel Alexander Maximilian Beispielmann-Sonnenfeld" in _flat(text)
+    assert lines[lines.index("Kontoinhaber") + 1] != "Daniel Alexander Maximilian Beispielmann-Sonnenfeld"
 
 
 def test_ordinary_company_is_not_relabelled_as_its_owners_artist_name(artist_api):
