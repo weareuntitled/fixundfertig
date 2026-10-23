@@ -24,24 +24,40 @@ def uses_artist_wordmark(comp) -> bool:
     )
 
 
-def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp, font_b: str) -> float:
-    """Draw a personal wordmark or company logo; return occupied height in mm."""
-    if comp is None:
-        return 0.0
-    artist_name = safe_str(get_attr(comp, "name"))
-    if uses_artist_wordmark(comp):
-        heading = artist_name.upper()
-        profession = safe_str(get_attr(comp, "business_type"))
-        if profession:
-            heading += f" · {profession}"
-        c.setFont(font_b, LAYOUT["fs_title"])
-        c.setFillColorRGB(*LAYOUT["col_primary"])
-        y = top_y
-        for line in wrap_text(heading, font_b, LAYOUT["fs_title"], content_w):
-            c.drawString(mx, y, line)
-            y -= 20
-        return (top_y - y) / mm + 8
-    cid = getattr(comp, "id", None)
+def draw_header(c: Canvas, w: float, mx: float, top_y: float, content_w: float, comp,
+                fonts: dict[str, str]) -> float:
+    """Draw wordmark, logo or company name and the rule below it; return the y under the rule."""
+    ink = LAYOUT["col_ink"]
+    block_h = 0.0
+    if comp is not None and uses_artist_wordmark(comp):
+        c.setFillColorRGB(*ink)
+        draw_tracked(c, mx, top_y - 11, safe_str(get_attr(comp, "name")).upper(), fonts["bold"], 15, 2.4)
+        profession = safe_str(get_attr(comp, "business_type")).upper()
+        c.setFillColorRGB(*LAYOUT["col_muted"])
+        draw_tracked(c, mx, top_y - 24, profession, fonts["medium"], 7.5, 1.6)
+        block_h = 32
+    else:
+        logo_h = draw_logo(c, mx, top_y, comp)
+        if logo_h:
+            block_h = logo_h
+        else:
+            name = safe_str(get_attr(comp, "name")) if comp is not None else ""
+            if name:
+                c.setFillColorRGB(*ink)
+                c.setFont(fonts["bold"], 15)
+                c.drawString(mx, top_y - 11, name)
+                block_h = 18
+    rule_y = top_y - block_h - 30
+    c.setStrokeColorRGB(*ink)
+    c.setLineWidth(0.75)
+    c.line(mx, rule_y, w - mx, rule_y)
+    c.setLineWidth(LAYOUT["line_width"])
+    return rule_y
+
+
+def draw_logo(c: Canvas, mx: float, top_y: float, comp) -> float:
+    """Draw the uploaded company logo; return the occupied height in pt (0 when there is none)."""
+    cid = getattr(comp, "id", None) if comp is not None else None
     if cid is None:
         return 0.0
     from services.storage import company_logo_path
@@ -52,101 +68,87 @@ def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp, font_b
         from reportlab.lib.utils import ImageReader
         img = ImageReader(path)
         iw, ih = img.getSize()
-        max_w = LAYOUT["logo_max_w"]
-        max_h = LAYOUT["logo_max_h"]
-        scale = min(max_w / iw, max_h / ih, 1.0)
+        scale = min(LAYOUT["logo_max_w"] / iw, LAYOUT["logo_max_h"] / ih, 1.0)
         dw, dh = iw * scale, ih * scale
-        x = mx
-        y = top_y - dh
-        c.drawImage(img, x, y, width=dw, height=dh, preserveAspectRatio=True, mask="auto")
-        return dh / mm + 4  # logo height + 4mm gap
+        c.drawImage(img, mx, top_y - dh, width=dw, height=dh, preserveAspectRatio=True, mask="auto")
+        return dh
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"draw_logo failed: {e}")
         return 0.0
 
 
-def draw_recipient(c: Canvas, w: float, h: float, mx: float, content_w: float,
+def draw_recipient(c: Canvas, mx: float, rule_y: float, content_w: float,
                    rec_name: str, rec_street: str, rec_zip: str, rec_city: str, rec_country: str,
-                   comp, top_y: float, right_col_w: float,
-                   font_r: str, set_font) -> float:
-    y_rec = top_y - 5 * mm
-    set_font(size=LAYOUT["fs_text"], color=LAYOUT["col_primary"])
+                   fonts: dict[str, str]) -> float:
+    y = rule_y - 24
+    c.setFillColorRGB(*LAYOUT["col_muted"])
+    draw_tracked(c, mx, y, "RECHNUNG AN", fonts["medium"], 7, 1.0)
+    y -= 15
 
-    set_font(bold=True, size=9)
-    c.drawString(mx, y_rec, "Rechnung an")
-    y_rec -= 14
-    set_font(bold=False, size=LAYOUT["fs_text"])
-
-    rec_raw_lines = [l for l in [rec_name, rec_street, f"{rec_zip} {rec_city}".strip(), rec_country] if l]
-    if not rec_raw_lines:
-        rec_raw_lines = ["(Kein Empfänger hinterlegt)"]
-
-    addr_w = content_w - right_col_w - 10 * mm
-    recipient_leading = float(LAYOUT.get("recipient_leading_pt", 12))
-
-    for base_ln in rec_raw_lines:
-        for ln in wrap_text(base_ln, font_r, LAYOUT["fs_text"], addr_w):
-            if not ln:
-                continue
-            c.drawString(mx, y_rec, ln)
-            y_rec -= recipient_leading
-
-    return y_rec
+    lines = [line for line in [rec_name, rec_street, f"{rec_zip} {rec_city}".strip(), rec_country] if line]
+    if not lines:
+        lines = ["(Kein Empfänger hinterlegt)"]
+    c.setFillColorRGB(*LAYOUT["col_ink"])
+    for index, base_line in enumerate(lines):
+        font = fonts["bold"] if index == 0 else fonts["regular"]
+        for line in wrap_text(base_line, font, 9, content_w * 0.6):
+            c.setFont(font, 9)
+            c.drawString(mx, y, line)
+            y -= 13.5
+    return y
 
 
-def draw_meta(c: Canvas, w: float, h: float, mx: float, comp, top_y: float,
-              right_col_w: float, nr: str, inv_date: str, service_date: str, due_str: str,
-              font_r: str, font_b: str, set_font) -> tuple[float, str, str]:
-    meta_col_w = min(float(LAYOUT.get("meta_col_w_mm", 70)) * mm, right_col_w)
-    meta_x = w - mx
-    y_meta = top_y
+def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float, invoice, comp,
+                     nr: str, inv_date: str, service_date: str, due_str: str,
+                     fonts: dict[str, str]) -> float:
+    """Invoice number, subject and intro on the left, the dates on the right."""
+    right = w - mx
+    left_w = content_w - 160
+    ink, muted = LAYOUT["col_ink"], LAYOUT["col_muted"]
 
-    company_tax_id = safe_str(get_attr(comp, "tax_id"))
-    company_vat_id = safe_str(get_attr(comp, "vat_id"))
+    c.setFillColorRGB(*LAYOUT["col_accent"])
+    draw_tracked(c, mx, y, "RECHNUNG", fonts["medium"], 7.5, 1.6)
+    y -= 13
+    if nr:
+        c.setFillColorRGB(*ink)
+        c.setFont(fonts["mono_medium"], 11)
+        c.drawString(mx, y, f"Nr. {nr}")
+        y -= 13.5
+    y -= 10.5
 
-    y_meta -= 14
-
-    # Invoice metadata
-    meta_data = [
-        ("Rechnungsnr.:", nr or "-"),
-        ("Datum:", inv_date or "-"),
-        ("Leistungszeitraum:", service_date or "-"),
-        ("Zahlung bis:", due_str or "-"),
-    ]
-    # Tax IDs are listed once, in the footer.
-
-    label_x = meta_x - meta_col_w
-    for label, val in meta_data:
-        set_font(bold=True, size=9)
-        c.drawString(label_x, y_meta, label)
-        set_font(bold=False, size=9)
-        c.drawRightString(meta_x, y_meta, safe_str(val))
-        y_meta -= 14
-
-    return y_meta, company_tax_id, company_vat_id
-
-
-def draw_intro(c: Canvas, mx: float, y: float, content_w: float, invoice, comp,
-               font_r: str, set_font) -> float:
     subject = safe_str(get_attr(invoice, "subject", default=""))
     if subject:
-        set_font(bold=True, size=LAYOUT["fs_text"])
-        c.drawString(mx, y, subject)
-        y -= 14
+        c.setFillColorRGB(*ink)
+        c.setFont(fonts["bold"], 12.75)
+        for line in wrap_text(subject, fonts["bold"], 12.75, left_w):
+            c.drawString(mx, y, line)
+            y -= 16.5
+        y -= 1
 
     intro = safe_str(get_attr(invoice, "intro_text", "intro", default=""))
     if not intro:
         intro = safe_str(get_attr(comp, "invoice_intro", default="")) if comp is not None else ""
     if not intro:
         intro = "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
+    c.setFillColorRGB(0.235, 0.251, 0.282)
+    c.setFont(fonts["regular"], 9)
+    for line in wrap_text(intro, fonts["regular"], 9, left_w):
+        c.drawString(mx, y, line)
+        y -= 13.5
 
-    intro_lines = wrap_text(intro, font_r, LAYOUT["fs_text"], content_w)
-    set_font(size=LAYOUT["fs_text"])
-    for ln in intro_lines:
-        c.drawString(mx, y, ln)
-        y -= 12
-    return y - 12
+    # Dates sit on the right, level with the last line of the intro.
+    dates = [("Leistungsdatum:", service_date), ("Rechnungsdatum:", inv_date), ("Zahlbar bis:", due_str)]
+    dates = [(label, value) for label, value in dates if value]
+    date_y = y + 13.5 + (len(dates) - 1) * 13.5
+    for label, value in dates:
+        c.setFillColorRGB(*ink)
+        c.setFont(fonts["regular"], 9)
+        c.drawRightString(right, date_y, value)
+        c.setFillColorRGB(*muted)
+        c.drawRightString(right - stringWidth(value, fonts["regular"], 9) - 4, date_y, label)
+        date_y -= 13.5
+    return y
 
 
 def draw_identity_line(c: Canvas, mx: float, y: float, text: str, set_font) -> float:
@@ -241,6 +243,7 @@ def draw_tracked(c: Canvas, x: float, y: float, text: str, font: str, size: floa
     t.setFont(font, size)
     t.setCharSpace(tracking)
     t.textOut(text)
+    t.setCharSpace(0)  # character spacing would otherwise carry over to later text
     c.drawText(t)
 
 

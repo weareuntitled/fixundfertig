@@ -5,14 +5,13 @@ from datetime import datetime, timedelta
 from io import BytesIO
 
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import (
     LAYOUT, InvItem, format_date, format_service_period, get_attr, load_fonts, safe_float, safe_str,
 )
 from .invoice_pdf_draw import (
-    draw_logo, draw_recipient, draw_meta, draw_intro, draw_identity_line,
+    draw_header, draw_recipient, draw_title_block, draw_identity_line,
     draw_table, draw_totals, draw_footer, company_legal_name, uses_artist_wordmark,
 )
 
@@ -114,20 +113,12 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
             return h - LAYOUT["margin_top"]
 
         top_y = h - LAYOUT["margin_top"]
-        right_col_w = min(70 * mm, content_w * 0.38)
-
-        logo_h = draw_logo(c, mx, top_y, content_w, comp, font_b)
-        rec_top = top_y - logo_h * mm
-        y_rec = draw_recipient(c, w, h, mx, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country,
-                               comp, rec_top if logo_h else top_y, right_col_w, font_r, set_font)
-        y_meta, _tax_id, _vat_id = draw_meta(
-            c, w, h, mx, comp, rec_top if uses_artist_wordmark(comp) else top_y,
-            right_col_w, nr, inv_date, service_date, due_str, font_r, font_b, set_font)
-
-        y = min(y_rec, y_meta) - 12 * mm
-        y = draw_intro(c, mx, y, content_w, invoice, comp, font_r, set_font)
+        rule_y = draw_header(c, w, mx, top_y, content_w, comp, fonts)
+        y = draw_recipient(c, mx, rule_y, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country, fonts)
+        y = draw_title_block(c, w, mx, y - 39, content_w, invoice, comp, nr, inv_date, service_date, due_str, fonts)
         if artist_name and legal_name and not uses_artist_wordmark(comp) and not line_holds_artist_name_as_its_own_token:
             y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
+        y -= 22
         y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, font_r, set_font)
         draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, new_page, set_font)
         page_footer()
