@@ -29,7 +29,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install backend dependencies
-        run: python -m pip install -r requirements.txt pytest ruff mypy
+        run: python -m pip install -r requirements.txt pytest ruff mypy pypdf
 
       - name: Check agent configuration is versioned
         run: git ls-files --error-unmatch AGENTS.md docs/agents/issue-tracker.md docs/agents/domain.md docs/agents/triage-labels.md docs/agents/development.md

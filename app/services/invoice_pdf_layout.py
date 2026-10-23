@@ -1,8 +1,58 @@
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass
+from pathlib import Path
+
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfbase.ttfonts import TTFont
+
+logger = logging.getLogger(__name__)
+
+
+def rgb(hex_color: str) -> tuple[float, float, float]:
+    value = hex_color.lstrip("#")
+    return tuple(int(value[i:i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------
+# SCHRIFTEN: IBM Plex gebündelt, Rückfall auf die eingebauten PDF-Schriften
+# ---------------------------------------------------------
+FONT_DIR = Path(__file__).resolve().parent / "fonts"
+
+FONT_FILES = {
+    "regular": "IBMPlexSans-Regular.ttf",
+    "medium": "IBMPlexSans-Medium.ttf",
+    "bold": "IBMPlexSans-SemiBold.ttf",
+    "mono": "IBMPlexMono-Regular.ttf",
+    "mono_medium": "IBMPlexMono-Medium.ttf",
+}
+FONT_FALLBACK = {
+    "regular": "Helvetica",
+    "medium": "Helvetica",
+    "bold": "Helvetica-Bold",
+    "mono": "Courier",
+    "mono_medium": "Courier-Bold",
+}
+
+
+def load_fonts() -> dict[str, str]:
+    """Font names per role; a missing or unreadable file falls back to a built-in font."""
+    names: dict[str, str] = {}
+    for role, filename in FONT_FILES.items():
+        path = FONT_DIR / filename
+        name = f"{path.stem}@{abs(hash(str(path))):x}"
+        if name not in pdfmetrics.getRegisteredFontNames():
+            try:
+                pdfmetrics.registerFont(TTFont(name, str(path)))
+            except Exception as exc:
+                logger.warning("Invoice font %s unavailable, using %s: %s", path, FONT_FALLBACK[role], exc)
+                name = FONT_FALLBACK[role]
+        names[role] = name
+    return names
 
 # ---------------------------------------------------------
 # LAYOUT KONFIGURATION
@@ -30,6 +80,12 @@ LAYOUT = {
     "col_primary": (0, 0, 0),
     "col_line": (0.0, 0.0, 0.0),
     "col_header_bg": (1.0, 1.0, 1.0),
+    # Designwerte der neuen Vorlage
+    "col_ink": rgb("#14161a"),
+    "col_muted": rgb("#5b606a"),
+    "col_hair": rgb("#d9dbdf"),
+    "col_surface": rgb("#f4f5f6"),
+    "col_accent": rgb("#0f3d3e"),
     "line_width": 1.0,
     "recipient_leading_pt": 12,
     "meta_col_w_mm": 70,
@@ -74,12 +130,29 @@ def get_attr(obj, *names, default=""):
     return default
 
 
+_ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+
+
+def format_date(value) -> str:
+    """ISO dates become DD.MM.YYYY; anything else is returned as written."""
+    text = safe_str(value)
+    match = _ISO_DATE.fullmatch(text)
+    return f"{match.group(3)}.{match.group(2)}.{match.group(1)}" if match else text
+
+
+def format_service_period(service_from, service_to) -> str:
+    start, end = format_date(service_from), format_date(service_to)
+    if start and end and start != end:
+        return f"{start} bis {end}"
+    return start or end
+
+
 def prefixed_value(prefix: str, value) -> str:
     text = safe_str(value)
     return f"{prefix}{text}" if text else ""
 
 
-def wrap_text(text: str, font: str, size: int, max_width: float) -> list[str]:
+def wrap_text(text: str, font: str, size: float, max_width: float) -> list[str]:
     text = safe_str(text)
     if not text:
         return [""]

@@ -1,13 +1,11 @@
 """Verify PDF footer content: Kontakt, Bankverbindung, Rechtliches."""
-import re
-import zlib
 from pathlib import Path
 from types import SimpleNamespace
 import sys
-from base64 import a85decode
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "app"))
 
+from pdf_text import pdf_text as _extract_text
 from services.invoice_pdf import render_invoice_to_pdf_bytes
 
 
@@ -122,21 +120,3 @@ def test_pdf_footer_section_headers_present() -> None:
     text = _extract_text(pdf)
     for header in ("Kontakt", "Bankverbindung", "Rechtliches"):
         assert header in text, f"Footer header '{header}' missing"
-
-
-def _extract_text(pdf_bytes: bytes) -> str:
-    """Decompress PDF content streams and return readable text."""
-    text_parts: list[str] = []
-    for match in re.finditer(
-        rb"/Filter\s*\[\s*/ASCII85Decode\s+/FlateDecode\s*\].*?/Length\s+(\d+).*?>>\s*\nstream\n(.*?)endstream",
-        pdf_bytes, re.DOTALL,
-    ):
-        length = int(match.group(1))
-        stream_data = match.group(2).rstrip(b"\r\n")
-        try:
-            decoded = a85decode(stream_data, adobe=True)
-            decompressed = zlib.decompress(decoded)
-            text_parts.append(decompressed.decode("latin-1", errors="replace"))
-        except Exception:
-            pass
-    return "\n".join(text_parts)
