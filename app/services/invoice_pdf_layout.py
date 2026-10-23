@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import dataclass
-from pathlib import Path
 
 from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import stringWidth
-from reportlab.pdfbase.ttfonts import TTFont
-
-logger = logging.getLogger(__name__)
 
 
 def rgb(hex_color: str) -> tuple[float, float, float]:
@@ -19,40 +13,11 @@ def rgb(hex_color: str) -> tuple[float, float, float]:
 
 
 # ---------------------------------------------------------
-# SCHRIFTEN: IBM Plex gebündelt, Rückfall auf die eingebauten PDF-Schriften
+# SCHRIFTEN: eingebaute PDF-Schriften, wie die Ausweichschrift der Website
+# (Neue Haas Grotesk, Helvetica Neue, Helvetica). "medium" hat dort kein eigenes Gewicht.
 # ---------------------------------------------------------
-FONT_DIR = Path(__file__).resolve().parent / "fonts"
+FONTS = {"regular": "Helvetica", "medium": "Helvetica-Bold", "bold": "Helvetica-Bold"}
 
-FONT_FILES = {
-    "regular": "IBMPlexSans-Regular.ttf",
-    "medium": "IBMPlexSans-Medium.ttf",
-    "bold": "IBMPlexSans-SemiBold.ttf",
-    "mono": "IBMPlexMono-Regular.ttf",
-    "mono_medium": "IBMPlexMono-Medium.ttf",
-}
-FONT_FALLBACK = {
-    "regular": "Helvetica",
-    "medium": "Helvetica",
-    "bold": "Helvetica-Bold",
-    "mono": "Courier",
-    "mono_medium": "Courier-Bold",
-}
-
-
-def load_fonts() -> dict[str, str]:
-    """Font names per role; a missing or unreadable file falls back to a built-in font."""
-    names: dict[str, str] = {}
-    for role, filename in FONT_FILES.items():
-        path = FONT_DIR / filename
-        name = f"{path.stem}@{path}"
-        if name not in pdfmetrics.getRegisteredFontNames():
-            try:
-                pdfmetrics.registerFont(TTFont(name, str(path)))
-            except Exception as exc:
-                logger.warning("Invoice font %s unavailable, using %s: %s", path, FONT_FALLBACK[role], exc)
-                name = FONT_FALLBACK[role]
-        names[role] = name
-    return names
 
 # ---------------------------------------------------------
 # LAYOUT KONFIGURATION

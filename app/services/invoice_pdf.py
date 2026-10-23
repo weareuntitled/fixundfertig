@@ -8,7 +8,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import (
-    LAYOUT, InvItem, format_date, format_service_period, get_attr, load_fonts, safe_float, safe_str,
+    FONTS, LAYOUT, InvItem, format_date, format_service_period, get_attr, safe_float, safe_str,
 )
 from .invoice_pdf_draw import (
     draw_header, draw_recipient, draw_title_block, draw_identity_line,
@@ -83,7 +83,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
     nr = safe_str(get_attr(invoice, "nr", "invoice_number", default=""))
 
-    fonts = load_fonts()
+    fonts = FONTS
     font_r = fonts["regular"]
     font_b = fonts["bold"]
     w, h = A4

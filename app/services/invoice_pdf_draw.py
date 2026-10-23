@@ -114,7 +114,7 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
     y -= 13
     if nr:
         c.setFillColorRGB(*ink)
-        c.setFont(fonts["mono_medium"], 11)
+        c.setFont(fonts["bold"], 11)
         c.drawString(mx, y, f"Nr. {nr}")
         y -= 13.5
     y -= 10.5
@@ -294,11 +294,11 @@ def draw_payment_box(c: Canvas, w: float, mx: float, y: float, content_w: float,
         return y
 
     rows = [
-        ("Kontoinhaber", account_holder_name(comp), "regular"),
-        ("Bank", bank, "regular"),
-        ("IBAN", iban, "mono"),
-        ("BIC", safe_str(get_attr(comp, "bic", "swift", "swift_code")), "mono"),
-        ("Verwendungszweck", nr, "mono"),
+        ("Kontoinhaber", account_holder_name(comp)),
+        ("Bank", bank),
+        ("IBAN", iban),
+        ("BIC", safe_str(get_attr(comp, "bic", "swift", "swift_code"))),
+        ("Verwendungszweck", nr),
     ]
     rows = [row for row in rows if row[1]]
     sentence = (
@@ -313,15 +313,11 @@ def draw_payment_box(c: Canvas, w: float, mx: float, y: float, content_w: float,
     right_x = mx + pad_x + left_w + gap
     right = mx + content_w - pad_x
 
-    def row_font(kind: str) -> tuple[str, float]:
-        return (fonts["mono"], 8.6) if kind == "mono" else (fonts["regular"], 9)
-
     laid_out = []
-    for label, value, kind in rows:
-        font, size = row_font(kind)
+    for label, value in rows:
         value_w = right - right_x - stringWidth(label, fonts["regular"], 9) - 10
-        laid_out.append((label, wrap_text(value, font, size, value_w), kind))
-    row_heights = [13.5 * len(lines) + 7.5 for _, lines, _ in laid_out]
+        laid_out.append((label, wrap_text(value, fonts["regular"], 9, value_w)))
+    row_heights = [13.5 * len(lines) + 7.5 for _, lines in laid_out]
 
     sentence_lines = wrap_text(sentence, fonts["regular"], 9, left_w)
     left_h = 20 + 13.5 * len(sentence_lines)
@@ -344,13 +340,12 @@ def draw_payment_box(c: Canvas, w: float, mx: float, y: float, content_w: float,
         ty -= 13.5
 
     top = y - pad_y
-    for index, (label, lines, kind) in enumerate(laid_out):
+    for index, (label, lines) in enumerate(laid_out):
         base = top - 10
         c.setFont(fonts["regular"], 9)
         c.setFillColorRGB(*LAYOUT["col_muted"])
         c.drawString(right_x, base, label)
-        font, size = row_font(kind)
-        c.setFont(font, size)
+        c.setFont(fonts["regular"], 9)
         c.setFillColorRGB(*LAYOUT["col_ink"])
         for line in lines:
             c.drawRightString(right, base, line)

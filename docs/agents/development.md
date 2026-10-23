@@ -34,11 +34,11 @@ begrenzt; ein grüner Lauf bedeutet keine vollständige Backend-Typprüfung.
 
 Die einzige Rechnungsvorlage ist ReportLab-Code unter `app/services/`
 (`invoice_pdf.py` als Ablauf, `invoice_pdf_draw.py` für die Abschnitte,
-`invoice_pdf_layout.py` für Werte und Hilfen). Gesetzt wird in IBM Plex
-(`app/services/fonts/`, SIL OFL); fehlt eine Schriftdatei, fällt die Ausgabe
-auf Helvetica und Courier zurück. Die Tests lesen den PDF-Text mit `pypdf`
-(`tests/pdf_text.py`), weil eingebettete Schriften Nicht-ASCII-Zeichen im
-Inhaltsstrom nicht lesbar ablegen. Für eine Sichtprüfung das PDF mit PyMuPDF
+`invoice_pdf_layout.py` für Werte und Hilfen). Gesetzt wird in den
+eingebauten PDF-Schriften Helvetica und Helvetica-Bold, der Ausweichschrift
+von daniel-s.com (dort Neue Haas Grotesk, eine kommerzielle Schrift, die hier
+nicht eingebettet wird). Die Tests lesen den PDF-Text mit `pypdf`
+(`tests/pdf_text.py`). Für eine Sichtprüfung das PDF mit PyMuPDF
 zu PNG rendern und gegen den Entwurf halten.
 
 ## Frontend
