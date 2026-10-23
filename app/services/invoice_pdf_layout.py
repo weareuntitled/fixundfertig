@@ -87,6 +87,16 @@ def wrap_text(text: str, font: str, size: int, max_width: float) -> list[str]:
     lines: list[str] = []
     cur = ""
     for w in words:
+        if stringWidth(w, font, size) > max_width:
+            if cur:
+                lines.append(cur)
+                cur = ""
+            for char in w:
+                if cur and stringWidth(cur + char, font, size) > max_width:
+                    lines.append(cur)
+                    cur = ""
+                cur += char
+            continue
         cand = (cur + " " + w).strip() if cur else w
         if stringWidth(cand, font, size) <= max_width:
             cur = cand

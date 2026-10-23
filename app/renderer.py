@@ -65,7 +65,7 @@ def render_invoice_to_pdf_bytes(*args, **kwargs) -> bytes:
     """Kompatibles Wrapper — akzeptiert (invoice, company) oder Keyword-Args."""
     if "invoice" in kwargs or "company" in kwargs or "customer" in kwargs:
         return _render_reportlab(
-            kwargs.get("invoice"),
+            kwargs.get("invoice", args[0] if args else None),
             company=kwargs.get("company"),
             customer=kwargs.get("customer"),
         )

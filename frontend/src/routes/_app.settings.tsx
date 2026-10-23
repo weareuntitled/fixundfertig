@@ -263,10 +263,10 @@ function SettingsPage() {
               <div className="flex-1 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Field
                   className="md:col-span-2"
-                  label="Firma"
+                  label="Firmen- / Künstlername"
                   value={form.name}
                   onChange={(v) => set("name", v)}
-                  placeholder="Firma GmbH"
+                  placeholder="Firma GmbH oder Daniel S."
                 />
                 <Field
                   label="Vorname"
@@ -330,11 +330,21 @@ function SettingsPage() {
           <Section title="Geschäftsdaten">
             <SelectField
               className="md:w-1/2"
-              label="Unternehmensform"
+              label="Unternehmensform / Branche"
               value={form.business_type}
               onChange={(v) => set("business_type", v)}
-              options={["Einzelunternehmen", "Kleinunternehmer", "GmbH", "GbR", "UG", "AG"]}
+              options={["Einzelunternehmen", "Kleinunternehmer", "GmbH", "GbR", "UG", "AG", "DJ / Producer"]}
             />
+            <p className="mt-2 text-xs text-[var(--color-text-secondary)]">
+              „DJ / Producer“ aktiviert bei gepflegtem Vor- und Nachnamen den Text-Rechnungskopf für deinen Künstlerauftritt
+              und ersetzt dort ein vorhandenes Bildlogo. Der Inhaber wird als rechtlicher Rechnungsaussteller genannt.
+              Bereits gespeicherte Rechnungs-PDFs bleiben unverändert.
+            </p>
+            {form.business_type.trim().toLowerCase() === "dj / producer" && form.name.trim() && (form.first_name.trim() || form.last_name.trim()) && (
+              <p className="mt-2 text-xs text-[var(--color-text-secondary)]">
+                Im PDF steht: „{form.name.trim()} ist der Künstlername von {[form.first_name.trim(), form.last_name.trim()].filter(Boolean).join(" ")}.“
+              </p>
+            )}
             <div className="mt-3 grid grid-cols-1 gap-3 border-b border-[var(--color-border)] pb-3 md:grid-cols-2">
               <Field
                 className="md:col-span-2"
@@ -800,6 +810,7 @@ function Field({
       )}
       <input
         type={type}
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -828,6 +839,7 @@ function SelectField({
         {label}
       </label>
       <select
+        aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42] outline-none transition-colors"

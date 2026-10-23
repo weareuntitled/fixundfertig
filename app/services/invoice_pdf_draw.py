@@ -16,10 +16,30 @@ def company_legal_name(comp) -> str:
     return f"{first} {last}".strip()
 
 
+def uses_artist_wordmark(comp) -> bool:
+    return (
+        safe_str(get_attr(comp, "business_type")).casefold() == "dj / producer"
+        and bool(safe_str(get_attr(comp, "name")) and company_legal_name(comp))
+    )
+
+
 def draw_logo(c: Canvas, mx: float, top_y: float, content_w: float, comp) -> float:
-    """Draw company logo top-left. Returns logo height used (mm) for spacing."""
+    """Draw a personal wordmark or company logo; return occupied height in mm."""
     if comp is None:
         return 0.0
+    artist_name = safe_str(get_attr(comp, "name"))
+    if uses_artist_wordmark(comp):
+        heading = artist_name.upper()
+        profession = safe_str(get_attr(comp, "business_type"))
+        if profession:
+            heading += f" · {profession}"
+        c.setFont(LAYOUT["font_bold"], LAYOUT["fs_title"])
+        c.setFillColorRGB(*LAYOUT["col_primary"])
+        y = top_y
+        for line in wrap_text(heading, LAYOUT["font_bold"], LAYOUT["fs_title"], content_w):
+            c.drawString(mx, y, line)
+            y -= 20
+        return (top_y - y) / mm + 8
     cid = getattr(comp, "id", None)
     if cid is None:
         return 0.0
@@ -86,23 +106,31 @@ def draw_meta(c: Canvas, w: float, h: float, mx: float, comp, top_y: float,
 
     # Sender address block
     if comp:
-        set_font(bold=True, size=10)
-        c.drawRightString(meta_x, y_meta, safe_str(get_attr(comp, "name")))
-        y_meta -= 12
         legal_name = company_legal_name(comp)
-        if legal_name:
-            set_font(bold=False, size=9)
-            c.drawRightString(meta_x, y_meta, legal_name)
-            y_meta -= 11
+        artist_name = safe_str(get_attr(comp, "name"))
+        sender_lines = []
+        if uses_artist_wordmark(comp):
+            sender_lines.append(f"Rechnungsaussteller: {legal_name}")
+        else:
+            sender_lines.append(artist_name)
+            if legal_name:
+                sender_lines.append(legal_name)
         set_font(bold=False, size=9)
         s_str = safe_str(get_attr(comp, "street"))
         if s_str:
-            c.drawRightString(meta_x, y_meta, s_str)
-            y_meta -= 11
+            sender_lines.append(s_str)
         s_city = f"{safe_str(get_attr(comp, 'postal_code'))} {safe_str(get_attr(comp, 'city'))}".strip()
         if s_city:
-            c.drawRightString(meta_x, y_meta, s_city)
-            y_meta -= 11
+            sender_lines.append(s_city)
+        country = safe_str(get_attr(comp, "country"))
+        if country:
+            sender_lines.append(country)
+        if uses_artist_wordmark(comp):
+            sender_lines.append(f"{artist_name} ist der Künstlername von {legal_name}.")
+        for text in sender_lines:
+            for line in wrap_text(text, font_r, 9, meta_col_w):
+                c.drawRightString(meta_x, y_meta, line)
+                y_meta -= 11
 
     y_meta -= 6
 
@@ -294,5 +322,6 @@ def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
         ty -= 8
         for l in lines:
             if l:
-                c.drawString(tx, ty, str(l))
-                ty -= 8
+                for line in wrap_text(str(l), font_r, 7, col_w - 12):
+                    c.drawString(tx, ty, line)
+                    ty -= 8

@@ -11,7 +11,7 @@ from reportlab.pdfgen.canvas import Canvas
 from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, safe_float, get_attr
 from .invoice_pdf_draw import (
     draw_logo, draw_recipient, draw_meta, draw_intro, draw_identity_line,
-    draw_table, draw_totals, draw_footer, company_legal_name,
+    draw_table, draw_totals, draw_footer, company_legal_name, uses_artist_wordmark,
 )
 
 
@@ -106,11 +106,12 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     y_rec = draw_recipient(c, w, h, mx, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country,
                            comp, rec_top if logo_h else top_y, right_col_w, font_r, set_font)
     y_meta, company_tax_id, company_vat_id = draw_meta(
-        c, w, h, mx, comp, top_y, right_col_w, nr, inv_date, service_date, due_str, font_r, font_b, set_font)
+        c, w, h, mx, comp, rec_top if uses_artist_wordmark(comp) else top_y,
+        right_col_w, nr, inv_date, service_date, due_str, font_r, font_b, set_font)
 
     y = min(y_rec, y_meta) - 12 * mm
     y = draw_intro(c, mx, y, content_w, invoice, comp, font_r, set_font)
-    if artist_name and legal_name and not line_holds_artist_name_as_its_own_token:
+    if artist_name and legal_name and not uses_artist_wordmark(comp) and not line_holds_artist_name_as_its_own_token:
         y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
     y = draw_table(c, w, mx, y, content_w, my_bot, items, h, font_r, set_font)
     draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, h, set_font)
