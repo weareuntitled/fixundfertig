@@ -167,6 +167,7 @@ def finalize_invoice_logic(
     preview.__dict__["intro_text"] = (intro_text or "").strip()
     preview.__dict__["line_items"] = clean_items
     preview.__dict__["totals"] = {"gross": gross}
+    preview.__dict__["total_brutto"] = gross
 
     inv.pdf_bytes = render_invoice_to_pdf_bytes(preview)
     inv.pdf_filename = build_invoice_filename(comp, inv, cust)
