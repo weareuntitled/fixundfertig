@@ -178,7 +178,7 @@ def test_ordinary_company_is_not_relabelled_as_its_owners_artist_name(artist_api
 
 def test_preview_breaks_a_long_unbroken_surname(artist_api):
     client, company, payload, _ = artist_api
-    surname = "Beispielmann-Sonnenfeld-Langnamensfamilie-Musterhausen"
+    surname = "Beispielmann-Sonnenfeld-Langnamensfamilie-Musterhausen-Hinterhofgasse-Nebenweg-Seitenstrasse"
     company.last_name = surname
     company.account_holder = surname
     response = client.post("/api/invoices/preview-pdf", json=payload)

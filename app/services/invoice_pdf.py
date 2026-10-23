@@ -119,7 +119,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         if artist_name and legal_name and not uses_artist_wordmark(comp) and not line_holds_artist_name_as_its_own_token:
             y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
         y -= 22
-        y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, font_r, set_font)
+        y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, fonts)
         draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, new_page, set_font)
         page_footer()
 

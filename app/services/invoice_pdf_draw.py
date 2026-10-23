@@ -6,7 +6,9 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
-from .invoice_pdf_layout import LAYOUT, InvItem, safe_str, get_attr, prefixed_value, wrap_text
+from .invoice_pdf_layout import (
+    LAYOUT, InvItem, format_amount, format_money, get_attr, prefixed_value, safe_str, wrap_text,
+)
 
 
 def company_legal_name(comp) -> str:
@@ -158,44 +160,58 @@ def draw_identity_line(c: Canvas, mx: float, y: float, text: str, set_font) -> f
 
 
 def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
-               items: list[InvItem], new_page, font_r: str, set_font) -> float:
-    w_desc = content_w * LAYOUT["col_w_desc"]
-    w_qty = content_w * LAYOUT["col_w_qty"]
+               items: list[InvItem], new_page, fonts: dict[str, str]) -> float:
+    gap = 9
+    right = w - mx
+    amount_right = right
+    price_right = amount_right - 66 - gap
+    qty_right = price_right - 66 - gap
+    desc_x = mx + 24 + gap
+    desc_w = qty_right - 48 - gap - desc_x
+    floor = my_bot + 20 * mm
+    muted, ink, hair = LAYOUT["col_muted"], LAYOUT["col_ink"], LAYOUT["col_hair"]
 
-    def draw_header_row(curr_y):
-        c.setFillColorRGB(*LAYOUT["col_header_bg"])
-        c.rect(mx, curr_y - 16, content_w, 16, stroke=0, fill=1)
-        c.setStrokeColorRGB(*LAYOUT["col_line"])
-        c.line(mx, curr_y - 16, w - mx, curr_y - 16)
-        set_font(bold=True, size=11)
-        c.drawString(mx + 6, curr_y - 12, "Beschreibung")
-        c.drawRightString(mx + w_desc + w_qty - 6, curr_y - 12, "Menge")
-        c.drawRightString(w - mx - 6, curr_y - 12, "Preis")
-        return curr_y - 20
+    def draw_header_row(top: float) -> float:
+        c.setStrokeColorRGB(*ink)
+        c.setLineWidth(0.75)
+        c.line(mx, top, right, top)
+        c.setFillColorRGB(*muted)
+        base = top - 13
+        draw_tracked(c, mx, base, "POS.", fonts["medium"], 7, 1.0)
+        draw_tracked(c, desc_x, base, "BESCHREIBUNG", fonts["medium"], 7, 1.0)
+        draw_tracked(c, qty_right, base, "MENGE", fonts["medium"], 7, 1.0, align="right")
+        draw_tracked(c, price_right, base, "EINZELPREIS", fonts["medium"], 7, 1.0, align="right")
+        draw_tracked(c, amount_right, base, "BETRAG", fonts["medium"], 7, 1.0, align="right")
+        c.setStrokeColorRGB(*hair)
+        c.line(mx, top - 22.5, right, top - 22.5)
+        c.setLineWidth(LAYOUT["line_width"])
+        return top - 22.5
 
     y = draw_header_row(y)
-    set_font(bold=False, size=10)
 
-    for it in items:
-        desc_lines = wrap_text(it.description, font_r, 10, w_desc - 12)
-        row_h = max(16, 8 + len(desc_lines) * 12)
+    for number, it in enumerate(items, start=1):
+        desc_lines = wrap_text(it.description, fonts["regular"], 9, desc_w)
+        row_h = 21 + 13.5 * len(desc_lines)
 
-        if y - row_h < my_bot + 50 * mm:
+        if y - row_h < floor:
             y = draw_header_row(new_page())
-            set_font(bold=False, size=9)
 
-        ty = y - 12
-        for ln in desc_lines:
-            c.drawString(mx + 6, ty, ln)
-            ty -= 11
+        base = y - 20.5
+        c.setFont(fonts["regular"], 9)
+        c.setFillColorRGB(*muted)
+        c.drawString(mx, base, str(number))
+        c.setFillColorRGB(*ink)
+        ty = base
+        for line in desc_lines:
+            c.drawString(desc_x, ty, line)
+            ty -= 13.5
+        c.drawRightString(qty_right, base, format_amount(it.quantity))
+        c.drawRightString(price_right, base, format_money(it.unit_price))
+        c.setFont(fonts["medium"], 9)
+        c.drawRightString(amount_right, base, format_money(it.quantity * it.unit_price))
 
-        qty_str = f"{it.quantity:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        c.drawRightString(mx + w_desc + w_qty - 6, y - 12, qty_str)
-        price_str = f"{it.unit_price:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-        c.drawRightString(w - mx - 6, y - 12, price_str)
-
-        c.setStrokeColorRGB(*LAYOUT["col_line"])
-        c.line(mx, y - row_h, w - mx, y - row_h)
+        c.setStrokeColorRGB(*hair)
+        c.line(mx, y - row_h, right, y - row_h)
         y -= row_h
 
     return y
