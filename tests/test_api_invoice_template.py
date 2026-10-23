@@ -261,3 +261,51 @@ def test_service_date_line_is_always_there(artist_api):
     assert strings[strings.index("Leistungsdatum:") + 1] == "wie Rechnungsdatum"
     assert strings[strings.index("Rechnungsdatum:") + 1] == "23.10.2026"
 
+
+
+def _vat_rows(strings):
+    start = strings.index("Zwischensumme")
+    return strings[start:start + 6]
+
+
+def test_preview_shows_the_vat_of_the_draft(artist_api):
+    client, company, payload, _ = artist_api
+    company.is_small_business = False
+    payload["vat_rate"] = 19
+    strings = pdf_strings(_preview(client, payload))
+    assert _vat_rows(strings) == [
+        "Zwischensumme", "300,00 €", "Umsatzsteuer 19 %", "57,00 €", "GESAMTBETRAG", "357,00 €",
+    ]
+    assert "Kleinunternehmer" not in " ".join(strings)
+
+
+def test_stored_invoice_pdf_shows_the_same_vat(artist_api):
+    client, company, payload, _ = artist_api
+    company.is_small_business = False
+    payload["vat_rate"] = 19
+    created = client.post("/api/invoices", json=payload)
+    assert created.status_code == 201, created.text
+    invoice = created.json()
+    assert invoice["total_brutto"] == 357
+    strings = pdf_strings(client.get(f"/api/invoices/{invoice['id']}/download").content)
+    assert _vat_rows(strings) == [
+        "Zwischensumme", "300,00 €", "Umsatzsteuer 19 %", "57,00 €", "GESAMTBETRAG", "357,00 €",
+    ]
+
+
+def test_small_business_ignores_the_vat_rate_of_the_draft(artist_api):
+    client, _, payload, _ = artist_api
+    payload["vat_rate"] = 19
+    strings = pdf_strings(_preview(client, payload))
+    assert _vat_rows(strings)[2:4] == ["Umsatzsteuer", "nicht erhoben"]
+    assert "GESAMTBETRAG" in strings and strings[strings.index("GESAMTBETRAG") + 1] == "300,00 €"
+
+
+def test_vat_can_be_switched_off_per_invoice(artist_api):
+    client, company, payload, _ = artist_api
+    company.is_small_business = False
+    payload["vat_rate"] = 19
+    payload["ust_enabled"] = False
+    strings = pdf_strings(_preview(client, payload))
+    assert strings[strings.index("GESAMTBETRAG") + 1] == "300,00 €"
+    assert not any(text.startswith("Umsatzsteuer 19") for text in strings)

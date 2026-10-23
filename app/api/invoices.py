@@ -319,6 +319,7 @@ def update_invoice(
             preview.__dict__["intro_text"] = invoice.intro_text or ""
             preview.__dict__["line_items"] = clean_items
             preview.__dict__["totals"] = {"gross": float(invoice.total_brutto or 0)}
+            preview.__dict__["total_brutto"] = float(invoice.total_brutto or 0)
             invoice.pdf_bytes = render_invoice_to_pdf_bytes(preview)
         except Exception as e:
             logger.exception("PDF re-render failed on invoice update")

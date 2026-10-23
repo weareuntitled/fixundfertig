@@ -54,12 +54,10 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
             unit_price=safe_float(get_attr(it, "unit_price", "price", default=0)),
         ))
 
-    tax_rate = safe_float(get_attr(invoice, "tax_rate", default=0.0))
-    if tax_rate > 1.0:
-        tax_rate = tax_rate / 100.0
-    is_small_business = bool(get_attr(comp, "is_small_business", default=False)) if comp is not None else (tax_rate == 0.0)
+    is_small_business = bool(get_attr(comp, "is_small_business", default=False)) if comp is not None else False
 
     net = sum(i.quantity * i.unit_price for i in items)
+    tax_rate = 0.0 if is_small_business else _vat_rate(invoice, net)
     tax = net * tax_rate
     gross = net + tax
 
@@ -123,6 +121,21 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
     _, page_count = draw_document(0)
     return draw_document(page_count)[0]
+
+
+def _vat_rate(invoice, net: float) -> float:
+    """The VAT rate as a fraction. Drafts carry it as vat_rate, stored invoices only their total."""
+    if get_attr(invoice, "ust_enabled", default=True) is False:
+        return 0.0
+    percent = safe_float(get_attr(invoice, "tax_rate", "vat_rate", default=0.0))
+    if percent > 1.0:
+        percent /= 100.0
+    if percent > 0:
+        return percent
+    gross = safe_float(get_attr(invoice, "total_brutto", default=0.0))
+    if net > 0 and gross > net + 0.005:
+        return round((gross - net) / net, 3)
+    return 0.0
 
 
 def _is_name_token_char(char: str) -> bool:
