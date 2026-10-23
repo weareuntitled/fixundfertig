@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
@@ -123,47 +124,40 @@ def draw_meta(c: Canvas, w: float, h: float, mx: float, comp, top_y: float,
         if s_city:
             sender_lines.append(s_city)
         country = safe_str(get_attr(comp, "country"))
-        if country:
+        if country and country.upper() not in ("DE", "DEUTSCHLAND", "GERMANY"):
             sender_lines.append(country)
-        if uses_artist_wordmark(comp):
-            sender_lines.append(f"{artist_name} ist der Künstlername von {legal_name}.")
         for text in sender_lines:
             for line in wrap_text(text, font_r, 9, meta_col_w):
                 c.drawRightString(meta_x, y_meta, line)
                 y_meta -= 11
+        if uses_artist_wordmark(comp):
+            set_font(bold=False, size=7.5, color=(0.4, 0.4, 0.4))
+            for line in wrap_text(f"{artist_name} ist der Künstlername von {legal_name}.", font_r, 7.5, meta_col_w):
+                c.drawRightString(meta_x, y_meta, line)
+                y_meta -= 10
+            set_font(bold=False, size=9)
 
-    y_meta -= 6
+    y_meta -= 14
 
     # Invoice metadata
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", service_date or ""):
+        y_, m_, d_ = service_date.split("-")
+        service_date = f"{d_}.{m_}.{y_}"
     meta_data = [
         ("Rechnungsnr.:", nr or "-"),
         ("Datum:", inv_date or "-"),
         ("Leistungszeitraum:", service_date or "-"),
         ("Zahlung bis:", due_str or "-"),
     ]
-    if company_vat_id:
-        meta_data.append(("USt-ID:", company_vat_id))
-    elif company_tax_id:
-        meta_data.append(("Steuernr.:", company_tax_id))
+    # Tax IDs are listed once, in the footer.
 
+    label_x = meta_x - meta_col_w
     for label, val in meta_data:
         set_font(bold=True, size=9)
-        c.drawRightString(meta_x, y_meta, label)
-        val_text = safe_str(val)
-        if val_text:
-            set_font(bold=False, size=9)
-            val_lines = wrap_text(val_text, font_r, 9, meta_col_w)
-            line_height = 11
-            v_y = y_meta - line_height
-            for ln in val_lines:
-                if not ln:
-                    continue
-                c.drawRightString(meta_x, v_y, ln)
-                v_y -= line_height
-            used_lines = max(1, len([l for l in val_lines if l]))
-            y_meta = y_meta - (used_lines * line_height + 12)
-        else:
-            y_meta -= 24
+        c.drawString(label_x, y_meta, label)
+        set_font(bold=False, size=9)
+        c.drawRightString(meta_x, y_meta, safe_str(val))
+        y_meta -= 14
 
     return y_meta, company_tax_id, company_vat_id
 
@@ -290,16 +284,9 @@ def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
 
     comp_name = safe_str(get_attr(comp, "name"))
     contact_name = safe_str(get_attr(comp, "account_holder")) or company_legal_name(comp) or comp_name
-    comp_street = safe_str(get_attr(comp, "street"))
-    comp_city = f"{safe_str(get_attr(comp, 'postal_code'))} {safe_str(get_attr(comp, 'city'))}".strip()
-    f_addr = [contact_name]
-    if comp_street:
-        f_addr.append(comp_street)
-    if comp_city:
-        f_addr.append(comp_city)
-    f_addr.append(safe_str(get_attr(comp, "email")))
-    f_addr.append(safe_str(get_attr(comp, "phone")))
-    account_holder = safe_str(get_attr(comp, "account_holder"))
+    # The postal address already appears in the sender block above.
+    f_addr = [contact_name, safe_str(get_attr(comp, "email")), safe_str(get_attr(comp, "phone"))]
+    account_holder = contact_name
     f_bank = [
         prefixed_value("Kontoinhaber: ", account_holder),
         safe_str(get_attr(comp, "bank_name")),
@@ -309,7 +296,7 @@ def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
     f_legal = [
         prefixed_value("Steuernr.: ", company_tax_id),
         prefixed_value("USt-ID: ", company_vat_id),
-        safe_str(get_attr(comp, "business_type")),
+        "" if uses_artist_wordmark(comp) else safe_str(get_attr(comp, "business_type")),
     ]
 
     col_w = content_w / 3
