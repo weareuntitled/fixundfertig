@@ -1,8 +1,8 @@
 /**
  * @schema SendInvoiceSheet
- * @purpose Modal sheet to send an invoice by email with an optional personal message.
- * iOS idiom: bottom sheet on phones, centred card on larger screens; Cancel left, title centre,
- * primary action right; inset grouped fields; 44pt touch targets; safe-area padding.
+ * @purpose Modal to send an invoice by email with an optional personal message.
+ * Looks like the app's other modals (plain dim backdrop, white card, 12px actions);
+ * on phones it sits at the bottom edge as a sheet.
  */
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -57,85 +57,65 @@ export function SendInvoiceSheet({
   const nearLimit = message.length > MAX_MESSAGE_LENGTH - 200;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:px-4"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !pending) onCancel();
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={() => !pending && onCancel()} />
       <form
         onSubmit={submit}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-md overflow-hidden rounded-t-[14px] bg-[var(--color-surface-sunken)] shadow-xl sm:rounded-[14px]"
+        className="animate-fade-in relative w-full max-w-md rounded-t-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-xl)] pb-[max(var(--space-xl),env(safe-area-inset-bottom))] shadow-xl sm:rounded-[var(--radius-xl)]"
       >
-        <header className="grid grid-cols-[1fr_auto_1fr] items-center border-b border-[var(--color-border)] bg-[var(--color-surface-card)] px-2">
+        <h3 id={titleId} className="mb-1 text-[20px] font-semibold text-[var(--color-text-heading)]">
+          Rechnung senden
+        </h3>
+        <p className="mb-5 break-words text-[14px] text-[var(--color-text-secondary)]">
+          An {recipientName}
+          {recipientEmail && <span className="text-[var(--color-text-tertiary)]"> · {recipientEmail}</span>}
+        </p>
+
+        <label
+          htmlFor={fieldId}
+          className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+        >
+          Persönliche Nachricht (optional)
+        </label>
+        <textarea
+          id={fieldId}
+          ref={fieldRef}
+          value={message}
+          onChange={(event) => setMessage(event.target.value)}
+          maxLength={MAX_MESSAGE_LENGTH}
+          rows={6}
+          aria-describedby={hintId}
+          placeholder="z. B. ein kurzer Dank oder ein Gruß"
+          className="mt-1.5 block w-full resize-none rounded-[var(--radius)] border border-[var(--color-surface-border)] bg-[var(--color-surface-raised)] px-3 py-2 text-sm leading-relaxed text-[var(--color-text-primary)] outline-none transition-colors placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)]/20"
+        />
+        <p id={hintId} className="mt-1.5 flex justify-between gap-4 text-[12px] text-[var(--color-text-muted)]">
+          <span>Ohne Text geht der Standardtext raus. Die Rechnung hängt immer als PDF an.</span>
+          {nearLimit && (
+            <span aria-live="polite" className="shrink-0 tabular-nums">
+              {message.length}/{MAX_MESSAGE_LENGTH}
+            </span>
+          )}
+        </p>
+
+        <div className="mt-6 flex justify-end gap-[var(--space-sm)]">
           <button
             type="button"
             onClick={onCancel}
             disabled={pending}
-            className="min-h-[44px] justify-self-start rounded-[8px] px-3 text-[17px] text-[var(--color-brand)] transition-opacity active:opacity-60 disabled:opacity-40"
+            className="min-h-[44px] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50 sm:min-h-0 sm:py-[var(--space-xs)]"
           >
             Abbrechen
           </button>
-          <h2 id={titleId} className="text-[17px] font-semibold text-[var(--color-text-heading)]">
-            Rechnung senden
-          </h2>
           <button
             type="submit"
             disabled={pending}
-            className="min-h-[44px] justify-self-end rounded-[8px] px-3 text-[17px] font-semibold text-[var(--color-brand)] transition-opacity active:opacity-60 disabled:opacity-40"
+            className="min-h-[44px] rounded-[var(--radius-lg)] bg-[#001a42] px-[var(--space-md)] text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 sm:min-h-0 sm:py-[var(--space-xs)]"
           >
             {pending ? "Sende…" : "Senden"}
           </button>
-        </header>
-
-        <div className="space-y-6 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5">
-          <div className="overflow-hidden rounded-[10px] bg-[var(--color-surface-card)]">
-            <div className="flex min-h-[44px] items-center justify-between gap-4 px-4 py-2">
-              <span className="text-[17px] text-[var(--color-text-heading)]">An</span>
-              <span className="min-w-0 text-right">
-                <span className="block truncate text-[17px] text-[var(--color-text-secondary)]">{recipientName}</span>
-                {recipientEmail && (
-                  <span className="block truncate text-[13px] text-[var(--color-text-tertiary)]">{recipientEmail}</span>
-                )}
-              </span>
-            </div>
-          </div>
-
-          <div>
-            <label
-              htmlFor={fieldId}
-              className="mb-1.5 block px-4 text-[13px] uppercase tracking-wide text-[var(--color-text-secondary)]"
-            >
-              Persönliche Nachricht
-            </label>
-            <div className="overflow-hidden rounded-[10px] bg-[var(--color-surface-card)]">
-              <textarea
-                id={fieldId}
-                ref={fieldRef}
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                maxLength={MAX_MESSAGE_LENGTH}
-                rows={6}
-                aria-describedby={hintId}
-                placeholder="Optional, zum Beispiel ein kurzer Dank oder ein Gruß"
-                className="block min-h-[132px] w-full resize-none bg-transparent px-4 py-3 text-[17px] leading-[1.35] text-[var(--color-text-heading)] outline-none placeholder:text-[var(--color-text-placeholder)]"
-              />
-            </div>
-            <p
-              id={hintId}
-              className="mt-1.5 flex justify-between gap-4 px-4 text-[13px] leading-snug text-[var(--color-text-secondary)]"
-            >
-              <span>Ohne Text geht der Standardtext raus. Die Rechnung hängt immer als PDF an.</span>
-              {nearLimit && (
-                <span aria-live="polite" className="shrink-0 tabular-nums">
-                  {message.length}/{MAX_MESSAGE_LENGTH}
-                </span>
-              )}
-            </p>
-          </div>
         </div>
       </form>
     </div>
