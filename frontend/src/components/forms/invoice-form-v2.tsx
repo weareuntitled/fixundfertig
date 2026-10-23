@@ -1,15 +1,14 @@
 /**
  * @schema InvoiceFormV2
- * @purpose Invoice creation form matching Lumina Ledger HTML exactly
+ * @purpose Invoice creation form: customer, subject, dates, positions edited in place, totals
  * @input {InvoiceDraft} value - Current invoice draft state
  * @input {(next: InvoiceDraft) => void} onChange - State update callback
- * @output Renders single white card with 12-col grid header, full-width line items table, totals, notes
- * @tokens Uses: color-surface-card, color-border, color-text-*, input-*, table-*
+ * @output One white card; every field says what it does and what happens when it is left empty
  */
-import { useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { Trash2 } from "lucide-react";
 import { CustomerSelector } from "./customer-selector";
-import { LineItemDialog } from "./line-item-dialog";
+import { dueDateLabel, PAYMENT_TERM_DAYS } from "@/lib/invoice-draft";
 import type { InvoiceDraft, InvoiceItem } from "@/lib/schemas/invoice";
 
 interface InvoiceFormV2Props {
@@ -17,34 +16,59 @@ interface InvoiceFormV2Props {
   onChange: (next: InvoiceDraft) => void;
 }
 
-export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+const INPUT =
+  "w-full bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42] transition-all duration-150 outline-none";
+const CELL_INPUT =
+  "w-full bg-transparent border-0 border-b border-transparent focus:border-[#001a42] focus:ring-0 px-0 py-1 text-[14px] text-[var(--color-text-primary)] outline-none transition-colors placeholder:text-[var(--color-text-secondary)]";
+const money = (value: number) => value.toLocaleString("de-DE", { minimumFractionDigits: 2 });
 
-  const setField = <K extends keyof InvoiceDraft>(key: K, v: InvoiceDraft[K]) =>
-    onChange({ ...value, [key]: v });
+function FormField({ label, hint, children }: { label: string; hint?: string; children: (ids: { id: string; hintId?: string }) => ReactNode }) {
+  const id = useId();
+  const hintId = hint ? `${id}-hint` : undefined;
+  return (
+    <div>
+      <label htmlFor={id} className="mb-[var(--space-xs)] block text-[14px] font-bold text-[var(--color-text-primary)]">
+        {label}
+      </label>
+      {children({ id, hintId })}
+      {hint && (
+        <p id={hintId} className="mt-1 text-[12px] text-[var(--color-text-muted)]">
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
+  const [removed, setRemoved] = useState<{ item: InvoiceItem; index: number } | null>(null);
+  const [focusIndex, setFocusIndex] = useState<number | null>(null);
+  const [touched, setTouched] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!removed) return;
+    const timer = setTimeout(() => setRemoved(null), 8000);
+    return () => clearTimeout(timer);
+  }, [removed]);
+
+  const setField = <K extends keyof InvoiceDraft>(key: K, v: InvoiceDraft[K]) => onChange({ ...value, [key]: v });
 
   const addItem = () => {
-    setEditingIndex(null);
-    setDialogOpen(true);
-  };
-
-  const saveItem = (item: InvoiceItem) => {
-    if (editingIndex === null) {
-      setField("items", [...value.items, item]);
-    } else {
-      const next = [...value.items];
-      next[editingIndex] = item;
-      setField("items", next);
-    }
-    setDialogOpen(false);
+    setFocusIndex(value.items.length);
+    setField("items", [...value.items, { description: "", quantity: 1, unit_price: 0 }]);
   };
 
   const removeItem = (idx: number) => {
-    setField(
-      "items",
-      value.items.filter((_, i) => i !== idx),
-    );
+    setRemoved({ item: value.items[idx], index: idx });
+    setField("items", value.items.filter((_, i) => i !== idx));
+  };
+
+  const undoRemove = () => {
+    if (!removed) return;
+    const next = [...value.items];
+    next.splice(Math.min(removed.index, next.length), 0, removed.item);
+    setField("items", next);
+    setRemoved(null);
   };
 
   const updateItemField = (idx: number, field: keyof InvoiceItem, val: string | number) => {
@@ -56,164 +80,174 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
   const subtotalNet = value.items.reduce((sum, it) => sum + it.quantity * it.unit_price, 0);
   const taxAmount = value.ust_enabled ? subtotalNet * (value.vat_rate / 100) : 0;
   const gross = subtotalNet + taxAmount;
+  const due = dueDateLabel(value.date);
 
   return (
     <div className="space-y-0">
-      {/* Header Section: Client & Dates — 12-col grid */}
-      <div className="grid grid-cols-12 gap-[var(--space-gutter)] mb-[var(--space-xl)] border-b border-[var(--color-border)] pb-[var(--space-xl)]">
-        {/* Left: Client Details */}
-        <div className="col-span-12 md:col-span-6 space-y-[var(--space-md)]">
-          <div>
-            <label className="block text-[14px] font-bold text-[var(--color-text-primary)] mb-[var(--space-xs)]">
-              Kundendetails
-            </label>
-            <CustomerSelector
-              value={value.customer_id}
-              onChange={(id) => setField("customer_id", id)}
-            />
-          </div>
+      {/* Header: customer and subject on the left, number and dates on the right */}
+      <div className="mb-[var(--space-xl)] grid grid-cols-12 gap-[var(--space-gutter)] border-b border-[var(--color-border)] pb-[var(--space-xl)]">
+        <div className="col-span-12 space-y-[var(--space-md)] md:col-span-6">
+          <CustomerSelector value={value.customer_id} onChange={(id) => setField("customer_id", id)} />
 
-          <div>
-            <label className="block text-[14px] font-bold text-[var(--color-text-primary)] mb-[var(--space-xs)]">
-              Betreff
-            </label>
-            <input
-              type="text"
-              value={value.subject}
-              onChange={(e) => setField("subject", e.target.value)}
-              placeholder="Rechnungsbetreff (optional)"
-              className="w-full bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-black)] focus:ring-1 focus:ring-[var(--color-black)] transition-all duration-150 outline-none"
-            />
-          </div>
+          <FormField label="Betreff" hint="Steht fett über dem Einleitungstext, auch in der Mail. Leer ist in Ordnung.">
+            {({ id, hintId }) => (
+              <input
+                id={id}
+                aria-describedby={hintId}
+                type="text"
+                value={value.subject}
+                onChange={(e) => setField("subject", e.target.value)}
+                placeholder="z. B. DJ-Set Hammahalle, Sa auf So"
+                className={INPUT}
+              />
+            )}
+          </FormField>
         </div>
 
-        {/* Right: Invoice Number + Dates */}
-        <div className="col-span-12 md:col-span-6 grid grid-cols-2 gap-[var(--space-sm)]">
-          <div className="col-span-2">
-            <label className="block text-[14px] font-bold text-[var(--color-text-primary)] mb-[var(--space-xs)]">
-              Rechnungsnummer
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-secondary)] font-mono text-sm">
-                INV-
-              </span>
+        <div className="col-span-12 grid grid-cols-2 gap-[var(--space-sm)] md:col-span-6">
+          <p className="col-span-2 text-[14px] text-[var(--color-text-secondary)]">
+            <span className="font-bold text-[var(--color-text-primary)]">Rechnungsnummer</span>
+            <br />
+            Wird beim Erstellen vergeben und lässt sich danach nicht mehr ändern.
+          </p>
+          <FormField label="Rechnungsdatum">
+            {({ id }) => (
+              <input id={id} type="date" value={value.date} onChange={(e) => setField("date", e.target.value)} className={INPUT} />
+            )}
+          </FormField>
+          <FormField label="Leistungsdatum" hint="Leer = wie Rechnungsdatum.">
+            {({ id, hintId }) => (
               <input
-                type="text"
-                readOnly
-                value={"Wird beim Finalisieren vergeben"}
-                className="w-full bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] pl-12 pr-4 py-2 font-mono text-sm text-[var(--color-text-primary)] focus:border-[var(--color-black)] focus:ring-1 focus:ring-[var(--color-black)] transition-all duration-150 outline-none"
+                id={id}
+                aria-describedby={hintId}
+                type="date"
+                value={value.delivery_date}
+                onChange={(e) => setField("delivery_date", e.target.value)}
+                className={INPUT}
               />
-            </div>
-          </div>
-          <div>
-            <label className="block text-[14px] font-bold text-[var(--color-text-primary)] mb-[var(--space-xs)]">
-              Rechnungsdatum
-            </label>
-            <input
-              type="date"
-              value={value.date}
-              onChange={(e) => setField("date", e.target.value)}
-              className="w-full bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-black)] focus:ring-1 focus:ring-[var(--color-black)] transition-all duration-150 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-[14px] font-bold text-[var(--color-text-primary)] mb-[var(--space-xs)]">
-              Leistungszeitraum
-            </label>
-            <input
-              type="date"
-              value={value.delivery_date}
-              onChange={(e) => setField("delivery_date", e.target.value)}
-              className="w-full bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-black)] focus:ring-1 focus:ring-[var(--color-black)] transition-all duration-150 outline-none"
-            />
-          </div>
+            )}
+          </FormField>
+          <p className="col-span-2 text-[13px] text-[var(--color-text-secondary)]">
+            Zahlungsziel {PAYMENT_TERM_DAYS} Tage
+            {due ? (
+              <>
+                {" "}
+                · zahlbar bis <span className="font-semibold text-[var(--color-text-primary)]">{due}</span>
+              </>
+            ) : null}
+          </p>
         </div>
       </div>
 
-      {/* Line Items Section */}
+      {/* Intro text */}
       <div className="mb-[var(--space-xl)]">
-        <h3 className="text-[20px] font-semibold text-[var(--color-text-primary)] mb-[var(--space-md)]">
-          Positionen
-        </h3>
+        <FormField label="Einleitung" hint="Optional. Ohne Text steht: „Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung.“">
+          {({ id, hintId }) => (
+            <textarea
+              id={id}
+              aria-describedby={hintId}
+              value={value.intro_text}
+              onChange={(e) => setField("intro_text", e.target.value)}
+              rows={2}
+              maxLength={2000}
+              className={`${INPUT} resize-y`}
+            />
+          )}
+        </FormField>
+      </div>
+
+      {/* Positions, edited in place */}
+      <div className="mb-[var(--space-xl)]">
+        <h3 className="mb-[var(--space-md)] text-[20px] font-semibold text-[var(--color-text-primary)]">Positionen</h3>
         <div className="w-full overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full border-collapse text-left">
             <thead>
-              <tr className="bg-[#F1F5F9] border-y border-[var(--color-border)]">
-                <th className="py-[var(--space-xs)] px-[var(--space-sm)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] w-1/2">
-                  Beschreibung
+              <tr className="border-y border-[var(--color-border)] bg-[#F1F5F9]">
+                <th className="w-1/2 px-[var(--space-sm)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Beschreibung</th>
+                <th className="w-1/6 px-[var(--space-sm)] py-[var(--space-xs)] text-right text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Menge</th>
+                <th className="w-1/6 px-[var(--space-sm)] py-[var(--space-xs)] text-right text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Einzelpreis</th>
+                <th className="w-1/6 px-[var(--space-sm)] py-[var(--space-xs)] text-right text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Betrag</th>
+                <th className="w-12 px-[var(--space-sm)] py-[var(--space-xs)]">
+                  <span className="sr-only">Entfernen</span>
                 </th>
-                <th className="py-[var(--space-xs)] px-[var(--space-sm)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] text-right w-1/6">
-                  Menge
-                </th>
-                <th className="py-[var(--space-xs)] px-[var(--space-sm)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] text-right w-1/6">
-                  Preis
-                </th>
-                <th className="py-[var(--space-xs)] px-[var(--space-sm)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] text-right w-1/6">
-                  Betrag
-                </th>
-                <th className="py-[var(--space-xs)] px-[var(--space-sm)] w-10" />
               </tr>
             </thead>
             <tbody>
-              {value.items.map((it, idx) => (
-                <tr
-                  key={idx}
-                  className="border-b border-[var(--color-border)] group hover:bg-[var(--color-surface-bright)] transition-colors"
-                >
-                  <td className="py-[var(--space-sm)] px-[var(--space-sm)]">
-                    <input
-                      type="text"
-                      value={it.description}
-                      onChange={(e) => updateItemField(idx, "description", e.target.value)}
-                      placeholder="Beschreibung"
-                      className="w-full bg-transparent border-0 border-b border-transparent focus:border-[var(--color-black)] focus:ring-0 px-0 py-1 text-[14px] text-[var(--color-text-primary)] outline-none transition-colors placeholder:text-[var(--color-text-secondary)]"
-                    />
-                  </td>
-                  <td className="py-[var(--space-sm)] px-[var(--space-sm)]">
-                    <input
-                      type="number"
-                      value={it.quantity}
-                      onChange={(e) => updateItemField(idx, "quantity", Number(e.target.value))}
-                      className="w-full text-right bg-transparent border-0 border-b border-transparent focus:border-[var(--color-black)] focus:ring-0 px-0 py-1 font-mono text-sm text-[var(--color-text-primary)] outline-none transition-colors"
-                    />
-                  </td>
-                  <td className="py-[var(--space-sm)] px-[var(--space-sm)]">
-                    <div className="relative flex items-center justify-end">
-                      <span className="text-[var(--color-text-secondary)] font-mono text-sm mr-1">€</span>
+              {value.items.map((it, idx) => {
+                const number = idx + 1;
+                const quantityBad = !(it.quantity > 0);
+                const priceBad = it.unit_price < 0;
+                const descriptionBad = touched.has(idx) && !it.description.trim();
+                return (
+                  <tr key={idx} className="border-b border-[var(--color-border)] transition-colors hover:bg-[var(--color-surface-bright)]">
+                    <td className="px-[var(--space-sm)] py-[var(--space-sm)]">
+                      <input
+                        type="text"
+                        aria-label={`Beschreibung Position ${number}`}
+                        aria-invalid={descriptionBad}
+                        value={it.description}
+                        autoFocus={focusIndex === idx}
+                        onChange={(e) => updateItemField(idx, "description", e.target.value)}
+                        onBlur={() => setTouched((prev) => new Set(prev).add(idx))}
+                        maxLength={500}
+                        placeholder="z. B. DJ-Set, 4 bis 7 Uhr"
+                        className={`${CELL_INPUT} ${descriptionBad ? "border-b-red-500" : ""}`}
+                      />
+                    </td>
+                    <td className="px-[var(--space-sm)] py-[var(--space-sm)]">
                       <input
                         type="number"
-                        value={it.unit_price}
-                        onChange={(e) => updateItemField(idx, "unit_price", Number(e.target.value))}
-                        className="w-24 text-right bg-transparent border-0 border-b border-transparent focus:border-[var(--color-black)] focus:ring-0 px-0 py-1 font-mono text-sm text-[var(--color-text-primary)] outline-none transition-colors"
+                        inputMode="decimal"
+                        aria-label={`Menge Position ${number}`}
+                        aria-invalid={quantityBad}
+                        min="0.01"
+                        step="any"
+                        value={it.quantity}
+                        onChange={(e) => updateItemField(idx, "quantity", Number(e.target.value))}
+                        className={`${CELL_INPUT} text-right font-mono text-sm ${quantityBad ? "border-b-red-500" : ""}`}
                       />
-                    </div>
-                  </td>
-                  <td className="py-[var(--space-sm)] px-[var(--space-sm)] text-right font-mono text-sm text-[var(--color-text-primary)]">
-                    {(it.quantity * it.unit_price).toLocaleString("de-DE", {
-                      minimumFractionDigits: 2,
-                    })}{" "}
-                    €
-                  </td>
-                  <td className="py-[var(--space-sm)] px-[var(--space-sm)] text-center">
-                    <button
-                      type="button"
-                      onClick={() => removeItem(idx)}
-                      className="text-[var(--color-border)] hover:text-[var(--color-danger)] transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                    >
-                      <Trash2 size={20} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {/* Add Row */}
+                    </td>
+                    <td className="px-[var(--space-sm)] py-[var(--space-sm)]">
+                      <div className="flex items-center justify-end">
+                        <span className="mr-1 font-mono text-sm text-[var(--color-text-secondary)]">€</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          aria-label={`Einzelpreis Position ${number}`}
+                          aria-invalid={priceBad}
+                          min="0"
+                          step="0.01"
+                          value={it.unit_price}
+                          onChange={(e) => updateItemField(idx, "unit_price", Number(e.target.value))}
+                          className={`${CELL_INPUT} w-24 text-right font-mono text-sm ${priceBad ? "border-b-red-500" : ""}`}
+                        />
+                      </div>
+                    </td>
+                    <td className="px-[var(--space-sm)] py-[var(--space-sm)] text-right font-mono text-sm text-[var(--color-text-primary)]">
+                      {money(it.quantity * it.unit_price)} €
+                    </td>
+                    <td className="px-[var(--space-sm)] py-[var(--space-sm)] text-center">
+                      <button
+                        type="button"
+                        onClick={() => removeItem(idx)}
+                        aria-label={`Position ${number} entfernen`}
+                        title="Position entfernen"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius)] text-[var(--color-text-muted)] transition-colors hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               <tr>
-                <td colSpan={5} className="py-[var(--space-sm)] px-[var(--space-sm)]">
+                <td colSpan={5} className="px-[var(--space-sm)] py-[var(--space-sm)]">
                   <button
                     type="button"
                     onClick={addItem}
-                    className="flex items-center gap-[var(--space-xs)] text-[var(--color-brand-text)] text-[14px] font-semibold hover:text-[var(--color-brand-text-hover)] transition-colors"
+                    className="flex items-center gap-[var(--space-xs)] text-[14px] font-semibold text-[var(--color-brand-text)] transition-colors hover:text-[var(--color-brand-text-hover)]"
                   >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-[18px] h-[18px]">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-[18px] w-[18px]" aria-hidden="true">
                       <path d="M12 5v14M5 12h14" />
                     </svg>
                     Neue Position
@@ -223,85 +257,73 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
             </tbody>
           </table>
         </div>
+        {removed && (
+          <p role="status" className="mt-2 flex items-center gap-3 rounded-[var(--radius)] bg-[var(--color-surface-container-low)] px-3 py-2 text-[13px] text-[var(--color-text-secondary)]">
+            Position {removed.index + 1} entfernt.
+            <button type="button" onClick={undoRemove} className="font-semibold text-[var(--color-brand-text)] underline">
+              Rückgängig
+            </button>
+          </p>
+        )}
       </div>
 
-      {/* Bottom Calculation Area */}
-      <div className="flex justify-end pt-[var(--space-md)] border-t border-[var(--color-border)]">
+      {/* Totals */}
+      <div className="flex justify-end border-t border-[var(--color-border)] pt-[var(--space-md)]">
         <div className="w-full max-w-sm space-y-[var(--space-sm)]">
-          <div className="flex justify-between items-center px-[var(--space-sm)]">
+          <div className="flex items-center justify-between px-[var(--space-sm)]">
             <span className="text-[14px] text-[var(--color-text-secondary)]">Nettobetrag</span>
-            <span className="font-mono text-sm text-[var(--color-text-primary)]">
-              {subtotalNet.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €
-            </span>
+            <span className="font-mono text-sm text-[var(--color-text-primary)]">{money(subtotalNet)} €</span>
           </div>
-          <div className="flex justify-between items-center px-[var(--space-sm)] group">
-            <div className="flex items-center gap-2">
-              <span className="text-[14px] text-[var(--color-text-secondary)]">USt</span>
-              <div className="flex items-center">
+          <div className="flex items-center gap-2 px-[var(--space-sm)]">
+            <input
+              type="checkbox"
+              id="ust-ausweisen"
+              checked={value.ust_enabled}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  ust_enabled: e.target.checked,
+                  vat_rate: e.target.checked && value.vat_rate === 0 ? 19 : value.vat_rate,
+                })
+              }
+              className="h-4 w-4 rounded border-[var(--color-border)] accent-[#001a42]"
+            />
+            <label htmlFor="ust-ausweisen" className="cursor-pointer select-none text-[14px] text-[var(--color-text-primary)]">
+              Umsatzsteuer ausweisen
+            </label>
+          </div>
+          {value.ust_enabled ? (
+            <div className="flex items-center justify-between px-[var(--space-sm)]">
+              <div className="flex items-center gap-2">
+                <label htmlFor="ust-satz" className="text-[14px] text-[var(--color-text-secondary)]">
+                  USt-Satz
+                </label>
                 <input
+                  id="ust-satz"
                   type="number"
+                  inputMode="decimal"
                   step="0.1"
                   min="0"
                   max="100"
                   value={value.vat_rate}
                   onChange={(e) => setField("vat_rate", Number(e.target.value))}
-                  disabled={!value.ust_enabled}
-                  className="w-14 text-right bg-[var(--color-surface-bright)] border border-[var(--color-border)] rounded px-1 py-0.5 font-mono text-sm text-[var(--color-text-primary)] focus:border-[var(--color-black)] focus:ring-1 focus:ring-[var(--color-black)] transition-all duration-150 outline-none disabled:opacity-30"
+                  className="w-16 rounded border border-[var(--color-border)] bg-[var(--color-surface-bright)] px-1 py-0.5 text-right font-mono text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42]"
                 />
-                <span className="font-mono text-sm text-[var(--color-text-secondary)] ml-1">%</span>
+                <span className="font-mono text-sm text-[var(--color-text-secondary)]">%</span>
               </div>
+              <span className="font-mono text-sm text-[var(--color-text-primary)]">{money(taxAmount)} €</span>
             </div>
-            <span className="font-mono text-sm text-[var(--color-text-primary)]">
-              {value.ust_enabled
-                ? taxAmount.toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " €"
-                : "0,00 €"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 px-[var(--space-sm)]">
-            <input
-              type="checkbox"
-              id="kleinunternehmer"
-              checked={!value.ust_enabled}
-              onChange={(e) => {
-                setField("ust_enabled", !e.target.checked);
-                if (e.target.checked) setField("vat_rate", 0);
-              }}
-              className="h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-black)] focus:ring-[var(--color-black)]"
-            />
-            <label htmlFor="kleinunternehmer" className="text-[12px] text-[var(--color-text-muted)] cursor-pointer select-none">
-              Kleinunternehmer (§19 UStG) — keine Umsatzsteuer
-            </label>
-          </div>
-          <div className="flex justify-between items-center px-[var(--space-sm)] py-[var(--space-xs)] bg-[var(--color-surface-container-low)] rounded-[var(--radius-lg)] mt-[var(--space-sm)]">
+          ) : (
+            <p className="px-[var(--space-sm)] text-[12px] text-[var(--color-text-muted)]">
+              Auf dieser Rechnung wird keine Umsatzsteuer ausgewiesen.
+            </p>
+          )}
+          <div className="mt-[var(--space-sm)] flex items-center justify-between rounded-[var(--radius-lg)] bg-[var(--color-surface-container-low)] px-[var(--space-sm)] py-[var(--space-xs)]">
             <span className="text-[20px] font-bold text-[var(--color-text-primary)]">Gesamtbetrag</span>
-            <span className="font-mono text-[20px] font-bold text-[var(--color-text-primary)]">
-              {gross.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €
-            </span>
+            <span className="font-mono text-[20px] font-bold text-[var(--color-text-primary)]">{money(gross)} €</span>
           </div>
         </div>
       </div>
-
-      {/* Notes */}
-      <div className="mt-[var(--space-xl)] pt-[var(--space-md)] border-t border-[var(--color-border)] flex flex-col">
-        <label className="text-[14px] font-bold text-[var(--color-text-primary)] mb-[var(--space-xs)]">
-          Notizen / Zahlungsbedingungen
-        </label>
-        <textarea
-          value={value.notes}
-          onChange={(e) => setField("notes", e.target.value)}
-          placeholder="Zahlung innerhalb von 30 Tagen. Vielen Dank für Ihren Auftrag."
-          rows={3}
-          className="w-full bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] p-[var(--space-sm)] text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-black)] focus:ring-1 focus:ring-[var(--color-black)] transition-all duration-150 outline-none resize-y"
-        />
-      </div>
-
-      {/* Line Item Dialog */}
-      <LineItemDialog
-        open={dialogOpen}
-        initial={editingIndex !== null ? value.items[editingIndex] : undefined}
-        onSave={saveItem}
-        onCancel={() => setDialogOpen(false)}
-      />
     </div>
   );
 }

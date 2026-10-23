@@ -6,12 +6,22 @@
  * @tokens Uses: card-*, color-text-*, color-border, color-brand-*, color-surface-*
  *               + inline tertiary-container #001a42 for primary dark actions
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createFileRoute, useBlocker } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCompany, type Company } from "@/lib/use-company";
 import { useChangePassword } from "@/lib/use-account";
 import { api } from "@/lib/api";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { PAYMENT_TERM_DAYS } from "@/lib/invoice-draft";
+import {
+  invoiceFilenameExample,
+  invoiceNumberExample,
+  isValidEmail,
+  isValidIban,
+  isValidVatId,
+} from "@/lib/settings-checks";
 import {
   CloudUpload,
   Copy,
@@ -87,6 +97,8 @@ function SettingsPage() {
   const [copiedPermanent, setCopiedPermanent] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [savedVisible, setSavedVisible] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const handleLogoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -114,6 +126,47 @@ function SettingsPage() {
     if (company) setForm({ ...DEFAULTS, ...company });
   }, [company]);
 
+  const saved = useMemo(() => (company ? { ...DEFAULTS, ...company } : DEFAULTS), [company]);
+  const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(saved), [form, saved]);
+
+  const errors = useMemo(() => {
+    const found: Partial<Record<keyof CompanyForm, string>> = {};
+    if (form.email.trim() && !isValidEmail(form.email)) found.email = "Das sieht nicht nach einer E-Mail-Adresse aus.";
+    if (form.iban.trim() && !isValidIban(form.iban)) found.iban = "Diese IBAN ist nicht gültig. Bitte noch einmal prüfen.";
+    if (form.vat_id.trim() && !isValidVatId(form.vat_id)) found.vat_id = "Bitte prüfen, zum Beispiel DE123456789.";
+    if (!Number.isInteger(form.next_invoice_nr) || form.next_invoice_nr < 1) {
+      found.next_invoice_nr = "Eine ganze Zahl ab 1.";
+    }
+    return found;
+  }, [form]);
+  const errorLabels: Partial<Record<keyof CompanyForm, string>> = {
+    email: "E-Mail",
+    iban: "IBAN",
+    vat_id: "USt-ID",
+    next_invoice_nr: "Nächste Rechnungsnummer",
+  };
+  const errorKeys = Object.keys(errors) as (keyof CompanyForm)[];
+
+  // Leaving with unsaved changes (link, back button or closing the tab) asks first.
+  const leaving = useBlocker({
+    shouldBlockFn: () => dirty,
+    enableBeforeUnload: () => dirty,
+    withResolver: true,
+  });
+
+  const businessTypeOptions = [
+    "Einzelunternehmen",
+    ...(form.business_type === "Kleinunternehmer" ? ["Kleinunternehmer"] : []),
+    "GmbH",
+    "GbR",
+    "UG",
+    "AG",
+    "DJ / Producer",
+  ];
+  const today = new Date().toISOString().slice(0, 10);
+  const numberExample = invoiceNumberExample(form.invoice_number_template, form.next_invoice_nr, today);
+  const filenameExample = invoiceFilenameExample(form.invoice_filename_template, numberExample, today);
+
   const oneTimeLink = useMemo(
     () => `${window.location.origin}/share/1x/${Math.random().toString(36).slice(2, 11)}…`,
     [],
@@ -136,13 +189,16 @@ function SettingsPage() {
 
   const handleDiscard = () => {
     if (company) setForm({ ...DEFAULTS, ...company });
-    setPwCurrent("");
-    setPwNew("");
-    setPwConfirm("");
+    setDiscardOpen(false);
   };
 
   const handleSaveAll = () => {
-    updateCompany.mutate(form);
+    updateCompany.mutate(form, {
+      onSuccess: () => {
+        setSavedVisible(true);
+        setTimeout(() => setSavedVisible(false), 4000);
+      },
+    });
   };
 
   const handleUpdatePassword = () => {
@@ -181,47 +237,10 @@ function SettingsPage() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      {/* ── Header ── */}
-      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-[20px] font-semibold tracking-[-0.01em] text-[var(--color-text-primary)]">
-            Einstellungen
-          </h1>
-          <p className="mt-1 text-[14px] text-[var(--color-text-secondary)]">
-            Konto-, Firmen- und Integrationseinstellungen verwalten.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={handleDiscard}
-            className="rounded-[var(--radius)] border border-[var(--color-border)] bg-white px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-bright)] transition-colors"
-            data-testid="settings-discard"
-          >
-            Verwerfen
-          </button>
-          <button
-            type="button"
-            onClick={handleSaveAll}
-            disabled={updateCompany.isPending}
-            className="rounded-[var(--radius)] bg-[#001a42] px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
-            data-testid="settings-save"
-          >
-            {updateCompany.isPending ? "Speichere…" : "Änderungen speichern"}
-          </button>
-        </div>
-      </header>
-
-      {updateCompany.isSuccess && (
-        <p className="rounded-[var(--radius)] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700">
-          Gespeichert.
-        </p>
-      )}
-      {updateCompany.isError && (
-        <p className="rounded-[var(--radius)] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">
-          Fehler beim Speichern.
-        </p>
-      )}
+      <PageHeader
+        title="Einstellungen"
+        subtitle="Konto-, Firmen- und Integrationseinstellungen verwalten."
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* ── Left Column: 8/12 ── */}
@@ -229,35 +248,38 @@ function SettingsPage() {
           {/* Company & Contact */}
           <Section title="Unternehmen & Kontaktdaten">
             <div className="flex flex-col gap-6 md:flex-row">
-              <div
-                className="relative flex h-32 w-32 shrink-0 cursor-pointer flex-col items-center justify-center rounded-[var(--radius)] border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface-sunken)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-overlay)] transition-colors overflow-hidden"
-                onClick={() => logoInputRef.current?.click()}
-              >
-                {company.logo_url ? (
-                  <>
-                    <img
-                      src={company.logo_url}
-                      alt="Logo"
-                      className="h-full w-full object-contain"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity">
-                      <Pencil size={18} className="text-white" />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <CloudUpload size={20} className="mb-1" />
-                    <span className="px-2 text-center text-[10px] leading-tight">
-                      {logoUploading ? "Lädt hoch…" : "Kein Logo hochgeladen\n(Klicken zum Hochladen)"}
-                    </span>
-                  </>
-                )}
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  aria-label={company.logo_url ? "Logo ersetzen" : "Logo hochladen"}
+                  onClick={() => logoInputRef.current?.click()}
+                  className="group relative flex h-32 w-32 flex-col items-center justify-center overflow-hidden rounded-[var(--radius)] border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface-sunken)] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-overlay)] focus-visible:ring-2 focus-visible:ring-[#001a42]"
+                >
+                  {company.logo_url ? (
+                    <>
+                      <img src={company.logo_url} alt="" className="h-full w-full object-contain" />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                        <Pencil size={18} className="text-white" />
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <CloudUpload size={20} className="mb-1" />
+                      <span className="px-2 text-center text-[11px] leading-tight">
+                        {logoUploading ? "Lädt hoch…" : "Kein Logo"}
+                        <br />
+                        {!logoUploading && "Zum Hochladen klicken"}
+                      </span>
+                    </>
+                  )}
+                </button>
                 <input
                   ref={logoInputRef}
                   type="file"
                   accept="image/png,image/jpeg"
                   className="hidden"
                   onChange={handleLogoUpload}
+                  aria-label="Logo-Datei auswählen"
                 />
               </div>
               <div className="flex-1 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -285,6 +307,7 @@ function SettingsPage() {
                   type="email"
                   value={form.email}
                   onChange={(v) => set("email", v)}
+                  error={errors.email}
                   placeholder="rechnung@firma.de"
                 />
                 <Field
@@ -333,7 +356,7 @@ function SettingsPage() {
               label="Unternehmensform / Branche"
               value={form.business_type}
               onChange={(v) => set("business_type", v)}
-              options={["Einzelunternehmen", "Kleinunternehmer", "GmbH", "GbR", "UG", "AG", "DJ / Producer"]}
+              options={businessTypeOptions}
             />
             <p className="mt-2 text-xs text-[var(--color-text-secondary)]">
               „DJ / Producer“ aktiviert bei gepflegtem Vor- und Nachnamen den Text-Rechnungskopf für deinen Künstlerauftritt
@@ -345,12 +368,26 @@ function SettingsPage() {
                 Im PDF steht: „{form.name.trim()} ist der Künstlername von {[form.first_name.trim(), form.last_name.trim()].filter(Boolean).join(" ")}.“
               </p>
             )}
+            <div className="mt-4 flex items-start justify-between gap-4 rounded-[var(--radius)] bg-[var(--color-surface-sunken)] p-3">
+              <div>
+                <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">Kleinunternehmer (§ 19 UStG)</p>
+                <p className="mt-0.5 text-[12px] text-[var(--color-text-secondary)]">
+                  Keine Umsatzsteuer auf deinen Rechnungen, mit Hinweis im PDF. Neue Rechnungen starten ohne Umsatzsteuer.
+                </p>
+              </div>
+              <Toggle
+                label="Kleinunternehmer (§ 19 UStG)"
+                checked={form.is_small_business}
+                onChange={(v) => set("is_small_business", v)}
+              />
+            </div>
             <div className="mt-3 grid grid-cols-1 gap-3 border-b border-[var(--color-border)] pb-3 md:grid-cols-2">
               <Field
                 className="md:col-span-2"
                 label="Kontoinhaber"
                 value={form.account_holder}
                 onChange={(v) => set("account_holder", v)}
+                hint="Leer = dein Vor- und Nachname."
                 placeholder="Daniel Peters"
               />
               <Field
@@ -359,6 +396,8 @@ function SettingsPage() {
                 mono
                 value={form.iban}
                 onChange={(v) => set("iban", v)}
+                error={errors.iban}
+                hint="Auf der Rechnung steht sie in Vierergruppen."
                 placeholder="DE00 0000 0000 0000 0000 00"
               />
               <Field
@@ -388,6 +427,7 @@ function SettingsPage() {
                 mono
                 value={form.vat_id}
                 onChange={(v) => set("vat_id", v)}
+                error={errors.vat_id}
                 placeholder="DE123456789"
               />
             </div>
@@ -402,6 +442,8 @@ function SettingsPage() {
                 mono
                 value={form.next_invoice_nr}
                 onChange={(v) => set("next_invoice_nr", Number(v))}
+                error={errors.next_invoice_nr}
+                hint="Die nächste Rechnung bekommt genau diese Nummer. Schon vergebene Nummern nicht noch einmal verwenden."
               />
               <Field
                 label="Rechnungsnummer-Regel"
@@ -421,6 +463,15 @@ function SettingsPage() {
             </div>
             <div className="mt-3 rounded-[var(--radius)] bg-[var(--color-surface-sunken)] p-3 font-mono text-[11px] text-[var(--color-text-secondary)]">
               Verfügbare Platzhalter: {"{seq}"} {"{date}"} {"{customer_code}"} {"{customer_kdnr}"} {"{nr}"}
+            </div>
+            <div className="mt-3 space-y-1 rounded-[var(--radius)] border border-[var(--color-border)] p-3 text-[12px] text-[var(--color-text-secondary)]" aria-live="polite">
+              <p>
+                Nächste Rechnung: <span className="font-mono font-semibold text-[var(--color-text-primary)]">{numberExample}</span>
+              </p>
+              <p>
+                Dateiname: <span className="font-mono font-semibold text-[var(--color-text-primary)]">{filenameExample}</span>
+              </p>
+              <p>Zahlungsfrist auf allen Rechnungen: {PAYMENT_TERM_DAYS} Tage ab Rechnungsdatum.</p>
             </div>
           </Section>
 
@@ -483,7 +534,7 @@ function SettingsPage() {
           {/* Share Links (Read-only) */}
           <Section
             title="Freigabelinks (Read-only)"
-            action={<Toggle checked={shareEnabled} onChange={setShareEnabled} />}
+            action={<Toggle label="Freigabelinks aktivieren" checked={shareEnabled} onChange={setShareEnabled} />}
           >
             <div className="space-y-3">
               <Field
@@ -642,6 +693,7 @@ function SettingsPage() {
                   <Webhook size={16} /> n8n Automatisierungen
                 </h3>
                 <Toggle
+                  label="n8n Automatisierungen aktivieren"
                   checked={form.n8n_enabled}
                   onChange={(v) => set("n8n_enabled", v)}
                 />
@@ -680,6 +732,7 @@ function SettingsPage() {
                   <span className="text-[16px]">💳</span> Stripe / Online-Zahlungen
                 </h3>
                 <Toggle
+                  label="Online-Zahlungen aktivieren"
                   checked={form.payment_enabled}
                   onChange={(v) => set("payment_enabled", v)}
                 />
@@ -753,6 +806,72 @@ function SettingsPage() {
           </Section>
         </div>
       </div>
+
+      {(dirty || savedVisible || updateCompany.isError) && (
+        <div role="region" aria-label="Änderungen speichern" className="sticky bottom-[4.75rem] z-20 md:bottom-4">
+          <div className="flex flex-col gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white p-3 shadow-lg sm:flex-row sm:items-center sm:justify-between">
+            <p
+              aria-live="polite"
+              className={`text-[13px] ${
+                (dirty && errorKeys.length > 0) || updateCompany.isError ? "text-rose-700" : "text-[var(--color-text-secondary)]"
+              }`}
+            >
+              {updateCompany.isPending
+                ? "Speichere…"
+                : dirty && errorKeys.length > 0
+                  ? `Bitte prüfen: ${errorKeys.map((key) => errorLabels[key]).join(" · ")}`
+                  : updateCompany.isError && dirty
+                    ? "Speichern hat nicht geklappt. Deine Änderungen sind noch da."
+                    : dirty
+                      ? "Ungespeicherte Änderungen"
+                      : savedVisible
+                        ? "Gespeichert."
+                        : ""}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDiscardOpen(true)}
+                disabled={!dirty || updateCompany.isPending}
+                className="rounded-[var(--radius)] border border-[var(--color-border)] bg-white px-3 py-2 text-[13px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-bright)] disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid="settings-discard"
+              >
+                Verwerfen
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAll}
+                disabled={updateCompany.isPending || !dirty || errorKeys.length > 0}
+                className="rounded-[var(--radius)] bg-[#001a42] px-3 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                data-testid="settings-save"
+              >
+                {updateCompany.isPending ? "Speichere…" : "Änderungen speichern"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={leaving.status === "blocked"}
+        title="Seite verlassen?"
+        message="Du hast ungespeicherte Änderungen. Wenn du die Seite verlässt, gehen sie verloren."
+        confirmLabel="Seite verlassen"
+        cancelLabel="Bleiben"
+        destructive
+        onConfirm={() => leaving.status === "blocked" && leaving.proceed()}
+        onCancel={() => leaving.status === "blocked" && leaving.reset()}
+      />
+
+      <ConfirmDialog
+        open={discardOpen}
+        title="Änderungen verwerfen?"
+        message="Alles, was du seit dem letzten Speichern geändert hast, geht verloren."
+        confirmLabel="Verwerfen"
+        destructive
+        onConfirm={handleDiscard}
+        onCancel={() => setDiscardOpen(false)}
+      />
     </div>
   );
 }
@@ -789,6 +908,8 @@ function Field({
   onChange,
   placeholder,
   className,
+  hint,
+  error,
 }: {
   label?: string;
   type?: string;
@@ -797,25 +918,40 @@ function Field({
   onChange: (v: string) => void;
   placeholder?: string;
   className?: string;
+  hint?: string;
+  error?: string;
 }) {
+  const id = useId();
+  const noteId = `${id}-note`;
   const base =
-    "w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42] outline-none transition-colors";
+    "w-full rounded-[var(--radius)] border bg-white px-3 py-2 text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:ring-1 outline-none transition-colors";
+  const tone = error
+    ? "border-rose-500 focus:border-rose-500 focus:ring-rose-500"
+    : "border-[var(--color-border)] focus:border-[#001a42] focus:ring-[#001a42]";
 
   return (
     <div className={className}>
       {label && (
-        <label className="mb-1 block text-[14px] font-semibold text-[var(--color-text-primary)]">
+        <label htmlFor={id} className="mb-1 block text-[14px] font-semibold text-[var(--color-text-primary)]">
           {label}
         </label>
       )}
       <input
+        id={id}
         type={type}
-        aria-label={label}
+        aria-label={label ? undefined : placeholder}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error || hint ? noteId : undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`${base} ${mono ? "font-mono text-[12px]" : ""}`}
+        className={`${base} ${tone} ${mono ? "font-mono text-[12px]" : ""}`}
       />
+      {(error || hint) && (
+        <p id={noteId} className={`mt-1 text-[12px] ${error ? "text-rose-700" : "text-[var(--color-text-muted)]"}`}>
+          {error ?? hint}
+        </p>
+      )}
     </div>
   );
 }
@@ -833,13 +969,14 @@ function SelectField({
   options: string[];
   className?: string;
 }) {
+  const id = useId();
   return (
     <div className={className}>
-      <label className="mb-1 block text-[14px] font-semibold text-[var(--color-text-primary)]">
+      <label htmlFor={id} className="mb-1 block text-[14px] font-semibold text-[var(--color-text-primary)]">
         {label}
       </label>
       <select
-        aria-label={label}
+        id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-white px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42] outline-none transition-colors"
@@ -857,20 +994,24 @@ function SelectField({
 function Toggle({
   checked,
   onChange,
+  label,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
+  label: string;
 }) {
   return (
     <label className="relative inline-flex cursor-pointer items-center">
       <input
         type="checkbox"
+        role="switch"
+        aria-label={label}
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="sr-only"
+        className="peer sr-only"
       />
       <span
-        className={`block h-5 w-8 rounded-full transition-colors ${
+        className={`block h-5 w-8 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[#001a42] peer-focus-visible:ring-offset-2 ${
           checked ? "bg-[#001a42]" : "bg-[var(--color-border)]"
         }`}
       />

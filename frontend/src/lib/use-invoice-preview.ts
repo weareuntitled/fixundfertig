@@ -23,7 +23,7 @@ export function useInvoicePreview(draft: InvoiceDraft, delay: number = 800) {
       if (!response.ok) return null;
       return response.blob();
     },
-    enabled: debounced.items.length > 0,
+    enabled: debounced.items.length > 0 && debounced.customer_id > 0,
     staleTime: 60_000,
   });
 }
