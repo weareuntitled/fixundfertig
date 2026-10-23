@@ -11,6 +11,10 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from test_invoice_pdf_buergerlicher_name import _extract_strings, _extract_text
 
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
 importlib.import_module("app.api")
 invoices = importlib.import_module("invoices")
 dependencies = importlib.import_module("dependencies")
@@ -59,12 +63,12 @@ def test_preview_names_the_artist_and_legal_issuer(artist_api):
     assert response.status_code == 200, response.text
     text = _extract_text(response.content)
     assert "DANIEL S. · DJ / Producer" in text
-    assert "Rechnungsaussteller: Daniel Beispiel" in text
+    assert "RECHNUNGSAUSSTELLER Daniel Beispiel" in _flat(text)
     assert "Musterstraße 1" in text
     assert "10115 Berlin" in text
     assert "Daniel S. ist der Künstlername von Daniel Beispiel." in text.replace("\n", " ")
     assert "DJ-Set Daniel S. (Daniel Beispiel)" in text
-    assert "Rechnungsaussteller: Anderer Kontoinhaber" not in text
+    assert "RECHNUNGSAUSSTELLER Anderer Kontoinhaber" not in _flat(text)
     assert "Kontoinhaber: Anderer Kontoinhaber" in text
     assert "danep" not in text.lower()
     assert company.next_invoice_nr == 10000
@@ -94,7 +98,7 @@ def test_new_invoice_download_matches_preview_identity(artist_api, descriptions)
         text = " ".join(_extract_text(pdf).split())
         assert "DANIEL S. · DJ / Producer" in text
         assert text.count("Daniel S. ist der Künstlername von Daniel Beispiel.") == 1
-        assert "Rechnungsaussteller: Daniel Beispiel" in text
+        assert "RECHNUNGSAUSSTELLER Daniel Beispiel" in _flat(text)
         assert "(Daniel Beispiel) (Daniel Beispiel)" not in text
     assert client.get(f"/api/invoices/{invoice['id']}/preview-pdf").content == downloaded.content
 
@@ -141,7 +145,7 @@ def test_preview_uses_the_current_company_identity(artist_api):
     company.last_name = "Muster"
     text = " ".join(_extract_text(client.post("/api/invoices/preview-pdf", json=payload).content).split())
     assert "LUNA LIVE" in text
-    assert "Rechnungsaussteller: Lena Muster" in text
+    assert "RECHNUNGSAUSSTELLER Lena Muster" in _flat(text)
     assert "Luna Live ist der Künstlername von Lena Muster." in text
     assert "Daniel Beispiel" not in text
 
@@ -156,7 +160,7 @@ def test_preview_wraps_long_issuer_and_bank_details(artist_api):
     assert response.status_code == 200
     lines = _extract_strings(response.content)
     text = " ".join(lines)
-    assert "Rechnungsaussteller: Daniel Alexander Maximilian Beispielmann-Sonnenfeld" in text
+    assert "RECHNUNGSAUSSTELLER Daniel Alexander Maximilian Beispielmann-Sonnenfeld" in _flat(text)
     assert "Kontoinhaber: Daniel Alexander Maximilian Beispielmann-Sonnenfeld" in text
     assert "Kontoinhaber: Daniel Alexander Maximilian Beispielmann-Sonnenfeld" not in lines
 
@@ -169,7 +173,7 @@ def test_ordinary_company_is_not_relabelled_as_its_owners_artist_name(artist_api
     text = _extract_text(response.content)
     assert "Muster GmbH" in text
     assert "ist der Künstlername" not in text
-    assert "Rechnungsaussteller: Daniel Beispiel" not in text
+    assert "RECHNUNGSAUSSTELLER Daniel Beispiel" not in _flat(text)
 
 
 def test_preview_breaks_a_long_unbroken_surname(artist_api):

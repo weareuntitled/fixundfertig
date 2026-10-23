@@ -10,7 +10,7 @@ def pdf_strings(pdf_bytes: bytes) -> list[str]:
     strings: list[str] = []
 
     def collect(text, _cm, _tm, _font_dict, _font_size) -> None:
-        text = text.rstrip("\n")
+        text = text.strip()
         if text.strip():
             strings.append(text)
 
@@ -30,7 +30,7 @@ def pdf_pages(pdf_bytes: bytes) -> list[str]:
         parts: list[str] = []
 
         def collect(text, _cm, _tm, _font_dict, _font_size, parts=parts) -> None:
-            text = text.rstrip("\n")
+            text = text.strip()
             if text.strip():
                 parts.append(text)
 

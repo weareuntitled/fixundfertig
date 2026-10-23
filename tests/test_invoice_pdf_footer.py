@@ -113,10 +113,10 @@ def test_pdf_footer_small_business_shows_notice() -> None:
 
 
 def test_pdf_footer_section_headers_present() -> None:
-    """Footer section headers: Kontakt, Bankverbindung, Rechtliches."""
+    """Footer section headers: Rechnungsaussteller, Kontakt, Bankverbindung, Steuer, Seite."""
     company = _make_company()
     invoice = _make_invoice()
     pdf = render_invoice_to_pdf_bytes(invoice, company=company)
     text = _extract_text(pdf)
-    for header in ("Kontakt", "Bankverbindung", "Rechtliches"):
+    for header in ("RECHNUNGSAUSSTELLER", "KONTAKT", "BANKVERBINDUNG", "STEUER", "SEITE"):
         assert header in text, f"Footer header '{header}' missing"
