@@ -25,7 +25,7 @@ def _money(value: float) -> str:
     return f"{format_amount(value)} €"
 
 
-def build_invoice_email(*, company, customer, invoice) -> InvoiceEmail:
+def build_invoice_email(*, company, customer, invoice, message: str = "") -> InvoiceEmail:
     company_name = safe_str(get_attr(company, "name")) or "FixundFertig"
     wordmark = uses_artist_wordmark(company)
     profession = safe_str(get_attr(company, "business_type")) if wordmark else ""
@@ -56,11 +56,14 @@ def build_invoice_email(*, company, customer, invoice) -> InvoiceEmail:
     recipient = safe_str(get_attr(customer, "display_name", "name"))
     greeting = f"Hallo {recipient}," if recipient else "Hallo,"
     subject = subject_line or f"Rechnung {number} von {company_name} — {format_amount(gross)} €"
-    intro = "danke für den Auftrag! Die Rechnung hängt als PDF an, hier das Wichtigste auf einen Blick."
+    message = message.replace("\r\n", "\n").strip()
+    # A personal message replaces the standard intro; the PDF hint stays.
+    intro = message or "danke für den Auftrag! Die Rechnung hängt als PDF an, hier das Wichtigste auf einen Blick."
+    attachment_hint = "Die Rechnung hängt als PDF an." if message else ""
     pay_line = f"Bitte bis zum {due} überweisen." if due else ""
 
     # ---- plain text
-    lines = [greeting, "", intro, ""]
+    lines = [greeting, "", intro] + (["", attachment_hint] if attachment_hint else []) + [""]
     if subject_line:
         lines.append(subject_line)
     lines.append(f"Rechnung {number}" + (f" vom {inv_date}" if inv_date else ""))
@@ -116,6 +119,9 @@ def build_invoice_email(*, company, customer, invoice) -> InvoiceEmail:
         f'<p style="margin:18px 0 0;font-size:12px;line-height:1.5;color:{MUTED};">{escape(LAYOUT["txt_small_biz"])}</p>'
         if small_business else ""
     )
+    attachment_html = (
+        f'<p style="margin:12px 0 0;font-size:13px;color:{MUTED};">{escape(attachment_hint)}</p>' if attachment_hint else ""
+    )
     preheader = f"{_money(gross)}" + (f" · bitte bis {due}" if due else "")
     html = f"""<!DOCTYPE html>
 <html lang="de">
@@ -130,7 +136,8 @@ def build_invoice_email(*, company, customer, invoice) -> InvoiceEmail:
 </td></tr>
 <tr><td style="padding:26px 36px 0;font-size:16px;line-height:1.55;color:{INK};">
 <p style="margin:0 0 12px;">{escape(greeting)}</p>
-<p style="margin:0;">{escape(intro)}</p>
+<p style="margin:0;">{escape(intro).replace(chr(10), "<br>")}</p>
+{attachment_html}
 </td></tr>
 <tr><td style="padding:26px 36px 0;">
 <div style="background:{PAPER};border-radius:14px;padding:22px 24px;">

@@ -20,7 +20,7 @@ def sent(artist_api, monkeypatch):
     mails: list[dict] = []
     monkeypatch.setattr(invoices, "send_email", lambda **kwargs: mails.append(kwargs) or True)
 
-    def send(customer_name: str = "Club Beispiel", payment_link: str = "", **invoice_fields):
+    def send(customer_name: str = "Club Beispiel", payment_link: str = "", message: str | None = None, **invoice_fields):
         customer = session.get(invoices.Customer, payload["customer_id"])
         customer.email = "buchhaltung@club.example"
         customer.name = customer_name
@@ -33,7 +33,10 @@ def sent(artist_api, monkeypatch):
             stored.payment_link_url = payment_link
             session.add(stored)
             session.commit()
-        response = client.post(f"/api/invoices/{created.json()['id']}/send")
+        response = client.post(
+            f"/api/invoices/{created.json()['id']}/send",
+            json=None if message is None else {"message": message},
+        )
         assert response.status_code == 200, response.text
         return mails[-1], created.json()
 
@@ -108,3 +111,38 @@ def test_due_date_is_found_when_the_invoice_date_carries_a_time(sent):
     send, _ = sent
     mail, _ = send(date="2026-10-23T10:00:00")
     assert "28.10.2026" in mail["text"]
+
+
+def test_personal_message_replaces_the_standard_intro(sent):
+    send, _ = sent
+    mail, _ = send(message="Danke für die geile Nacht!\n\nBis bald in der Hamma.")
+    for body in (mail["text"], mail["html"]):
+        assert "Danke für die geile Nacht!" in body
+        assert "Bis bald in der Hamma." in body
+        assert "danke für den Auftrag" not in body
+        assert "hängt als PDF an" in body
+    assert mail["text"].startswith("Hallo Club Beispiel,\n\nDanke für die geile Nacht!")
+    assert "<br>" in mail["html"]
+
+
+def test_personal_message_is_escaped(sent):
+    send, _ = sent
+    mail, _ = send(message="<b>fett</b> & <script>x</script>")
+    assert "<script>" not in mail["html"]
+    assert "&lt;b&gt;fett&lt;/b&gt; &amp;" in mail["html"]
+
+
+@pytest.mark.parametrize("message", [None, "", "   \n "])
+def test_without_a_message_the_standard_intro_stays(sent, message):
+    send, _ = sent
+    mail, _ = send(message=message)
+    assert "danke für den Auftrag" in mail["text"]
+
+
+def test_message_is_limited_to_two_thousand_characters(artist_api, sent):
+    client, _, payload, _ = artist_api
+    send, _ = sent
+    send()
+    created = client.post("/api/invoices", json=payload)
+    response = client.post(f"/api/invoices/{created.json()['id']}/send", json={"message": "x" * 2001})
+    assert response.status_code == 422

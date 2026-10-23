@@ -98,6 +98,12 @@ class InvoiceRead(BaseModel):
     items: list[InvoiceItem] = Field(default_factory=list)
 
 
+class InvoiceSendRequest(BaseModel):
+    """Optional personal text for the email that carries the invoice."""
+
+    message: str = Field(default="", max_length=2000)
+
+
 class InvoiceStatusUpdate(BaseModel):
     """Input für PUT /api/invoices/{id}/status."""
 

@@ -38,6 +38,7 @@ from schemas.invoice import (
     InvoiceDraft,
     InvoiceItem,
     InvoiceRead,
+    InvoiceSendRequest,
     InvoiceStatusUpdate,
     InvoiceUpdate,
 )
@@ -574,6 +575,7 @@ def delete_invoice_item(
 @router.post("/{invoice_id}/send")
 def send_invoice_email_endpoint(
     invoice_id: int,
+    payload: InvoiceSendRequest | None = None,
     _user_id: int = Depends(require_session_auth),
     session: Iterator = Depends(db_session),
     company: Company = Depends(get_current_company),
@@ -593,7 +595,9 @@ def send_invoice_email_endpoint(
     pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
     filename = build_invoice_filename(company, invoice, customer)
 
-    email = build_invoice_email(company=company, customer=customer, invoice=invoice)
+    email = build_invoice_email(
+        company=company, customer=customer, invoice=invoice, message=payload.message if payload else "",
+    )
 
     smtp_config = {
         "host": company.smtp_server,
