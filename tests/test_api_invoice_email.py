@@ -46,8 +46,8 @@ def test_mail_names_invoice_amount_and_the_same_due_date_as_the_pdf(sent):
     for body in (mail["text"], mail["html"]):
         assert invoice["nr"] in body
         assert "300,00 €" in body
-        assert "06.11.2026" in body
-    assert "30.11.2026" not in mail["html"]
+        assert "28.10.2026" in body
+    assert "06.11.2026" not in mail["html"]
 
 
 def test_mail_carries_the_pdf_and_both_text_versions(sent):

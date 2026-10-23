@@ -86,7 +86,7 @@ def format_date(value) -> str:
     return f"{match.group(3)}.{match.group(2)}.{match.group(1)}" if match else text
 
 
-PAYMENT_TERM_DAYS = 14
+PAYMENT_TERM_DAYS = 5
 
 
 def payment_due_date(invoice_date) -> str:

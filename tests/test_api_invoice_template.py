@@ -199,7 +199,7 @@ def test_payment_deadline_is_a_sentence_under_the_totals(artist_api):
     strings = pdf_strings(_preview(client, payload))
     text = " ".join(strings)
     assert text.count("Zahlbar bis") == 1
-    assert "Zahlbar bis 06.11.2026." in text
+    assert "Zahlbar bis 28.10.2026." in text
     assert strings.index("GESAMTBETRAG") < strings.index("Zahlbar bis")
     assert "Zahlbar bis:" not in strings
 
