@@ -47,12 +47,3 @@ testIfBackend("after login, /api/auth/me returns the user data", async ({ page }
   expect(body.email).toBeTruthy();
   expect(body.id).toBeGreaterThan(0);
 });
-
-test("auth tests are skipped without PLAYWRIGHT_FULL_E2E — manual setup required", () => {
-  // Diese Tests benötigen einen laufenden Backend + Owner-Account.
-  // Setze PLAYWRIGHT_FULL_E2E=1 + PLAYWRIGHT_OWNER_EMAIL/PASSWORD env vars.
-  if (!process.env.PLAYWRIGHT_FULL_E2E) {
-    console.log("INFO: Auth-Tests skipped — Backend-Setup fehlt");
-  }
-  expect(true).toBe(true); // No-op
-});

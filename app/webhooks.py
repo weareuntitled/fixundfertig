@@ -15,7 +15,7 @@ from pathlib import Path
 from threading import Lock
 
 from fastapi import HTTPException, Request, UploadFile, File, Form, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from nicegui import app, helpers
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlmodel import select

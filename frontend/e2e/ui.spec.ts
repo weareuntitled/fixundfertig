@@ -6,7 +6,16 @@ import { expect, test } from "@playwright/test";
  */
 
 test.beforeEach(async ({ context }) => {
-  await context.route("**/api/**", (route) => route.abort());
+  await context.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/auth/me") {
+      return route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Unauthorized" }),
+      });
+    }
+    return route.abort();
+  });
 });
 
 test("login page renders one email-type and one password-type input", async ({ page }) => {
@@ -93,51 +102,49 @@ test("invoice detail page shows preview iframe and download link", async ({ page
       body: JSON.stringify({ id: 1, email: "test@example.com", is_active: true }),
     }),
   );
+  await page.route("**/api/invoices/123/preview-pdf", (route) =>
+    route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%%EOF" }),
+  );
   await page.goto("/invoices/123");
-  await expect(page.getByTestId("invoice-download-link")).toBeVisible();
-  await expect(page.getByTestId("invoice-preview-link")).toBeVisible();
-  // Download link should have correct href
-  const downloadHref = await page.getByTestId("invoice-download-link").getAttribute("href");
-  expect(downloadHref).toBe("/api/invoices/123/download");
+  const downloadLink = page.getByRole("main").getByRole("link", { name: /PDF herunterladen/ });
+  await expect(downloadLink).toBeVisible();
+  await expect(page.getByRole("button", { name: "Vorschau" })).toBeVisible();
+  expect(await downloadLink.getAttribute("href")).toBe("/api/invoices/123/download");
+  await page.getByRole("button", { name: "Vorschau" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /PDF-Vorschau · Rechnung RE-2026-0001/ })).toBeVisible();
 });
 
-test("settings hub links to /settings/company, /settings/tax-banking, /settings/account", async ({ page, context }) => {
-  // beforeEach aborted all /api/**; remove that and re-mock the specific ones we need
-  await context.unroute("**/api/**");
-  // Capture all console messages
-  page.on("console", (msg) => console.log(`[browser ${msg.type()}]`, msg.text()));
-  page.on("pageerror", (err) => console.log(`[pageerror]`, err.message));
-  // Mock /api/auth/me to bypass auth guard
-  await context.route("**/api/auth/me", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ id: 1, email: "test@example.com", is_active: true }),
-    }),
-  );
-  // Mock /api/company so the sub-pages render
-  await context.route("**/api/company", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: 1, name: "Test GmbH", first_name: "", last_name: "",
-        business_type: "", is_small_business: false,
-        street: "", postal_code: "", city: "", country: "Deutschland",
-        email: "", phone: "", iban: "", bic: "", bank_name: "",
-        tax_id: "", vat_id: "",
-      }),
-    }),
-  );
+test("settings page configures and previews the artist invoice profile", async ({ page }) => {
+  const company = {
+    id: 1, name: "Daniel S.", first_name: "Daniel", last_name: "Beispiel",
+    business_type: "Einzelunternehmen", is_small_business: false,
+    street: "Musterstraße 1", postal_code: "10115", city: "Berlin", country: "Deutschland",
+    email: "", phone: "", iban: "", bic: "", bank_name: "", account_holder: "",
+    tax_id: "", vat_id: "", smtp_server: "", smtp_port: 587, smtp_user: "", smtp_password: "",
+    default_sender_email: "", n8n_webhook_url: "", n8n_webhook_url_test: "",
+    n8n_webhook_url_prod: "", n8n_secret: "", n8n_enabled: false,
+    google_drive_folder_id: "", next_invoice_nr: 10000,
+    invoice_number_template: "{seq}", invoice_filename_template: "rechnung_{nr}", logo_url: "",
+    stripe_secret_key: "", stripe_publishable_key: "", paypal_email: "", payment_enabled: false,
+  };
+  let savedCompany: typeof company | undefined;
+
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/company", async (route) => {
+    if (route.request().method() === "PUT") {
+      savedCompany = { ...company, ...route.request().postDataJSON() };
+      return route.fulfill({ json: savedCompany });
+    }
+    return route.fulfill({ json: company });
+  });
 
   await page.goto("/settings");
-  await expect(page.getByTestId("hub-company")).toBeVisible({ timeout: 10_000 });
-
-  await page.goto("/settings/company");
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(500);
-  console.log("Direct goto URL:", page.url());
-  console.log("Direct goto HTML length:", (await page.content()).length);
-  console.log("Direct goto body:", ((await page.locator("body").textContent()) ?? "").slice(0, 500));
-  await expect(page.getByTestId("company-form")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "Unternehmen & Kontaktdaten" })).toBeVisible();
+  await expect(page.getByLabel("Firmen- / Künstlername")).toHaveValue("Daniel S.");
+  await page.getByLabel("Unternehmensform / Branche").selectOption("DJ / Producer");
+  await expect(page.getByText(/Daniel S\. ist der Künstlername von Daniel Beispiel/)).toBeVisible();
+  await page.getByTestId("settings-save").click();
+  await expect(page.getByText("Gespeichert.", { exact: true })).toBeVisible();
+  expect(savedCompany?.business_type).toBe("DJ / Producer");
 });

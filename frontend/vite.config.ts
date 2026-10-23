@@ -4,8 +4,14 @@ import tailwindcss from "@tailwindcss/vite";
 import { TanStackRouterVite } from "@tanstack/router-vite-plugin";
 import { fileURLToPath, URL } from "node:url";
 
+const appRevision = process.env.VITE_APP_REVISION || "dev";
+
 export default defineConfig({
   plugins: [
+    {
+      name: "app-revision",
+      transformIndexHtml: (html) => html.replaceAll("%APP_REVISION%", appRevision),
+    },
     tailwindcss(),
     react(),
     TanStackRouterVite({

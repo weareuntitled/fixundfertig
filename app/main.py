@@ -192,7 +192,7 @@ app.include_router(api_router)
 
 @app.get("/healthz", include_in_schema=False)
 def healthz():
-    return {"status": "ok"}
+    return {"status": "ok", "revision": os.getenv("APP_REVISION", "unknown")}
 
 
 from starlette.staticfiles import StaticFiles as _StaticFiles

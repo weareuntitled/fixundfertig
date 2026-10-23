@@ -14,6 +14,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   backend-checks:
@@ -28,7 +29,15 @@ jobs:
           python-version: "3.11"
 
       - name: Install backend dependencies
-        run: python -m pip install -r requirements.txt pytest
+        run: python -m pip install -r requirements.txt pytest ruff mypy
+
+      - name: Check agent configuration is versioned
+        run: git ls-files --error-unmatch AGENTS.md docs/agents/issue-tracker.md docs/agents/domain.md docs/agents/triage-labels.md docs/agents/development.md
+
+      - name: Check Python correctness and PDF types
+        run: |
+          python -m ruff check --select E9,F63,F7,F82 app tests scripts
+          python -m mypy --follow-imports=skip --ignore-missing-imports app/renderer.py app/services/invoice_pdf.py app/services/invoice_pdf_draw.py app/services/invoice_pdf_layout.py
 
       - name: Run backend tests
         run: python -m pytest -q
@@ -52,13 +61,25 @@ jobs:
 
       - name: Run frontend tests and production build
         working-directory: frontend
+        env:
+          APP_REVISION: ${{ github.sha }}
+          VITE_APP_REVISION: ${{ github.sha }}
         run: |
           npm test
           npm run build
+          npm run test:deploy-build
+
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        working-directory: frontend
+        run: npm run test:e2e
 
   deploy:
     needs: [backend-checks, frontend-checks]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
@@ -90,7 +111,7 @@ jobs:
             git pull --ff-only origin main
             test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 
-            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            APP_REVISION="$(git rev-parse HEAD)" docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
             for attempt in $(seq 1 60); do
               health=$(docker inspect --format '{{.State.Health.Status}}' fixundfertig_app 2>/dev/null || true)
               if [ "$health" = healthy ]; then
@@ -105,4 +126,6 @@ jobs:
               sleep 2
             done
             docker compose -f docker-compose.prod.yml ps
+            test "$(docker exec fixundfertig_app printenv APP_REVISION)" = "$(git rev-parse HEAD)"
+            test "$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' fixundfertig_app)" = "$(git rev-parse HEAD)"
             docker image prune -f

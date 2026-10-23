@@ -6,11 +6,15 @@ x-logging: &default-logging
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        APP_REVISION: ${APP_REVISION:-unknown}
     container_name: fixundfertig_app
     env_file: .env
     environment:
       - APP_BASE_URL=https://${APP_DOMAIN}
+      - APP_REVISION=${APP_REVISION:-unknown}
       - STORAGE_SECRET=${STORAGE_SECRET}
       - TZ=Europe/Berlin
       - REDIS_URL=redis://cache:6379/0

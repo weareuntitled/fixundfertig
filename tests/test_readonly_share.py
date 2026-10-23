@@ -118,10 +118,11 @@ def test_readonly_mode_blocks_document_mutation_and_share_viewer_redirect(tmp_pa
     assert viewer.status_code == 200
 
 
-def test_healthz_reports_app_readiness() -> None:
+def test_healthz_reports_app_readiness_and_revision(monkeypatch) -> None:
+    monkeypatch.setenv("APP_REVISION", "test-revision")
     _data_module, _auth_module, main_module = _load_modules()
 
     response = TestClient(main_module.app).get("/healthz")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "ok", "revision": "test-revision"}

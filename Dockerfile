@@ -1,5 +1,8 @@
 # Stage 1: Build React frontend
+ARG APP_REVISION=unknown
 FROM node:20-alpine AS frontend-build
+ARG APP_REVISION
+ENV VITE_APP_REVISION=${APP_REVISION}
 WORKDIR /frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -8,6 +11,9 @@ RUN npm run build
 
 # Stage 2: Python backend
 FROM python:3.11-slim
+ARG APP_REVISION
+ENV APP_REVISION=${APP_REVISION}
+LABEL org.opencontainers.image.revision=${APP_REVISION}
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \

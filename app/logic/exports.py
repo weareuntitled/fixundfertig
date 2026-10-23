@@ -40,7 +40,7 @@ def export_invoices_pdf_zip(*args: Any, **kwargs: Any) -> bytes:
                 fn = (getattr(inv, "pdf_filename", "") or "").strip()
                 if fn:
                     p = fn if os.path.isabs(fn) else (
-                        os.path.join(root, p) if fn.startswith("storage") else os.path.join(inv_dir, fn)
+                        os.path.join(root, fn) if fn.startswith("storage") else os.path.join(inv_dir, fn)
                     )
                     if os.path.exists(p):
                         try:

@@ -31,6 +31,8 @@
 
 > **Tiefergehende Architektur:** Siehe `docs/migration_react_plan.md` (610 Zeilen) — verlinkt von hier nur per Anker, nicht dupliziert.
 
+> **Aktueller Navigationstipp:** Die produktive Einstellungsoberfläche ist die vollständige Route `frontend/src/routes/_app.settings.tsx`. Prüfe bei Änderungen an Einstellungen diese Datei; gleichnamige Unterrouten werden vom Elternlayout nur angezeigt, wenn es deren `<Outlet />` rendert.
+
 ---
 
 ## 1. Mission & Scope
@@ -394,7 +396,7 @@ export default defineConfig({
   6. **Invoices-Liste** (✔ `frontend/src/routes/_app.invoices.index.tsx` mit Status-Badges + Link zu Detail)
   7. **Invoice-Detail** (✔ `frontend/src/routes/_app.invoices.$id.tsx` mit Status-Wechsel-Buttons)
   8. **Dashboard** (✔ `frontend/src/routes/_app.index.tsx` mit KPI-Cards + Top-10-Tabelle)
-  9. **Settings** (◐ Hub (6 Cards) in `frontend/src/routes/_app.settings.tsx` — Sub-Pages offen)
+  9. **Settings** (aktuelle vollständige Einstellungsseite in `frontend/src/routes/_app.settings.tsx`; ältere Hub-/Sub-Page-Planung unten ist historisch)
 - **Wichtigste Dateien:** je 1x `app/api/<domain>.py` + 1x `frontend/src/routes/_app.<domain>.*.tsx`
 - **Parallel-Strategie:**
   - `https://app.example.com/old/*` → NiceGUI
