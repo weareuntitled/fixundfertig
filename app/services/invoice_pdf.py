@@ -104,7 +104,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
         def page_footer() -> None:
             draw_footer(c, w, mx, content_w, my_bot, comp, company_tax_id, company_vat_id,
-                        font_r, font_b, set_font, c.getPageNumber(), total_pages or 1)
+                        fonts, c.getPageNumber(), total_pages or 1)
 
         def new_page() -> float:
             page_footer()
