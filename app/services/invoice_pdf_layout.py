@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 from reportlab.lib.units import mm
 from reportlab.pdfbase.pdfmetrics import stringWidth
@@ -83,6 +84,21 @@ def format_date(value) -> str:
     text = safe_str(value)
     match = _ISO_DATE.fullmatch(text)
     return f"{match.group(3)}.{match.group(2)}.{match.group(1)}" if match else text
+
+
+PAYMENT_TERM_DAYS = 14
+
+
+def payment_due_date(invoice_date) -> str:
+    """The date the invoice is due, DD.MM.YYYY, or '' when the invoice date is not an ISO date."""
+    match = _ISO_DATE.fullmatch(safe_str(invoice_date))
+    if not match:
+        return ""
+    try:
+        issued = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return ""
+    return (issued + timedelta(days=PAYMENT_TERM_DAYS)).strftime("%d.%m.%Y")
 
 
 def format_service_period(service_from, service_to) -> str:

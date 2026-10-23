@@ -42,6 +42,7 @@ from schemas.invoice import (
     InvoiceUpdate,
 )
 from services.email import send_email
+from services.invoice_email import build_invoice_email
 from services.payment import check_payment, create_payment_link
 
 logger = logging.getLogger(__name__)
@@ -592,30 +593,7 @@ def send_invoice_email_endpoint(
     pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
     filename = build_invoice_filename(company, invoice, customer)
 
-    inv_nr = invoice.nr or ""
-    inv_date = invoice.date or ""
-    amount_float = float(invoice.total_brutto or 0)
-    amount_str = f"{amount_float:,.2f} EUR".replace(",", ".")
-    # Strip trailing zeros after comma for German format
-    amount_german = f"{amount_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    due_date_str = ""
-    if inv_date:
-        from datetime import datetime, timedelta
-        try:
-            dt = datetime.fromisoformat(inv_date)
-            due = dt + timedelta(days=30)
-            due_date_str = due.strftime("%d.%m.%Y")
-        except ValueError:
-            pass
-    inv_date_formatted = ""
-    if inv_date:
-        try:
-            inv_date_formatted = datetime.fromisoformat(inv_date).strftime("%d.%m.%Y")
-        except ValueError:
-            inv_date_formatted = inv_date
-
-    recipient_name = customer.display_name or ""
-    payment_link = getattr(invoice, "payment_link_url", "") or ""
+    email = build_invoice_email(company=company, customer=customer, invoice=invoice)
 
     smtp_config = {
         "host": company.smtp_server,
@@ -625,126 +603,12 @@ def send_invoice_email_endpoint(
         "sender": company.default_sender_email or company.email or company.smtp_user,
     }
 
-    # Build lines summary
-    items_html = ""
-    items_text = ""
-    for it in (getattr(invoice, "items", None) or []):
-        desc = it.description or ""
-        qty = float(it.quantity or 1)
-        price = float(it.unit_price or 0)
-        total_line = qty * price
-        line_german = f"{total_line:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        items_html += f"""<tr style="font-size:14px;color:#374151;">
-<td style="padding:6px 0;">{desc} × {qty:g}</td>
-<td align="right" style="padding:6px 0;">{line_german} €</td>
-</tr>"""
-        items_text += f"  {desc} x {qty:g}: {line_german} €\n"
-
-    show_ust = not bool(getattr(company, "is_small_business", False))
-    netto = amount_float / 1.19 if show_ust else amount_float
-    ust = amount_float - netto
-    ust_german = f"{ust:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    ust_text = f"\nMwSt. 19%: {ust_german} €" if show_ust and ust > 0 else ""
-
-    # Plain text body
-    text_body = (
-        f"Guten Tag {recipient_name},\n\n"
-        f"anbei erhalten Sie Ihre Rechnung {inv_nr} vom {inv_date_formatted}.\n\n"
-        f"Rechnungsbetrag: {amount_german} €\n"
-        f"{ust_text}"
-        + (f"\nFällig bis: {due_date_str}" if due_date_str else "")
-        + "\n\nPositionen:\n" + items_text
-        + ("\nBezahlen Sie jetzt online:\n" + payment_link if payment_link else "")
-        + f"\n\nMit freundlichen Grüßen\n{company.name or 'FixundFertig'}"
-    )
-
-    # HTML body
-    company_name = (company.name or "FixundFertig").strip()
-    html_payment_block = ""
-    if payment_link:
-        html_payment_block = f"""
-<tr><td style="padding:0 32px 16px;">
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr><td align="center" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;">
-<p style="font-size:13px;color:#166534;margin:0 0 12px;font-weight:600;">Jetzt online bezahlen</p>
-<a href="{payment_link}" target="_blank" style="display:inline-block;background:#001a42;color:#fff;font-size:14px;font-weight:600;padding:12px 32px;border-radius:8px;text-decoration:none;">Zahlungslink öffnen</a>
-<p style="font-size:11px;color:#166534;margin:8px 0 0;">Sicher bezahlen per Karte (Stripe)</p>
-</td></tr>
-</table>
-</td></tr>"""
-
-    html_body = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,-apple-system,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px;">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);">
-<tr><td style="padding:32px 32px 0;">
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr>
-<td style="font-size:20px;font-weight:700;color:#001a42;">{company_name}</td>
-<td align="right" style="font-size:12px;color:#6b7280;">Rechnung {inv_nr}</td>
-</tr>
-</table>
-<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;">
-</td></tr>
-<tr><td style="padding:0 32px;">
-<p style="font-size:14px;color:#374151;margin:0 0 16px;">Guten Tag {recipient_name},</p>
-<p style="font-size:14px;color:#374151;margin:0 0 16px;">vielen Dank für Ihren Auftrag. Im Folgenden erhalten Sie die Details Ihrer Rechnung.</p>
-</td></tr>
-<tr><td style="padding:0 32px;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;padding:16px;">
-<tr><td style="font-size:12px;color:#6b7280;padding-bottom:8px;">Rechnungsnummer</td>
-<td align="right" style="font-size:12px;color:#6b7280;padding-bottom:8px;">Datum</td></tr>
-<tr><td style="font-size:16px;font-weight:600;color:#001a42;">{inv_nr}</td>
-<td align="right" style="font-size:16px;font-weight:600;color:#001a42;">{inv_date_formatted}</td></tr>
-</table>
-</td></tr>
-<tr><td style="padding:16px 32px 0;">
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr style="font-size:12px;color:#6b7280;border-bottom:1px solid #e5e7eb;">
-<td style="padding-bottom:8px;">Leistung</td>
-<td align="right" style="padding-bottom:8px;">Betrag</td>
-</tr>
-{items_html}
-</table>
-</td></tr>
-<tr><td style="padding:12px 32px 0;">
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="font-size:12px;color:#6b7280;">Zwischensumme</td>
-<td align="right" style="font-size:14px;color:#374151;">{amount_german} €</td></tr>"""
-    if show_ust and ust > 0:
-        html_body += f"""<tr><td style="font-size:12px;color:#6b7280;">MwSt. 19%</td>
-<td align="right" style="font-size:14px;color:#374151;">{ust_german} €</td></tr>"""
-    html_body += f"""<tr><td style="font-size:16px;font-weight:700;color:#001a42;padding-top:8px;border-top:2px solid #001a42;">Gesamtbetrag</td>
-<td align="right" style="font-size:16px;font-weight:700;color:#001a42;padding-top:8px;border-top:2px solid #001a42;">{amount_german} €</td></tr>
-</table>
-</td></tr>"""
-    if due_date_str:
-        html_body += f"""<tr><td style="padding:16px 32px;">
-<p style="font-size:12px;color:#6b7280;margin:0;">Fällig bis: <strong style="color:#374151;">{due_date_str}</strong></p>
-</td></tr>"""
-    html_body += html_payment_block
-    html_body += f"""<tr><td style="padding:0 32px 32px;">
-<p style="font-size:13px;color:#374151;margin:0 0 4px;">Mit freundlichen Grüßen</p>
-<p style="font-size:14px;font-weight:600;color:#001a42;margin:0;">{company_name}</p>
-</td></tr>
-<tr><td style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-<p style="font-size:11px;color:#9ca3af;margin:0;text-align:center;">Diese Rechnung wurde automatisch von FixundFertig erstellt.</p>
-</td></tr>
-</table>
-</td></tr></table>
-</body>
-</html>"""
-
-    email_subject = (invoice.subject or "").strip() or f"Rechnung {inv_nr} von {company_name} — {amount_german} €"
-
     try:
         success = send_email(
             to=customer.email,
-            subject=email_subject,
-            text=text_body,
-            html=html_body,
+            subject=email.subject,
+            text=email.text,
+            html=email.html,
             smtp_config=smtp_config,
             attachments=[
                 {

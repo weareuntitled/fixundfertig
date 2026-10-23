@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime, timedelta
 from io import BytesIO
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import (
-    FONTS, LAYOUT, InvItem, format_date, format_service_period, get_attr, safe_float, safe_str,
+    FONTS, LAYOUT, InvItem, format_date, format_service_period, get_attr, payment_due_date, safe_float, safe_str,
 )
 from .invoice_pdf_draw import (
     draw_header, draw_recipient, draw_title_block, draw_identity_line,
@@ -72,14 +71,8 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
             get_attr(invoice, "service_to", default=""),
         )
 
-    due_str = ""
-    try:
-        if inv_date:
-            d = datetime.strptime(inv_date, "%Y-%m-%d").date()
-            due_str = (d + timedelta(days=14)).strftime("%d.%m.%Y")
-            inv_date = d.strftime("%d.%m.%Y")
-    except Exception:
-        pass
+    due_str = payment_due_date(inv_date)
+    inv_date = format_date(inv_date)
 
     nr = safe_str(get_attr(invoice, "nr", "invoice_number", default=""))
 
