@@ -13,7 +13,7 @@ ssh_command=(ssh -o BatchMode=yes -o ConnectTimeout=10 "$target")
 
 source_revision=$("${ssh_command[@]}" 'git -C "$HOME/fixundfertig" rev-parse HEAD')
 container_revision=$("${ssh_command[@]}" 'docker exec fixundfertig_app printenv APP_REVISION')
-image_revision=$("${ssh_command[@]}" 'docker inspect --format "{{index .Config.Labels \"org.opencontainers.image.revision\"}}" fixundfertig_app')
+image_revision=$("${ssh_command[@]}" 'docker image inspect --format "{{index .Config.Labels \"org.opencontainers.image.revision\"}}" "$(docker inspect --format "{{.Image}}" fixundfertig_app)"')
 container_health=$("${ssh_command[@]}" 'docker inspect --format "{{.State.Health.Status}}" fixundfertig_app')
 health_json=$(curl --connect-timeout 10 --max-time 20 --fail --silent --show-error "$base_url/healthz")
 health_revision=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("revision", ""))' "$health_json")

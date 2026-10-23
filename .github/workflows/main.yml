@@ -127,5 +127,6 @@ jobs:
             done
             docker compose -f docker-compose.prod.yml ps
             test "$(docker exec fixundfertig_app printenv APP_REVISION)" = "$(git rev-parse HEAD)"
-            test "$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' fixundfertig_app)" = "$(git rev-parse HEAD)"
+            image_id=$(docker inspect --format '{{.Image}}' fixundfertig_app)
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_id")" = "$(git rev-parse HEAD)"
             docker image prune -f
