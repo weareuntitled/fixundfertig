@@ -102,7 +102,7 @@ def draw_recipient(c: Canvas, mx: float, rule_y: float, content_w: float,
 
 
 def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float, invoice, comp,
-                     nr: str, inv_date: str, service_date: str, due_str: str,
+                     nr: str, inv_date: str, service_date: str,
                      fonts: dict[str, str]) -> float:
     """Invoice number, subject and intro on the left, the dates on the right."""
     right = w - mx
@@ -140,7 +140,7 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
         y -= 13.5
 
     # Dates sit on the right, level with the last line of the intro.
-    dates = [("Leistungsdatum:", service_date), ("Rechnungsdatum:", inv_date), ("Zahlbar bis:", due_str)]
+    dates = [("Leistungsdatum:", service_date), ("Rechnungsdatum:", inv_date)]
     dates = [(label, value) for label, value in dates if value]
     date_y = y + 13.5 + (len(dates) - 1) * 13.5
     for label, value in dates:
@@ -219,35 +219,61 @@ def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bo
 
 def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
                 net: float, tax: float, gross: float, tax_rate: float, is_small_business: bool,
-                new_page, set_font) -> float:
-    y -= 20
-    if y < my_bot + 60 * mm:
+                due_str: str, new_page, fonts: dict[str, str]) -> float:
+    right = w - mx
+    left = right - 218
+    muted, ink = LAYOUT["col_muted"], LAYOUT["col_ink"]
+    y -= 16.5
+    if y - 130 < my_bot + 20 * mm:
         y = new_page()
 
-    val_x = w - mx - 10
-    lbl_x = val_x - 50 * mm
+    def row(label: str, value: str) -> None:
+        c.setFont(fonts["regular"], 9)
+        c.setFillColorRGB(*muted)
+        c.drawString(left, y - 10, label)
+        c.setFillColorRGB(*ink)
+        c.drawRightString(right, y - 10, value)
 
-    def total_line(lbl, val, bold=False, offset=12):
-        set_font(bold=bold, size=11 if bold else 10)
-        c.drawString(lbl_x, y, lbl)
-        c.drawRightString(val_x, y, val)
-        return y - offset
-
-    def fmt(v):
-        return f"{v:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-
-    y = total_line("Netto:", fmt(net))
+    row("Zwischensumme", format_money(net))
+    y -= 18
     if tax_rate > 0:
-        y = total_line(f"USt ({int(tax_rate * 100)}%):", fmt(tax))
-        c.line(lbl_x, y + 2, val_x, y + 2)
-        y -= 4
-    y = total_line("Gesamt:", fmt(gross), bold=True)
+        row(f"Umsatzsteuer {tax_rate * 100:g} %".replace(".", ","), format_money(tax))
+    elif is_small_business:
+        row("Umsatzsteuer", "nicht erhoben")
+    else:
+        row("Umsatzsteuer 0 %", format_money(0))
+    y -= 20
 
+    c.setStrokeColorRGB(*LAYOUT["col_accent"])
+    c.setLineWidth(1.5)
+    c.line(left, y, right, y)
+    c.setLineWidth(LAYOUT["line_width"])
+    c.setFillColorRGB(*ink)
+    draw_tracked(c, left, y - 22, "GESAMTBETRAG", fonts["medium"], 8, 0.7)
+    c.setFont(fonts["bold"], 18)
+    c.drawRightString(right, y - 22, format_money(gross))
+    y -= 33
+
+    y -= 12
     if is_small_business:
-        y -= 10
-        set_font(size=8)
-        c.drawString(mx, y, LAYOUT["txt_small_biz"])
+        y = draw_note(c, mx, y, content_w, LAYOUT["txt_small_biz"], fonts)
+    if due_str:
+        c.setFont(fonts["regular"], 7.9)
+        c.setFillColorRGB(*muted)
+        c.drawString(mx, y - 8, "Zahlbar bis")
+        c.setFont(fonts["bold"], 7.9)
+        c.setFillColorRGB(*ink)
+        c.drawString(mx + stringWidth("Zahlbar bis ", fonts["regular"], 7.9), y - 8, f"{due_str}.")
+        y -= 11.5
+    return y
 
+
+def draw_note(c: Canvas, mx: float, y: float, content_w: float, text: str, fonts: dict[str, str]) -> float:
+    c.setFont(fonts["regular"], 7.9)
+    c.setFillColorRGB(*LAYOUT["col_muted"])
+    for line in wrap_text(text, fonts["regular"], 7.9, content_w):
+        c.drawString(mx, y - 8, line)
+        y -= 11.5
     return y
 
 

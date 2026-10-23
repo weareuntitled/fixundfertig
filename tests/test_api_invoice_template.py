@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import importlib
+from types import SimpleNamespace
 
 from pdf_text import pdf_pages, pdf_strings, pdf_text
+from services.invoice_pdf import render_invoice_to_pdf_bytes
 from test_api_invoice_artist_identity import artist_api  # noqa: F401  (fixture)
+from test_invoice_pdf_buergerlicher_name import _make_company, _make_invoice
 
 layout = importlib.import_module("services.invoice_pdf_layout")
 
@@ -172,3 +175,40 @@ def test_following_pages_repeat_the_table_header(artist_api):
     for page in pages:
         assert "BESCHREIBUNG" in page
         assert "BETRAG" in page
+
+
+def test_small_business_totals_say_vat_is_not_charged(artist_api):
+    client, _, payload, _ = artist_api
+    strings = pdf_strings(_preview(client, payload))
+    text = " ".join(strings)
+    labels = ["Zwischensumme", "300,00 €", "Umsatzsteuer", "nicht erhoben", "GESAMTBETRAG", "300,00 €"]
+    start = strings.index("Zwischensumme")
+    assert strings[start:start + 6] == labels
+    assert "Als Kleinunternehmer im Sinne von § 19 Abs. 1 UStG wird keine Umsatzsteuer berechnet." in text
+
+
+def test_totals_with_vat_show_rate_and_amount():
+    # The API does not hand a VAT rate to the renderer yet, so this uses the renderer directly.
+    company = _make_company({"is_small_business": False})
+    invoice = _make_invoice({"tax_rate": 19, "line_items": [
+        SimpleNamespace(description="DJ-Set", quantity=2.0, unit_price=150.0),
+    ]})
+    strings = pdf_strings(render_invoice_to_pdf_bytes(invoice, company=company))
+    text = " ".join(strings)
+    start = strings.index("Zwischensumme")
+    assert strings[start:start + 6] == [
+        "Zwischensumme", "300,00 €", "Umsatzsteuer 19 %", "57,00 €", "GESAMTBETRAG", "357,00 €",
+    ]
+    assert "Kleinunternehmer" not in text
+    assert "nicht erhoben" not in text
+
+
+def test_payment_deadline_is_a_sentence_under_the_totals(artist_api):
+    client, _, payload, _ = artist_api
+    payload["date"] = "2026-10-23"
+    strings = pdf_strings(_preview(client, payload))
+    text = " ".join(strings)
+    assert text.count("Zahlbar bis") == 1
+    assert "Zahlbar bis 06.11.2026." in text
+    assert strings.index("GESAMTBETRAG") < strings.index("Zahlbar bis")
+    assert "Zahlbar bis:" not in strings

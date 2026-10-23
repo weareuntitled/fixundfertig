@@ -115,12 +115,12 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         top_y = h - LAYOUT["margin_top"]
         rule_y = draw_header(c, w, mx, top_y, content_w, comp, fonts)
         y = draw_recipient(c, mx, rule_y, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country, fonts)
-        y = draw_title_block(c, w, mx, y - 39, content_w, invoice, comp, nr, inv_date, service_date, due_str, fonts)
+        y = draw_title_block(c, w, mx, y - 39, content_w, invoice, comp, nr, inv_date, service_date, fonts)
         if artist_name and legal_name and not uses_artist_wordmark(comp) and not line_holds_artist_name_as_its_own_token:
             y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
         y -= 22
         y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, fonts)
-        draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, new_page, set_font)
+        draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, due_str, new_page, fonts)
         page_footer()
 
         pages = c.getPageNumber()
