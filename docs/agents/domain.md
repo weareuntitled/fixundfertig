@@ -4,7 +4,7 @@ Dieses Repository verwendet einen gemeinsamen Domain-Kontext.
 
 ## Vor der Code-Erkundung
 
-- Lies `GLOSSARY.md` im Projektstamm, sofern vorhanden.
+- Lies `CONTEXT.md` im Projektstamm, sofern vorhanden.
 - Lies die für das Arbeitsgebiet relevanten Architekturentscheidungen
   unter `docs/adr/`, sofern vorhanden.
 
@@ -14,7 +14,7 @@ Entscheidungen geklärt sind.
 
 ## Ablage
 
-- Gemeinsames Glossar: `GLOSSARY.md`
+- Gemeinsames Glossar: `CONTEXT.md`
 - Architekturentscheidungen: `docs/adr/NNNN-kurztitel.md`
 
 ## Begriffe und Entscheidungen anwenden

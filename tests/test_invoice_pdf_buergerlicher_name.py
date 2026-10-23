@@ -423,8 +423,8 @@ def test_contact_footer_uses_account_holder_or_legal_name() -> None:
         assert strings[contact_index + 1] == expected
 
 
-def test_pdf_omits_account_holder_when_the_field_is_empty() -> None:
-    """An empty account holder does not fall back to the legal name."""
+def test_pdf_uses_legal_name_as_account_holder_when_the_field_is_empty() -> None:
+    """An empty account holder falls back to the legal name."""
     company = _make_company({"account_holder": ""})
     invoice = _make_invoice({
         "line_items": [
@@ -432,11 +432,11 @@ def test_pdf_omits_account_holder_when_the_field_is_empty() -> None:
         ],
     })
     strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
-    assert not any(line.startswith("Kontoinhaber") for line in strings)
+    assert "Kontoinhaber: Daniel Peters" in strings
     assert "Daniel Peters" in strings
 
 
-def test_pdf_omits_account_holder_when_the_field_is_only_whitespace() -> None:
+def test_pdf_uses_legal_name_as_account_holder_when_the_field_is_only_whitespace() -> None:
     """Spaces in the account holder field are an empty field."""
     company = _make_company({"account_holder": "   "})
     invoice = _make_invoice({
@@ -445,7 +445,7 @@ def test_pdf_omits_account_holder_when_the_field_is_only_whitespace() -> None:
         ],
     })
     strings = _extract_strings(render_invoice_to_pdf_bytes(invoice, company=company))
-    assert not any(line.startswith("Kontoinhaber") for line in strings)
+    assert "Kontoinhaber: Daniel Peters" in strings
     assert strings.index("DanEP") < strings.index("Daniel Peters")
 
 
@@ -470,7 +470,7 @@ def test_pdf_keeps_bank_and_legal_footer_lines_when_account_holder_is_empty() ->
     })
     invoice = _make_invoice()
     text = _extract_text(render_invoice_to_pdf_bytes(invoice, company=company))
-    assert "Kontoinhaber" not in text
+    assert "Kontoinhaber: Daniel Peters" in text
     assert "IBAN: DE89370400440532013000" in text
     assert "Kleinunternehmer" in text
     assert "DE999999999" in text
