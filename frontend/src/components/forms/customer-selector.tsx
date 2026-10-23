@@ -48,7 +48,9 @@ export function CustomerSelector({ value, onChange, className = "" }: CustomerSe
         <div className="flex-1">
           <Select
             label="Kunde"
-            value={value}
+            required
+            placeholder="Kunde wählen…"
+            value={value || null}
             onChange={(v) => onChange(Number(v))}
             options={(customers ?? []).map((c: Customer) => ({
               value: c.id,
