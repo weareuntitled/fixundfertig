@@ -2,7 +2,7 @@
  * @schema InvoiceDetailPage
  * @purpose Full invoice detail matching Lumina Ledger HTML: status timeline, bento cards, client, items, summary
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,6 +23,7 @@ import type { InvoiceStatus, InvoiceItem } from "@/lib/schemas/invoice";
 import {
   Download,
   ExternalLink,
+  Paperclip,
   Pencil,
   Send,
   Info,
@@ -96,6 +97,7 @@ function InvoiceDetailPage() {
     setDialogOpen(false);
   };
 
+  const headerFileInput = useRef<HTMLInputElement>(null);
   const uploadDocument = useUploadDocument();
   const addAttachment = useAddInvoiceAttachment();
   const addFileAsAttachment = (file: File) =>
@@ -295,6 +297,27 @@ function InvoiceDetailPage() {
               className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-red-500/50 bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-red-600 hover:bg-red-50 transition-colors"
             >
               <Trash2 size={16} /> Löschen
+            </button>
+            <input
+              ref={headerFileInput}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              className="hidden"
+              aria-label="Anlage für die E-Mail auswählen"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) addFileAsAttachment(file);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => headerFileInput.current?.click()}
+              disabled={uploadDocument.isPending || addAttachment.isPending}
+              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
+            >
+              {uploadDocument.isPending || addAttachment.isPending ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+              Anlage hochladen{invoice.attachments?.length ? ` (${invoice.attachments.length})` : ""}
             </button>
             {validTransitions.includes("SENT" as InvoiceStatus) && (
               <button
