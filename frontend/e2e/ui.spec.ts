@@ -108,9 +108,10 @@ test("invoice detail page shows preview iframe and download link", async ({ page
   await page.goto("/invoices/123");
   const downloadLink = page.getByRole("main").getByRole("link", { name: /PDF herunterladen/ });
   await expect(downloadLink).toBeVisible();
-  await expect(page.getByRole("button", { name: "Vorschau" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("button", { name: "Anlage hochladen" }).first()).toBeVisible();
   expect(await downloadLink.getAttribute("href")).toBe("/api/invoices/123/download");
-  await page.getByRole("button", { name: "Vorschau" }).click();
+  await page.getByRole("button", { name: "Mehr" }).click();
+  await page.getByRole("menuitem", { name: "Vorschau" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("heading", { name: /PDF-Vorschau · Rechnung RE-2026-0001/ })).toBeVisible();
 });
