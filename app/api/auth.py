@@ -126,6 +126,32 @@ def _clear_cookies(response: Response) -> None:
     response.delete_cookie("ff_csrf", path="/")
 
 
+def _user_id_from_cookie(ff_session: str | None) -> int | None:
+    if not ff_session:
+        return None
+    try:
+        return load_session_token(ff_session)
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def _dev_auto_login_enabled() -> bool:
+    """Local development only: FF_DEV_AUTO_LOGIN=1 together with FF_ENV=development."""
+    if _is_production():
+        return False
+    return (
+        (os.getenv("FF_DEV_AUTO_LOGIN") or "").strip() == "1"
+        and (os.getenv("FF_ENV") or "").strip().lower() == "development"
+    )
+
+
+def dev_auto_login_user(session) -> User | None:
+    """First active user when dev auto-login is on, else None."""
+    if not _dev_auto_login_enabled():
+        return None
+    return session.exec(select(User).where(User.is_active == True).order_by(User.id)).first()  # noqa: E712
+
+
 # --- Endpoints --------------------------------------------------------------
 
 @router.post(
@@ -181,15 +207,21 @@ def logout(response: Response) -> Response:
     responses={401: {"description": "Nicht eingeloggt oder Session abgelaufen"}},
 )
 def me(
+    response: Response,
     ff_session: Annotated[str | None, Cookie()] = None,
     session=Depends(db_session),
 ) -> UserPublic:
     """Gibt den aktuellen User zurück (aus ff_session Cookie)."""
+    user_id = _user_id_from_cookie(ff_session)
+    if user_id is None:
+        user = dev_auto_login_user(session)
+        if user:
+            _set_session_cookie(response, create_session_token(int(user.id)))
+            _set_csrf_cookie(response, create_csrf_token(int(user.id)))
+            return UserPublic.model_validate(user)
     if not ff_session:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Nicht eingeloggt")
-    try:
-        user_id = load_session_token(ff_session)
-    except (BadSignature, SignatureExpired):
+    if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session abgelaufen")
 
     user = session.get(User, user_id)
