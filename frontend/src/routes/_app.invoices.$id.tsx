@@ -105,7 +105,10 @@ function InvoiceDetailPage() {
       onSuccess: (document) =>
         addAttachment.mutate(
           { invoiceId, documentId: document.id },
-          { onError: (err: Error) => notify("error", err.message) },
+          {
+            onSuccess: () => notify("success", "Anlage hochgeladen und angehängt"),
+            onError: (err: Error) => notify("error", err.message),
+          },
         ),
       onError: (err: Error) => notify("error", err.message),
     });
@@ -317,8 +320,19 @@ function InvoiceDetailPage() {
               className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
             >
               {uploadDocument.isPending || addAttachment.isPending ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
-              Anlage hochladen{invoice.attachments?.length ? ` (${invoice.attachments.length})` : ""}
+              Anlage hochladen
             </button>
+            {!!invoice.attachments?.length && (
+              <button
+                type="button"
+                onClick={() => document.getElementById("anlagen")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                title="Zu den Anlagen springen"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-container-high)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-text-secondary)] hover:text-[var(--color-brand-text)]"
+              >
+                <Paperclip size={13} />
+                {invoice.attachments.length} {invoice.attachments.length === 1 ? "Anlage" : "Anlagen"}
+              </button>
+            )}
             {validTransitions.includes("SENT" as InvoiceStatus) && (
               <button
                 type="button"

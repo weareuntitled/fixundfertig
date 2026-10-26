@@ -162,7 +162,7 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
   };
 
   return (
-    <div className="overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white shadow-sm">
+    <div id="anlagen" className="overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-[var(--color-border)] px-[var(--space-md)] py-[var(--space-sm)]">
         <h3 className="flex items-center gap-2 text-[16px] font-semibold text-[var(--color-text-heading)]">
           <Paperclip size={18} />
