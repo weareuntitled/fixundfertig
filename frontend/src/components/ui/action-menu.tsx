@@ -48,7 +48,7 @@ export function ActionMenu({ items }: { items: ActionMenuItem[] }) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white py-1 shadow-lg"
+          className="animate-fade-in-scale absolute right-0 z-30 mt-1 w-56 origin-top-right overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white py-1 shadow-lg"
         >
           {items.map((item) => (
             <button
