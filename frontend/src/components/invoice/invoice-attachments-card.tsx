@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { Download, FileText, Loader2, Paperclip, Plus, X } from "lucide-react";
-import { useDocuments, type Document } from "@/lib/use-documents";
+import { useRef, useState } from "react";
+import { Download, FileText, Loader2, Paperclip, Plus, Upload, X } from "lucide-react";
+import { useDocuments, useUploadDocument, type Document } from "@/lib/use-documents";
 import {
   useAddInvoiceAttachment,
   useDeleteInvoiceAttachment,
@@ -29,7 +29,7 @@ function AttachmentRow({
   removing: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-bright)] px-3 py-2">
+    <div className="flex items-start justify-between gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-bright)] px-2.5 py-2">
       <div className="flex min-w-0 items-start gap-2">
         <FileText size={16} className="mt-0.5 shrink-0 text-[var(--color-text-muted)]" />
         <div className="min-w-0">
@@ -80,7 +80,7 @@ function AttachmentPicker({
   onAdd: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-[var(--space-md)] sm:flex-row">
+    <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-[var(--space-md)]">
       <select
         value={selectedId ?? ""}
         onChange={(event) => onSelect(event.target.value ? Number(event.target.value) : null)}
@@ -111,6 +111,8 @@ function AttachmentPicker({
 export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttachmentsCardProps) {
   const { data: documents } = useDocuments();
   const addAttachment = useAddInvoiceAttachment();
+  const uploadDocument = useUploadDocument();
+  const fileInput = useRef<HTMLInputElement>(null);
   const removeAttachment = useDeleteInvoiceAttachment();
   const { notify } = useNotification();
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -132,6 +134,23 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
     );
   };
 
+  const upload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    uploadDocument.mutate(file, {
+      onSuccess: (document) =>
+        addAttachment.mutate(
+          { invoiceId, documentId: document.id },
+          {
+            onSuccess: () => notify("success", "Anlage hochgeladen und angehängt"),
+            onError: (error: Error) => notify("error", error.message),
+          },
+        ),
+      onError: (error: Error) => notify("error", error.message),
+    });
+  };
+
   const remove = (attachment: InvoiceAttachment) => {
     removeAttachment.mutate(
       { invoiceId, attachmentId: attachment.id },
@@ -143,9 +162,9 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
   };
 
   return (
-    <div className="overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-md)]">
-        <h3 className="flex items-center gap-2 text-[20px] font-semibold text-[var(--color-text-heading)]">
+    <div id="anlagen" className="overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-[var(--color-border)] px-[var(--space-md)] py-[var(--space-sm)]">
+        <h3 className="flex items-center gap-2 text-[16px] font-semibold text-[var(--color-text-heading)]">
           <Paperclip size={18} />
           Anlagen
           {attachments.length > 0 && (
@@ -156,10 +175,10 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
         </h3>
       </div>
 
-      <div className="space-y-[var(--space-sm)] px-[var(--space-lg)] py-[var(--space-md)]">
+      <div className="space-y-[var(--space-sm)] px-[var(--space-md)] py-[var(--space-sm)]">
         {attachments.length === 0 && (
           <p className="text-[14px] text-[var(--color-text-secondary)]">
-            Noch keine Belege angehängt. Belege werden separat zur Rechnungs-PDF versendet.
+            Noch keine Anlagen. Hochgeladene Dateien (PDF, JPG, PNG) kannst du beim Senden als separate Anhänge mitschicken; die Rechnungs-PDF bleibt unverändert.
           </p>
         )}
 
@@ -172,6 +191,26 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
           />
         ))}
 
+        <div>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            className="hidden"
+            aria-label="Anlage auswählen"
+            onChange={upload}
+          />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            disabled={uploadDocument.isPending || addAttachment.isPending}
+            className="inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-[var(--radius-lg)] bg-[var(--color-brand-text)] px-4 text-[12px] font-semibold uppercase tracking-[0.05em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {uploadDocument.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+            Anlage hochladen
+          </button>
+        </div>
+
         <AttachmentPicker
           available={available}
           selectedId={selectedId}
@@ -179,6 +218,7 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
           onSelect={setSelectedId}
           onAdd={add}
         />
+
       </div>
     </div>
   );

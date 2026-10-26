@@ -142,6 +142,27 @@ def test_me_returns_401_without_session_cookie(auth_app) -> None:
     assert response.status_code == 401
 
 
+def _auto_login_client(auth_app, monkeypatch, *, flag: str, env: str) -> TestClient:
+    monkeypatch.setenv("FF_DEV_AUTO_LOGIN", flag)
+    monkeypatch.setenv("FF_ENV", env)
+    session_mock = MagicMock()
+    session_mock.exec.return_value.first.return_value = _make_user()
+    auth_app.dependency_overrides[dependencies_module.db_session] = _db_session_override(session_mock)
+    return TestClient(auth_app)
+
+
+@pytest.mark.skipif(build_auth_router is None, reason="app.api.auth.router not yet implemented")
+def test_me_auto_logs_in_only_in_development_with_the_flag(auth_app, monkeypatch) -> None:
+    client = _auto_login_client(auth_app, monkeypatch, flag="1", env="development")
+    response = client.get("/api/auth/me")
+    assert response.status_code == 200
+    assert "ff_session" in response.headers.get("set-cookie", "")
+
+    for flag, env in (("", "development"), ("1", ""), ("1", "production")):
+        client = _auto_login_client(auth_app, monkeypatch, flag=flag, env=env)
+        assert client.get("/api/auth/me").status_code == 401
+
+
 @pytest.mark.skipif(build_auth_router is None, reason="app.api.auth.router not yet implemented")
 def test_session_token_round_trip() -> None:
     user_id = 99

@@ -3,15 +3,40 @@
   "configurations": [
     {
       "name": "FixundFertig App",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-u", "run_dev.py"],
-      "port": 8000,
-      "cwd": "${workspaceFolder}/app"
+      "runtimeExecutable": "${workspaceFolder}/.venv/bin/python",
+      "runtimeArgs": [
+        "-u",
+        "run_dev.py"
+      ],
+      "port": 8002,
+      "cwd": "${workspaceFolder}/app",
+      "env": {
+        "FF_PORT": "8002"
+      }
+    },
+    {
+      "name": "Frontend (Vite)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--base",
+        "/"
+      ],
+      "port": 5173,
+      "cwd": "${workspaceFolder}/frontend",
+      "env": {
+        "VITE_BACKEND_URL": "http://localhost:8002"
+      }
     },
     {
       "name": "n8n",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["n8n", "start"],
+      "runtimeArgs": [
+        "n8n",
+        "start"
+      ],
       "port": 5678
     }
   ]

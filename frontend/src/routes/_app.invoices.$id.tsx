@@ -2,7 +2,7 @@
  * @schema InvoiceDetailPage
  * @purpose Full invoice detail matching Lumina Ledger HTML: status timeline, bento cards, client, items, summary
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,11 +16,14 @@ import { useInvoicePreviewPdf } from "@/lib/use-invoice-preview-pdf";
 import { useCustomer } from "@/lib/use-customers";
 import { useCompany } from "@/lib/use-company";
 import { useNotification } from "@/lib/use-notifications";
+import { useUploadDocument } from "@/lib/use-documents";
+import { useAddInvoiceAttachment } from "@/lib/use-invoices";
 import { api } from "@/lib/api";
 import type { InvoiceStatus, InvoiceItem } from "@/lib/schemas/invoice";
 import {
   Download,
   ExternalLink,
+  Paperclip,
   Pencil,
   Send,
   Info,
@@ -34,6 +37,7 @@ import { ClientInfoCard } from "@/components/invoice/client-info-card";
 import { InvoiceAttachmentsCard } from "@/components/invoice/invoice-attachments-card";
 import { SummaryCard } from "@/components/invoice/summary-card";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { PageHeader } from "@/components/ui/page-header";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
@@ -93,6 +97,22 @@ function InvoiceDetailPage() {
     }
     setDialogOpen(false);
   };
+
+  const headerFileInput = useRef<HTMLInputElement>(null);
+  const uploadDocument = useUploadDocument();
+  const addAttachment = useAddInvoiceAttachment();
+  const addFileAsAttachment = (file: File) =>
+    uploadDocument.mutate(file, {
+      onSuccess: (document) =>
+        addAttachment.mutate(
+          { invoiceId, documentId: document.id },
+          {
+            onSuccess: () => notify("success", "Anlage hochgeladen und angehängt"),
+            onError: (err: Error) => notify("error", err.message),
+          },
+        ),
+      onError: (err: Error) => notify("error", err.message),
+    });
 
   const sendEmail = useMutation({
     mutationFn: (payload: { message: string; includeAttachments: boolean }) =>
@@ -193,7 +213,12 @@ function InvoiceDetailPage() {
   };
 
   const handleSend = () => {
-    if (invoice?.recipient_name) setSendOpen(true);
+    if (!invoice) return;
+    if (!customer?.email) {
+      notify("error", "Der Kunde hat keine E-Mail-Adresse.");
+      return;
+    }
+    setSendOpen(true);
   };
 
   if (isLoading) return (
@@ -222,7 +247,7 @@ function InvoiceDetailPage() {
         backLabel="Rechnungen"
         title={<span>Rechnung #{invoice.nr || invoice.id}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
         subtitle={<>Erstellt am {invoice.date || "Kein Datum"}</>}
-        actions={
+actions={
           <>
             <a
               href={`/api/invoices/${invoice.id}/download`}
@@ -231,51 +256,31 @@ function InvoiceDetailPage() {
               <Download size={16} />
               PDF herunterladen
             </a>
+            <input
+              ref={headerFileInput}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              className="hidden"
+              aria-label="Anlage für die E-Mail auswählen"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) addFileAsAttachment(file);
+              }}
+            />
             <button
               type="button"
-              onClick={() => setPreviewOpen(true)}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
-            >
-              <ExternalLink size={16} /> Vorschau
-            </button>
-            <button
-              type="button"
-              onClick={() => confirm(`Gespeicherte PDF von Rechnung ${invoice.nr || invoice.id} mit aktuellen Firmendaten ersetzen? Rechnungsnummer und Rechnungsdaten bleiben gleich.`) && regeneratePdf.mutate()}
-              disabled={regeneratePdf.isPending}
+              onClick={() => headerFileInput.current?.click()}
+              disabled={uploadDocument.isPending || addAttachment.isPending}
               className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
             >
-              {regeneratePdf.isPending ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              {regeneratePdf.isPending ? "Erzeuge…" : "PDF neu erzeugen"}
-            </button>
-            {!isDraft && invoice.status !== "PAID" && (
-              <button
-                type="button"
-                onClick={() => paymentLink.mutate()}
-                disabled={paymentLink.isPending}
-                className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
-              >
-                {paymentLink.isPending ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <ExternalLink size={16} />
-                )}
-                {paymentLink.isPending ? "Erstelle…" : "Zahlungslink"}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleEditHeader}
-              disabled={editingHeader}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
-            >
-              <Pencil size={16} /> Bearbeiten
-            </button>
-            <button
-              type="button"
-              onClick={() => setDeleteConfirmOpen(true)}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-red-500/50 bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <Trash2 size={16} /> Löschen
+              {uploadDocument.isPending || addAttachment.isPending ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+              Anlage hochladen
+              {!!invoice.attachments?.length && (
+                <span className="rounded-full bg-[var(--color-surface-container-high)] px-1.5 text-[11px] normal-case tracking-normal text-[var(--color-text-secondary)]">
+                  {invoice.attachments.length}
+                </span>
+              )}
             </button>
             {validTransitions.includes("SENT" as InvoiceStatus) && (
               <button
@@ -292,6 +297,22 @@ function InvoiceDetailPage() {
                 {sendEmail.isPending ? "Sende…" : "An Kunde senden"}
               </button>
             )}
+            <ActionMenu
+              items={[
+                { label: "Vorschau", icon: <ExternalLink size={15} />, onSelect: () => setPreviewOpen(true) },
+                { label: "Bearbeiten", icon: <Pencil size={15} />, onSelect: handleEditHeader, disabled: editingHeader },
+                ...(!isDraft && invoice.status !== "PAID"
+                  ? [{ label: "Zahlungslink", icon: <ExternalLink size={15} />, onSelect: () => paymentLink.mutate(), disabled: paymentLink.isPending }]
+                  : []),
+                {
+                  label: "PDF neu erzeugen",
+                  icon: <RefreshCw size={15} />,
+                  onSelect: () => confirm(`Gespeicherte PDF von Rechnung ${invoice.nr || invoice.id} mit aktuellen Firmendaten ersetzen? Rechnungsnummer und Rechnungsdaten bleiben gleich.`) && regeneratePdf.mutate(),
+                  disabled: regeneratePdf.isPending,
+                },
+                { label: "Löschen", icon: <Trash2 size={15} />, onSelect: () => setDeleteConfirmOpen(true), danger: true },
+              ]}
+            />
           </>
         }
       />
@@ -426,11 +447,6 @@ function InvoiceDetailPage() {
               </table>
             </div>
           </div>
-
-          <InvoiceAttachmentsCard
-            invoiceId={invoice.id}
-            attachments={invoice.attachments ?? []}
-          />
         </div>
 
         {/* Right 1/3 */}
@@ -464,6 +480,12 @@ function InvoiceDetailPage() {
             </div>
           )}
 
+          {/* Anlagen: upload here, they go out with the email */}
+          <InvoiceAttachmentsCard
+            invoiceId={invoice.id}
+            attachments={invoice.attachments ?? []}
+          />
+
           {/* Internal Notes */}
           <div className="bg-[var(--color-surface-bright)] rounded-[var(--radius-xl)] border border-[var(--color-border)] p-[var(--space-md)] shadow-sm">
             <h3 className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] mb-[var(--space-xs)]">Interne Notizen</h3>
@@ -485,6 +507,8 @@ function InvoiceDetailPage() {
         recipientName={invoice.recipient_name || customer?.name || ""}
         recipientEmail={customer?.email}
         attachmentCount={invoice.attachments?.length ?? 0}
+        uploading={uploadDocument.isPending || addAttachment.isPending}
+        onAddFile={addFileAsAttachment}
         pending={sendEmail.isPending}
         onSend={(message, includeAttachments) => sendEmail.mutate({ message, includeAttachments })}
         onCancel={() => setSendOpen(false)}

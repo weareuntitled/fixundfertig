@@ -57,6 +57,14 @@ def require_session_auth(
     if is_authenticated():
         with get_session() as session:
             return get_current_user_id(session)
+    # Local development only (FF_DEV_AUTO_LOGIN): NiceGUI's own `ff_session` cookie
+    # can shadow ours, so the API falls back to the first user.
+    from api.auth import dev_auto_login_user
+
+    with get_session() as session:
+        dev_user = dev_auto_login_user(session)
+        if dev_user:
+            return int(dev_user.id)
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Auth required")
 
 

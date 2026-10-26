@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { api } from "./api";
+import { api, ApiError } from "./api";
 
 export const documentSchema = z.object({
   id: z.number().int(),
@@ -32,5 +32,33 @@ export function useDocuments() {
       api
         .get<unknown>("/api/documents")
         .then((data) => documentListSchema.parse(data)),
+  });
+}
+
+/** Uploads one file (PDF/JPG/PNG) to the Belege and returns the stored document. */
+export function useUploadDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      const csrf = document.cookie
+        .split("; ")
+        .find((c) => c.startsWith("ff_csrf="))
+        ?.split("=")[1];
+      const response = await fetch("/api/documents/upload", {
+        method: "POST",
+        credentials: "include",
+        headers: csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {},
+        body: form,
+      });
+      const data: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const detail = data && typeof data === "object" && "detail" in data ? String((data as { detail: unknown }).detail) : "";
+        throw new ApiError(response.status, detail || `HTTP ${response.status}`, data);
+      }
+      return documentSchema.parse(data);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
   });
 }

@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { TanStackRouterVite } from "@tanstack/router-vite-plugin";
 import { fileURLToPath, URL } from "node:url";
 
+const backendUrl = process.env.VITE_BACKEND_URL || "http://localhost:8000";
 const appRevision = process.env.VITE_APP_REVISION || "dev";
 
 export default defineConfig({
@@ -28,9 +29,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": { target: "http://localhost:8000", changeOrigin: false },
+      "/api": { target: backendUrl, changeOrigin: false },
       "/static": {
-        target: "http://localhost:8000",
+        target: backendUrl,
         changeOrigin: false,
         bypass: (req) => {
           if (req.url?.startsWith("/static/frontend/")) {
