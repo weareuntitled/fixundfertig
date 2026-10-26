@@ -37,6 +37,7 @@ import { ClientInfoCard } from "@/components/invoice/client-info-card";
 import { InvoiceAttachmentsCard } from "@/components/invoice/invoice-attachments-card";
 import { SummaryCard } from "@/components/invoice/summary-card";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
+import { ActionMenu } from "@/components/ui/action-menu";
 import { PageHeader } from "@/components/ui/page-header";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
@@ -246,7 +247,7 @@ function InvoiceDetailPage() {
         backLabel="Rechnungen"
         title={<span>Rechnung #{invoice.nr || invoice.id}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
         subtitle={<>Erstellt am {invoice.date || "Kein Datum"}</>}
-        actions={
+actions={
           <>
             <a
               href={`/api/invoices/${invoice.id}/download`}
@@ -255,52 +256,6 @@ function InvoiceDetailPage() {
               <Download size={16} />
               PDF herunterladen
             </a>
-            <button
-              type="button"
-              onClick={() => setPreviewOpen(true)}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
-            >
-              <ExternalLink size={16} /> Vorschau
-            </button>
-            <button
-              type="button"
-              onClick={() => confirm(`Gespeicherte PDF von Rechnung ${invoice.nr || invoice.id} mit aktuellen Firmendaten ersetzen? Rechnungsnummer und Rechnungsdaten bleiben gleich.`) && regeneratePdf.mutate()}
-              disabled={regeneratePdf.isPending}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
-            >
-              {regeneratePdf.isPending ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              {regeneratePdf.isPending ? "Erzeuge…" : "PDF neu erzeugen"}
-            </button>
-            {!isDraft && invoice.status !== "PAID" && (
-              <button
-                type="button"
-                onClick={() => paymentLink.mutate()}
-                disabled={paymentLink.isPending}
-                className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
-              >
-                {paymentLink.isPending ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <ExternalLink size={16} />
-                )}
-                {paymentLink.isPending ? "Erstelle…" : "Zahlungslink"}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleEditHeader}
-              disabled={editingHeader}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
-            >
-              <Pencil size={16} /> Bearbeiten
-            </button>
-            <button
-              type="button"
-              onClick={() => setDeleteConfirmOpen(true)}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-red-500/50 bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <Trash2 size={16} /> Löschen
-            </button>
             <input
               ref={headerFileInput}
               type="file"
@@ -321,18 +276,12 @@ function InvoiceDetailPage() {
             >
               {uploadDocument.isPending || addAttachment.isPending ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
               Anlage hochladen
+              {!!invoice.attachments?.length && (
+                <span className="rounded-full bg-[var(--color-surface-container-high)] px-1.5 text-[11px] normal-case tracking-normal text-[var(--color-text-secondary)]">
+                  {invoice.attachments.length}
+                </span>
+              )}
             </button>
-            {!!invoice.attachments?.length && (
-              <button
-                type="button"
-                onClick={() => document.getElementById("anlagen")?.scrollIntoView({ behavior: "smooth", block: "center" })}
-                title="Zu den Anlagen springen"
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-container-high)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-text-secondary)] hover:text-[var(--color-brand-text)]"
-              >
-                <Paperclip size={13} />
-                {invoice.attachments.length} {invoice.attachments.length === 1 ? "Anlage" : "Anlagen"}
-              </button>
-            )}
             {validTransitions.includes("SENT" as InvoiceStatus) && (
               <button
                 type="button"
@@ -348,6 +297,22 @@ function InvoiceDetailPage() {
                 {sendEmail.isPending ? "Sende…" : "An Kunde senden"}
               </button>
             )}
+            <ActionMenu
+              items={[
+                { label: "Vorschau", icon: <ExternalLink size={15} />, onSelect: () => setPreviewOpen(true) },
+                { label: "Bearbeiten", icon: <Pencil size={15} />, onSelect: handleEditHeader, disabled: editingHeader },
+                ...(!isDraft && invoice.status !== "PAID"
+                  ? [{ label: "Zahlungslink", icon: <ExternalLink size={15} />, onSelect: () => paymentLink.mutate(), disabled: paymentLink.isPending }]
+                  : []),
+                {
+                  label: "PDF neu erzeugen",
+                  icon: <RefreshCw size={15} />,
+                  onSelect: () => confirm(`Gespeicherte PDF von Rechnung ${invoice.nr || invoice.id} mit aktuellen Firmendaten ersetzen? Rechnungsnummer und Rechnungsdaten bleiben gleich.`) && regeneratePdf.mutate(),
+                  disabled: regeneratePdf.isPending,
+                },
+                { label: "Löschen", icon: <Trash2 size={15} />, onSelect: () => setDeleteConfirmOpen(true), danger: true },
+              ]}
+            />
           </>
         }
       />
