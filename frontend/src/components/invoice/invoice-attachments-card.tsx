@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { Download, FileText, Loader2, Paperclip, Plus, X } from "lucide-react";
-import { useDocuments, type Document } from "@/lib/use-documents";
+import { useRef, useState } from "react";
+import { Download, FileText, Loader2, Paperclip, Plus, Upload, X } from "lucide-react";
+import { useDocuments, useUploadDocument, type Document } from "@/lib/use-documents";
 import {
   useAddInvoiceAttachment,
   useDeleteInvoiceAttachment,
@@ -111,6 +111,8 @@ function AttachmentPicker({
 export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttachmentsCardProps) {
   const { data: documents } = useDocuments();
   const addAttachment = useAddInvoiceAttachment();
+  const uploadDocument = useUploadDocument();
+  const fileInput = useRef<HTMLInputElement>(null);
   const removeAttachment = useDeleteInvoiceAttachment();
   const { notify } = useNotification();
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -130,6 +132,23 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
         onError: (error: Error) => notify("error", error.message),
       },
     );
+  };
+
+  const upload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    uploadDocument.mutate(file, {
+      onSuccess: (document) =>
+        addAttachment.mutate(
+          { invoiceId, documentId: document.id },
+          {
+            onSuccess: () => notify("success", "Anlage hochgeladen und angehängt"),
+            onError: (error: Error) => notify("error", error.message),
+          },
+        ),
+      onError: (error: Error) => notify("error", error.message),
+    });
   };
 
   const remove = (attachment: InvoiceAttachment) => {
@@ -159,7 +178,7 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
       <div className="space-y-[var(--space-sm)] px-[var(--space-lg)] py-[var(--space-md)]">
         {attachments.length === 0 && (
           <p className="text-[14px] text-[var(--color-text-secondary)]">
-            Noch keine Belege angehängt. Belege werden separat zur Rechnungs-PDF versendet.
+            Noch keine Anlagen. Hochgeladene Dateien (PDF, JPG, PNG) kannst du beim Senden als separate Anhänge mitschicken; die Rechnungs-PDF bleibt unverändert.
           </p>
         )}
 
@@ -179,6 +198,26 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
           onSelect={setSelectedId}
           onAdd={add}
         />
+
+        <div className="flex justify-end">
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            className="hidden"
+            aria-label="Anlage auswählen"
+            onChange={upload}
+          />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            disabled={uploadDocument.isPending || addAttachment.isPending}
+            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-[var(--radius-lg)] bg-[var(--color-brand-text)] px-4 text-[12px] font-semibold uppercase tracking-[0.05em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {uploadDocument.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+            Anlage hochladen
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -69,6 +69,12 @@ describe("SendInvoiceSheet", () => {
     expect(screen.getByRole("checkbox", { name: /Belege mitschicken/ })).toBeChecked();
   });
 
+  it("points to the upload when there are no attachments", () => {
+    setup({ attachmentCount: 0 });
+    expect(screen.getByText(/Keine Anlagen/)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
   it("cancels from the button, the escape key and the backdrop", () => {
     const { onCancel } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));

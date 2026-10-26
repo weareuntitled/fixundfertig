@@ -132,6 +132,13 @@ export function SendInvoiceSheet({
           </label>
         )}
 
+        {attachmentCount === 0 && (
+          <p className="mt-4 flex items-center gap-1.5 text-[12px] text-[var(--color-text-muted)]">
+            <Paperclip size={14} />
+            Keine Anlagen – lade sie in der Rechnung unter „Anlagen“ hoch, dann kannst du sie hier mitschicken.
+          </p>
+        )}
+
         <div className="mt-6 flex justify-end gap-[var(--space-sm)]">
           <button
             type="button"
