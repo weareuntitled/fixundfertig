@@ -207,7 +207,12 @@ function InvoiceDetailPage() {
   };
 
   const handleSend = () => {
-    if (invoice?.recipient_name) setSendOpen(true);
+    if (!invoice) return;
+    if (!customer?.email) {
+      notify("error", "Der Kunde hat keine E-Mail-Adresse.");
+      return;
+    }
+    setSendOpen(true);
   };
 
   if (isLoading) return (
@@ -440,11 +445,6 @@ function InvoiceDetailPage() {
               </table>
             </div>
           </div>
-
-          <InvoiceAttachmentsCard
-            invoiceId={invoice.id}
-            attachments={invoice.attachments ?? []}
-          />
         </div>
 
         {/* Right 1/3 */}
@@ -477,6 +477,12 @@ function InvoiceDetailPage() {
               </a>
             </div>
           )}
+
+          {/* Anlagen: upload here, they go out with the email */}
+          <InvoiceAttachmentsCard
+            invoiceId={invoice.id}
+            attachments={invoice.attachments ?? []}
+          />
 
           {/* Internal Notes */}
           <div className="bg-[var(--color-surface-bright)] rounded-[var(--radius-xl)] border border-[var(--color-border)] p-[var(--space-md)] shadow-sm">
