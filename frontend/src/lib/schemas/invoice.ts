@@ -82,6 +82,18 @@ export const emptyInvoiceDraft = (customerId: number): InvoiceDraft => ({
   status: "OPEN",
 });
 
+export const invoiceAttachmentSchema = z.object({
+  id: z.number().int(),
+  document_id: z.number().int(),
+  title: z.string().default(""),
+  filename: z.string().default(""),
+  mime: z.string().default(""),
+  size: z.number().int().default(0),
+  created_at: z.string().default(""),
+});
+
+export type InvoiceAttachment = z.infer<typeof invoiceAttachmentSchema>;
+
 /**
  * Read-side mirror of `app/schemas/invoice.py:InvoiceRead`.
  * Backend liefert: id, customer_id, nr, title, date, delivery_date,
@@ -109,6 +121,7 @@ export const invoiceReadSchema = z.object({
   payment_link_url: z.string().default(""),
   payment_provider: z.string().default(""),
   items: z.array(invoiceItemSchema).default([]),
+  attachments: z.array(invoiceAttachmentSchema).default([]),
 });
 
 export type InvoiceRead = z.infer<typeof invoiceReadSchema>;

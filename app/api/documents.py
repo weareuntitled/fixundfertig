@@ -28,6 +28,7 @@ from data import Company, Document, DocumentMeta
 from dependencies import db_session, get_current_company, require_session_auth
 from services.blob_storage import blob_storage
 from services.documents import (
+    document_is_attached,
     backfill_document_fields,
     build_document_record,
     build_display_title,
@@ -142,6 +143,12 @@ def delete_document(
     company = session.get(Company, int(document.company_id))
     if not company or company.user_id != _user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    if document_is_attached(session, int(document_id)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Beleg ist an einer Rechnung befestigt und kann nicht gelöscht werden",
+        )
 
     # Backward-compat: respect legacy readonly_mode (NiceGUI read-only share links).
     try:

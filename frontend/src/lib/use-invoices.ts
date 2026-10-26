@@ -78,6 +78,36 @@ export function useUpdateInvoiceItem() {
   });
 }
 
+function useInvalidateInvoice() {
+  const qc = useQueryClient();
+  return (invoiceId: number) => {
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["invoices", invoiceId] });
+  };
+}
+
+export function useAddInvoiceAttachment() {
+  const invalidate = useInvalidateInvoice();
+  return useMutation({
+    mutationFn: ({ invoiceId, documentId }: { invoiceId: number; documentId: number }) =>
+      api
+        .post<unknown>(`/api/invoices/${invoiceId}/attachments`, { document_id: documentId })
+        .then((data) => invoiceReadSchema.parse(data)),
+    onSuccess: (_data, vars) => invalidate(vars.invoiceId),
+  });
+}
+
+export function useDeleteInvoiceAttachment() {
+  const invalidate = useInvalidateInvoice();
+  return useMutation({
+    mutationFn: ({ invoiceId, attachmentId }: { invoiceId: number; attachmentId: number }) =>
+      api
+        .delete<unknown>(`/api/invoices/${invoiceId}/attachments/${attachmentId}`)
+        .then((data) => invoiceReadSchema.parse(data)),
+    onSuccess: (_data, vars) => invalidate(vars.invoiceId),
+  });
+}
+
 export function useDeleteInvoiceItem() {
   const qc = useQueryClient();
   return useMutation({

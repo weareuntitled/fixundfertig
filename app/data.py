@@ -9,6 +9,7 @@ from models.schema import (
     Invoice,
     InvoiceRevision,
     InvoiceItem,
+    InvoiceAttachment,
     InvoiceItemTemplate,
     AuditLog,
     Expense,
@@ -36,7 +37,7 @@ from db import (
 __all__ = [
     "InvoiceStatus", "TokenPurpose", "User", "Token", "InvitedEmail",
     "Company", "Customer", "Invoice", "InvoiceRevision", "InvoiceItem",
-    "InvoiceItemTemplate", "AuditLog", "Expense", "Document", "DocumentMeta",
+    "InvoiceAttachment", "InvoiceItemTemplate", "AuditLog", "Expense", "Document", "DocumentMeta",
     "WebhookEvent", "engine", "SessionLocal", "get_session", "session_scope",
     "log_audit_action", "get_valid_token",
     "load_customer_import_dataframe", "load_expense_import_dataframe",

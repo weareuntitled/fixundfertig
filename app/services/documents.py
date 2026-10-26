@@ -11,7 +11,7 @@ from typing import Iterable
 
 from fastapi import HTTPException
 
-from data import Document, DocumentMeta
+from data import Document, DocumentMeta, InvoiceAttachment
 from models.document import DocumentSource, safe_filename as model_safe_filename
 from services.blob_storage import blob_storage
 from services.storage import company_document_dir, company_documents_dir, ensure_company_dirs
@@ -397,6 +397,16 @@ def resolve_document_meta_values(meta: DocumentMeta | None) -> dict[str, object]
     }
 
 
+def _blob_key(doc: Document) -> str:
+    """Blob-storage key of a document, or "" when it is not stored in the blob store."""
+    storage_key = (doc.storage_key or doc.storage_path or "").strip()
+    if storage_key.startswith("storage/"):
+        storage_key = storage_key.removeprefix("storage/").lstrip("/")
+    if storage_key.startswith(("companies/", "documents/")):
+        return storage_key
+    return ""
+
+
 def document_size_bytes(doc: Document) -> int:
     size_value = doc.size_bytes or doc.size or 0
     try:
@@ -405,22 +415,43 @@ def document_size_bytes(doc: Document) -> int:
         size = 0
     if size > 0:
         return size
-    storage_key = (doc.storage_key or doc.storage_path or "").strip()
-    if storage_key.startswith("storage/"):
-        storage_key = storage_key.removeprefix("storage/").lstrip("/")
     storage_path = resolve_document_path(doc.storage_path)
     if storage_path and os.path.exists(storage_path):
         try:
             return int(os.path.getsize(storage_path))
         except OSError:
             return 0
-    if storage_key and (storage_key.startswith("companies/") or storage_key.startswith("documents/")):
+    blob_key = _blob_key(doc)
+    if blob_key:
         try:
-            data = blob_storage().get_bytes(storage_key)
-            return len(data)
+            return len(blob_storage().get_bytes(blob_key))
         except Exception:
             return 0
     return 0
+
+
+def read_document_bytes(doc: Document) -> bytes | None:
+    storage_path = resolve_document_path(doc.storage_path)
+    if storage_path and os.path.exists(storage_path):
+        try:
+            with open(storage_path, "rb") as handle:
+                return handle.read()
+        except OSError:
+            return None
+    blob_key = _blob_key(doc)
+    if blob_key:
+        try:
+            return blob_storage().get_bytes(blob_key)
+        except Exception:
+            return None
+    return None
+
+
+def document_is_attached(session: Session, document_id: int) -> bool:
+    """True when an invoice still links this document as an attachment."""
+    return session.exec(
+        select(InvoiceAttachment.id).where(InvoiceAttachment.document_id == document_id)
+    ).first() is not None
 
 
 def backfill_document_fields(

@@ -58,6 +58,7 @@ def _make_invoice(invoice_id: int = 1, status: str = "DRAFT", customer_id: int =
         related_invoice_id=None,
         payment_link_url="",
         payment_provider="",
+        attachments=[],
         items=[],
     )
 
@@ -242,6 +243,7 @@ def test_duplicate_invoice_creates_draft_copy(invoices_app, monkeypatch) -> None
         related_invoice_id=None,
         payment_link_url="",
         payment_provider="",
+        attachments=[],
         items=[
             SimpleNamespace(id=10, invoice_id=1, description="Spielen", quantity=2, unit_price=125.0)
         ],
@@ -268,6 +270,7 @@ def test_duplicate_invoice_creates_draft_copy(invoices_app, monkeypatch) -> None
         related_invoice_id=None,
         payment_link_url="",
         payment_provider="",
+        attachments=[],
         items=[
             SimpleNamespace(id=20, invoice_id=2, description="Spielen", quantity=2, unit_price=125.0)
         ],

@@ -29,13 +29,44 @@ describe("SendInvoiceSheet", () => {
     const { onSend } = setup();
     fireEvent.change(screen.getByLabelText(/Persönliche Nachricht/), { target: { value: "  Danke für die Nacht!  " } });
     fireEvent.click(screen.getByRole("button", { name: "Senden" }));
-    expect(onSend).toHaveBeenCalledWith("Danke für die Nacht!");
+    expect(onSend).toHaveBeenCalledWith("Danke für die Nacht!", false);
   });
 
   it("sends an empty message when nothing was typed", () => {
     const { onSend } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Senden" }));
-    expect(onSend).toHaveBeenCalledWith("");
+    expect(onSend).toHaveBeenCalledWith("", false);
+  });
+
+  it("sends attached receipts by default and lets them be excluded", () => {
+    const { onSend } = setup({ attachmentCount: 2 });
+    const checkbox = screen.getByRole("checkbox", { name: /Belege mitschicken/ });
+    expect(checkbox).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Senden" }));
+    expect(onSend).toHaveBeenCalledWith("", true);
+
+    onSend.mockClear();
+    fireEvent.change(screen.getByLabelText(/Persönliche Nachricht/), { target: { value: "Danke" } });
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole("button", { name: "Senden" }));
+    expect(onSend).toHaveBeenCalledWith("Danke", false);
+  });
+
+  it("keeps the typed message when the attachment count changes while open", () => {
+    const props = { open: true, recipientName: "Sisyphos", onSend: vi.fn(), onCancel: vi.fn() };
+    const { rerender } = render(<SendInvoiceSheet {...props} attachmentCount={1} />);
+    fireEvent.change(screen.getByLabelText(/Persönliche Nachricht/), { target: { value: "Hallo" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Belege mitschicken/ }));
+    rerender(<SendInvoiceSheet {...props} attachmentCount={2} />);
+    expect(screen.getByLabelText(/Persönliche Nachricht/)).toHaveValue("Hallo");
+    expect(screen.getByRole("checkbox", { name: /Belege mitschicken/ })).not.toBeChecked();
+  });
+
+  it("checks the box when receipts appear while the dialog is open", () => {
+    const props = { open: true, recipientName: "Sisyphos", onSend: vi.fn(), onCancel: vi.fn() };
+    const { rerender } = render(<SendInvoiceSheet {...props} attachmentCount={0} />);
+    rerender(<SendInvoiceSheet {...props} attachmentCount={1} />);
+    expect(screen.getByRole("checkbox", { name: /Belege mitschicken/ })).toBeChecked();
   });
 
   it("cancels from the button, the escape key and the backdrop", () => {

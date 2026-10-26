@@ -71,6 +71,26 @@ class InvoiceDraft(BaseModel):
         return v
 
 
+class InvoiceAttachmentRead(BaseModel):
+    """Ein Beleg, der an eine Rechnung angehängt ist."""
+
+    id: int
+    document_id: int
+    title: str = ""
+    filename: str = ""
+    mime: str = ""
+    size: int = 0
+    created_at: str = ""
+
+
+class InvoiceAttachmentCreate(BaseModel):
+    """Input für POST /api/invoices/{id}/attachments."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: int = Field(gt=0)
+
+
 class InvoiceRead(BaseModel):
     """Output für GET /api/invoices[/...]. Vollständiger Record inkl. server-managed Felder."""
 
@@ -96,12 +116,14 @@ class InvoiceRead(BaseModel):
     payment_link_url: str = ""
     payment_provider: str = ""
     items: list[InvoiceItem] = Field(default_factory=list)
+    attachments: list[InvoiceAttachmentRead] = Field(default_factory=list)
 
 
 class InvoiceSendRequest(BaseModel):
-    """Optional personal text for the email that carries the invoice."""
+    """Optional personal text and receipt selection for the email that carries the invoice."""
 
     message: str = Field(default="", max_length=2000)
+    include_attachments: bool = False
 
 
 class InvoiceStatusUpdate(BaseModel):
