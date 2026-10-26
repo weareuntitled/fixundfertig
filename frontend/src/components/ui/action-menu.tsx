@@ -41,7 +41,7 @@ export function ActionMenu({ items }: { items: ActionMenuItem[] }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] transition-colors hover:bg-[var(--color-surface-container-high)]"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] transition-colors hover:bg-[var(--color-surface-container-high)]"
       >
         <MoreHorizontal size={16} /> Mehr
       </button>
@@ -60,7 +60,7 @@ export function ActionMenu({ items }: { items: ActionMenuItem[] }) {
                 setOpen(false);
                 item.onSelect();
               }}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-medium transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50 ${
+              className={`flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-medium transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50 ${
                 item.danger ? "text-red-600 hover:bg-red-50" : "text-[var(--color-text-primary)]"
               }`}
             >

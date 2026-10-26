@@ -251,7 +251,7 @@ actions={
           <>
             <a
               href={`/api/invoices/${invoice.id}/download`}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
             >
               <Download size={16} />
               PDF herunterladen
@@ -272,7 +272,7 @@ actions={
               type="button"
               onClick={() => headerFileInput.current?.click()}
               disabled={uploadDocument.isPending || addAttachment.isPending}
-              className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
             >
               {uploadDocument.isPending || addAttachment.isPending ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
               Anlage hochladen
@@ -287,7 +287,7 @@ actions={
                 type="button"
                 onClick={handleSend}
                 disabled={sendEmail.isPending}
-                className="inline-flex items-center gap-2 rounded-[var(--radius-lg)] bg-[#001a42] px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 bg-[#001a42] px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50"
               >
                 {sendEmail.isPending ? (
                   <Loader2 size={16} className="animate-spin" />
@@ -460,7 +460,7 @@ actions={
               <div className="space-y-1.5">
                 {validTransitions.map((status) => (
                   <button key={status} type="button" onClick={() => updateStatus.mutate({ id: invoice.id, status })} disabled={updateStatus.isPending}
-                    className="flex w-full items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 py-2 text-[12px] font-medium text-[var(--color-text-secondary)] transition-all hover:border-[var(--color-brand-text)]/30 hover:bg-[var(--color-brand-text)]/[0.05] hover:text-[var(--color-brand-text)] disabled:opacity-50">
+                    className="flex min-h-[44px] w-full items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 py-2 text-[12px] font-medium text-[var(--color-text-secondary)] transition-all hover:border-[var(--color-brand-text)]/30 hover:bg-[var(--color-brand-text)]/[0.05] hover:text-[var(--color-brand-text)] disabled:opacity-50">
                     {STATUS_LABELS_FULL[status as InvoiceStatus] || status}
                   </button>
                 ))}

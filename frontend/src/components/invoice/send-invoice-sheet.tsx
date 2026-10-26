@@ -160,7 +160,7 @@ export function SendInvoiceSheet({
               type="button"
               onClick={() => fileRef.current?.click()}
               disabled={uploading || pending}
-              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50"
             >
               {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               Anlage hinzufügen

@@ -47,7 +47,7 @@ function AttachmentRow({
           href={`/api/documents/${attachment.document_id}/file`}
           target="_blank"
           rel="noopener"
-          className="rounded p-1.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-brand-text)]"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-brand-text)]"
           title="Beleg öffnen"
         >
           <Download size={15} />
@@ -56,7 +56,7 @@ function AttachmentRow({
           type="button"
           onClick={() => onRemove(attachment)}
           disabled={removing}
-          className="rounded p-1.5 text-[var(--color-text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-600 disabled:opacity-50"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-600 disabled:opacity-50"
           title="Beleg entfernen"
         >
           <X size={15} />
@@ -84,7 +84,7 @@ function AttachmentPicker({
       <select
         value={selectedId ?? ""}
         onChange={(event) => onSelect(event.target.value ? Number(event.target.value) : null)}
-        className="min-h-[40px] flex-1 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[13px] text-[var(--color-text-primary)]"
+        className="min-h-[44px] flex-1 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[13px] text-[var(--color-text-primary)]"
       >
         <option value="">Beleg auswählen …</option>
         {available.map((document) => (
@@ -99,7 +99,7 @@ function AttachmentPicker({
         type="button"
         onClick={onAdd}
         disabled={selectedId === null || adding}
-        className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {adding ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
         Hinzufügen
@@ -204,7 +204,7 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
             type="button"
             onClick={() => fileInput.current?.click()}
             disabled={uploadDocument.isPending || addAttachment.isPending}
-            className="inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-[var(--radius-lg)] bg-[var(--color-brand-text)] px-4 text-[12px] font-semibold uppercase tracking-[0.05em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-[var(--radius-lg)] bg-[var(--color-brand-text)] px-4 text-[12px] font-semibold uppercase tracking-[0.05em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {uploadDocument.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
             Anlage hochladen
