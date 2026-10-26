@@ -16,6 +16,8 @@ import { useInvoicePreviewPdf } from "@/lib/use-invoice-preview-pdf";
 import { useCustomer } from "@/lib/use-customers";
 import { useCompany } from "@/lib/use-company";
 import { useNotification } from "@/lib/use-notifications";
+import { useUploadDocument } from "@/lib/use-documents";
+import { useAddInvoiceAttachment } from "@/lib/use-invoices";
 import { api } from "@/lib/api";
 import type { InvoiceStatus, InvoiceItem } from "@/lib/schemas/invoice";
 import {
@@ -93,6 +95,18 @@ function InvoiceDetailPage() {
     }
     setDialogOpen(false);
   };
+
+  const uploadDocument = useUploadDocument();
+  const addAttachment = useAddInvoiceAttachment();
+  const addFileAsAttachment = (file: File) =>
+    uploadDocument.mutate(file, {
+      onSuccess: (document) =>
+        addAttachment.mutate(
+          { invoiceId, documentId: document.id },
+          { onError: (err: Error) => notify("error", err.message) },
+        ),
+      onError: (err: Error) => notify("error", err.message),
+    });
 
   const sendEmail = useMutation({
     mutationFn: (payload: { message: string; includeAttachments: boolean }) =>
@@ -485,6 +499,8 @@ function InvoiceDetailPage() {
         recipientName={invoice.recipient_name || customer?.name || ""}
         recipientEmail={customer?.email}
         attachmentCount={invoice.attachments?.length ?? 0}
+        uploading={uploadDocument.isPending || addAttachment.isPending}
+        onAddFile={addFileAsAttachment}
         pending={sendEmail.isPending}
         onSend={(message, includeAttachments) => sendEmail.mutate({ message, includeAttachments })}
         onCancel={() => setSendOpen(false)}

@@ -69,10 +69,13 @@ describe("SendInvoiceSheet", () => {
     expect(screen.getByRole("checkbox", { name: /Belege mitschicken/ })).toBeChecked();
   });
 
-  it("points to the upload when there are no attachments", () => {
-    setup({ attachmentCount: 0 });
-    expect(screen.getByText(/Keine Anlagen/)).toBeInTheDocument();
+  it("lets a file be added right in the dialog", () => {
+    const onAddFile = vi.fn();
+    setup({ attachmentCount: 0, onAddFile });
     expect(screen.queryByRole("checkbox")).toBeNull();
+    const file = new File(["x"], "beleg.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText("Anlage auswählen"), { target: { files: [file] } });
+    expect(onAddFile).toHaveBeenCalledWith(file);
   });
 
   it("cancels from the button, the escape key and the backdrop", () => {

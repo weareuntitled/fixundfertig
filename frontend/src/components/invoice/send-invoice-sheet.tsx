@@ -5,7 +5,8 @@
  * on phones it sits at the bottom edge as a sheet.
  */
 import { useEffect, useId, useRef, useState } from "react";
-import { Paperclip } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Loader2, Paperclip, Upload } from "lucide-react";
 
 export const MAX_MESSAGE_LENGTH = 2000;
 
@@ -14,6 +15,8 @@ interface SendInvoiceSheetProps {
   recipientName: string;
   recipientEmail?: string;
   attachmentCount?: number;
+  uploading?: boolean;
+  onAddFile?: (file: File) => void;
   pending?: boolean;
   onSend: (message: string, includeAttachments: boolean) => void;
   onCancel: () => void;
@@ -24,6 +27,8 @@ export function SendInvoiceSheet({
   recipientName,
   recipientEmail,
   attachmentCount = 0,
+  uploading = false,
+  onAddFile,
   pending = false,
   onSend,
   onCancel,
@@ -36,6 +41,7 @@ export function SendInvoiceSheet({
   const hintId = useId();
   const attachId = useId();
   const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Reset only when the dialog opens, not when the invoice refetches underneath it.
   useEffect(() => {
@@ -64,7 +70,8 @@ export function SendInvoiceSheet({
 
   const nearLimit = message.length > MAX_MESSAGE_LENGTH - 200;
 
-  return (
+  // Portaled to <body>: inside the page layout a transformed ancestor would anchor `fixed` to itself.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:px-4">
       <div className="absolute inset-0 bg-black/40" onClick={() => !pending && onCancel()} />
       <form
@@ -132,11 +139,33 @@ export function SendInvoiceSheet({
           </label>
         )}
 
-        {attachmentCount === 0 && (
-          <p className="mt-4 flex items-center gap-1.5 text-[12px] text-[var(--color-text-muted)]">
-            <Paperclip size={14} />
-            Keine Anlagen – lade sie in der Rechnung unter „Anlagen“ hoch, dann kannst du sie hier mitschicken.
-          </p>
+        {onAddFile && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[12px] text-[var(--color-text-muted)]">
+              {attachmentCount === 0 ? "Noch keine Anlagen. PDF, JPG oder PNG." : "Weitere Anlage hinzufügen:"}
+            </p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              className="hidden"
+              aria-label="Anlage auswählen"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) onAddFile(file);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading || pending}
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50"
+            >
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              Anlage hinzufügen
+            </button>
+          </div>
         )}
 
         <div className="mt-6 flex justify-end gap-[var(--space-sm)]">
@@ -157,6 +186,7 @@ export function SendInvoiceSheet({
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
