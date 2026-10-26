@@ -162,7 +162,22 @@ def test_delete_document_succeeds(documents_app) -> None:
     comp = _make_company(1, user_id=1)
     session_mock = MagicMock()
     session_mock.get.side_effect = lambda cls, id_: doc if cls.__name__ == "Document" else comp
+    session_mock.exec.return_value.first.return_value = None
     app.dependency_overrides[dependencies_module.db_session] = _db_session_override(session_mock)
     response = TestClient(app).delete("/api/documents/1")
     assert response.status_code == 200
     assert response.json() == {"status": "deleted"}
+
+
+@pytest.mark.skipif(build_documents_router is None, reason="app.api.documents.router not yet implemented")
+def test_delete_document_is_blocked_while_linked_to_an_invoice(documents_app) -> None:
+    app, _ = documents_app
+    doc = _make_document(1, company_id=1)
+    comp = _make_company(1, user_id=1)
+    session_mock = MagicMock()
+    session_mock.get.side_effect = lambda cls, id_: doc if cls.__name__ == "Document" else comp
+    session_mock.exec.return_value.first.return_value = SimpleNamespace(id=1, document_id=1)
+    app.dependency_overrides[dependencies_module.db_session] = _db_session_override(session_mock)
+    response = TestClient(app).delete("/api/documents/1")
+    assert response.status_code == 409
+    assert "Rechnung" in response.json()["detail"]

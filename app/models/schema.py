@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Text
+from sqlalchemy import Column, Text, UniqueConstraint
 from typing import Optional
 from enum import Enum
 from sqlmodel import Field, SQLModel, Relationship
@@ -162,6 +162,10 @@ class Invoice(SQLModel, table=True):
         back_populates="invoice",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    attachments: list["InvoiceAttachment"] = Relationship(
+        back_populates="invoice",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "order_by": "InvoiceAttachment.id"},
+    )
     customer: Optional["Customer"] = Relationship(back_populates="invoices")
     company: Optional["Company"] = Relationship(back_populates="invoices")
 
@@ -180,6 +184,15 @@ class InvoiceItem(SQLModel, table=True):
     quantity: float
     unit_price: float
     invoice: Optional["Invoice"] = Relationship(back_populates="items")
+
+class InvoiceAttachment(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("invoice_id", "document_id"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    invoice_id: int = Field(foreign_key="invoice.id", index=True)
+    document_id: int = Field(foreign_key="document.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    invoice: Optional["Invoice"] = Relationship(back_populates="attachments")
+    document: Optional["Document"] = Relationship()
 
 class InvoiceItemTemplate(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

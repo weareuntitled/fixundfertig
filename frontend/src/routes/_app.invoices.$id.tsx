@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { StatusTimeline } from "@/components/ui/status-timeline";
 import { ClientInfoCard } from "@/components/invoice/client-info-card";
+import { InvoiceAttachmentsCard } from "@/components/invoice/invoice-attachments-card";
 import { SummaryCard } from "@/components/invoice/summary-card";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { PageHeader } from "@/components/ui/page-header";
@@ -94,7 +95,11 @@ function InvoiceDetailPage() {
   };
 
   const sendEmail = useMutation({
-    mutationFn: (message: string) => api.post(`/api/invoices/${invoiceId}/send`, { message }),
+    mutationFn: (payload: { message: string; includeAttachments: boolean }) =>
+      api.post(`/api/invoices/${invoiceId}/send`, {
+        message: payload.message,
+        include_attachments: payload.includeAttachments,
+      }),
     onSuccess: (data: unknown) => {
       const msg = (data as { message?: string })?.message || "Rechnung gesendet";
       setSendOpen(false);
@@ -421,6 +426,11 @@ function InvoiceDetailPage() {
               </table>
             </div>
           </div>
+
+          <InvoiceAttachmentsCard
+            invoiceId={invoice.id}
+            attachments={invoice.attachments ?? []}
+          />
         </div>
 
         {/* Right 1/3 */}
@@ -474,8 +484,9 @@ function InvoiceDetailPage() {
         open={sendOpen}
         recipientName={invoice.recipient_name || customer?.name || ""}
         recipientEmail={customer?.email}
+        attachmentCount={invoice.attachments?.length ?? 0}
         pending={sendEmail.isPending}
-        onSend={(message) => sendEmail.mutate(message)}
+        onSend={(message, includeAttachments) => sendEmail.mutate({ message, includeAttachments })}
         onCancel={() => setSendOpen(false)}
       />
 

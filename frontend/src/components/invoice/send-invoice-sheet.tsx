@@ -5,6 +5,7 @@
  * on phones it sits at the bottom edge as a sheet.
  */
 import { useEffect, useId, useRef, useState } from "react";
+import { Paperclip } from "lucide-react";
 
 export const MAX_MESSAGE_LENGTH = 2000;
 
@@ -12,8 +13,9 @@ interface SendInvoiceSheetProps {
   open: boolean;
   recipientName: string;
   recipientEmail?: string;
+  attachmentCount?: number;
   pending?: boolean;
-  onSend: (message: string) => void;
+  onSend: (message: string, includeAttachments: boolean) => void;
   onCancel: () => void;
 }
 
@@ -21,19 +23,25 @@ export function SendInvoiceSheet({
   open,
   recipientName,
   recipientEmail,
+  attachmentCount = 0,
   pending = false,
   onSend,
   onCancel,
 }: SendInvoiceSheetProps) {
   const [message, setMessage] = useState("");
+  const [excludeAttachments, setExcludeAttachments] = useState(false);
+  const includeAttachments = attachmentCount > 0 && !excludeAttachments;
   const titleId = useId();
   const fieldId = useId();
   const hintId = useId();
+  const attachId = useId();
   const fieldRef = useRef<HTMLTextAreaElement>(null);
 
+  // Reset only when the dialog opens, not when the invoice refetches underneath it.
   useEffect(() => {
     if (open) {
       setMessage("");
+      setExcludeAttachments(false);
       fieldRef.current?.focus();
     }
   }, [open]);
@@ -51,7 +59,7 @@ export function SendInvoiceSheet({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!pending) onSend(message.trim());
+    if (!pending) onSend(message.trim(), includeAttachments);
   };
 
   const nearLimit = message.length > MAX_MESSAGE_LENGTH - 200;
@@ -99,6 +107,30 @@ export function SendInvoiceSheet({
             </span>
           )}
         </p>
+
+        {attachmentCount > 0 && (
+          <label
+            htmlFor={attachId}
+            className="mt-4 flex cursor-pointer items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-bright)] p-3"
+          >
+            <input
+              id={attachId}
+              type="checkbox"
+              checked={includeAttachments}
+              onChange={(event) => setExcludeAttachments(!event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-brand-text)]"
+            />
+            <span>
+              <span className="flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
+                <Paperclip size={14} />
+                Belege mitschicken ({attachmentCount})
+              </span>
+              <span className="mt-0.5 block text-[12px] text-[var(--color-text-muted)]">
+                Die Belege werden als separate PDFs an die E-Mail angehängt.
+              </span>
+            </span>
+          </label>
+        )}
 
         <div className="mt-6 flex justify-end gap-[var(--space-sm)]">
           <button

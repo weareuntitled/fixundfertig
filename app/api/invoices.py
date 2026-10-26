@@ -21,13 +21,16 @@ Später (M5): POST /api/invoices (create + finalize), POST /api/invoices/{id}/co
 from __future__ import annotations
 
 import logging
+import os
 from typing import Iterator
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlmodel import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, select
 
-from data import Company, Customer, Invoice, InvoiceItem as InvoiceItemModel
-from data import InvoiceRevision, InvoiceStatus
+from data import Company, Customer, Document, Invoice, InvoiceItem as InvoiceItemModel
+from data import InvoiceAttachment, InvoiceRevision, InvoiceStatus
 from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
@@ -35,6 +38,8 @@ from logic import finalize_invoice_logic
 from renderer import render_invoice_to_pdf_bytes
 from schemas.invoice import (
     BulkStatusUpdate,
+    InvoiceAttachmentCreate,
+    InvoiceAttachmentRead,
     InvoiceDraft,
     InvoiceItem,
     InvoiceRead,
@@ -42,6 +47,7 @@ from schemas.invoice import (
     InvoiceStatusUpdate,
     InvoiceUpdate,
 )
+from services.documents import build_download_filename, read_document_bytes
 from services.email import send_email
 from services.invoice_email import build_invoice_email
 from services.payment import check_payment, create_payment_link
@@ -102,6 +108,19 @@ def duplicate_invoice(
     return _to_read_model(new_invoice)
 
 
+def _attachment_to_read(attachment: InvoiceAttachment) -> InvoiceAttachmentRead:
+    document = attachment.document
+    return InvoiceAttachmentRead(
+        id=int(attachment.id),
+        document_id=int(attachment.document_id),
+        title=(document.title or "").strip(),
+        filename=(document.original_filename or document.filename or "").strip(),
+        mime=(document.mime or document.mime_type or "").strip(),
+        size=int(document.size_bytes or document.size or 0),
+        created_at=attachment.created_at.isoformat(),
+    )
+
+
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
     """Convert SQLModel Invoice + Items to InvoiceRead (Pydantic)."""
     items: list[InvoiceItem] = []
@@ -112,6 +131,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
             quantity=float(it.quantity),
             unit_price=float(it.unit_price),
         ))
+    attachments = [_attachment_to_read(attachment) for attachment in invoice.attachments]
     return InvoiceRead(
         id=int(invoice.id),
         customer_id=int(invoice.customer_id),
@@ -133,6 +153,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         payment_link_url=invoice.payment_link_url or "",
         payment_provider=invoice.payment_provider or "",
         items=items,
+        attachments=attachments,
     )
 
 
@@ -223,7 +244,12 @@ def list_invoices(
     company: Company = Depends(get_current_company),
 ):
     """List invoices for current company, newest first."""
-    statement = select(Invoice).where(Invoice.company_id == int(company.id)).order_by(Invoice.nr.desc())
+    statement = (
+        select(Invoice)
+        .where(Invoice.company_id == int(company.id))
+        .options(selectinload(Invoice.attachments).selectinload(InvoiceAttachment.document))
+        .order_by(Invoice.nr.desc())
+    )
     invoices = session.exec(statement).all()
     return [_to_read_model(inv) for inv in invoices]
 
@@ -573,6 +599,110 @@ def delete_invoice_item(
     return _to_read_model(invoice)
 
 
+def _get_invoice_for_company(session: Session, invoice_id: int, company: Company) -> Invoice:
+    invoice = session.get(Invoice, invoice_id)
+    if not invoice or int(invoice.company_id) != int(company.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+    return invoice
+
+
+def _get_document_for_company(session: Session, document_id: int, company: Company) -> Document:
+    document = session.get(Document, document_id)
+    if not document or int(document.company_id) != int(company.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return document
+
+
+@router.post("/{invoice_id}/attachments", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
+def add_invoice_attachment(
+    invoice_id: int,
+    payload: InvoiceAttachmentCreate,
+    company=Depends(get_current_company),
+    _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
+):
+    """Link an existing document (Beleg) to an invoice."""
+    invoice = _get_invoice_for_company(session, invoice_id, company)
+    document = _get_document_for_company(session, payload.document_id, company)
+    session.add(InvoiceAttachment(invoice_id=invoice.id, document_id=document.id))
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Beleg ist bereits angehängt")
+    session.refresh(invoice)
+    return _to_read_model(invoice)
+
+
+@router.delete("/{invoice_id}/attachments/{attachment_id}", response_model=InvoiceRead)
+def delete_invoice_attachment(
+    invoice_id: int,
+    attachment_id: int,
+    company=Depends(get_current_company),
+    _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
+):
+    """Remove a document link from an invoice. The document itself stays in Belege."""
+    invoice = _get_invoice_for_company(session, invoice_id, company)
+    attachment = session.get(InvoiceAttachment, attachment_id)
+    if not attachment or int(attachment.invoice_id) != invoice_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
+    session.delete(attachment)
+    session.commit()
+    session.refresh(invoice)
+    return _to_read_model(invoice)
+
+
+MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+
+
+def _attachment_filename(document: Document, taken: set[str]) -> str:
+    """Mail filename of a receipt: title plus the file's own extension, unique within the mail."""
+    mime_type = document.mime or document.mime_type or "application/pdf"
+    name = build_download_filename(document.title or document.original_filename, mime_type)
+    root, ext = os.path.splitext(name)
+    if not ext:
+        ext = os.path.splitext(document.original_filename or document.filename or "")[1]
+    candidate, counter = f"{root}{ext}", 2
+    while candidate.lower() in taken:
+        candidate = f"{root} ({counter}){ext}"
+        counter += 1
+    taken.add(candidate.lower())
+    return candidate
+
+
+def _load_send_attachments(invoice: Invoice, invoice_filename: str) -> list[dict]:
+    """Receipts as mail attachments. A missing file or an oversized mail aborts the send."""
+    payloads: list[dict] = []
+    taken = {invoice_filename.lower()}
+    total = 0
+    for attachment in invoice.attachments:
+        document = attachment.document
+        content = read_document_bytes(document)
+        if not content:
+            logger.warning(
+                "Invoice attachment file missing invoice=%s document=%s",
+                invoice.id,
+                document.id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Datei des Belegs „{document.title or document.original_filename}“ fehlt",
+            )
+        total += len(content)
+        if total > MAX_ATTACHMENT_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="Die Belege sind zusammen zu groß für eine E-Mail (max. 20 MB)",
+            )
+        payloads.append({
+            "filename": _attachment_filename(document, taken),
+            "content": content,
+            "mime_type": document.mime or document.mime_type or "application/pdf",
+        })
+    return payloads
+
+
 @router.post("/{invoice_id}/send")
 def send_invoice_email_endpoint(
     invoice_id: int,
@@ -595,9 +725,19 @@ def send_invoice_email_endpoint(
 
     pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
     filename = build_invoice_filename(company, invoice, customer)
+    payload = payload or InvoiceSendRequest()
+
+    extra_attachments = (
+        _load_send_attachments(invoice, filename)
+        if payload.include_attachments
+        else []
+    )
 
     email = build_invoice_email(
-        company=company, customer=customer, invoice=invoice, message=payload.message if payload else "",
+        company=company,
+        customer=customer,
+        invoice=invoice,
+        message=payload.message,
     )
 
     smtp_config = {
@@ -620,7 +760,8 @@ def send_invoice_email_endpoint(
                     "filename": filename,
                     "content": bytes(pdf_bytes),
                     "mime_type": "application/pdf",
-                }
+                },
+                *extra_attachments,
             ],
         )
     except Exception as exc:
