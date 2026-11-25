@@ -1,22 +1,27 @@
 /**
  * @schema QuoteDetailPage
  * @purpose One quote: change subject, dates and positions, mark it accepted or rejected, or delete it
- * @output Header with "PDF herunterladen", "Vorschau" and "Löschen" (no invoice actions), a details card
+ * @output Header with "PDF herunterladen", "Vorschau", "Angebot senden" (mail dialog with attachments) and
+ *   "Löschen" (no invoice actions), a details card
  *   with status actions and inline editing, the positions with add/edit/remove. An accepted quote is
  *   locked (no editing).
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, ExternalLink, Lock, Pencil, Trash2, X } from "lucide-react";
+import { Check, Download, ExternalLink, Lock, Pencil, Send, Trash2, X } from "lucide-react";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
+import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { germanDate } from "@/components/quote/quote-list";
 import { QuotePaymentPlanCard } from "@/components/quote/quote-payment-plan-card";
+import { useCustomer } from "@/lib/use-customers";
+import { useUploadDocument } from "@/lib/use-documents";
 import {
+  useAddInvoiceAttachment,
   useAddInvoiceItem,
   useDeleteInvoiceItem,
   useInvoice,
@@ -59,6 +64,10 @@ function QuoteDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const { data: customer } = useCustomer(quote?.customer_id ?? 0);
+  const uploadDocument = useUploadDocument();
+  const addAttachment = useAddInvoiceAttachment();
   const preview = useInvoicePreviewPdf(quoteId);
   const previewUrl = useMemo(() => (preview.data ? URL.createObjectURL(preview.data) : null), [preview.data]);
 
@@ -94,6 +103,38 @@ function QuoteDetailPage() {
     },
     onError: (err: Error) => notify("error", err.message),
   });
+
+  const addFileAsAttachment = (file: File) =>
+    uploadDocument.mutate(file, {
+      onSuccess: (document) =>
+        addAttachment.mutate(
+          { invoiceId: quoteId, documentId: document.id },
+          {
+            onSuccess: () => notify("success", "Anlage hochgeladen und angehängt"),
+            onError: (err: Error) => notify("error", err.message),
+          },
+        ),
+      onError: (err: Error) => notify("error", err.message),
+    });
+
+  const sendQuote = useMutation({
+    mutationFn: (payload: { message: string; includeAttachments: boolean }) =>
+      api.post<{ message?: string }>(`/api/invoices/${quoteId}/send`, {
+        message: payload.message,
+        include_attachments: payload.includeAttachments,
+      }),
+    onSuccess: (data) => {
+      setSendOpen(false);
+      notify("success", data?.message || "Angebot gesendet");
+      refresh();
+    },
+    onError: (err: Error) => notify("error", err.message),
+  });
+
+  const openSend = () => {
+    if (!customer?.email) notify("error", "Der Kunde hat keine E-Mail-Adresse.");
+    else setSendOpen(true);
+  };
 
   const deleteQuote = useMutation({
     mutationFn: () => api.delete(`/api/invoices/${quoteId}`),
@@ -160,6 +201,9 @@ function QuoteDetailPage() {
             </a>
             <button type="button" onClick={() => setPreviewOpen(true)} className={SECONDARY_BUTTON}>
               <ExternalLink size={16} /> Vorschau
+            </button>
+            <button type="button" onClick={openSend} disabled={sendQuote.isPending} className={SECONDARY_BUTTON}>
+              <Send size={16} /> Angebot senden
             </button>
             <button type="button" onClick={() => setDeleteOpen(true)} className={SECONDARY_BUTTON}>
               <Trash2 size={16} /> Löschen
@@ -300,6 +344,19 @@ function QuoteDetailPage() {
         invoiceNr={quote.nr || undefined}
         documentType="QUOTE"
         onClose={() => setPreviewOpen(false)}
+      />
+
+      <SendInvoiceSheet
+        open={sendOpen}
+        documentType="QUOTE"
+        recipientName={quote.recipient_name || customer?.name || ""}
+        recipientEmail={customer?.email}
+        attachmentCount={quote.attachments?.length ?? 0}
+        uploading={uploadDocument.isPending || addAttachment.isPending}
+        onAddFile={addFileAsAttachment}
+        pending={sendQuote.isPending}
+        onSend={(message, includeAttachments) => sendQuote.mutate({ message, includeAttachments })}
+        onCancel={() => setSendOpen(false)}
       />
 
       <ConfirmDialog

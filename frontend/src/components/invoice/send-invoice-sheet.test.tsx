@@ -98,4 +98,18 @@ describe("SendInvoiceSheet", () => {
     setup({ open: false });
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("speaks of an Angebot when sending a quote", () => {
+    setup({ documentType: "QUOTE" });
+    const dialog = screen.getByRole("dialog");
+    expect(screen.getByRole("heading", { name: "Angebot senden" })).toBeInTheDocument();
+    expect(dialog.textContent).toContain("Das Angebot hängt immer als PDF an.");
+    expect(dialog.textContent).not.toContain("Rechnung");
+  });
+
+  it("keeps the invoice wording by default", () => {
+    setup();
+    expect(screen.getByRole("heading", { name: "Rechnung senden" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog").textContent).toContain("Die Rechnung hängt immer als PDF an.");
+  });
 });
