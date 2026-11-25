@@ -35,6 +35,7 @@ from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import finalize_invoice_logic
+from logic.document_status import is_accepted_quote, status_not_allowed_reason
 from renderer import render_invoice_to_pdf_bytes
 from schemas.invoice import (
     BulkStatusUpdate,
@@ -126,6 +127,20 @@ def _document_type_value(invoice: Invoice) -> str:
     return doc_type.value if hasattr(doc_type, "value") else str(doc_type)
 
 
+def _ensure_status_allowed(invoice: Invoice, new_status: str) -> None:
+    reason = status_not_allowed_reason(invoice, new_status)
+    if reason:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
+
+
+def _ensure_editable(invoice: Invoice) -> None:
+    if is_accepted_quote(invoice):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ein angenommenes Angebot lässt sich nicht mehr ändern",
+        )
+
+
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
     """Convert SQLModel Invoice + Items to InvoiceRead (Pydantic)."""
     items: list[InvoiceItem] = []
@@ -204,6 +219,7 @@ def bulk_status_update(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Invoice {inv_id} not found",
             )
+        _ensure_status_allowed(invoice, payload.status)
         invoice.status = payload.status
         invoice.revision_nr = int(invoice.revision_nr or 0) + 1
         session.add(invoice)
@@ -286,6 +302,7 @@ def update_invoice_status(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+    _ensure_status_allowed(invoice, payload.status)
     invoice.status = payload.status
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     invoice.updated_at = invoice.updated_at  # server-computed in real impl
@@ -310,6 +327,7 @@ def update_invoice(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+    _ensure_editable(invoice)
 
     changed = False
     for field in ("title", "subject", "date", "delivery_date", "recipient_name",
@@ -551,6 +569,7 @@ def add_invoice_item(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+    _ensure_editable(invoice)
     item = InvoiceItemModel(
         invoice_id=invoice_id,
         description=payload.description,
@@ -582,6 +601,7 @@ def update_invoice_item(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+    _ensure_editable(invoice)
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -611,6 +631,7 @@ def delete_invoice_item(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+    _ensure_editable(invoice)
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -804,7 +825,8 @@ def send_invoice_email_endpoint(
             detail="E-Mail konnte nicht gesendet werden (SMTP nicht konfiguriert)",
         )
 
-    invoice.status = InvoiceStatus.SENT
+    if invoice.document_type != DocumentType.QUOTE or invoice.status == InvoiceStatus.DRAFT:
+        invoice.status = InvoiceStatus.SENT
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     session.add(invoice)
     session.commit()
