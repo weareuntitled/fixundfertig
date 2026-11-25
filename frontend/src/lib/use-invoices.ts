@@ -55,6 +55,21 @@ export function useConvertQuote() {
   });
 }
 
+/** „Abschlagsrechnung“: creates a draft invoice for one installment of the quote's plan. */
+export function useCreateDownPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ quoteId, installmentIndex }: { quoteId: number; installmentIndex: number }) =>
+      api
+        .post<unknown>(`/api/invoices/${quoteId}/down-payment`, { installment_index: installmentIndex })
+        .then((data) => invoiceReadSchema.parse(data)),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoices", vars.quoteId] });
+    },
+  });
+}
+
 export function useUpdateInvoiceStatus() {
   const qc = useQueryClient();
   return useMutation({

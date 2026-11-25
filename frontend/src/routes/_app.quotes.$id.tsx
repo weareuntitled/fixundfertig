@@ -355,7 +355,13 @@ function QuoteDetailPage() {
         </div>
       </div>
 
-      <QuotePaymentPlanCard quoteId={quoteId} gross={quote.total_brutto} plan={quote.payment_plan ?? []} locked={locked} />
+      <QuotePaymentPlanCard
+        quoteId={quoteId}
+        gross={quote.total_brutto}
+        plan={quote.payment_plan ?? []}
+        locked={locked}
+        invoices={linkedInvoices}
+      />
 
       <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-lg)] shadow-sm">
         <h2 className="mb-[var(--space-sm)] text-[20px] font-semibold text-[var(--color-text-heading)]">Rechnungen</h2>

@@ -67,4 +67,50 @@ describe("QuotePaymentPlanCard", () => {
     renderCard({ plan: [] });
     expect(screen.getByText(/Kein Zahlungsplan/)).toBeTruthy();
   });
+
+  it("bills an installment through the down-payment endpoint", async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        status: 201,
+        json: () =>
+          Promise.resolve({
+            id: 43, customer_id: 7, document_type: "INVOICE", nr: "10000",
+            total_brutto: 2380, status: "DRAFT", down_payment_index: 0, quote_id: 7,
+          }),
+      } as Response),
+    );
+    renderCard();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Abschlagsrechnung" })[0]);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/invoices/7/down-payment");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ installment_index: 0 });
+  });
+
+  it("marks a billed installment and links its invoice", () => {
+    renderCard({
+      invoices: [
+        { id: 43, nr: "10000", status: "DRAFT", total_brutto: 2380, installment_index: 0, is_down_payment: true },
+      ],
+    });
+
+    const link = screen.getByRole("link", { name: /Abgerechnet · Rechnung 10000/ });
+    expect(link.getAttribute("href")).toBe("/invoices/43");
+    expect(screen.getAllByRole("button", { name: "Abschlagsrechnung" })).toHaveLength(1);
+  });
+
+  it("lets a rate be billed again after its down-payment invoice was cancelled", () => {
+    renderCard({
+      invoices: [
+        { id: 43, nr: "10000", status: "CANCELLED", total_brutto: 2380, installment_index: 0, is_down_payment: true },
+      ],
+    });
+
+    expect(screen.getAllByRole("button", { name: "Abschlagsrechnung" })).toHaveLength(2);
+    expect(screen.queryByText(/Abgerechnet/)).toBeNull();
+  });
 });

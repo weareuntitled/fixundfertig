@@ -117,8 +117,14 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
     left_w = content_w - 160
     ink, muted = LAYOUT["col_ink"], LAYOUT["col_muted"]
 
+    if quote:
+        heading = "ANGEBOT"
+    elif safe_str(get_attr(invoice, "title", default="")).strip().casefold() == "abschlagsrechnung":
+        heading = "ABSCHLAGSRECHNUNG"
+    else:
+        heading = "RECHNUNG"
     c.setFillColorRGB(*LAYOUT["col_accent"])
-    draw_tracked(c, mx, y, "ANGEBOT" if quote else "RECHNUNG", fonts["medium"], 7.5, 1.6)
+    draw_tracked(c, mx, y, heading, fonts["medium"], 7.5, 1.6)
     y -= 13
     if nr:
         c.setFillColorRGB(*ink)

@@ -406,6 +406,48 @@ test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each o
   await expect(main.getByRole("button", { name: "Löschen" })).toBeDisabled();
 });
 
+test("Abschlagsrechnung: one rate becomes a draft invoice and marks the rate as billed", async ({ page }) => {
+  let billed = false;
+  const invoice = {
+    id: 43, customer_id: 7, document_type: "INVOICE", nr: "10000", title: "Abschlagsrechnung",
+    date: "", recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, status: "DRAFT",
+    quote_id: 42, quote_nr: "A-10000", down_payment_index: 0,
+    items: [{ id: 2, description: "Abschlag 50 % gemäß Angebot A-10000 – bei Auftrag", quantity: 1, unit_price: 2000 }],
+  };
+  const quote = () => ({
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 4760, status: billed ? "ACCEPTED" : "SENT",
+    items: [{ id: 1, description: "Website", quantity: 1, unit_price: 4000 }],
+    payment_plan: [
+      { percent: 50, label: "bei Auftrag", amount: 2380 },
+      { percent: 50, label: "nach Livegang", amount: 2380 },
+    ],
+    linked_invoices: billed
+      ? [{ id: 43, nr: "10000", status: "DRAFT", total_brutto: 2380, installment_index: 0, is_down_payment: true }]
+      : [],
+  });
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote() }));
+  await page.route("**/api/invoices/42/down-payment", (route) => {
+    billed = true;
+    return route.fulfill({ status: 201, json: invoice });
+  });
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  await expect(main.getByRole("button", { name: "Abschlagsrechnung" })).toHaveCount(2);
+
+  await main.getByRole("button", { name: "Abschlagsrechnung" }).first().click();
+
+  await expect(main.getByRole("link", { name: /Abgerechnet · Rechnung 10000/ })).toHaveAttribute(
+    "href",
+    "/invoices/43",
+  );
+  await expect(main.getByRole("button", { name: "Abschlagsrechnung" })).toHaveCount(1);
+  await expect(main.getByText("Angenommen", { exact: true })).toBeVisible();
+});
+
 test("settings: leaving with unsaved changes asks first", async ({ page }) => {
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));

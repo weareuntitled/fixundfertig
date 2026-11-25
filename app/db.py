@@ -235,6 +235,17 @@ def ensure_invoice_quote_link_fields(target_engine=None):
 
 ensure_invoice_quote_link_fields()
 
+
+def ensure_invoice_down_payment_index_field(target_engine=None):
+    """Ergänzt den Raten-Index einer Abschlagsrechnung (#490); NULL für alle anderen Dokumente."""
+    with (target_engine or engine).begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "down_payment_index" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN down_payment_index INTEGER")
+
+ensure_invoice_down_payment_index_field()
+
+
 def reconcile_invoice_revision_schema():
     with engine.begin() as conn:
         tables = {

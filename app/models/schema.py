@@ -171,6 +171,9 @@ class Invoice(SQLModel, table=True):
     related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
     # Rechnung aus einem Angebot (#489); ein Angebot kann mehrere Rechnungen haben.
     quote_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
+    # Abschlagsrechnung (#490): 0-basierter Index der Rate im Zahlungsplan des Angebots.
+    # NULL heißt: keine Abschlagsrechnung (normale Umwandlung oder Schlussrechnung).
+    down_payment_index: Optional[int] = None
     intro_text: str = ""
     payment_link_url: str = ""
     payment_provider: str = ""  # "stripe" | "paypal" | ""

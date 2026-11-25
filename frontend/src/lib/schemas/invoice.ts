@@ -153,7 +153,12 @@ export const linkedInvoiceSchema = z.object({
   nr: z.string().nullable().optional(),
   status: invoiceStatusSchema.default("DRAFT"),
   total_brutto: z.number().default(0),
+  /** Abschlagsrechnung: Index der abgerechneten Rate im Zahlungsplan. */
+  installment_index: z.number().int().nullable().default(null),
+  is_down_payment: z.boolean().default(false),
 });
+
+export type LinkedInvoice = z.infer<typeof linkedInvoiceSchema>;
 
 /**
  * Read-side mirror of `app/schemas/invoice.py:InvoiceRead`.
@@ -184,6 +189,8 @@ export const invoiceReadSchema = z.object({
   /** Rechnung aus einem Angebot: dessen ID und Nummer. */
   quote_id: z.number().int().nullable().default(null),
   quote_nr: z.string().nullable().default(null),
+  /** Abschlagsrechnung: Index der abgerechneten Rate, sonst null. */
+  down_payment_index: z.number().int().nullable().default(null),
   /** Angebot: die daraus entstandenen Rechnungen. */
   linked_invoices: z.array(linkedInvoiceSchema).default([]),
   payment_link_url: z.string().default(""),

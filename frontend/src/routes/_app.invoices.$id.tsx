@@ -252,6 +252,7 @@ function InvoiceDetailPage() {
             {invoice.quote_id != null && (
               <>
                 {" · "}
+                {invoice.down_payment_index != null && "Abschlagsrechnung · "}
                 <Link
                   to="/quotes/$id"
                   params={{ id: String(invoice.quote_id) }}

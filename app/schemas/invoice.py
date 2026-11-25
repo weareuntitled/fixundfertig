@@ -119,6 +119,9 @@ class LinkedInvoiceRead(BaseModel):
     nr: str | None = None
     status: InvoiceStatus = "DRAFT"
     total_brutto: float = 0.0
+    # Abschlagsrechnung (#490): Rate des Zahlungsplans, die damit abgerechnet wurde.
+    installment_index: int | None = None
+    is_down_payment: bool = False
 
 
 class InvoiceRead(BaseModel):
@@ -147,6 +150,8 @@ class InvoiceRead(BaseModel):
     related_invoice_id: int | None = None
     quote_id: int | None = None
     quote_nr: str | None = None
+    # Abschlagsrechnung (#490): Index der abgerechneten Rate, sonst None.
+    down_payment_index: int | None = None
     linked_invoices: list[LinkedInvoiceRead] = Field(default_factory=list)
     payment_link_url: str = ""
     payment_provider: str = ""
@@ -201,6 +206,14 @@ class BulkStatusUpdate(BaseModel):
     status: InvoiceStatus
 
 
+class DownPaymentRequest(BaseModel):
+    """Input für POST /api/invoices/{quote_id}/down-payment (#490)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    installment_index: int
+
+
 __all__ = [
     "InvoiceItem",
     "InvoiceDraft",
@@ -208,6 +221,7 @@ __all__ = [
     "InvoiceStatusUpdate",
     "InvoiceUpdate",
     "BulkStatusUpdate",
+    "DownPaymentRequest",
     "InvoiceStatus",
     "PaymentInstallment",
     "PaymentInstallmentRead",

@@ -36,10 +36,15 @@ from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
 from logic.document_status import is_accepted_quote, status_not_allowed_reason
-from logic.quote_conversion import create_invoice_from_quote
+from logic.quote_conversion import (
+    DownPaymentConflict,
+    create_down_payment_invoice,
+    create_invoice_from_quote,
+)
 from renderer import render_invoice_to_pdf_bytes
 from schemas.invoice import (
     BulkStatusUpdate,
+    DownPaymentRequest,
     InvoiceAttachmentCreate,
     InvoiceAttachmentRead,
     InvoiceDraft,
@@ -129,6 +134,25 @@ def convert_quote_to_invoice(
     return _to_read_model(invoice)
 
 
+@router.post("/{invoice_id}/down-payment", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
+def create_quote_down_payment(
+    invoice_id: int,
+    payload: DownPaymentRequest,
+    company=Depends(get_current_company),
+    _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
+):
+    """Abschlagsrechnung aus einer Rate des Zahlungsplans eines Angebots."""
+    quote = _get_invoice_for_company(session, invoice_id, company)
+    try:
+        invoice = create_down_payment_invoice(session, quote, payload.installment_index)
+    except DownPaymentConflict as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return _to_read_model(invoice)
+
+
 def _attachment_to_read(attachment: InvoiceAttachment) -> InvoiceAttachmentRead:
     document = attachment.document
     return InvoiceAttachmentRead(
@@ -195,12 +219,23 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         related_invoice_id=int(invoice.related_invoice_id) if invoice.related_invoice_id else None,
         quote_id=int(quote.id) if quote else None,
         quote_nr=quote.nr if quote else None,
+        down_payment_index=(
+            int(invoice.down_payment_index)
+            if getattr(invoice, "down_payment_index", None) is not None
+            else None
+        ),
         linked_invoices=[
             LinkedInvoiceRead(
                 id=int(linked.id),
                 nr=linked.nr,
                 status=linked.status.value if hasattr(linked.status, "value") else str(linked.status),
                 total_brutto=float(linked.total_brutto or 0.0),
+                installment_index=(
+                    int(linked.down_payment_index)
+                    if getattr(linked, "down_payment_index", None) is not None
+                    else None
+                ),
+                is_down_payment=getattr(linked, "down_payment_index", None) is not None,
             )
             for linked in (getattr(invoice, "quote_invoices", None) or [])
         ],

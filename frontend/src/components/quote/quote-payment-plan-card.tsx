@@ -1,11 +1,13 @@
 /**
  * @schema QuotePaymentPlanCard
- * @purpose Payment plan of a saved quote: read it (percent, occasion, amount) and edit it while the quote is open
+ * @purpose Payment plan of a saved quote: read it (percent, occasion, amount), edit it while the quote is
+ *   open, and bill a single installment as a down-payment invoice (#490)
  * @input {number} quoteId
  * @input {number} gross - Gross total; amounts in the editor are computed from it
  * @input {PaymentInstallmentRead[]} plan - Installments with amounts as the API returns them
- * @input {boolean} locked - Accepted quotes cannot be changed
- * @output Saving PUTs `payment_plan` to /api/invoices/{id}; the stored PDF is re-rendered by the backend
+ * @input {boolean} locked - Accepted quotes cannot be changed (but their installments stay billable)
+ * @input {LinkedInvoice[]} invoices - Invoices of this quote; each down payment carries its installment index
+ * @output Saving PUTs `payment_plan`; billing POSTs `installment_index` to /api/invoices/{id}/down-payment
  */
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,24 +15,45 @@ import { Pencil } from "lucide-react";
 import { PaymentPlanEditor } from "./payment-plan-editor";
 import { api } from "@/lib/api";
 import { percentLabel } from "@/lib/payment-plan";
+import { useCreateDownPayment } from "@/lib/use-invoices";
 import { useNotification } from "@/lib/use-notifications";
-import type { PaymentInstallment, PaymentInstallmentRead } from "@/lib/schemas/invoice";
+import type {
+  LinkedInvoice,
+  PaymentInstallment,
+  PaymentInstallmentRead,
+} from "@/lib/schemas/invoice";
 
 interface QuotePaymentPlanCardProps {
   quoteId: number;
   gross: number;
   plan: PaymentInstallmentRead[];
   locked: boolean;
+  invoices?: LinkedInvoice[];
 }
 
 const eur = (n: number) => `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 const BUTTON =
   "inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-white px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-low)] disabled:cursor-not-allowed disabled:opacity-50";
 
-export function QuotePaymentPlanCard({ quoteId, gross, plan, locked }: QuotePaymentPlanCardProps) {
+export function QuotePaymentPlanCard({
+  quoteId,
+  gross,
+  plan,
+  locked,
+  invoices = [],
+}: QuotePaymentPlanCardProps) {
   const qc = useQueryClient();
   const { notify } = useNotification();
   const [draft, setDraft] = useState<PaymentInstallment[] | null>(null);
+  const bill = useCreateDownPayment();
+
+  // Only an active (not cancelled) down payment blocks its installment.
+  const billedRates = new Map<number, LinkedInvoice>();
+  for (const invoice of invoices) {
+    if (invoice.installment_index != null && invoice.status !== "CANCELLED") {
+      billedRates.set(invoice.installment_index, invoice);
+    }
+  }
 
   const save = useMutation({
     mutationFn: (payment_plan: PaymentInstallment[]) =>
@@ -87,13 +110,47 @@ export function QuotePaymentPlanCard({ quoteId, gross, plan, locked }: QuotePaym
             </p>
           ) : (
             <ol>
-              {plan.map((rate, index) => (
-                <li key={index} className="flex items-center gap-3 border-b border-[var(--color-border)] px-[var(--space-lg)] py-2 last:border-b-0">
-                  <span className="w-16 font-mono text-[14px]">{percentLabel(rate.percent)}</span>
-                  <span className="min-w-0 flex-1 text-[14px] text-[var(--color-text-heading)]">{rate.label}</span>
-                  <span className="font-mono text-[14px] font-bold">{eur(rate.amount)}</span>
-                </li>
-              ))}
+              {plan.map((rate, index) => {
+                const billed = billedRates.get(index);
+                return (
+                  <li key={index} className="flex items-center gap-3 border-b border-[var(--color-border)] px-[var(--space-lg)] py-2 last:border-b-0">
+                    <span className="w-16 font-mono text-[14px]">{percentLabel(rate.percent)}</span>
+                    <span className="min-w-0 flex-1 text-[14px] text-[var(--color-text-heading)]">{rate.label}</span>
+                    <span className="font-mono text-[14px] font-bold">{eur(rate.amount)}</span>
+                    {billed ? (
+                      <a
+                        href={`/invoices/${billed.id}`}
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface-container-low)] px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-high)]"
+                      >
+                        Abgerechnet · Rechnung {billed.nr || `#${billed.id}`}
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={bill.isPending}
+                        onClick={() =>
+                          bill.mutate(
+                            { quoteId, installmentIndex: index },
+                            {
+                              onSuccess: (invoice) =>
+                                notify(
+                                  "success",
+                                  invoice.nr
+                                    ? `Abschlagsrechnung ${invoice.nr} angelegt`
+                                    : "Abschlagsrechnung angelegt",
+                                ),
+                              onError: (err: Error) => notify("error", err.message),
+                            },
+                          )
+                        }
+                        className={BUTTON}
+                      >
+                        Abschlagsrechnung
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           )}
         </>
