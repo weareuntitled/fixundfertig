@@ -13,6 +13,9 @@ class InvoiceStatus(str, Enum):
     PAID = "PAID"
     FINALIZED = "FINALIZED"
     CANCELLED = "CANCELLED"
+    # Nur für Angebote (DocumentType.QUOTE); siehe logic/document_status.py.
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
 
 class DocumentType(str, Enum):
     """Dokumentart eines Datensatzes in `invoice`: Rechnung oder Angebot."""

@@ -8,6 +8,7 @@ import { Link } from "@tanstack/react-router";
 import { FileSignature } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { InvoiceRead } from "@/lib/schemas/invoice";
+import { quoteDisplayStatus } from "@/lib/quote-status";
 
 const eur = (n: number) =>
   n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
@@ -64,7 +65,7 @@ export function QuoteList({ quotes }: { quotes: InvoiceRead[] }) {
                 {eur(quote.total_brutto)}
               </div>
               <div className="w-24 shrink-0 text-right">
-                <StatusBadge status={quote.status} />
+                <StatusBadge status={quoteDisplayStatus(quote)} />
               </div>
             </div>
           </Link>
