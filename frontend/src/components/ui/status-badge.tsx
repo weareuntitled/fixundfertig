@@ -1,7 +1,7 @@
 /**
  * @schema StatusBadge
  * @purpose Colored badge indicating invoice status with dot indicator
- * @input {string} status - Invoice status value
+ * @input {string} status - Invoice or quote status value (incl. derived EXPIRED for quotes)
  * @input {"sm" | "md"} size - Badge size variant
  * @output Renders pill-shaped badge with colored dot and label text
  * @tokens Uses: color-status-*, color-text-on-brand
@@ -12,7 +12,10 @@ type Status =
   | "SENT"
   | "PAID"
   | "FINALIZED"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "EXPIRED";
 
 const STATUS_CONFIG: Record<
   Status,
@@ -54,6 +57,24 @@ const STATUS_CONFIG: Record<
     bg: "bg-[var(--color-status-cancelled-bg)]",
     text: "text-[var(--color-status-cancelled)]",
   },
+  ACCEPTED: {
+    label: "Angenommen",
+    dot: "bg-[var(--color-status-paid)]",
+    bg: "bg-[var(--color-status-paid-bg)]",
+    text: "text-[var(--color-status-paid)]",
+  },
+  REJECTED: {
+    label: "Abgelehnt",
+    dot: "bg-[var(--color-status-cancelled)]",
+    bg: "bg-[var(--color-status-cancelled-bg)]",
+    text: "text-[var(--color-status-cancelled)]",
+  },
+  EXPIRED: {
+    label: "Abgelaufen",
+    dot: "bg-[var(--color-status-open)]",
+    bg: "bg-[var(--color-status-open-bg)]",
+    text: "text-[var(--color-status-open)]",
+  },
 };
 
 interface StatusBadgeProps {
@@ -83,4 +104,7 @@ export const STATUS_LABELS: Record<string, string> = {
   PAID: "Bezahlt",
   FINALIZED: "Finalisiert",
   CANCELLED: "Storniert",
+  ACCEPTED: "Angenommen",
+  REJECTED: "Abgelehnt",
+  EXPIRED: "Abgelaufen",
 };

@@ -36,6 +36,9 @@ export const invoiceStatusSchema = z.enum([
   "PAID",
   "FINALIZED",
   "CANCELLED",
+  // Nur Angebote (siehe lib/quote-status.ts)
+  "ACCEPTED",
+  "REJECTED",
 ]);
 
 export type InvoiceStatus = z.infer<typeof invoiceStatusSchema>;

@@ -29,6 +29,21 @@ describe("QuoteList", () => {
     expect(cells.getByText("Entwurf")).toBeTruthy();
   });
 
+  it("shows a sent quote past its valid-until date as expired", async () => {
+    await renderInRouter(<QuoteList quotes={[{ ...quote, status: "SENT", valid_until: "2020-01-31" }]} />);
+    const row = await screen.findByRole("link", { name: /A-10000/ });
+    expect(within(row).getByText("Abgelaufen")).toBeTruthy();
+  });
+
+  it.each([
+    ["ACCEPTED", "Angenommen"],
+    ["REJECTED", "Abgelehnt"],
+  ] as const)("shows a %s quote with its German status", async (status, label) => {
+    await renderInRouter(<QuoteList quotes={[{ ...quote, status, valid_until: "2020-01-31" }]} />);
+    const row = await screen.findByRole("link", { name: /A-10000/ });
+    expect(within(row).getByText(label)).toBeTruthy();
+  });
+
   it("invites to write the first quote when there is none", async () => {
     await renderInRouter(<QuoteList quotes={[]} />);
     expect(await screen.findByText("Noch keine Angebote")).toBeTruthy();

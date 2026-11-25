@@ -543,7 +543,7 @@ const STATUS_LABELS_FULL: Record<string, string> = {
 };
 
 function getValidTransitions(current: InvoiceStatus): InvoiceStatus[] {
-  const t: Record<InvoiceStatus, InvoiceStatus[]> = { DRAFT: ["OPEN","CANCELLED"], OPEN: ["SENT","PAID","CANCELLED"], SENT: ["PAID","CANCELLED"], PAID: [], FINALIZED: [], CANCELLED: [] };
+  const t: Record<InvoiceStatus, InvoiceStatus[]> = { DRAFT: ["OPEN","CANCELLED"], OPEN: ["SENT","PAID","CANCELLED"], SENT: ["PAID","CANCELLED"], PAID: [], FINALIZED: [], CANCELLED: [], ACCEPTED: [], REJECTED: [] };
   return t[current] || [];
 }
 

@@ -1,12 +1,13 @@
 /**
  * @schema QuoteDetailPage
- * @purpose One draft quote: change subject, dates and positions, or delete it
- * @output Header with "Löschen", a details card with inline editing, the positions with add/edit/remove
+ * @purpose One quote: change subject, dates and positions, mark it accepted or rejected, or delete it
+ * @output Header with "Löschen", a details card with status actions and inline editing, the positions
+ *   with add/edit/remove. An accepted quote is locked (no editing).
  */
 import { useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Check, Lock, Pencil, Trash2, X } from "lucide-react";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
@@ -19,7 +20,8 @@ import {
   useUpdateInvoiceItem,
 } from "@/lib/use-invoices";
 import { useNotification } from "@/lib/use-notifications";
-import type { InvoiceItem } from "@/lib/schemas/invoice";
+import { isQuoteLocked, quoteDisplayStatus } from "@/lib/quote-status";
+import type { InvoiceItem, InvoiceStatus } from "@/lib/schemas/invoice";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/_app/quotes/$id")({
@@ -51,6 +53,7 @@ function QuoteDetailPage() {
   const [header, setHeader] = useState<HeaderDraft | null>(null);
   const [itemDialog, setItemDialog] = useState<{ open: boolean; item?: InvoiceItem }>({ open: false });
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [acceptOpen, setAcceptOpen] = useState(false);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["invoices"] });
@@ -61,6 +64,17 @@ function QuoteDetailPage() {
       api.put(`/api/invoices/${quoteId}`, { ...changes, reason: "Angebot bearbeitet" }),
     onSuccess: () => {
       notify("success", "Angebot aktualisiert");
+      setHeader(null);
+      refresh();
+    },
+    onError: (err: Error) => notify("error", err.message),
+  });
+
+  const setStatus = useMutation({
+    mutationFn: (status: InvoiceStatus) => api.put(`/api/invoices/${quoteId}/status`, { status }),
+    onSuccess: (_data, status) => {
+      notify("success", status === "ACCEPTED" ? "Angebot angenommen" : "Angebot abgelehnt");
+      setAcceptOpen(false);
       setHeader(null);
       refresh();
     },
@@ -95,6 +109,8 @@ function QuoteDetailPage() {
   }
 
   const items = quote.items ?? [];
+  const locked = isQuoteLocked(quote);
+  const decided = quote.status === "ACCEPTED" || quote.status === "REJECTED";
 
   const startEdit = () =>
     setHeader({ subject: quote.subject, date: quote.date, valid_until: quote.valid_until });
@@ -134,16 +150,33 @@ function QuoteDetailPage() {
         <div className="mb-[var(--space-md)] flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Angaben</h2>
-            <StatusBadge status={quote.status} />
+            <StatusBadge status={quoteDisplayStatus(quote)} />
           </div>
-          {!header && (
+          {!header && !locked && (
             <button type="button" onClick={startEdit} className={SECONDARY_BUTTON}>
               <Pencil size={16} /> Bearbeiten
             </button>
           )}
         </div>
 
-        {header ? (
+        {!decided && (
+          <div className="mb-[var(--space-md)] flex flex-wrap gap-2">
+            <button type="button" onClick={() => setAcceptOpen(true)} disabled={setStatus.isPending} className={SECONDARY_BUTTON}>
+              <Check size={16} /> Angenommen
+            </button>
+            <button type="button" onClick={() => setStatus.mutate("REJECTED")} disabled={setStatus.isPending} className={SECONDARY_BUTTON}>
+              <X size={16} /> Abgelehnt
+            </button>
+          </div>
+        )}
+
+        {locked && (
+          <p className="mb-[var(--space-md)] flex items-center gap-2 text-[14px] text-[var(--color-text-secondary)]">
+            <Lock size={14} /> Angenommen – das Angebot ist nicht mehr änderbar.
+          </p>
+        )}
+
+        {header && !locked ? (
           <div className="grid gap-[var(--space-sm)] md:grid-cols-3">
             <label className="block text-[14px] font-bold text-[var(--color-text-primary)]">
               Betreff
@@ -187,9 +220,11 @@ function QuoteDetailPage() {
       <div className="overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-sm)]">
           <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Positionen</h2>
-          <button type="button" onClick={() => setItemDialog({ open: true })} className={SECONDARY_BUTTON}>
-            + Position
-          </button>
+          {!locked && (
+            <button type="button" onClick={() => setItemDialog({ open: true })} className={SECONDARY_BUTTON}>
+              + Position
+            </button>
+          )}
         </div>
         <ul>
           {items.length === 0 && (
@@ -204,18 +239,22 @@ function QuoteDetailPage() {
                 </p>
               </div>
               <span className="font-mono text-[14px] font-bold">{eur(it.quantity * it.unit_price)}</span>
-              <button type="button" aria-label={`Position ${index + 1} bearbeiten`} onClick={() => setItemDialog({ open: true, item: it })} className={ICON_BUTTON}>
-                <Pencil size={16} />
-              </button>
-              <button
-                type="button"
-                aria-label={`Position ${index + 1} entfernen`}
-                disabled={deleteItem.isPending}
-                onClick={() => it.id && deleteItem.mutate({ invoiceId: quoteId, itemId: it.id })}
-                className={ICON_BUTTON}
-              >
-                <Trash2 size={16} />
-              </button>
+              {!locked && (
+                <>
+                  <button type="button" aria-label={`Position ${index + 1} bearbeiten`} onClick={() => setItemDialog({ open: true, item: it })} className={ICON_BUTTON}>
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Position ${index + 1} entfernen`}
+                    disabled={deleteItem.isPending}
+                    onClick={() => it.id && deleteItem.mutate({ invoiceId: quoteId, itemId: it.id })}
+                    className={ICON_BUTTON}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -229,6 +268,16 @@ function QuoteDetailPage() {
         initial={itemDialog.item}
         onSave={saveItem}
         onCancel={() => setItemDialog({ open: false })}
+      />
+
+      <ConfirmDialog
+        open={acceptOpen}
+        title="Angebot annehmen?"
+        message="Ein angenommenes Angebot lässt sich danach nicht mehr ändern."
+        confirmLabel={setStatus.isPending ? "Speichere…" : "Annehmen"}
+        pending={setStatus.isPending}
+        onConfirm={() => setStatus.mutate("ACCEPTED")}
+        onCancel={() => setAcceptOpen(false)}
       />
 
       <ConfirmDialog
