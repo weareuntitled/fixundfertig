@@ -368,6 +368,48 @@ def draw_payment_box(c: Canvas, w: float, mx: float, y: float, content_w: float,
     return y - box_h
 
 
+def draw_payment_plan(c: Canvas, mx: float, y: float, content_w: float, my_bot: float,
+                      rows: list[tuple[str, str, str]], new_page, fonts: dict[str, str]) -> float:
+    """Quote section "ZAHLUNGSPLAN": one row per installment (percent, occasion, amount)."""
+    if not rows:
+        return y
+
+    pad_x, pad_y, line_h, row_gap = 15, 13.5, 13.5, 7.5
+    percent_w = 60.0
+    label_x = mx + pad_x + percent_w
+    right = mx + content_w - pad_x
+    label_w = right - label_x - 90
+    laid_out = [(percent, wrap_text(label, fonts["regular"], 9, label_w) or [""], amount)
+                for percent, label, amount in rows]
+    row_heights = [line_h * len(lines) + row_gap for _, lines, _ in laid_out]
+    box_h = 2 * pad_y + 20 + sum(row_heights) - row_gap
+
+    y -= 21
+    if y - box_h < my_bot + 20 * mm:
+        y = new_page()
+    c.setFillColorRGB(*LAYOUT["col_surface"])
+    c.roundRect(mx, y - box_h, content_w, box_h, 1.5, stroke=0, fill=1)
+
+    c.setFillColorRGB(*LAYOUT["col_muted"])
+    draw_tracked(c, mx + pad_x, y - pad_y - 6, "ZAHLUNGSPLAN", fonts["medium"], 7, 1.0)
+
+    top = y - pad_y - 20
+    for index, (percent, lines, amount) in enumerate(laid_out):
+        base = top - 10
+        c.setFont(fonts["regular"], 9)
+        c.setFillColorRGB(*LAYOUT["col_ink"])
+        c.drawString(mx + pad_x, base, percent)
+        for line in lines:
+            c.drawString(label_x, base, line)
+            base -= line_h
+        c.drawRightString(right, top - 10, amount)
+        if index < len(laid_out) - 1:
+            c.setStrokeColorRGB(*LAYOUT["col_hair"])
+            c.line(mx + pad_x, top - row_heights[index] + 1.5, right, top - row_heights[index] + 1.5)
+        top -= row_heights[index]
+    return y - box_h
+
+
 def draw_tracked(c: Canvas, x: float, y: float, text: str, font: str, size: float,
                  tracking: float, align: str = "left") -> None:
     if align == "right":

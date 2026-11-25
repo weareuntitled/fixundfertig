@@ -7,12 +7,14 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import (
-    FONTS, LAYOUT, InvItem, format_date, format_service_period, get_attr, is_quote, payment_due_date, safe_float, safe_str,
+    FONTS, LAYOUT, InvItem, format_date, format_money, format_service_period, get_attr, is_quote, payment_due_date, safe_float, safe_str,
 )
 from .invoice_pdf_draw import (
     draw_header, draw_recipient, draw_title_block, draw_identity_line,
-    draw_table, draw_totals, draw_payment_box, draw_footer, company_legal_name, uses_artist_wordmark,
+    draw_table, draw_totals, draw_payment_box, draw_payment_plan, draw_footer, company_legal_name,
+    uses_artist_wordmark,
 )
+from .payment_plan import format_percent, installments_with_amounts
 
 
 def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
@@ -74,6 +76,11 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
     due_str = "" if quote else payment_due_date(inv_date)
     valid_until = format_date(get_attr(invoice, "valid_until", default="")) if quote else ""
     inv_date = format_date(inv_date)
+    # Installment amounts come from the gross total shown above them; invoices have no plan.
+    plan_rows = [
+        (format_percent(rate["percent"]), rate["label"], format_money(rate["amount"]))
+        for rate in installments_with_amounts(get_attr(invoice, "payment_plan", default=None), round(gross, 2))
+    ] if quote else []
 
     nr = safe_str(get_attr(invoice, "nr", "invoice_number", default=""))
 
@@ -118,6 +125,8 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         y = draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, due_str, new_page, fonts)
         if not quote:
             draw_payment_box(c, w, mx, y, content_w, my_bot, comp, nr, new_page, fonts)
+        else:
+            draw_payment_plan(c, mx, y, content_w, my_bot, plan_rows, new_page, fonts)
         page_footer()
 
         pages = c.getPageNumber()

@@ -153,6 +153,8 @@ class Invoice(SQLModel, table=True):
     valid_until: str = ""
     # VAT rate in percent as charged (0 for Kleinunternehmer / USt off); None for legacy rows.
     vat_rate: Optional[float] = None
+    # Quotes only: JSON list [{"percent": 50.0, "label": "bei Auftrag"}]; amounts are computed, never stored.
+    payment_plan: str = "[]"
     title: str = "Rechnung"
     date: str
     delivery_date: str = ""

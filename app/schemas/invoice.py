@@ -32,6 +32,23 @@ class InvoiceItem(BaseModel):
     unit_price: float = Field(ge=0, le=1_000_000_000)
 
 
+class PaymentInstallment(BaseModel):
+    """Eine Rate des Zahlungsplans eines Angebots (Prozent vom Bruttobetrag + Anlass)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    percent: float = Field(gt=0, le=100)
+    label: str = Field(default="", max_length=200)
+
+
+class PaymentInstallmentRead(PaymentInstallment):
+    """Rate mit ihrem Betrag, berechnet aus dem Bruttobetrag (nicht gespeichert)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    amount: float = 0.0
+
+
 class InvoiceDraft(BaseModel):
     """Input für POST /api/invoices (create) und /api/invoices/preview-pdf.
 
@@ -60,6 +77,7 @@ class InvoiceDraft(BaseModel):
     items: list[InvoiceItem] = Field(default_factory=list)
     notes: str = Field(default="", max_length=2000)
     status: InvoiceStatus = "OPEN"
+    payment_plan: list[PaymentInstallment] = Field(default_factory=list)
 
     @field_validator("date", "delivery_date", "service_from", "service_to", "valid_until")
     @classmethod
@@ -122,6 +140,7 @@ class InvoiceRead(BaseModel):
     payment_provider: str = ""
     items: list[InvoiceItem] = Field(default_factory=list)
     attachments: list[InvoiceAttachmentRead] = Field(default_factory=list)
+    payment_plan: list[PaymentInstallmentRead] = Field(default_factory=list)
 
 
 class InvoiceSendRequest(BaseModel):
@@ -157,6 +176,7 @@ class InvoiceUpdate(BaseModel):
     recipient_postal_code: str | None = Field(default=None, max_length=20)
     recipient_city: str | None = Field(default=None, max_length=100)
     intro_text: str | None = Field(default=None, max_length=2000)
+    payment_plan: list[PaymentInstallment] | None = None
     reason: str = Field(default="", max_length=500)
 
 
@@ -177,4 +197,6 @@ __all__ = [
     "InvoiceUpdate",
     "BulkStatusUpdate",
     "InvoiceStatus",
+    "PaymentInstallment",
+    "PaymentInstallmentRead",
 ]

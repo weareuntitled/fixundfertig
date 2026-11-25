@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 from data import Company, Customer, DocumentType, Invoice, InvoiceItem, InvoiceStatus
 from invoice_numbering import build_invoice_filename
 from renderer import render_invoice_to_pdf_bytes
+from services.payment_plan import dump_payment_plan
 
 
 def _build_invoice_number(comp: Company, document_type: DocumentType = DocumentType.INVOICE) -> str:
@@ -101,6 +102,29 @@ def _calc_gross(items: List[Dict[str, Any]], *, ust_enabled: bool, is_small_busi
     return net + tax
 
 
+def document_vat_rate(invoice: Invoice) -> float:
+    """VAT rate in percent the document charges.
+
+    Stored on new documents; legacy rows carry only their gross total, so the rate
+    is derived from gross vs. net of the current positions (rounded to 0.1 %).
+    """
+    stored = getattr(invoice, "vat_rate", None)
+    if stored is not None:
+        return float(stored)
+    net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or []))
+    gross = float(invoice.total_brutto or 0)
+    if net > 0 and gross > net + 0.005:
+        return round((gross - net) / net * 100, 1)
+    return 0.0
+
+
+def recompute_total_brutto(invoice: Invoice, vat_rate: float) -> None:
+    """Gross total from the current positions at the document's VAT rate (keeps the rate stored)."""
+    net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or []))
+    invoice.vat_rate = float(vat_rate)
+    invoice.total_brutto = round(net * (1 + float(vat_rate) / 100.0), 2)
+
+
 QUOTE_VALIDITY_DAYS = 30
 
 
@@ -130,6 +154,7 @@ def finalize_invoice_logic(
     service_to: Optional[str] = None,
     document_type: DocumentType = DocumentType.INVOICE,
     valid_until: str = "",
+    payment_plan: Optional[List[Any]] = None,
 ) -> int:
     comp = session.get(Company, int(comp_id))
     cust = session.get(Customer, int(cust_id))
@@ -156,8 +181,10 @@ def finalize_invoice_logic(
         if not (title or "").strip() or (title or "").strip() == "Rechnung":
             title = "Angebot"
         valid_until = (valid_until or "").strip() or default_quote_valid_until(date_str)
+        plan_json = dump_payment_plan(payment_plan)
     else:
         valid_until = ""
+        plan_json = "[]"  # invoices have no payment plan
     nr = _next_unique_invoice_number(session, comp, document_type)
     session.add(comp)
     period = _period_from_inputs(delivery_str, service_from, service_to)
@@ -178,6 +205,8 @@ def finalize_invoice_logic(
 
     is_small = bool(getattr(comp, "is_small_business", False))
     gross = _calc_gross(clean_items, ust_enabled=bool(ust_enabled), is_small_business=is_small)
+    charges_vat = (not is_small) and bool(ust_enabled)
+    vat_rate = float(clean_items[0].get("tax_rate", 0) or 0) if charges_vat else 0.0
 
     inv = Invoice(
         customer_id=int(cust.id),
@@ -185,6 +214,7 @@ def finalize_invoice_logic(
         nr=str(nr),
         document_type=document_type,
         valid_until=valid_until,
+        payment_plan=plan_json,
         title=(title or "Rechnung").strip() or "Rechnung",
         subject=(subject or "").strip(),
         date=(date_str or "").strip(),
@@ -194,6 +224,7 @@ def finalize_invoice_logic(
         recipient_postal_code=rec_zip,
         recipient_city=rec_city,
         total_brutto=float(gross),
+        vat_rate=vat_rate,
         status=status,
         pdf_storage="db",
     )
@@ -207,6 +238,7 @@ def finalize_invoice_logic(
         address_country=getattr(cust, "country", "") or "",
         ust_enabled=(not is_small) and bool(ust_enabled),
         document_type=inv.document_type, valid_until=inv.valid_until,
+        payment_plan=inv.payment_plan,
     )
     preview.__dict__["intro_text"] = (intro_text or "").strip()
     preview.__dict__["line_items"] = clean_items

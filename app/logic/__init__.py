@@ -2,7 +2,9 @@
 
 from .invoice import (
     _next_unique_invoice_number,
+    document_vat_rate,
     finalize_invoice_logic,
+    recompute_total_brutto,
     select_invoices_for_company,
 )
 from .exports import (
@@ -16,7 +18,9 @@ from .exports import (
 
 __all__ = [
     "_next_unique_invoice_number",
+    "document_vat_rate",
     "finalize_invoice_logic",
+    "recompute_total_brutto",
     "select_invoices_for_company",
     "export_customers_csv",
     "export_database_backup",

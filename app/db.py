@@ -214,6 +214,15 @@ def ensure_invoice_vat_rate_field(target_engine=None):
 
 ensure_invoice_vat_rate_field()
 
+def ensure_invoice_payment_plan_field(target_engine=None):
+    """Ergänzt den Zahlungsplan eines Angebots (JSON-Liste aus Prozent und Anlass)."""
+    with (target_engine or engine).begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "payment_plan" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN payment_plan TEXT DEFAULT '[]'")
+
+ensure_invoice_payment_plan_field()
+
 def reconcile_invoice_revision_schema():
     with engine.begin() as conn:
         tables = {

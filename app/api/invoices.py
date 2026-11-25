@@ -34,7 +34,7 @@ from data import DocumentType, InvoiceAttachment, InvoiceRevision, InvoiceStatus
 from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
-from logic import finalize_invoice_logic
+from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
 from logic.document_status import is_accepted_quote, status_not_allowed_reason
 from renderer import render_invoice_to_pdf_bytes
 from schemas.invoice import (
@@ -47,9 +47,11 @@ from schemas.invoice import (
     InvoiceSendRequest,
     InvoiceStatusUpdate,
     InvoiceUpdate,
+    PaymentInstallmentRead,
 )
 from services.documents import build_download_filename, read_document_bytes
 from services.email import send_email
+from services.payment_plan import dump_payment_plan, installments_with_amounts
 from services.invoice_email import build_invoice_email
 from services.payment import check_payment, create_payment_link
 
@@ -176,6 +178,12 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         payment_provider=invoice.payment_provider or "",
         items=items,
         attachments=attachments,
+        payment_plan=[
+            PaymentInstallmentRead(**rate)
+            for rate in installments_with_amounts(
+                getattr(invoice, "payment_plan", None), float(invoice.total_brutto or 0.0)
+            )
+        ],
     )
 
 
@@ -337,6 +345,13 @@ def update_invoice(
         if val is not None and val != getattr(invoice, field, ""):
             setattr(invoice, field, val)
             changed = True
+    if payload.payment_plan is not None:
+        if invoice.document_type != DocumentType.QUOTE:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nur Angebote haben einen Zahlungsplan")
+        plan_json = dump_payment_plan(payload.payment_plan)
+        if plan_json != (invoice.payment_plan or "[]"):
+            invoice.payment_plan = plan_json
+            changed = True
     if payload.service_from is not None:
         f = payload.service_from
         t = payload.service_to or ""
@@ -368,6 +383,7 @@ def update_invoice(
                 address_country=getattr(cust, "country", "") or "",
                 ust_enabled=not bool(getattr(comp, "is_small_business", False)) if comp else True,
                 document_type=invoice.document_type, valid_until=invoice.valid_until,
+                payment_plan=invoice.payment_plan, vat_rate=invoice.vat_rate,
             )
             preview.__dict__["intro_text"] = payload.intro_text or ""
             preview.__dict__["line_items"] = clean_items
@@ -532,6 +548,7 @@ def create_invoice(
             service_to=payload.service_to,
             document_type=DocumentType(payload.document_type),
             valid_until=payload.valid_until,
+            payment_plan=payload.payment_plan,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -570,6 +587,7 @@ def add_invoice_item(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_editable(invoice)
+    vat_rate = document_vat_rate(invoice)
     item = InvoiceItemModel(
         invoice_id=invoice_id,
         description=payload.description,
@@ -577,10 +595,9 @@ def add_invoice_item(
         unit_price=payload.unit_price,
     )
     session.add(item)
-    # Recalculate total
-    items = list(getattr(invoice, "items", None) or [])
-    items.append(item)
-    invoice.total_brutto = sum(it.quantity * it.unit_price for it in items)
+    session.flush()
+    session.refresh(invoice)
+    recompute_total_brutto(invoice, vat_rate)
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     session.add(invoice)
     session.commit()
@@ -605,13 +622,13 @@ def update_invoice_item(
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    vat_rate = document_vat_rate(invoice)
     item.description = payload.description
     item.quantity = payload.quantity
     item.unit_price = payload.unit_price
     session.add(item)
-    # Recalculate total
-    items = list(getattr(invoice, "items", None) or [])
-    invoice.total_brutto = sum(it.quantity * it.unit_price for it in items)
+    session.flush()
+    recompute_total_brutto(invoice, vat_rate)
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     session.add(invoice)
     session.commit()
@@ -635,10 +652,11 @@ def delete_invoice_item(
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    vat_rate = document_vat_rate(invoice)
     session.delete(item)
-    # Recalculate total from remaining items
-    remaining = [it for it in (getattr(invoice, "items", None) or []) if int(it.id) != item_id]
-    invoice.total_brutto = sum(it.quantity * it.unit_price for it in remaining)
+    session.flush()
+    session.refresh(invoice)
+    recompute_total_brutto(invoice, vat_rate)
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     session.add(invoice)
     session.commit()
