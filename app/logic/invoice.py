@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
@@ -11,8 +11,15 @@ from invoice_numbering import build_invoice_filename
 from renderer import render_invoice_to_pdf_bytes
 
 
-def _build_invoice_number(comp: Company) -> str:
-    seq = int(getattr(comp, "next_invoice_nr", 10000) or 10000)
+def _build_invoice_number(comp: Company, document_type: DocumentType = DocumentType.INVOICE) -> str:
+    """Nächste Nummer nach dem Rechnungsmuster der Firma.
+
+    Angebote zählen mit `next_quote_nr` und tragen `quote_prefix` (Vorgabe "A-")
+    vor dem Muster; der Rechnungszähler bleibt dabei unberührt.
+    """
+    is_quote = document_type == DocumentType.QUOTE
+    counter = "next_quote_nr" if is_quote else "next_invoice_nr"
+    seq = int(getattr(comp, counter, 10000) or 10000)
     tpl = (getattr(comp, "invoice_number_template", "{seq}") or "{seq}").strip()
     now = datetime.now()
     ctx = {
@@ -27,30 +34,42 @@ def _build_invoice_number(comp: Company) -> str:
         nr = tpl.format(**ctx)
     except Exception:
         nr = str(seq)
-    comp.next_invoice_nr = seq + 1
-    return (nr or str(seq)).strip()
+    setattr(comp, counter, seq + 1)
+    nr = (nr or str(seq)).strip()
+    if is_quote:
+        prefix = getattr(comp, "quote_prefix", "A-")
+        nr = f"{'A-' if prefix is None else prefix}{nr}"
+    return nr
 
 
-def _invoice_number_exists(session: Session, company_id: int, nr: str) -> bool:
+def _invoice_number_exists(
+    session: Session, company_id: int, nr: str, document_type: DocumentType = DocumentType.INVOICE
+) -> bool:
     stmt = (
         select(Invoice.id)
         .join(Customer, Invoice.customer_id == Customer.id)
-        .where(Customer.company_id == int(company_id), Invoice.nr == str(nr))
+        .where(
+            Customer.company_id == int(company_id),
+            Invoice.nr == str(nr),
+            Invoice.document_type == document_type,
+        )
         .limit(1)
     )
     return session.exec(stmt).first() is not None
 
 
-def _next_unique_invoice_number(session: Session, comp: Company) -> str:
+def _next_unique_invoice_number(
+    session: Session, comp: Company, document_type: DocumentType = DocumentType.INVOICE
+) -> str:
     if not comp.id:
-        return _build_invoice_number(comp)
+        return _build_invoice_number(comp, document_type)
     seen: set[str] = set()
     for _ in range(1000):
-        candidate = _build_invoice_number(comp)
-        if candidate in seen:
+        candidate = _build_invoice_number(comp, document_type)
+        if candidate in seen and document_type == DocumentType.INVOICE:
             candidate = str(max(int(getattr(comp, "next_invoice_nr", 1) or 1) - 1, 1))
         seen.add(candidate)
-        if not _invoice_number_exists(session, int(comp.id), candidate):
+        if not _invoice_number_exists(session, int(comp.id), candidate, document_type):
             return candidate
     raise ValueError("Konnte keine eindeutige Rechnungsnummer erzeugen")
 
@@ -82,6 +101,18 @@ def _calc_gross(items: List[Dict[str, Any]], *, ust_enabled: bool, is_small_busi
     return net + tax
 
 
+QUOTE_VALIDITY_DAYS = 30
+
+
+def default_quote_valid_until(date_str: str | None) -> str:
+    """Vorgabe für „gültig bis“: Angebotsdatum (sonst heute) plus 30 Tage."""
+    try:
+        base = date.fromisoformat((date_str or "").strip())
+    except ValueError:
+        base = date.today()
+    return (base + timedelta(days=QUOTE_VALIDITY_DAYS)).isoformat()
+
+
 def finalize_invoice_logic(
     session: Session,
     comp_id: int,
@@ -97,6 +128,8 @@ def finalize_invoice_logic(
     intro_text: str = "",
     service_from: Optional[str] = None,
     service_to: Optional[str] = None,
+    document_type: DocumentType = DocumentType.INVOICE,
+    valid_until: str = "",
 ) -> int:
     comp = session.get(Company, int(comp_id))
     cust = session.get(Customer, int(cust_id))
@@ -117,7 +150,15 @@ def finalize_invoice_logic(
     if not clean_items:
         raise ValueError("Keine Positionen")
 
-    nr = _next_unique_invoice_number(session, comp)
+    is_quote = document_type == DocumentType.QUOTE
+    if is_quote:
+        status = InvoiceStatus.DRAFT
+        if not (title or "").strip() or (title or "").strip() == "Rechnung":
+            title = "Angebot"
+        valid_until = (valid_until or "").strip() or default_quote_valid_until(date_str)
+    else:
+        valid_until = ""
+    nr = _next_unique_invoice_number(session, comp, document_type)
     session.add(comp)
     period = _period_from_inputs(delivery_str, service_from, service_to)
 
@@ -142,6 +183,8 @@ def finalize_invoice_logic(
         customer_id=int(cust.id),
         company_id=int(comp.id),
         nr=str(nr),
+        document_type=document_type,
+        valid_until=valid_until,
         title=(title or "Rechnung").strip() or "Rechnung",
         subject=(subject or "").strip(),
         date=(date_str or "").strip(),

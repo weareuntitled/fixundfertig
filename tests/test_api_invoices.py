@@ -307,6 +307,8 @@ def test_suggestions_returns_empty_for_no_history(invoices_app) -> None:
 def _make_mock_invoice(id: int, status: str = "DRAFT") -> MagicMock:
     inv = MagicMock(spec=Invoice, id=id, status=status, revision_nr=0)
     inv.customer_id = 1
+    inv.document_type = "INVOICE"
+    inv.valid_until = ""
     inv.nr = None
     inv.title = "Rechnung"
     inv.subject = ""

@@ -121,6 +121,11 @@ def _attachment_to_read(attachment: InvoiceAttachment) -> InvoiceAttachmentRead:
     )
 
 
+def _document_type_value(invoice: Invoice) -> str:
+    doc_type = getattr(invoice, "document_type", None) or DocumentType.INVOICE
+    return doc_type.value if hasattr(doc_type, "value") else str(doc_type)
+
+
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
     """Convert SQLModel Invoice + Items to InvoiceRead (Pydantic)."""
     items: list[InvoiceItem] = []
@@ -135,11 +140,13 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
     return InvoiceRead(
         id=int(invoice.id),
         customer_id=int(invoice.customer_id),
+        document_type=_document_type_value(invoice),
         nr=invoice.nr,
         title=invoice.title or "Rechnung",
         subject=invoice.subject or "",
         date=invoice.date or "",
         delivery_date=invoice.delivery_date or "",
+        valid_until=getattr(invoice, "valid_until", "") or "",
         recipient_name=invoice.recipient_name or "",
         recipient_street=invoice.recipient_street or "",
         recipient_postal_code=invoice.recipient_postal_code or "",
@@ -239,14 +246,15 @@ def check_invoice_payment(
 
 @router.get("", response_model=list[InvoiceRead])
 def list_invoices(
+    document_type: DocumentType = DocumentType.INVOICE,
     _user_id: int = Depends(require_session_auth),
     session: Iterator = Depends(db_session),
     company: Company = Depends(get_current_company),
 ):
-    """List invoices for current company, newest first."""
+    """List documents of one type (default invoices) for current company, newest first."""
     statement = (
         select(Invoice)
-        .where(Invoice.company_id == int(company.id), Invoice.document_type == DocumentType.INVOICE)
+        .where(Invoice.company_id == int(company.id), Invoice.document_type == document_type)
         .options(selectinload(Invoice.attachments).selectinload(InvoiceAttachment.document))
         .order_by(Invoice.nr.desc())
     )
@@ -306,7 +314,7 @@ def update_invoice(
     changed = False
     for field in ("title", "subject", "date", "delivery_date", "recipient_name",
                   "recipient_street", "recipient_postal_code", "recipient_city",
-                  "intro_text"):
+                  "valid_until"):
         val = getattr(payload, field, None)
         if val is not None and val != getattr(invoice, field, ""):
             setattr(invoice, field, val)
@@ -342,7 +350,7 @@ def update_invoice(
                 address_country=getattr(cust, "country", "") or "",
                 ust_enabled=not bool(getattr(comp, "is_small_business", False)) if comp else True,
             )
-            preview.__dict__["intro_text"] = invoice.intro_text or ""
+            preview.__dict__["intro_text"] = payload.intro_text or ""
             preview.__dict__["line_items"] = clean_items
             preview.__dict__["totals"] = {"gross": float(invoice.total_brutto or 0)}
             preview.__dict__["total_brutto"] = float(invoice.total_brutto or 0)
@@ -502,6 +510,8 @@ def create_invoice(
             intro_text=payload.intro_text,
             service_from=payload.service_from,
             service_to=payload.service_to,
+            document_type=DocumentType(payload.document_type),
+            valid_until=payload.valid_until,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e

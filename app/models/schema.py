@@ -106,6 +106,8 @@ class Company(SQLModel, table=True):
     next_invoice_nr: int = 10000
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
+    next_quote_nr: int = 10000
+    quote_prefix: str = "A-"
     user: Optional["User"] = Relationship(back_populates="companies")
     invoices: list["Invoice"] = Relationship(back_populates="company")
     customers: list["Customer"] = Relationship(back_populates="company")
@@ -145,6 +147,7 @@ class Invoice(SQLModel, table=True):
     company_id: int = Field(default=0, foreign_key="company.id")
     nr: Optional[str] = None
     document_type: DocumentType = DocumentType.INVOICE
+    valid_until: str = ""
     title: str = "Rechnung"
     date: str
     delivery_date: str = ""

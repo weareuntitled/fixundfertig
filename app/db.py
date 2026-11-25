@@ -80,8 +80,8 @@ def prevent_finalized_invoice_updates(session, flush_context, instances):
             if old_status == InvoiceStatus.FINALIZED and new_status not in (InvoiceStatus.CANCELLED, InvoiceStatus.OPEN, InvoiceStatus.SENT, InvoiceStatus.PAID):
                 obj.status = InvoiceStatus.DRAFT
 
-def ensure_company_schema():
-    with engine.begin() as conn:
+def ensure_company_schema(target_engine=None):
+    with (target_engine or engine).begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company)").fetchall()}
         if "user_id" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN user_id INTEGER")
         if "n8n_enabled" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN n8n_enabled INTEGER DEFAULT 0")
@@ -114,6 +114,8 @@ def ensure_company_schema():
         if "account_holder" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN account_holder TEXT DEFAULT ''")
         if "iban" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN iban TEXT DEFAULT ''")
         if "next_invoice_nr" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_invoice_nr INTEGER DEFAULT 10000")
+        if "next_quote_nr" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN next_quote_nr INTEGER DEFAULT 10000")
+        if "quote_prefix" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN quote_prefix TEXT DEFAULT 'A-'")
         if "payment_enabled" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN payment_enabled INTEGER DEFAULT 0")
         if "stripe_secret_key" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN stripe_secret_key TEXT DEFAULT ''")
         if "stripe_publishable_key" not in columns: conn.exec_driver_sql("ALTER TABLE company ADD COLUMN stripe_publishable_key TEXT DEFAULT ''")
@@ -193,6 +195,15 @@ def ensure_invoice_document_type_field(target_engine=None):
             conn.exec_driver_sql("UPDATE invoice SET document_type = 'INVOICE' WHERE document_type IS NULL OR document_type = ''")
 
 ensure_invoice_document_type_field()
+
+def ensure_invoice_valid_until_field(target_engine=None):
+    """Ergänzt „gültig bis“ für Angebote (leer bei Rechnungen)."""
+    with (target_engine or engine).begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "valid_until" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN valid_until TEXT DEFAULT ''")
+
+ensure_invoice_valid_until_field()
 
 def reconcile_invoice_revision_schema():
     with engine.begin() as conn:

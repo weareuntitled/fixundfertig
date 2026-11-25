@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 InvoiceStatus = Literal["DRAFT", "OPEN", "SENT", "PAID", "FINALIZED", "CANCELLED"]
+DocumentType = Literal["INVOICE", "QUOTE"]
 
 
 class InvoiceItem(BaseModel):
@@ -41,12 +42,14 @@ class InvoiceDraft(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     customer_id: int = Field(gt=0)
+    document_type: DocumentType = "INVOICE"
     title: str = Field(default="Rechnung", max_length=200)
     subject: str = Field(default="", max_length=200)
     date: str = Field(default="", max_length=20)
     delivery_date: str = Field(default="", max_length=20)
     service_from: str = Field(default="", max_length=20)
     service_to: str = Field(default="", max_length=20)
+    valid_until: str = Field(default="", max_length=20)
     recipient_name: str = Field(default="", max_length=200)
     recipient_street: str = Field(default="", max_length=200)
     recipient_postal_code: str = Field(default="", max_length=20)
@@ -58,7 +61,7 @@ class InvoiceDraft(BaseModel):
     notes: str = Field(default="", max_length=2000)
     status: InvoiceStatus = "OPEN"
 
-    @field_validator("date", "delivery_date", "service_from", "service_to")
+    @field_validator("date", "delivery_date", "service_from", "service_to", "valid_until")
     @classmethod
     def _validate_iso_date(cls, v: str) -> str:
         if not v:
@@ -98,11 +101,13 @@ class InvoiceRead(BaseModel):
 
     id: int
     customer_id: int
+    document_type: DocumentType = "INVOICE"
     nr: str | None = None
     title: str = "Rechnung"
     subject: str = ""
     date: str = ""
     delivery_date: str = ""
+    valid_until: str = ""
     recipient_name: str = ""
     recipient_street: str = ""
     recipient_postal_code: str = ""
@@ -146,6 +151,7 @@ class InvoiceUpdate(BaseModel):
     delivery_date: str | None = Field(default=None, max_length=20)
     service_from: str | None = Field(default=None, max_length=20)
     service_to: str | None = Field(default=None, max_length=20)
+    valid_until: str | None = Field(default=None, max_length=20)
     recipient_name: str | None = Field(default=None, max_length=200)
     recipient_street: str | None = Field(default=None, max_length=200)
     recipient_postal_code: str | None = Field(default=None, max_length=20)
