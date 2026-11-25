@@ -206,6 +206,7 @@ def finalize_invoice_logic(
         address_city=inv.recipient_city,
         address_country=getattr(cust, "country", "") or "",
         ust_enabled=(not is_small) and bool(ust_enabled),
+        document_type=inv.document_type, valid_until=inv.valid_until,
     )
     preview.__dict__["intro_text"] = (intro_text or "").strip()
     preview.__dict__["line_items"] = clean_items

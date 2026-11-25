@@ -367,6 +367,7 @@ def update_invoice(
                 address_city=invoice.recipient_city,
                 address_country=getattr(cust, "country", "") or "",
                 ust_enabled=not bool(getattr(comp, "is_small_business", False)) if comp else True,
+                document_type=invoice.document_type, valid_until=invoice.valid_until,
             )
             preview.__dict__["intro_text"] = payload.intro_text or ""
             preview.__dict__["line_items"] = clean_items
@@ -491,7 +492,8 @@ def download_invoice_pdf(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
-    filename = (getattr(invoice, "pdf_filename", "") or "").strip() or f"rechnung-{invoice_id}.pdf"
+    fallback = "angebot" if getattr(invoice, "document_type", None) == DocumentType.QUOTE else "rechnung"
+    filename = (getattr(invoice, "pdf_filename", "") or "").strip() or f"{fallback}-{invoice_id}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -544,6 +546,18 @@ def create_invoice(
 # ── Invoice Item CRUD ──
 
 
+def _rerender_quote_pdf(session: Session, invoice: Invoice) -> None:
+    """Keep a quote's stored PDF in step with its positions (preview = download)."""
+    if getattr(invoice, "document_type", None) != DocumentType.QUOTE:
+        return
+    company = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
+    customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
+    invoice.pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer)
+    session.add(invoice)
+    session.commit()
+    session.refresh(invoice)
+
+
 @router.post("/{invoice_id}/items", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
 def add_invoice_item(
     invoice_id: int,
@@ -571,6 +585,7 @@ def add_invoice_item(
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
+    _rerender_quote_pdf(session, invoice)
     return _to_read_model(invoice)
 
 
@@ -601,6 +616,7 @@ def update_invoice_item(
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
+    _rerender_quote_pdf(session, invoice)
     return _to_read_model(invoice)
 
 
@@ -627,6 +643,7 @@ def delete_invoice_item(
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
+    _rerender_quote_pdf(session, invoice)
     return _to_read_model(invoice)
 
 

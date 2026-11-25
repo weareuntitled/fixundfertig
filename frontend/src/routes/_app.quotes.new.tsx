@@ -3,11 +3,13 @@
  * @purpose Quote creation with the invoice form plus "Gültig bis"
  * @output Saving creates a draft quote (the quote number is assigned now) and opens it.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { InvoiceFormV2 } from "@/components/forms/invoice-form-v2";
 import { PageHeader } from "@/components/ui/page-header";
+import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
+import { useInvoicePreview } from "@/lib/use-invoice-preview";
 import { useCompany, type Company } from "@/lib/use-company";
 import { useNotification } from "@/lib/use-notifications";
 import { invoiceDraftProblems } from "@/lib/invoice-draft";
@@ -35,6 +37,15 @@ function NewQuotePage() {
   const { notify } = useNotification();
   const { data: company, isLoading: companyLoading } = useCompany();
   const [draft, setDraft] = useState<InvoiceDraft | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const preview = useInvoicePreview(draft ?? emptyQuoteDraft(0), 800);
+  const previewUrl = useMemo(() => (preview.data ? URL.createObjectURL(preview.data) : null), [preview.data]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   useEffect(() => {
     if (!companyLoading && !draft) setDraft(initialDraft(company));
@@ -61,6 +72,7 @@ function NewQuotePage() {
   const problems = invoiceDraftProblems(draft);
   const ready = problems.length === 0;
   const hintId = "create-hint";
+  const previewReady = draft.items.length > 0 && draft.customer_id > 0;
 
   return (
     <div className="animate-fade-in">
@@ -70,15 +82,26 @@ function NewQuotePage() {
         title="Neues Angebot"
         subtitle="Kunde, Positionen und „gültig bis“ erfassen."
         actions={
-          <button
-            type="button"
-            onClick={() => save.mutate(draft)}
-            disabled={!ready || save.isPending}
-            aria-describedby={ready ? undefined : hintId}
-            className="min-h-[44px] rounded-[var(--radius-lg)] bg-[#001a42] px-[var(--space-md)] py-[var(--space-xs)] text-[14px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {save.isPending ? "Speichere…" : "Angebot speichern"}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              disabled={!previewReady}
+              title={previewReady ? undefined : "Erst Kunde wählen und eine Position anlegen"}
+              className="min-h-[44px] rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[14px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-low)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              PDF-Vorschau
+            </button>
+            <button
+              type="button"
+              onClick={() => save.mutate(draft)}
+              disabled={!ready || save.isPending}
+              aria-describedby={ready ? undefined : hintId}
+              className="min-h-[44px] rounded-[var(--radius-lg)] bg-[#001a42] px-[var(--space-md)] py-[var(--space-xs)] text-[14px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {save.isPending ? "Speichere…" : "Angebot speichern"}
+            </button>
+          </>
         }
       />
 
@@ -98,6 +121,14 @@ function NewQuotePage() {
       <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-xl)] shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
         <InvoiceFormV2 value={draft} onChange={setDraft} />
       </div>
+
+      <PdfPreviewModal
+        open={previewOpen}
+        pdfUrl={previewUrl}
+        invoiceNr="Entwurf"
+        documentType="QUOTE"
+        onClose={() => setPreviewOpen(false)}
+      />
     </div>
   );
 }
