@@ -214,6 +214,30 @@ def test_a_second_final_invoice_is_rejected_until_the_first_is_cancelled(artist_
     assert again.status_code == 201, again.text
 
 
+def test_a_final_invoice_needs_at_least_one_non_cancelled_down_payment(artist_api):
+    client, _company, payload, _session = artist_api
+    quote = _create_quote(client, payload, vat_rate=19)
+
+    response = _final(client, quote["id"])
+
+    assert response.status_code == 400, response.text
+    assert "Abschlagsrechnung" in response.json()["detail"]
+    assert client.get("/api/invoices").json() == []
+
+
+def test_a_cancelled_down_payment_does_not_qualify_a_final_invoice(artist_api):
+    client, _company, payload, _session = artist_api
+    quote = _create_quote(client, payload, vat_rate=19)
+    cancelled = _down_payment(client, quote["id"], 0)
+    _cancel(client, cancelled["id"])
+
+    response = _final(client, quote["id"])
+
+    assert response.status_code == 400, response.text
+    invoices = client.get("/api/invoices").json()
+    assert all(item["is_final_invoice"] is False for item in invoices)
+
+
 def test_a_final_invoice_is_distinguishable_from_a_normal_conversion(artist_api):
     client, _company, payload, _session = artist_api
     quote = _create_quote(client, payload, vat_rate=0)

@@ -6,12 +6,16 @@ trägt zusätzlich `down_payment_index` = Index der abgerechneten Rate im Zahlun
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlmodel import Session, select
 
 from data import Company, Customer, DocumentType, Invoice, InvoiceStatus
-from logic.final_invoice import billed_down_payments, final_invoice_totals
+from logic.final_invoice import (
+    billed_down_payments,
+    final_invoice_totals,
+    has_non_cancelled_down_payment,
+)
 from logic.invoice import document_vat_rate, finalize_invoice_logic
 from renderer import render_invoice_to_pdf_bytes
 from services.invoice_pdf_draw import INVOICE_INTRO
@@ -35,26 +39,20 @@ def quote_reference_intro(quote: Invoice, company: Any = None) -> str:
     return f"{reference} {standard}"
 
 
-def create_invoice_from_quote(
-    session: Session,
-    quote: Invoice,
-    *,
-    items: Optional[List[Dict[str, Any]]] = None,
-) -> Invoice:
+def create_invoice_from_quote(session: Session, quote: Invoice) -> Invoice:
     """Legt einen Rechnungsentwurf zum Angebot an und gibt ihn zurück.
 
-    Ohne `items` werden die Positionen des Angebots übernommen. Der Steuersatz des
-    Angebots (`document_vat_rate`) gilt auch für die Rechnung; Kleinunternehmer
-    bekommen 0 % und damit keine Steuerzeilen.
+    Die Positionen des Angebots werden übernommen. Der Steuersatz des Angebots
+    (`document_vat_rate`) gilt auch für die Rechnung; Kleinunternehmer bekommen
+    0 % und damit keine Steuerzeilen.
     """
     if quote.document_type != DocumentType.QUOTE:
         raise ValueError("Nur Angebote lassen sich in Rechnungen umwandeln")
     vat_percent = document_vat_rate(quote)
-    if items is None:
-        items = [
-            {"description": it.description, "quantity": float(it.quantity), "unit_price": float(it.unit_price)}
-            for it in quote.items
-        ]
+    items = [
+        {"description": it.description, "quantity": float(it.quantity), "unit_price": float(it.unit_price)}
+        for it in quote.items
+    ]
     company = session.get(Company, int(quote.company_id))
     invoice_id = finalize_invoice_logic(
         session=session,
@@ -161,6 +159,8 @@ def create_down_payment_invoice(
     assert invoice is not None
     invoice.quote_id = int(quote.id)
     invoice.down_payment_index = int(installment_index)
+    customer = session.get(Customer, int(quote.customer_id))
+    invoice.pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer)
     session.add(invoice)
     _accept_quote(session, quote)
     session.commit()
@@ -188,6 +188,11 @@ def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
         raise FinalInvoiceConflict(
             f"Zu diesem Angebot gibt es bereits eine Schlussrechnung (Rechnung {existing.nr}). "
             "Stornieren Sie sie, um eine neue zu erzeugen."
+        )
+    if not has_non_cancelled_down_payment(session, int(quote.id)):
+        raise ValueError(
+            "Eine Schlussrechnung entsteht nur aus einem Angebot mit Abschlagsrechnung. "
+            "Stellen Sie zuerst eine Abschlagsrechnung."
         )
 
     company = session.get(Company, int(quote.company_id))

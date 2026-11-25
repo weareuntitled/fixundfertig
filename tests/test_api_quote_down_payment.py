@@ -101,6 +101,32 @@ def test_pdf_calls_it_a_down_payment_and_names_quote_and_percentage(artist_api):
     assert "50 %" in text
 
 
+def test_down_payment_pdf_heading_survives_a_title_change(artist_api):
+    client, company, payload, session = artist_api
+    company.is_small_business = False
+    session.add(company)
+    session.commit()
+    quote = _create_quote(client, payload, vat_rate=19)
+    invoice = _down_payment(client, quote["id"], 0).json()
+
+    changed = client.put(f"/api/invoices/{invoice['id']}", json={"title": "Individueller Titel"})
+
+    assert changed.status_code == 200, changed.text
+    assert "ABSCHLAGSRECHNUNG" in _flat_pdf(client, invoice["id"])
+
+
+def test_a_normal_invoice_stays_an_invoice_when_title_says_abschlagsrechnung(artist_api):
+    client, _company, payload, _session = artist_api
+    invoice = client.post("/api/invoices", json=payload).json()
+
+    changed = client.put(f"/api/invoices/{invoice['id']}", json={"title": "Abschlagsrechnung"})
+
+    assert changed.status_code == 200, changed.text
+    text = _flat_pdf(client, invoice["id"])
+    assert "ABSCHLAGSRECHNUNG" not in text
+    assert "RECHNUNG" in text
+
+
 def test_quote_is_accepted_and_the_rate_shows_as_billed_with_its_invoice(artist_api):
     client, company, payload, session = artist_api
     company.is_small_business = False

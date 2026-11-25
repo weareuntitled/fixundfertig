@@ -121,7 +121,7 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
         heading = "ANGEBOT"
     elif bool(get_attr(invoice, "is_final_invoice", default=False)):
         heading = "SCHLUSSRECHNUNG"
-    elif safe_str(get_attr(invoice, "title", default="")).strip().casefold() == "abschlagsrechnung":
+    elif get_attr(invoice, "down_payment_index", default=None) is not None:
         heading = "ABSCHLAGSRECHNUNG"
     else:
         heading = "RECHNUNG"

@@ -37,6 +37,25 @@ def invoice_net(invoice: Invoice) -> float:
     )
 
 
+def has_non_cancelled_down_payment(session: Session, quote_id: int) -> bool:
+    """Ob das Angebot mindestens eine nicht stornierte Abschlagsrechnung hat.
+
+    Draft zählt mit: der Abschlag ist gestellt, auch wenn er noch nicht versendet
+    wurde. Nur CANCELLED nimmt die Abschlagsrechnung aus der Schlussrechnung.
+    """
+    statement = (
+        select(Invoice.id)
+        .where(
+            Invoice.quote_id == int(quote_id),
+            Invoice.document_type == DocumentType.INVOICE,
+            Invoice.down_payment_index.is_not(None),
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .limit(1)
+    )
+    return session.exec(statement).first() is not None
+
+
 def billed_down_payments(session: Session, quote_id: int) -> list[DownPaymentDeduction]:
     """Gestellte, nicht stornierte Abschlagsrechnungen eines Angebots, älteste zuerst."""
     statement = (

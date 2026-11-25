@@ -122,7 +122,7 @@ export function QuotePaymentPlanCard({
                         href={`/invoices/${billed.id}`}
                         className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface-container-low)] px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-high)]"
                       >
-                        Abgerechnet · Rechnung {billed.nr || `#${billed.id}`}
+                        {billed.status === "DRAFT" ? "Entwurf" : "Abgerechnet"} · Rechnung {billed.nr || `#${billed.id}`}
                       </a>
                     ) : (
                       <button

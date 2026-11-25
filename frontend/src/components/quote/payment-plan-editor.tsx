@@ -17,7 +17,7 @@ interface PaymentPlanEditorProps {
 }
 
 const INPUT =
-  "w-full bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42] outline-none";
+  "w-full min-h-[44px] bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42] outline-none";
 const ICON_BUTTON =
   "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius)] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-container-low)] disabled:opacity-30";
 const money = (value: number) => `${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -93,7 +93,7 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
                     type="button"
                     aria-label={`Rate ${number} entfernen`}
                     onClick={() => onChange(value.filter((_, i) => i !== index))}
-                    className={`${ICON_BUTTON} hover:bg-red-50 hover:text-red-600`}
+                    className={`${ICON_BUTTON} hover:bg-[var(--color-red-50)] hover:text-[var(--color-red-600)]`}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -105,7 +105,7 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
       )}
 
       {value.length > 0 && Math.abs(total - 100) > 0.001 && (
-        <p role="status" className="mt-[var(--space-xs)] rounded-[var(--radius)] bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+        <p role="status" className="mt-[var(--space-xs)] rounded-[var(--radius)] bg-[var(--color-amber-50)] px-3 py-2 text-[13px] text-[var(--color-amber-700)]">
           Die Raten ergeben zusammen {percentLabel(total)}, nicht 100 %. Speichern geht trotzdem.
         </p>
       )}

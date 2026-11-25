@@ -36,3 +36,16 @@ def status_not_allowed_reason(document: Any, new_status: str) -> str | None:
 def is_accepted_quote(document: Any) -> bool:
     """Ein angenommenes Angebot ist nicht mehr änderbar (Kopf und Positionen)."""
     return _is_quote(document) and getattr(document, "status", None) == InvoiceStatus.ACCEPTED
+
+
+def accepted_quote_status_reason(document: Any, new_status: str) -> str | None:
+    """ACCEPTED ist für Angebote endgültig: kein Statuswechsel mehr hinaus.
+
+    Der Status ACCEPTED selbst bleibt setzbar (idempotent). Der Aufrufer wertet
+    einen Grund als Konflikt (409), nicht als ungültigen Status (400).
+    """
+    if not is_accepted_quote(document):
+        return None
+    if InvoiceStatus(new_status) == InvoiceStatus.ACCEPTED:
+        return None
+    return "Ein angenommenes Angebot ist endgültig; sein Status lässt sich nicht mehr ändern"

@@ -105,6 +105,29 @@ def test_quotes_that_are_not_accepted_stay_changeable(artist_api, value):
     assert response.status_code == 200, response.text
 
 
+@pytest.mark.parametrize("target", ["DRAFT", "SENT", "REJECTED"])
+def test_an_accepted_quote_cannot_leave_that_status(artist_api, target):
+    client, _company, payload, _session = artist_api
+    quote = _accepted_quote(client, payload)
+
+    response = _set_status(client, quote["id"], target)
+
+    assert response.status_code == 409, response.text
+    assert client.get(f"/api/invoices/{quote['id']}").json()["status"] == "ACCEPTED"
+    blocked = client.put(f"/api/invoices/{quote['id']}", json={"subject": "Geändert"})
+    assert blocked.status_code == 409, blocked.text
+
+
+def test_an_accepted_quote_can_be_set_to_accepted_again(artist_api):
+    client, _company, payload, _session = artist_api
+    quote = _accepted_quote(client, payload)
+
+    response = _set_status(client, quote["id"], "ACCEPTED")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "ACCEPTED"
+
+
 @pytest.mark.parametrize(("before", "after"), [("DRAFT", "SENT"), ("ACCEPTED", "ACCEPTED"), ("REJECTED", "REJECTED")])
 def test_sending_a_quote_only_moves_a_draft_to_sent(artist_api, monkeypatch, before, after):
     import importlib

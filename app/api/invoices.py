@@ -35,7 +35,11 @@ from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
-from logic.document_status import is_accepted_quote, status_not_allowed_reason
+from logic.document_status import (
+    accepted_quote_status_reason,
+    is_accepted_quote,
+    status_not_allowed_reason,
+)
 from logic.final_invoice import billed_down_payments
 from logic.quote_conversion import (
     DownPaymentConflict,
@@ -61,7 +65,7 @@ from schemas.invoice import (
 )
 from services.documents import build_download_filename, read_document_bytes
 from services.email import send_email
-from services.payment_plan import dump_payment_plan, installments_with_amounts
+from services.payment_plan import dump_payment_plan, installments_with_amounts, parse_payment_plan
 from services.invoice_email import build_invoice_email
 from services.payment import check_payment, create_payment_link
 
@@ -78,11 +82,15 @@ def duplicate_invoice(
     _user_id: int = Depends(require_session_auth),
     session: Iterator = Depends(db_session),
 ):
-    """Duplicate an existing invoice as a new DRAFT with same customer + items."""
+    """Duplicate an existing document as a new DRAFT with the same customer and items.
+
+    A quote stays a quote: it gets its own quote number, validity and payment plan.
+    """
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
+    is_quote = getattr(invoice, "document_type", None) == DocumentType.QUOTE
     items = [
         {
             "description": it.description,
@@ -92,12 +100,24 @@ def duplicate_invoice(
         for it in (getattr(invoice, "items", None) or [])
     ]
 
+    ust_enabled = True
+    quote_options: dict = {}
+    if is_quote:
+        vat_percent = document_vat_rate(invoice)
+        items = [item | {"tax_rate": vat_percent} for item in items]
+        ust_enabled = vat_percent > 0
+        quote_options = {
+            "document_type": DocumentType.QUOTE,
+            "valid_until": getattr(invoice, "valid_until", "") or "",
+            "payment_plan": parse_payment_plan(getattr(invoice, "payment_plan", None)),
+        }
+
     try:
         inv_id = finalize_invoice_logic(
             session=session,
             comp_id=int(company.id),
             cust_id=int(invoice.customer_id),
-            title=invoice.title or "Rechnung",
+            title=invoice.title or ("Angebot" if is_quote else "Rechnung"),
             subject=invoice.subject or "",
             date_str="",
             delivery_str="",
@@ -108,8 +128,9 @@ def duplicate_invoice(
                 "recipient_city": invoice.recipient_city or "",
             },
             items=items,
-            ust_enabled=True,
+            ust_enabled=ust_enabled,
             status=InvoiceStatus.DRAFT,
+            **quote_options,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -192,13 +213,21 @@ def _document_type_value(invoice: Invoice) -> str:
     return doc_type.value if hasattr(doc_type, "value") else str(doc_type)
 
 
+def _down_payment_rows(session: Session, quote_id: int) -> list[dict]:
+    """Billed down payments of a quote in the shape the PDF renderer expects."""
+    return [row.as_dict() for row in billed_down_payments(session, int(quote_id))]
+
+
 def _ensure_status_allowed(invoice: Invoice, new_status: str) -> None:
+    finality = accepted_quote_status_reason(invoice, new_status)
+    if finality:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=finality)
     reason = status_not_allowed_reason(invoice, new_status)
     if reason:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
 
 
-def _ensure_editable(invoice: Invoice) -> None:
+def _ensure_quote_editable(invoice: Invoice) -> None:
     if is_accepted_quote(invoice):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -285,7 +314,10 @@ def get_line_item_suggestions(
     stmt = (
         select(InvoiceItemModel.description, InvoiceItemModel.unit_price)
         .join(Invoice, InvoiceItemModel.invoice_id == Invoice.id)
-        .where(Invoice.customer_id == customer_id)
+        .where(
+            Invoice.customer_id == customer_id,
+            Invoice.document_type == DocumentType.INVOICE,
+        )
         .distinct()
         .limit(50)
     )
@@ -426,7 +458,7 @@ def update_invoice(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
-    _ensure_editable(invoice)
+    _ensure_quote_editable(invoice)
 
     changed = False
     for field in ("title", "subject", "date", "delivery_date", "recipient_name",
@@ -478,6 +510,7 @@ def update_invoice(
                 ust_enabled=not bool(getattr(comp, "is_small_business", False)) if comp else True,
                 document_type=invoice.document_type, valid_until=invoice.valid_until,
                 payment_plan=invoice.payment_plan, vat_rate=invoice.vat_rate,
+                down_payment_index=getattr(invoice, "down_payment_index", None),
             )
             preview.__dict__["intro_text"] = invoice.intro_text or ""
             preview.__dict__["line_items"] = clean_items
@@ -486,7 +519,7 @@ def update_invoice(
             is_final = bool(getattr(invoice, "is_final_invoice", False))
             preview.__dict__["is_final_invoice"] = is_final
             down_payments = (
-                [row.as_dict() for row in billed_down_payments(session, int(invoice.quote_id))]
+                _down_payment_rows(session, int(invoice.quote_id))
                 if is_final and invoice.quote_id
                 else None
             )
@@ -524,7 +557,7 @@ def regenerate_invoice_pdf(
     company = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
     customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
     down_payments = (
-        [row.as_dict() for row in billed_down_payments(session, int(invoice.quote_id))]
+        _down_payment_rows(session, int(invoice.quote_id))
         if getattr(invoice, "is_final_invoice", False) and invoice.quote_id
         else None
     )
@@ -580,7 +613,7 @@ def _resolve_invoice_pdf_bytes(invoice, session=None) -> bytes:
         and getattr(invoice, "is_final_invoice", False)
         and getattr(invoice, "quote_id", None)
     ):
-        down_payments = [row.as_dict() for row in billed_down_payments(session, int(invoice.quote_id))]
+        down_payments = _down_payment_rows(session, int(invoice.quote_id))
     return render_invoice_to_pdf_bytes(
         invoice=invoice, company=company, customer=customer, down_payments=down_payments,
     )
@@ -687,7 +720,7 @@ def _rerender_quote_pdf(session: Session, invoice: Invoice) -> None:
     customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
     down_payments = None
     if is_final and getattr(invoice, "quote_id", None):
-        down_payments = [row.as_dict() for row in billed_down_payments(session, int(invoice.quote_id))]
+        down_payments = _down_payment_rows(session, int(invoice.quote_id))
     invoice.pdf_bytes = render_invoice_to_pdf_bytes(
         invoice=invoice, company=company, customer=customer, down_payments=down_payments
     )
@@ -707,7 +740,7 @@ def _refresh_final_invoices_for_quote(session: Session, quote_id: int) -> None:
     ).all()
     if not finals:
         return
-    rows = [row.as_dict() for row in billed_down_payments(session, int(quote_id))]
+    rows = _down_payment_rows(session, int(quote_id))
     for final in finals:
         company = session.get(Company, int(final.company_id)) if final.company_id else None
         customer = session.get(Customer, int(final.customer_id)) if final.customer_id else None
@@ -731,7 +764,7 @@ def add_invoice_item(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
-    _ensure_editable(invoice)
+    _ensure_quote_editable(invoice)
     vat_rate = document_vat_rate(invoice)
     item = InvoiceItemModel(
         invoice_id=invoice_id,
@@ -763,7 +796,7 @@ def update_invoice_item(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
-    _ensure_editable(invoice)
+    _ensure_quote_editable(invoice)
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -793,7 +826,7 @@ def delete_invoice_item(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
-    _ensure_editable(invoice)
+    _ensure_quote_editable(invoice)
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")

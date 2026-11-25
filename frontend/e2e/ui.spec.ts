@@ -406,7 +406,7 @@ test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each o
   await expect(main.getByRole("button", { name: "Löschen" })).toBeDisabled();
 });
 
-test("Abschlagsrechnung: one rate becomes a draft invoice and marks the rate as billed", async ({ page }) => {
+test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as Entwurf", async ({ page }) => {
   let billed = false;
   const invoice = {
     id: 43, customer_id: 7, document_type: "INVOICE", nr: "10000", title: "Abschlagsrechnung",
@@ -440,7 +440,7 @@ test("Abschlagsrechnung: one rate becomes a draft invoice and marks the rate as 
 
   await main.getByRole("button", { name: "Abschlagsrechnung" }).first().click();
 
-  await expect(main.getByRole("link", { name: /Abgerechnet · Rechnung 10000/ })).toHaveAttribute(
+  await expect(main.getByRole("link", { name: /Entwurf · Rechnung 10000/ })).toHaveAttribute(
     "href",
     "/invoices/43",
   );
