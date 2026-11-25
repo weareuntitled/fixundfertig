@@ -25,6 +25,7 @@ import {
   useAddInvoiceAttachment,
   useAddInvoiceItem,
   useConvertQuote,
+  useCreateFinalInvoice,
   useDeleteInvoiceItem,
   useInvoice,
   useUpdateInvoiceItem,
@@ -41,6 +42,12 @@ export const Route = createFileRoute("/_app/quotes/$id")({
 
 const eur = (n: number) =>
   n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+
+function linkedInvoiceLabel(linked: { is_final_invoice?: boolean; is_down_payment?: boolean }): string {
+  if (linked.is_final_invoice) return "Schlussrechnung";
+  if (linked.is_down_payment) return "Abschlagsrechnung";
+  return "Rechnung";
+}
 
 const INPUT =
   "w-full min-h-[44px] bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] outline-none focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42]";
@@ -62,6 +69,7 @@ function QuoteDetailPage() {
   const updateItem = useUpdateInvoiceItem();
   const deleteItem = useDeleteInvoiceItem();
   const convert = useConvertQuote();
+  const finalInvoice = useCreateFinalInvoice();
   const [header, setHeader] = useState<HeaderDraft | null>(null);
   const [itemDialog, setItemDialog] = useState<{ open: boolean; item?: InvoiceItem }>({ open: false });
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -170,6 +178,9 @@ function QuoteDetailPage() {
   const linkedInvoices = quote.linked_invoices ?? [];
   const locked = isQuoteLocked(quote);
   const decided = quote.status === "ACCEPTED" || quote.status === "REJECTED";
+  const hasFinalInvoice = linkedInvoices.some(
+    (linked) => linked.is_final_invoice && linked.status !== "CANCELLED",
+  );
 
   const startEdit = () =>
     setHeader({ subject: quote.subject, date: quote.date, valid_until: quote.valid_until });
@@ -224,6 +235,26 @@ function QuoteDetailPage() {
               className={SECONDARY_BUTTON}
             >
               <FileText size={16} /> {convert.isPending ? "Wandle um…" : "In Rechnung umwandeln"}
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                finalInvoice.mutate(quoteId, {
+                  onSuccess: (invoice) => {
+                    notify(
+                      "success",
+                      invoice.nr ? `Schlussrechnung ${invoice.nr} angelegt` : "Schlussrechnung angelegt",
+                    );
+                    void navigate({ to: "/invoices/$id", params: { id: String(invoice.id) } });
+                  },
+                  onError: (err: Error) => notify("error", err.message),
+                })
+              }
+              disabled={finalInvoice.isPending || hasFinalInvoice}
+              title={hasFinalInvoice ? "Zu diesem Angebot gibt es bereits eine Schlussrechnung" : undefined}
+              className={SECONDARY_BUTTON}
+            >
+              <FileText size={16} /> {finalInvoice.isPending ? "Erzeuge…" : "Schlussrechnung"}
             </button>
             <button
               type="button"
@@ -377,7 +408,7 @@ function QuoteDetailPage() {
                     params={{ id: String(linked.id) }}
                     className="font-semibold text-[var(--color-brand-text)] hover:underline"
                   >
-                    Rechnung {linked.nr || `#${linked.id}`}
+                    {linkedInvoiceLabel(linked)} {linked.nr || `#${linked.id}`}
                   </Link>
                   <span className="flex items-center gap-3">
                     <StatusBadge status={linked.status} />

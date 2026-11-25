@@ -120,6 +120,7 @@ def test_quote_is_accepted_and_the_rate_shows_as_billed_with_its_invoice(artist_
             "total_brutto": 2380.0,
             "installment_index": 0,
             "is_down_payment": True,
+            "is_final_invoice": False,
         }
     ]
 

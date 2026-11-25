@@ -94,7 +94,7 @@ describe("QuotePaymentPlanCard", () => {
   it("marks a billed installment and links its invoice", () => {
     renderCard({
       invoices: [
-        { id: 43, nr: "10000", status: "DRAFT", total_brutto: 2380, installment_index: 0, is_down_payment: true },
+        { id: 43, nr: "10000", status: "DRAFT", total_brutto: 2380, installment_index: 0, is_down_payment: true, is_final_invoice: false },
       ],
     });
 
@@ -106,7 +106,7 @@ describe("QuotePaymentPlanCard", () => {
   it("lets a rate be billed again after its down-payment invoice was cancelled", () => {
     renderCard({
       invoices: [
-        { id: 43, nr: "10000", status: "CANCELLED", total_brutto: 2380, installment_index: 0, is_down_payment: true },
+        { id: 43, nr: "10000", status: "CANCELLED", total_brutto: 2380, installment_index: 0, is_down_payment: true, is_final_invoice: false },
       ],
     });
 

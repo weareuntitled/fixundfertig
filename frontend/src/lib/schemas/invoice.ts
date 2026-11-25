@@ -156,6 +156,8 @@ export const linkedInvoiceSchema = z.object({
   /** Abschlagsrechnung: Index der abgerechneten Rate im Zahlungsplan. */
   installment_index: z.number().int().nullable().default(null),
   is_down_payment: z.boolean().default(false),
+  /** Schlussrechnung: eigener Marker, keine Abschlagsrechnung. */
+  is_final_invoice: z.boolean().default(false),
 });
 
 export type LinkedInvoice = z.infer<typeof linkedInvoiceSchema>;
@@ -191,6 +193,8 @@ export const invoiceReadSchema = z.object({
   quote_nr: z.string().nullable().default(null),
   /** Abschlagsrechnung: Index der abgerechneten Rate, sonst null. */
   down_payment_index: z.number().int().nullable().default(null),
+  /** Schlussrechnung: eigener Marker. */
+  is_final_invoice: z.boolean().default(false),
   /** Angebot: die daraus entstandenen Rechnungen. */
   linked_invoices: z.array(linkedInvoiceSchema).default([]),
   payment_link_url: z.string().default(""),

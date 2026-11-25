@@ -122,6 +122,8 @@ class LinkedInvoiceRead(BaseModel):
     # Abschlagsrechnung (#490): Rate des Zahlungsplans, die damit abgerechnet wurde.
     installment_index: int | None = None
     is_down_payment: bool = False
+    # Schlussrechnung (#491): eigener Marker, keine Abschlagsrechnung.
+    is_final_invoice: bool = False
 
 
 class InvoiceRead(BaseModel):
@@ -152,6 +154,8 @@ class InvoiceRead(BaseModel):
     quote_nr: str | None = None
     # Abschlagsrechnung (#490): Index der abgerechneten Rate, sonst None.
     down_payment_index: int | None = None
+    # Schlussrechnung (#491): eigener Marker.
+    is_final_invoice: bool = False
     linked_invoices: list[LinkedInvoiceRead] = Field(default_factory=list)
     payment_link_url: str = ""
     payment_provider: str = ""

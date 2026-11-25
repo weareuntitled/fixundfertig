@@ -118,10 +118,21 @@ def document_vat_rate(invoice: Invoice) -> float:
     return 0.0
 
 
-def recompute_total_brutto(invoice: Invoice, vat_rate: float) -> None:
-    """Gross total from the current positions at the document's VAT rate (keeps the rate stored)."""
+def recompute_total_brutto(invoice: Invoice, vat_rate: float, session: Optional[Session] = None) -> None:
+    """Payable total from the current positions at the document's VAT rate.
+
+    A final invoice (#491) keeps the rate stored but its payable amount is the
+    rest after the quote's billed down payments. Without a session the deductions
+    cannot be read, so it falls back to the plain gross total.
+    """
+    from .final_invoice import billed_down_payments, final_invoice_totals
+
     net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or []))
     invoice.vat_rate = float(vat_rate)
+    if bool(getattr(invoice, "is_final_invoice", False)) and getattr(invoice, "quote_id", None) and session is not None:
+        rows = billed_down_payments(session, int(invoice.quote_id))
+        invoice.total_brutto = final_invoice_totals(net, float(vat_rate), rows)["rest"]
+        return
     invoice.total_brutto = round(net * (1 + float(vat_rate) / 100.0), 2)
 
 

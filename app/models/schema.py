@@ -174,6 +174,9 @@ class Invoice(SQLModel, table=True):
     # Abschlagsrechnung (#490): 0-basierter Index der Rate im Zahlungsplan des Angebots.
     # NULL heißt: keine Abschlagsrechnung (normale Umwandlung oder Schlussrechnung).
     down_payment_index: Optional[int] = None
+    # Schlussrechnung (#491): eigener Marker, damit sie sich von normaler Umwandlung
+    # und von Abschlagsrechnungen unterscheidet. `down_payment_index` bleibt NULL.
+    is_final_invoice: bool = False
     intro_text: str = ""
     payment_link_url: str = ""
     payment_provider: str = ""  # "stripe" | "paypal" | ""

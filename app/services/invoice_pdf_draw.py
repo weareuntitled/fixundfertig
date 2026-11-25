@@ -119,6 +119,8 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
 
     if quote:
         heading = "ANGEBOT"
+    elif bool(get_attr(invoice, "is_final_invoice", default=False)):
+        heading = "SCHLUSSRECHNUNG"
     elif safe_str(get_attr(invoice, "title", default="")).strip().casefold() == "abschlagsrechnung":
         heading = "ABSCHLAGSRECHNUNG"
     else:
@@ -284,6 +286,75 @@ def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_b
         c.setFillColorRGB(*ink)
         c.drawString(mx + stringWidth("Zahlbar bis ", fonts["regular"], 7.9), y - 8, f"{due_str}.")
         y -= 11.5
+    return y
+
+
+def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
+                      net: float, tax: float, tax_rate: float, is_small_business: bool,
+                      deductions: list[dict], sum_net: float, sum_tax: float, rest: float,
+                      new_page, fonts: dict[str, str]) -> float:
+    """Schlussrechnung block: one deduction line per down payment and the three totals.
+
+    Kleinunternehmer get no tax column, no tax amounts and no tax sentence.
+    """
+    right = w - mx
+    ink, muted, hair = LAYOUT["col_ink"], LAYOUT["col_muted"], LAYOUT["col_hair"]
+    show_tax = not is_small_business
+    total_right = right
+    tax_right = right - 105
+    net_right = right - 210 if show_tax else right - 110
+
+    y -= 16.5
+    block_estimate = 170 + 18 * len(deductions)
+    if y - block_estimate < my_bot + 20 * mm:
+        y = new_page()
+
+    c.setFillColorRGB(*LAYOUT["col_accent"])
+    draw_tracked(c, mx, y, "ABSCHLÄGE", fonts["medium"], 7.5, 1.6)
+    c.setFillColorRGB(*muted)
+    if show_tax:
+        draw_tracked(c, net_right, y, "NETTO", fonts["medium"], 7, 1.0, align="right")
+        draw_tracked(c, tax_right, y, "STEUER", fonts["medium"], 7, 1.0, align="right")
+        draw_tracked(c, total_right, y, "GESAMT", fonts["medium"], 7, 1.0, align="right")
+    else:
+        draw_tracked(c, total_right, y, "BETRAG", fonts["medium"], 7, 1.0, align="right")
+    y -= 15
+
+    for row in deductions:
+        c.setFont(fonts["regular"], 9)
+        c.setFillColorRGB(*ink)
+        c.drawString(mx, y, f"Rechnung {row['nr']}")
+        c.drawRightString(net_right, y, format_money(row["net"]))
+        if show_tax:
+            c.drawRightString(tax_right, y, format_money(row["tax"]))
+        c.drawRightString(total_right, y, format_money(row["total"]))
+        c.setStrokeColorRGB(*hair)
+        c.line(mx, y - 6, right, y - 6)
+        y -= 18
+
+    def summary_row(label: str, net_value: float, tax_value: float, total_value: float,
+                    bold: bool = False) -> None:
+        nonlocal y
+        c.setFont(fonts["bold"] if bold else fonts["regular"], 9)
+        c.setFillColorRGB(*(ink if bold else muted))
+        c.drawString(mx, y, label)
+        c.setFillColorRGB(*ink)
+        c.drawRightString(net_right, y, format_money(net_value))
+        if show_tax:
+            c.drawRightString(tax_right, y, format_money(tax_value))
+        c.setFont(fonts["bold"], 12) if bold else c.setFont(fonts["regular"], 9)
+        c.drawRightString(total_right, y, format_money(total_value))
+        y -= 18
+
+    y -= 6
+    summary_row("Gesamtleistung", net, tax, round(net + tax, 2))
+    summary_row("Summe der Abschläge", sum_net, sum_tax, round(sum_net + sum_tax, 2))
+    y -= 2
+    c.setStrokeColorRGB(*LAYOUT["col_accent"])
+    c.setLineWidth(1.5)
+    c.line(mx, y + 6, right, y + 6)
+    c.setLineWidth(LAYOUT["line_width"])
+    summary_row("Restbetrag", round(net - sum_net, 2), round(tax - sum_tax, 2), rest, bold=True)
     return y
 
 

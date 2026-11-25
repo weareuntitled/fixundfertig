@@ -10,8 +10,10 @@ from typing import Any, Dict, List, Optional
 
 from sqlmodel import Session, select
 
-from data import Company, DocumentType, Invoice, InvoiceStatus
+from data import Company, Customer, DocumentType, Invoice, InvoiceStatus
+from logic.final_invoice import billed_down_payments, final_invoice_totals
 from logic.invoice import document_vat_rate, finalize_invoice_logic
+from renderer import render_invoice_to_pdf_bytes
 from services.invoice_pdf_draw import INVOICE_INTRO
 from services.invoice_pdf_layout import format_date
 from services.payment_plan import format_percent, parse_payment_plan
@@ -19,6 +21,10 @@ from services.payment_plan import format_percent, parse_payment_plan
 
 class DownPaymentConflict(Exception):
     """Die Rate wurde bereits abgerechnet und ihre Abschlagsrechnung ist nicht storniert."""
+
+
+class FinalInvoiceConflict(Exception):
+    """Zum Angebot gibt es bereits eine nicht stornierte Schlussrechnung."""
 
 
 def quote_reference_intro(quote: Invoice, company: Any = None) -> str:
@@ -155,6 +161,78 @@ def create_down_payment_invoice(
     assert invoice is not None
     invoice.quote_id = int(quote.id)
     invoice.down_payment_index = int(installment_index)
+    session.add(invoice)
+    _accept_quote(session, quote)
+    session.commit()
+    session.refresh(invoice)
+    return invoice
+
+
+def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
+    """Schlussrechnung als Rechnungsentwurf anlegen: Positionen des Angebots, Restbetrag zahlbar.
+
+    Abgezogen werden die tatsächlich gestellten, nicht stornierten Abschlagsrechnungen
+    des Angebots (Netto und Steuer getrennt). Die Positionen bleiben danach frei
+    änderbar; jede Änderung verschiebt den Restbetrag.
+    """
+    if quote.document_type != DocumentType.QUOTE:
+        raise ValueError("Nur Angebote lassen sich als Schlussrechnung abrechnen")
+    existing = session.exec(
+        select(Invoice).where(
+            Invoice.quote_id == int(quote.id),
+            Invoice.is_final_invoice == True,  # noqa: E712 — SQLModel column comparison
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+    ).first()
+    if existing is not None:
+        raise FinalInvoiceConflict(
+            f"Zu diesem Angebot gibt es bereits eine Schlussrechnung (Rechnung {existing.nr}). "
+            "Stornieren Sie sie, um eine neue zu erzeugen."
+        )
+
+    company = session.get(Company, int(quote.company_id))
+    is_small = bool(getattr(company, "is_small_business", False))
+    vat_percent = 0.0 if is_small else document_vat_rate(quote)
+    items = [
+        {"description": it.description, "quantity": float(it.quantity), "unit_price": float(it.unit_price)}
+        for it in quote.items
+    ]
+    invoice_id = finalize_invoice_logic(
+        session=session,
+        comp_id=int(quote.company_id),
+        cust_id=int(quote.customer_id),
+        title="Schlussrechnung",
+        subject=quote.subject or "",
+        date_str="",
+        delivery_str=quote.delivery_date or "",
+        recipient_data={
+            "recipient_name": quote.recipient_name or "",
+            "recipient_street": quote.recipient_street or "",
+            "recipient_postal_code": quote.recipient_postal_code or "",
+            "recipient_city": quote.recipient_city or "",
+        },
+        items=[it | {"tax_rate": vat_percent} for it in items],
+        ust_enabled=vat_percent > 0,
+        status=InvoiceStatus.DRAFT,
+        intro_text=quote_reference_intro(quote, company),
+    )
+    invoice = session.get(Invoice, invoice_id)
+    assert invoice is not None
+    invoice.quote_id = int(quote.id)
+    invoice.is_final_invoice = True
+    invoice.vat_rate = vat_percent
+
+    rows = billed_down_payments(session, int(quote.id))
+    net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in invoice.items)
+    invoice.total_brutto = final_invoice_totals(net, vat_percent, rows)["rest"]
+
+    customer = session.get(Customer, int(quote.customer_id))
+    invoice.pdf_bytes = render_invoice_to_pdf_bytes(
+        invoice=invoice,
+        company=company,
+        customer=customer,
+        down_payments=[row.as_dict() for row in rows],
+    )
     session.add(invoice)
     _accept_quote(session, quote)
     session.commit()

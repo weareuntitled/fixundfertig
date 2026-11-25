@@ -34,7 +34,8 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
 
     # An Angebot names its validity instead of asking for payment.
     quote = is_quote(invoice)
-    label = "Angebot" if quote else "Rechnung"
+    is_final_invoice = bool(get_attr(invoice, "is_final_invoice", default=False))
+    label = "Angebot" if quote else ("Schlussrechnung" if is_final_invoice else "Rechnung")
     number = safe_str(get_attr(invoice, "nr"))
     inv_date_raw = safe_str(get_attr(invoice, "date"))
     inv_date = format_date(inv_date_raw)
@@ -53,7 +54,9 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
     # VAT is whatever the total adds on top of the positions.
     net = sum(quantity * price for _, quantity, price in items) if items else gross
     vat = gross - net
-    show_vat = vat > 0.005 and net > 0
+    # A final invoice's total is already the rest after the down payments, so its
+    # position total is not the tax base shown in this summary.
+    show_vat = vat > 0.005 and net > 0 and not is_final_invoice
     vat_rate = f"{round(vat / net * 100, 1):g}".replace(".", ",") if show_vat else ""
     vat_label = f"MwSt. {vat_rate} %"
 

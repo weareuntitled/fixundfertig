@@ -11,13 +11,13 @@ from .invoice_pdf_layout import (
 )
 from .invoice_pdf_draw import (
     draw_header, draw_recipient, draw_title_block, draw_identity_line,
-    draw_table, draw_totals, draw_payment_box, draw_payment_plan, draw_footer, company_legal_name,
-    uses_artist_wordmark,
+    draw_table, draw_totals, draw_final_totals, draw_payment_box, draw_payment_plan, draw_footer,
+    company_legal_name, uses_artist_wordmark,
 )
 from .payment_plan import format_percent, installments_with_amounts
 
 
-def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
+def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payments=None) -> bytes:
     comp = company or get_attr(invoice, "company", default=None) or getattr(invoice, "__dict__", {}).get("company", None)
     if customer is None:
         customer = get_attr(invoice, "customer", default=None)
@@ -57,11 +57,38 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
         ))
 
     is_small_business = bool(get_attr(comp, "is_small_business", default=False)) if comp is not None else False
+    is_final_invoice = bool(get_attr(invoice, "is_final_invoice", default=False))
 
-    net = sum(i.quantity * i.unit_price for i in items)
+    net = round(sum(i.quantity * i.unit_price for i in items), 2)
     tax_rate = 0.0 if is_small_business else _vat_rate(invoice, net)
-    tax = net * tax_rate
-    gross = net + tax
+    tax = round(net * tax_rate, 2)
+
+    deductions: list[dict] = []
+    if is_final_invoice:
+        if down_payments is None:
+            down_payments = _down_payments_from_quote(invoice)
+        for row in (down_payments or []):
+            if isinstance(row, dict):
+                deductions.append({
+                    "nr": safe_str(row.get("nr")),
+                    "net": safe_float(row.get("net")),
+                    "tax": safe_float(row.get("tax")),
+                    "total": safe_float(row.get("total")),
+                })
+            else:
+                deductions.append({
+                    "nr": safe_str(get_attr(row, "nr")),
+                    "net": safe_float(get_attr(row, "net")),
+                    "tax": safe_float(get_attr(row, "tax")),
+                    "total": safe_float(get_attr(row, "total")),
+                })
+        sum_net = round(sum(row["net"] for row in deductions), 2)
+        sum_tax = round(sum(row["tax"] for row in deductions), 2)
+        gross = round(net + tax, 2)
+        rest = round(gross - sum_net - sum_tax, 2)
+    else:
+        sum_net = sum_tax = rest = 0.0
+        gross = net + tax
 
     inv_date = safe_str(get_attr(invoice, "date", "invoice_date", default=""))
     service_date = format_date(get_attr(invoice, "delivery_date", default=""))
@@ -122,7 +149,13 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
             y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
         y -= 22
         y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, fonts)
-        y = draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, due_str, new_page, fonts)
+        if is_final_invoice:
+            y = draw_final_totals(
+                c, w, mx, y, content_w, my_bot, net, tax, tax_rate, is_small_business,
+                deductions, sum_net, sum_tax, rest, new_page, fonts,
+            )
+        else:
+            y = draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, due_str, new_page, fonts)
         if not quote:
             draw_payment_box(c, w, mx, y, content_w, my_bot, comp, nr, new_page, fonts)
         else:
@@ -150,6 +183,41 @@ def _vat_rate(invoice, net: float) -> float:
     if net > 0 and gross > net + 0.005:
         return round((gross - net) / net, 3)
     return 0.0
+
+
+def _down_payments_from_quote(invoice) -> list[dict]:
+    """Best effort for callers without a session: read the quote's billed down payments.
+
+    The API passes the rows explicitly; this only keeps a detached live render honest.
+    """
+    try:
+        quote = get_attr(invoice, "quote", default=None)
+        linked = getattr(quote, "quote_invoices", None) or []
+    except Exception:
+        return []
+    rows: list[dict] = []
+    for other in linked:
+        if get_attr(other, "down_payment_index", default=None) is None:
+            continue
+        status = get_attr(other, "status", default="")
+        status = str(getattr(status, "value", status)).upper()
+        if status in ("", "CANCELLED", "DRAFT"):
+            continue
+        net = round(
+            sum(
+                safe_float(get_attr(it, "quantity")) * safe_float(get_attr(it, "unit_price"))
+                for it in (get_attr(other, "items", default=None) or [])
+            ),
+            2,
+        )
+        total = round(safe_float(get_attr(other, "total_brutto", default=0)), 2)
+        rows.append({
+            "nr": safe_str(get_attr(other, "nr")),
+            "net": net,
+            "tax": round(max(total - net, 0.0), 2),
+            "total": total,
+        })
+    return rows
 
 
 def _is_name_token_char(char: str) -> bool:

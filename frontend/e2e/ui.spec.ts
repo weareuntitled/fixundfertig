@@ -448,6 +448,63 @@ test("Abschlagsrechnung: one rate becomes a draft invoice and marks the rate as 
   await expect(main.getByText("Angenommen", { exact: true })).toBeVisible();
 });
 
+test("Schlussrechnung: a quote with a down payment becomes a final invoice that links back", async ({ page }) => {
+  let finalCreated = false;
+  const downPayment = {
+    id: 43, customer_id: 7, document_type: "INVOICE", nr: "10000", title: "Abschlagsrechnung",
+    date: "", recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, status: "SENT",
+    quote_id: 42, quote_nr: "A-10000", down_payment_index: 0, installment_index: 0,
+    is_down_payment: true, is_final_invoice: false,
+    items: [{ id: 2, description: "Abschlag 50 % gemäß Angebot A-10000 – bei Auftrag", quantity: 1, unit_price: 2000 }],
+  };
+  const finalInvoice = {
+    id: 44, customer_id: 7, document_type: "INVOICE", nr: "10001", title: "Schlussrechnung",
+    date: "", recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, status: "DRAFT",
+    quote_id: 42, quote_nr: "A-10000", down_payment_index: null, is_down_payment: false, is_final_invoice: true,
+    items: [{ id: 3, description: "Website", quantity: 1, unit_price: 4000 }],
+  };
+  const quote = () => ({
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 4760, status: "ACCEPTED",
+    items: [{ id: 1, description: "Website", quantity: 1, unit_price: 4000 }],
+    payment_plan: [
+      { percent: 50, label: "bei Auftrag", amount: 2380 },
+      { percent: 50, label: "nach Livegang", amount: 2380 },
+    ],
+    linked_invoices: finalCreated
+      ? [
+          downPayment,
+          { id: 44, nr: "10001", status: "DRAFT", total_brutto: 2380, installment_index: null,
+            is_down_payment: false, is_final_invoice: true },
+        ]
+      : [downPayment],
+  });
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote() }));
+  await page.route("**/api/invoices/42/final-invoice", (route) => {
+    finalCreated = true;
+    return route.fulfill({ status: 201, json: finalInvoice });
+  });
+  await page.route("**/api/invoices/44", (route) => route.fulfill({ json: finalInvoice }));
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  await expect(main.getByRole("link", { name: /Abgerechnet · Rechnung 10000/ })).toBeVisible();
+
+  await main.getByRole("button", { name: "Schlussrechnung" }).click();
+
+  await expect(page).toHaveURL(/\/invoices\/44$/);
+  await expect(page.getByRole("heading", { name: "Rechnung #10001" })).toBeVisible();
+  await page.getByRole("main").getByRole("link", { name: "Aus Angebot A-10000" }).click();
+
+  await expect(page).toHaveURL(/\/quotes\/42$/);
+  await expect(page.getByRole("main").getByRole("link", { name: /Schlussrechnung 10001/ })).toHaveAttribute(
+    "href",
+    "/invoices/44",
+  );
+});
+
 test("settings: leaving with unsaved changes asks first", async ({ page }) => {
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));

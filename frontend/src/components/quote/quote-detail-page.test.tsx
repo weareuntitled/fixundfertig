@@ -96,4 +96,26 @@ describe("Angebot-Detailseite: Status", () => {
     expect(screen.queryByRole("button", { name: "Angenommen" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Abgelehnt" })).toBeNull();
   });
+
+  it("lists a final invoice as Schlussrechnung and links it", async () => {
+    renderQuote({
+      ...baseQuote,
+      status: "ACCEPTED",
+      linked_invoices: [
+        {
+          id: 44,
+          nr: "10001",
+          status: "DRAFT",
+          total_brutto: 2380,
+          installment_index: null,
+          is_down_payment: false,
+          is_final_invoice: true,
+        },
+      ],
+    });
+
+    const link = await screen.findByRole("link", { name: /Schlussrechnung 10001/ });
+    expect(link.getAttribute("href")).toBe("/invoices/44");
+    expect(screen.queryByRole("button", { name: "Schlussrechnung" })).toBeDisabled();
+  });
 });

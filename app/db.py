@@ -246,6 +246,16 @@ def ensure_invoice_down_payment_index_field(target_engine=None):
 ensure_invoice_down_payment_index_field()
 
 
+def ensure_invoice_final_invoice_field(target_engine=None):
+    """Ergänzt den Marker einer Schlussrechnung (#491); 0 für alle anderen Dokumente."""
+    with (target_engine or engine).begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "is_final_invoice" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN is_final_invoice INTEGER DEFAULT 0")
+
+ensure_invoice_final_invoice_field()
+
+
 def reconcile_invoice_revision_schema():
     with engine.begin() as conn:
         tables = {

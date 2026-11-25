@@ -36,9 +36,12 @@ from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
 from logic.document_status import is_accepted_quote, status_not_allowed_reason
+from logic.final_invoice import billed_down_payments
 from logic.quote_conversion import (
     DownPaymentConflict,
+    FinalInvoiceConflict,
     create_down_payment_invoice,
+    create_final_invoice,
     create_invoice_from_quote,
 )
 from renderer import render_invoice_to_pdf_bytes
@@ -153,6 +156,24 @@ def create_quote_down_payment(
     return _to_read_model(invoice)
 
 
+@router.post("/{invoice_id}/final-invoice", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
+def create_quote_final_invoice(
+    invoice_id: int,
+    company=Depends(get_current_company),
+    _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
+):
+    """Schlussrechnung zum Angebot: Positionen übernehmen, gestellte Abschläge abziehen (#491)."""
+    quote = _get_invoice_for_company(session, invoice_id, company)
+    try:
+        invoice = create_final_invoice(session, quote)
+    except FinalInvoiceConflict as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return _to_read_model(invoice)
+
+
 def _attachment_to_read(attachment: InvoiceAttachment) -> InvoiceAttachmentRead:
     document = attachment.document
     return InvoiceAttachmentRead(
@@ -224,6 +245,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
             if getattr(invoice, "down_payment_index", None) is not None
             else None
         ),
+        is_final_invoice=bool(getattr(invoice, "is_final_invoice", False)),
         linked_invoices=[
             LinkedInvoiceRead(
                 id=int(linked.id),
@@ -236,6 +258,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
                     else None
                 ),
                 is_down_payment=getattr(linked, "down_payment_index", None) is not None,
+                is_final_invoice=bool(getattr(linked, "is_final_invoice", False)),
             )
             for linked in (getattr(invoice, "quote_invoices", None) or [])
         ],
@@ -382,6 +405,9 @@ def update_invoice_status(
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
+    # A down payment becoming billable (or cancelled) changes the rest of its final invoice.
+    if getattr(invoice, "down_payment_index", None) is not None and getattr(invoice, "quote_id", None):
+        _refresh_final_invoices_for_quote(session, int(invoice.quote_id))
     return _to_read_model(invoice)
 
 
@@ -457,7 +483,14 @@ def update_invoice(
             preview.__dict__["line_items"] = clean_items
             preview.__dict__["totals"] = {"gross": float(invoice.total_brutto or 0)}
             preview.__dict__["total_brutto"] = float(invoice.total_brutto or 0)
-            invoice.pdf_bytes = render_invoice_to_pdf_bytes(preview)
+            is_final = bool(getattr(invoice, "is_final_invoice", False))
+            preview.__dict__["is_final_invoice"] = is_final
+            down_payments = (
+                [row.as_dict() for row in billed_down_payments(session, int(invoice.quote_id))]
+                if is_final and invoice.quote_id
+                else None
+            )
+            invoice.pdf_bytes = render_invoice_to_pdf_bytes(preview, down_payments=down_payments)
         except Exception as e:
             logger.exception("PDF re-render failed on invoice update")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"PDF-Neuerstellung fehlgeschlagen: {e}") from e
@@ -490,7 +523,14 @@ def regenerate_invoice_pdf(
 
     company = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
     customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
-    pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer)
+    down_payments = (
+        [row.as_dict() for row in billed_down_payments(session, int(invoice.quote_id))]
+        if getattr(invoice, "is_final_invoice", False) and invoice.quote_id
+        else None
+    )
+    pdf_bytes = render_invoice_to_pdf_bytes(
+        invoice=invoice, company=company, customer=customer, down_payments=down_payments
+    )
 
     next_revision = int(invoice.revision_nr or 0) + 1
     invoice.pdf_bytes = pdf_bytes
@@ -534,8 +574,15 @@ def _resolve_invoice_pdf_bytes(invoice, session=None) -> bytes:
         company = session.get(Company, int(invoice.company_id))
     if session is not None and customer is None and getattr(invoice, "customer_id", None):
         customer = session.get(Customer, int(invoice.customer_id))
+    down_payments = None
+    if (
+        session is not None
+        and getattr(invoice, "is_final_invoice", False)
+        and getattr(invoice, "quote_id", None)
+    ):
+        down_payments = [row.as_dict() for row in billed_down_payments(session, int(invoice.quote_id))]
     return render_invoice_to_pdf_bytes(
-        invoice=invoice, company=company, customer=customer,
+        invoice=invoice, company=company, customer=customer, down_payments=down_payments,
     )
 
 
@@ -632,15 +679,45 @@ def create_invoice(
 
 
 def _rerender_quote_pdf(session: Session, invoice: Invoice) -> None:
-    """Keep a quote's stored PDF in step with its positions (preview = download)."""
-    if getattr(invoice, "document_type", None) != DocumentType.QUOTE:
+    """Keep a quote's or final invoice's stored PDF in step with its positions (preview = download)."""
+    is_final = bool(getattr(invoice, "is_final_invoice", False))
+    if getattr(invoice, "document_type", None) != DocumentType.QUOTE and not is_final:
         return
     company = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
     customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
-    invoice.pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer)
+    down_payments = None
+    if is_final and getattr(invoice, "quote_id", None):
+        down_payments = [row.as_dict() for row in billed_down_payments(session, int(invoice.quote_id))]
+    invoice.pdf_bytes = render_invoice_to_pdf_bytes(
+        invoice=invoice, company=company, customer=customer, down_payments=down_payments
+    )
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
+
+
+def _refresh_final_invoices_for_quote(session: Session, quote_id: int) -> None:
+    """Recompute and re-render every open final invoice after its deductions changed."""
+    finals = session.exec(
+        select(Invoice).where(
+            Invoice.quote_id == int(quote_id),
+            Invoice.is_final_invoice == True,  # noqa: E712 — SQLModel column comparison
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+    ).all()
+    if not finals:
+        return
+    rows = [row.as_dict() for row in billed_down_payments(session, int(quote_id))]
+    for final in finals:
+        company = session.get(Company, int(final.company_id)) if final.company_id else None
+        customer = session.get(Customer, int(final.customer_id)) if final.customer_id else None
+        recompute_total_brutto(final, document_vat_rate(final), session)
+        final.pdf_bytes = render_invoice_to_pdf_bytes(
+            invoice=final, company=company, customer=customer, down_payments=rows
+        )
+        final.revision_nr = int(final.revision_nr or 0) + 1
+        session.add(final)
+    session.commit()
 
 
 @router.post("/{invoice_id}/items", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
@@ -665,7 +742,7 @@ def add_invoice_item(
     session.add(item)
     session.flush()
     session.refresh(invoice)
-    recompute_total_brutto(invoice, vat_rate)
+    recompute_total_brutto(invoice, vat_rate, session)
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     session.add(invoice)
     session.commit()
@@ -696,7 +773,7 @@ def update_invoice_item(
     item.unit_price = payload.unit_price
     session.add(item)
     session.flush()
-    recompute_total_brutto(invoice, vat_rate)
+    recompute_total_brutto(invoice, vat_rate, session)
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     session.add(invoice)
     session.commit()
@@ -724,7 +801,7 @@ def delete_invoice_item(
     session.delete(item)
     session.flush()
     session.refresh(invoice)
-    recompute_total_brutto(invoice, vat_rate)
+    recompute_total_brutto(invoice, vat_rate, session)
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     session.add(invoice)
     session.commit()
