@@ -169,6 +169,9 @@ class Invoice(SQLModel, table=True):
     legacy: bool = False
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
+    # Rechnung aus einem Angebot (#489); ein Angebot kann mehrere Rechnungen haben.
+    quote_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
+    intro_text: str = ""
     payment_link_url: str = ""
     payment_provider: str = ""  # "stripe" | "paypal" | ""
     pdf_bytes: Optional[bytes] = Field(default=None)
@@ -184,6 +187,14 @@ class Invoice(SQLModel, table=True):
     )
     customer: Optional["Customer"] = Relationship(back_populates="invoices")
     company: Optional["Company"] = Relationship(back_populates="invoices")
+    quote: Optional["Invoice"] = Relationship(
+        back_populates="quote_invoices",
+        sa_relationship_kwargs={"remote_side": "Invoice.id", "foreign_keys": "[Invoice.quote_id]"},
+    )
+    quote_invoices: list["Invoice"] = Relationship(
+        back_populates="quote",
+        sa_relationship_kwargs={"foreign_keys": "[Invoice.quote_id]", "order_by": "Invoice.id"},
+    )
 
 class InvoiceRevision(SQLModel, table=True):
     invoice_id: int = Field(foreign_key="invoice.id", primary_key=True)

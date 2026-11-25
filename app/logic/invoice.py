@@ -215,6 +215,7 @@ def finalize_invoice_logic(
         document_type=document_type,
         valid_until=valid_until,
         payment_plan=plan_json,
+        intro_text=(intro_text or "").strip(),
         title=(title or "Rechnung").strip() or "Rechnung",
         subject=(subject or "").strip(),
         date=(date_str or "").strip(),

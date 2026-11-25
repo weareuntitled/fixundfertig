@@ -223,6 +223,18 @@ def ensure_invoice_payment_plan_field(target_engine=None):
 
 ensure_invoice_payment_plan_field()
 
+
+def ensure_invoice_quote_link_fields(target_engine=None):
+    """Ergänzt die gespeicherte Einleitung und den Verweis Rechnung → Angebot (#489)."""
+    with (target_engine or engine).begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "intro_text" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN intro_text TEXT DEFAULT ''")
+        if "quote_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN quote_id INTEGER REFERENCES invoice(id)")
+
+ensure_invoice_quote_link_fields()
+
 def reconcile_invoice_revision_schema():
     with engine.begin() as conn:
         tables = {

@@ -81,6 +81,7 @@ def draw_logo(c: Canvas, mx: float, top_y: float, comp) -> float:
 
 
 QUOTE_INTRO = "Vielen Dank für Ihre Anfrage. Hiermit biete ich folgende Leistungen an."
+INVOICE_INTRO = "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
 
 
 def draw_recipient(c: Canvas, mx: float, rule_y: float, content_w: float,
@@ -139,7 +140,7 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
     if not intro and not quote:
         intro = safe_str(get_attr(comp, "invoice_intro", default="")) if comp is not None else ""
     if not intro:
-        intro = QUOTE_INTRO if quote else "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
+        intro = QUOTE_INTRO if quote else INVOICE_INTRO
     c.setFillColorRGB(0.235, 0.251, 0.282)
     c.setFont(fonts["regular"], 9)
     for line in wrap_text(intro, fonts["regular"], 9, left_w):

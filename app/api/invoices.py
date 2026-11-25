@@ -36,6 +36,7 @@ from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
 from logic.document_status import is_accepted_quote, status_not_allowed_reason
+from logic.quote_conversion import create_invoice_from_quote
 from renderer import render_invoice_to_pdf_bytes
 from schemas.invoice import (
     BulkStatusUpdate,
@@ -44,6 +45,7 @@ from schemas.invoice import (
     InvoiceDraft,
     InvoiceItem,
     InvoiceRead,
+    LinkedInvoiceRead,
     InvoiceSendRequest,
     InvoiceStatusUpdate,
     InvoiceUpdate,
@@ -111,6 +113,22 @@ def duplicate_invoice(
     return _to_read_model(new_invoice)
 
 
+@router.post("/{invoice_id}/convert", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
+def convert_quote_to_invoice(
+    invoice_id: int,
+    company=Depends(get_current_company),
+    _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
+):
+    """Angebot in Rechnung umwandeln: neuer Rechnungsentwurf mit den Positionen des Angebots."""
+    quote = _get_invoice_for_company(session, invoice_id, company)
+    try:
+        invoice = create_invoice_from_quote(session, quote)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return _to_read_model(invoice)
+
+
 def _attachment_to_read(attachment: InvoiceAttachment) -> InvoiceAttachmentRead:
     document = attachment.document
     return InvoiceAttachmentRead(
@@ -154,6 +172,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
             unit_price=float(it.unit_price),
         ))
     attachments = [_attachment_to_read(attachment) for attachment in invoice.attachments]
+    quote = getattr(invoice, "quote", None)
     return InvoiceRead(
         id=int(invoice.id),
         customer_id=int(invoice.customer_id),
@@ -174,6 +193,17 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         revision_nr=int(invoice.revision_nr or 0),
         updated_at=invoice.updated_at or "",
         related_invoice_id=int(invoice.related_invoice_id) if invoice.related_invoice_id else None,
+        quote_id=int(quote.id) if quote else None,
+        quote_nr=quote.nr if quote else None,
+        linked_invoices=[
+            LinkedInvoiceRead(
+                id=int(linked.id),
+                nr=linked.nr,
+                status=linked.status.value if hasattr(linked.status, "value") else str(linked.status),
+                total_brutto=float(linked.total_brutto or 0.0),
+            )
+            for linked in (getattr(invoice, "quote_invoices", None) or [])
+        ],
         payment_link_url=invoice.payment_link_url or "",
         payment_provider=invoice.payment_provider or "",
         items=items,
@@ -352,6 +382,9 @@ def update_invoice(
         if plan_json != (invoice.payment_plan or "[]"):
             invoice.payment_plan = plan_json
             changed = True
+    if payload.intro_text is not None and payload.intro_text != (invoice.intro_text or ""):
+        invoice.intro_text = payload.intro_text
+        changed = True
     if payload.service_from is not None:
         f = payload.service_from
         t = payload.service_to or ""
@@ -385,7 +418,7 @@ def update_invoice(
                 document_type=invoice.document_type, valid_until=invoice.valid_until,
                 payment_plan=invoice.payment_plan, vat_rate=invoice.vat_rate,
             )
-            preview.__dict__["intro_text"] = payload.intro_text or ""
+            preview.__dict__["intro_text"] = invoice.intro_text or ""
             preview.__dict__["line_items"] = clean_items
             preview.__dict__["totals"] = {"gross": float(invoice.total_brutto or 0)}
             preview.__dict__["total_brutto"] = float(invoice.total_brutto or 0)
@@ -861,8 +894,15 @@ def send_invoice_email_endpoint(
 def delete_invoice_endpoint(
     invoice_id: int,
     _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
 ):
     """Delete an invoice and all associated records (items, revisions, audit logs, PDF)."""
+    document = session.get(Invoice, invoice_id)
+    if document is not None and document.quote_invoices:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ein Angebot mit Rechnungen lässt sich nicht löschen",
+        )
     ok, msg = delete_invoice(invoice_id)
     if not ok:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)

@@ -41,6 +41,20 @@ export function useInvoice(id: number) {
   });
 }
 
+/** „In Rechnung umwandeln“: creates an invoice draft from the quote and returns it. */
+export function useConvertQuote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (quoteId: number) =>
+      api
+        .post<unknown>(`/api/invoices/${quoteId}/convert`)
+        .then((data) => invoiceReadSchema.parse(data)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+  });
+}
+
 export function useUpdateInvoiceStatus() {
   const qc = useQueryClient();
   return useMutation({

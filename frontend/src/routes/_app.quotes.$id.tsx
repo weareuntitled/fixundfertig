@@ -1,15 +1,16 @@
 /**
  * @schema QuoteDetailPage
- * @purpose One quote: change subject, dates and positions, mark it accepted or rejected, or delete it
- * @output Header with "PDF herunterladen", "Vorschau", "Angebot senden" (mail dialog with attachments) and
- *   "Löschen" (no invoice actions), a details card
+ * @purpose One quote: change subject, dates and positions, mark it accepted or rejected, send it,
+ *   turn it into an invoice draft, or delete it
+ * @output Header with "PDF herunterladen", "Vorschau", "Angebot senden" (mail dialog with attachments),
+ *   "In Rechnung umwandeln" and "Löschen" (no invoice actions), a details card
  *   with status actions and inline editing, the positions with add/edit/remove. An accepted quote is
  *   locked (no editing).
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, ExternalLink, Lock, Pencil, Send, Trash2, X } from "lucide-react";
+import { Check, Download, ExternalLink, FileText, Lock, Pencil, Send, Trash2, X } from "lucide-react";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -23,6 +24,7 @@ import { useUploadDocument } from "@/lib/use-documents";
 import {
   useAddInvoiceAttachment,
   useAddInvoiceItem,
+  useConvertQuote,
   useDeleteInvoiceItem,
   useInvoice,
   useUpdateInvoiceItem,
@@ -59,6 +61,7 @@ function QuoteDetailPage() {
   const addItem = useAddInvoiceItem();
   const updateItem = useUpdateInvoiceItem();
   const deleteItem = useDeleteInvoiceItem();
+  const convert = useConvertQuote();
   const [header, setHeader] = useState<HeaderDraft | null>(null);
   const [itemDialog, setItemDialog] = useState<{ open: boolean; item?: InvoiceItem }>({ open: false });
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -164,6 +167,7 @@ function QuoteDetailPage() {
   }
 
   const items = quote.items ?? [];
+  const linkedInvoices = quote.linked_invoices ?? [];
   const locked = isQuoteLocked(quote);
   const decided = quote.status === "ACCEPTED" || quote.status === "REJECTED";
 
@@ -205,7 +209,29 @@ function QuoteDetailPage() {
             <button type="button" onClick={openSend} disabled={sendQuote.isPending} className={SECONDARY_BUTTON}>
               <Send size={16} /> Angebot senden
             </button>
-            <button type="button" onClick={() => setDeleteOpen(true)} className={SECONDARY_BUTTON}>
+            <button
+              type="button"
+              onClick={() =>
+                convert.mutate(quoteId, {
+                  onSuccess: (invoice) => {
+                    notify("success", invoice.nr ? `Rechnungsentwurf ${invoice.nr} angelegt` : "Rechnungsentwurf angelegt");
+                    void navigate({ to: "/invoices/$id", params: { id: String(invoice.id) } });
+                  },
+                  onError: (err: Error) => notify("error", err.message),
+                })
+              }
+              disabled={convert.isPending}
+              className={SECONDARY_BUTTON}
+            >
+              <FileText size={16} /> {convert.isPending ? "Wandle um…" : "In Rechnung umwandeln"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              disabled={linkedInvoices.length > 0}
+              title={linkedInvoices.length > 0 ? "Ein Angebot mit Rechnungen lässt sich nicht löschen" : undefined}
+              className={SECONDARY_BUTTON}
+            >
               <Trash2 size={16} /> Löschen
             </button>
           </>
@@ -330,6 +356,36 @@ function QuoteDetailPage() {
       </div>
 
       <QuotePaymentPlanCard quoteId={quoteId} gross={quote.total_brutto} plan={quote.payment_plan ?? []} locked={locked} />
+
+      <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-lg)] shadow-sm">
+        <h2 className="mb-[var(--space-sm)] text-[20px] font-semibold text-[var(--color-text-heading)]">Rechnungen</h2>
+        {linkedInvoices.length === 0 ? (
+          <p className="text-[14px] text-[var(--color-text-secondary)]">Noch keine Rechnung zu diesem Angebot.</p>
+        ) : (
+          <>
+            <ul>
+              {linkedInvoices.map((linked) => (
+                <li key={linked.id} className="flex min-h-[44px] items-center justify-between gap-3 border-b border-[var(--color-border)] last:border-b-0">
+                  <Link
+                    to="/invoices/$id"
+                    params={{ id: String(linked.id) }}
+                    className="font-semibold text-[var(--color-brand-text)] hover:underline"
+                  >
+                    Rechnung {linked.nr || `#${linked.id}`}
+                  </Link>
+                  <span className="flex items-center gap-3">
+                    <StatusBadge status={linked.status} />
+                    <span className="font-mono text-[14px] font-bold">{eur(linked.total_brutto)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-[var(--space-sm)] text-[13px] text-[var(--color-text-secondary)]">
+              Ein Angebot mit Rechnungen lässt sich nicht löschen.
+            </p>
+          </>
+        )}
+      </div>
 
       <LineItemDialog
         open={itemDialog.open}

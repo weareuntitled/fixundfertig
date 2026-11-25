@@ -112,6 +112,15 @@ class InvoiceAttachmentCreate(BaseModel):
     document_id: int = Field(gt=0)
 
 
+class LinkedInvoiceRead(BaseModel):
+    """Eine aus einem Angebot entstandene Rechnung (Liste am Angebot)."""
+
+    id: int
+    nr: str | None = None
+    status: InvoiceStatus = "DRAFT"
+    total_brutto: float = 0.0
+
+
 class InvoiceRead(BaseModel):
     """Output für GET /api/invoices[/...]. Vollständiger Record inkl. server-managed Felder."""
 
@@ -136,6 +145,9 @@ class InvoiceRead(BaseModel):
     revision_nr: int = 0
     updated_at: str = ""
     related_invoice_id: int | None = None
+    quote_id: int | None = None
+    quote_nr: str | None = None
+    linked_invoices: list[LinkedInvoiceRead] = Field(default_factory=list)
     payment_link_url: str = ""
     payment_provider: str = ""
     items: list[InvoiceItem] = Field(default_factory=list)

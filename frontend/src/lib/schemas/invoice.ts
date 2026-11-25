@@ -147,6 +147,14 @@ export const invoiceAttachmentSchema = z.object({
 
 export type InvoiceAttachment = z.infer<typeof invoiceAttachmentSchema>;
 
+/** Mirror of `app/schemas/invoice.py:LinkedInvoiceRead`. */
+export const linkedInvoiceSchema = z.object({
+  id: z.number().int(),
+  nr: z.string().nullable().optional(),
+  status: invoiceStatusSchema.default("DRAFT"),
+  total_brutto: z.number().default(0),
+});
+
 /**
  * Read-side mirror of `app/schemas/invoice.py:InvoiceRead`.
  * Backend liefert: id, customer_id, nr, title, date, delivery_date,
@@ -173,6 +181,11 @@ export const invoiceReadSchema = z.object({
   revision_nr: z.number().int().default(0),
   updated_at: z.string().default(""),
   related_invoice_id: z.number().int().nullable().optional(),
+  /** Rechnung aus einem Angebot: dessen ID und Nummer. */
+  quote_id: z.number().int().nullable().default(null),
+  quote_nr: z.string().nullable().default(null),
+  /** Angebot: die daraus entstandenen Rechnungen. */
+  linked_invoices: z.array(linkedInvoiceSchema).default([]),
   payment_link_url: z.string().default(""),
   payment_provider: z.string().default(""),
   items: z.array(invoiceItemSchema).default([]),

@@ -369,6 +369,43 @@ test("quote detail page sends the Angebot by mail and then shows Gesendet", asyn
   await expect(main.getByText("Gesendet")).toBeVisible();
 });
 
+test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each other", async ({ page }) => {
+  let converted = false;
+  const invoice = {
+    id: 43, customer_id: 7, document_type: "INVOICE", nr: "10000", title: "Rechnung",
+    date: "", recipient_name: "Sisyphos Event GmbH", total_brutto: 400, status: "DRAFT",
+    quote_id: 42, quote_nr: "A-10000",
+    items: [{ id: 2, description: "DJ Performance", quantity: 1, unit_price: 400 }],
+  };
+  const quote = () => ({
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 400, status: converted ? "ACCEPTED" : "SENT",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 400 }],
+    linked_invoices: converted ? [{ id: 43, nr: "10000", status: "DRAFT", total_brutto: 400 }] : [],
+  });
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote() }));
+  await page.route("**/api/invoices/42/convert", (route) => {
+    converted = true;
+    return route.fulfill({ status: 201, json: invoice });
+  });
+  await page.route("**/api/invoices/43", (route) => route.fulfill({ json: invoice }));
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  await expect(main.getByText("Noch keine Rechnung zu diesem Angebot.")).toBeVisible();
+  await main.getByRole("button", { name: "In Rechnung umwandeln" }).click();
+
+  await expect(page).toHaveURL(/\/invoices\/43$/);
+  await expect(page.getByRole("heading", { name: /Rechnung #10000/ })).toBeVisible();
+  await page.getByRole("main").getByRole("link", { name: "Aus Angebot A-10000" }).click();
+
+  await expect(page).toHaveURL(/\/quotes\/42$/);
+  await expect(main.getByRole("link", { name: /Rechnung 10000/ })).toHaveAttribute("href", "/invoices/43");
+  await expect(main.getByRole("button", { name: "Löschen" })).toBeDisabled();
+});
+
 test("settings: leaving with unsaved changes asks first", async ({ page }) => {
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));
