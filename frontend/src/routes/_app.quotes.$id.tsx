@@ -1,15 +1,17 @@
 /**
  * @schema QuoteDetailPage
  * @purpose One draft quote: change subject, dates and positions, or delete it
- * @output Header with "Löschen", a details card with inline editing, the positions with add/edit/remove
+ * @output Header with "PDF herunterladen", "Vorschau" and "Löschen" (no invoice actions), a details card
+ *   with inline editing, the positions with add/edit/remove
  */
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Download, ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { germanDate } from "@/components/quote/quote-list";
 import {
@@ -18,6 +20,7 @@ import {
   useInvoice,
   useUpdateInvoiceItem,
 } from "@/lib/use-invoices";
+import { useInvoicePreviewPdf } from "@/lib/use-invoice-preview-pdf";
 import { useNotification } from "@/lib/use-notifications";
 import type { InvoiceItem } from "@/lib/schemas/invoice";
 import { api } from "@/lib/api";
@@ -51,9 +54,19 @@ function QuoteDetailPage() {
   const [header, setHeader] = useState<HeaderDraft | null>(null);
   const [itemDialog, setItemDialog] = useState<{ open: boolean; item?: InvoiceItem }>({ open: false });
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const preview = useInvoicePreviewPdf(quoteId);
+  const previewUrl = useMemo(() => (preview.data ? URL.createObjectURL(preview.data) : null), [preview.data]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["invoice-preview-pdf", quoteId] });
   };
 
   const saveHeader = useMutation({
@@ -124,9 +137,17 @@ function QuoteDetailPage() {
         title={<span>Angebot {quote.nr || `#${quote.id}`}</span>}
         subtitle={quote.recipient_name || `Kunde #${quote.customer_id}`}
         actions={
-          <button type="button" onClick={() => setDeleteOpen(true)} className={SECONDARY_BUTTON}>
-            <Trash2 size={16} /> Löschen
-          </button>
+          <>
+            <a href={`/api/invoices/${quoteId}/download`} className={SECONDARY_BUTTON}>
+              <Download size={16} /> PDF herunterladen
+            </a>
+            <button type="button" onClick={() => setPreviewOpen(true)} className={SECONDARY_BUTTON}>
+              <ExternalLink size={16} /> Vorschau
+            </button>
+            <button type="button" onClick={() => setDeleteOpen(true)} className={SECONDARY_BUTTON}>
+              <Trash2 size={16} /> Löschen
+            </button>
+          </>
         }
       />
 
@@ -229,6 +250,14 @@ function QuoteDetailPage() {
         initial={itemDialog.item}
         onSave={saveItem}
         onCancel={() => setItemDialog({ open: false })}
+      />
+
+      <PdfPreviewModal
+        open={previewOpen}
+        pdfUrl={previewUrl}
+        invoiceNr={quote.nr || undefined}
+        documentType="QUOTE"
+        onClose={() => setPreviewOpen(false)}
       />
 
       <ConfirmDialog

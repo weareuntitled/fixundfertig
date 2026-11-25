@@ -243,6 +243,7 @@ test("new invoice: says what is missing, asks before creating and opens the new 
 
 test("Angebot anlegen: from the quotes list through the invoice form to the saved draft quote", async ({ page }) => {
   let posted: Record<string, unknown> | undefined;
+  let previewed: Record<string, unknown> | undefined;
   const quote = {
     id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
     date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
@@ -256,6 +257,10 @@ test("Angebot anlegen: from the quotes list through the invoice form to the save
   );
   await page.route("**/api/invoices**", async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/invoices/preview-pdf") {
+      previewed = route.request().postDataJSON();
+      return route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%%EOF" });
+    }
     if (url.pathname === "/api/invoices" && route.request().method() === "POST") {
       posted = route.request().postDataJSON();
       return route.fulfill({ status: 201, json: quote });
@@ -278,6 +283,10 @@ test("Angebot anlegen: from the quotes list through the invoice form to the save
   await page.getByRole("button", { name: "Neue Position" }).click();
   await page.getByLabel("Beschreibung Position 1").fill("DJ Performance");
   await page.getByLabel("Einzelpreis Position 1").fill("400");
+  await page.getByRole("button", { name: "PDF-Vorschau" }).click();
+  await expect(page.getByRole("heading", { name: "PDF-Vorschau · Angebot Entwurf" })).toBeVisible();
+  await expect.poll(() => previewed?.document_type).toBe("QUOTE");
+  await page.getByRole("button", { name: "Schließen", exact: true }).click();
   await page.getByRole("button", { name: "Angebot speichern" }).click();
 
   await expect(page).toHaveURL(/\/quotes\/42$/);
@@ -289,6 +298,36 @@ test("Angebot anlegen: from the quotes list through the invoice form to the save
 
   await page.getByRole("link", { name: "Angebote", exact: true }).first().click();
   await expect(page.getByRole("main").getByRole("link", { name: /A-10000/ })).toContainText("gültig bis 22.11.2026");
+});
+
+test("quote detail page previews and downloads the Angebot PDF without invoice actions", async ({ page }) => {
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 400, status: "DRAFT",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 400 }],
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+  await page.route("**/api/invoices/42/preview-pdf", (route) =>
+    route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%%EOF" }),
+  );
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  const download = main.getByRole("link", { name: /PDF herunterladen/ });
+  await expect(download).toBeVisible();
+  expect(await download.getAttribute("href")).toBe("/api/invoices/42/download");
+  for (const invoiceAction of [/Zahlungslink/, /bezahlt/i, /Storn/, /An Kunde senden/, /Mehr/]) {
+    await expect(main.getByRole("button", { name: invoiceAction })).toHaveCount(0);
+  }
+
+  await main.getByRole("button", { name: "Vorschau" }).click();
+  await expect(page.getByRole("heading", { name: "PDF-Vorschau · Angebot A-10000" })).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("link", { name: /PDF herunterladen/ })).toHaveAttribute(
+    "download",
+    "angebot_A-10000.pdf",
+  );
 });
 
 test("settings: leaving with unsaved changes asks first", async ({ page }) => {

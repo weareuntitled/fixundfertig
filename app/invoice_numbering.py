@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 import re
 
-from data import Company, Customer, Invoice
+from data import Company, Customer, DocumentType, Invoice
+
+QUOTE_FILENAME_TEMPLATE = "angebot_{nr}"
 
 
 class _SafeDict(dict):
@@ -50,7 +52,11 @@ def build_invoice_number(
 
 
 def build_invoice_filename(company: Company, invoice: Invoice, customer: Customer | None) -> str:
-    template = (company.invoice_filename_template or "rechnung_{nr}").strip() or "rechnung_{nr}"
+    """PDF filename. Invoices follow the company template, quotes are always "angebot_{nr}"."""
+    if getattr(invoice, "document_type", None) == DocumentType.QUOTE:
+        template = QUOTE_FILENAME_TEMPLATE
+    else:
+        template = (company.invoice_filename_template or "rechnung_{nr}").strip() or "rechnung_{nr}"
     raw_nr = str(invoice.nr) if invoice.nr is not None else ""
     try:
         seq = int(raw_nr)

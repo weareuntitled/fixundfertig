@@ -80,12 +80,15 @@ def draw_logo(c: Canvas, mx: float, top_y: float, comp) -> float:
         return 0.0
 
 
+QUOTE_INTRO = "Vielen Dank für Ihre Anfrage. Hiermit biete ich folgende Leistungen an."
+
+
 def draw_recipient(c: Canvas, mx: float, rule_y: float, content_w: float,
                    rec_name: str, rec_street: str, rec_zip: str, rec_city: str, rec_country: str,
-                   fonts: dict[str, str]) -> float:
+                   fonts: dict[str, str], quote: bool = False) -> float:
     y = rule_y - 24
     c.setFillColorRGB(*LAYOUT["col_muted"])
-    draw_tracked(c, mx, y, "RECHNUNG AN", fonts["medium"], 7, 1.0)
+    draw_tracked(c, mx, y, "ANGEBOT AN" if quote else "RECHNUNG AN", fonts["medium"], 7, 1.0)
     y -= 15
 
     lines = [line for line in [rec_name, rec_street, f"{rec_zip} {rec_city}".strip(), rec_country] if line]
@@ -103,14 +106,18 @@ def draw_recipient(c: Canvas, mx: float, rule_y: float, content_w: float,
 
 def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float, invoice, comp,
                      nr: str, inv_date: str, service_date: str,
-                     fonts: dict[str, str]) -> float:
-    """Invoice number, subject and intro on the left, the dates on the right."""
+                     fonts: dict[str, str], quote: bool = False, valid_until: str = "") -> float:
+    """Document number, subject and intro on the left, the dates on the right.
+
+    A quote is titled ANGEBOT and dated Angebotsdatum / Gültig bis instead of
+    Leistungsdatum / Rechnungsdatum.
+    """
     right = w - mx
     left_w = content_w - 160
     ink, muted = LAYOUT["col_ink"], LAYOUT["col_muted"]
 
     c.setFillColorRGB(*LAYOUT["col_accent"])
-    draw_tracked(c, mx, y, "RECHNUNG", fonts["medium"], 7.5, 1.6)
+    draw_tracked(c, mx, y, "ANGEBOT" if quote else "RECHNUNG", fonts["medium"], 7.5, 1.6)
     y -= 13
     if nr:
         c.setFillColorRGB(*ink)
@@ -129,10 +136,10 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
         y -= 1
 
     intro = safe_str(get_attr(invoice, "intro_text", "intro", default=""))
-    if not intro:
+    if not intro and not quote:
         intro = safe_str(get_attr(comp, "invoice_intro", default="")) if comp is not None else ""
     if not intro:
-        intro = "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
+        intro = QUOTE_INTRO if quote else "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
     c.setFillColorRGB(0.235, 0.251, 0.282)
     c.setFont(fonts["regular"], 9)
     for line in wrap_text(intro, fonts["regular"], 9, left_w):
@@ -141,7 +148,11 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
 
     # Dates sit on the right, level with the last line of the intro.
     # The service date is a mandatory invoice detail: without one it is the invoice date.
-    dates = [("Leistungsdatum:", service_date or ("wie Rechnungsdatum" if inv_date else "")), ("Rechnungsdatum:", inv_date)]
+    if quote:
+        dates = [("Angebotsdatum:", inv_date), ("Gültig bis:", valid_until)]
+    else:
+        dates = [("Leistungsdatum:", service_date or ("wie Rechnungsdatum" if inv_date else "")),
+                 ("Rechnungsdatum:", inv_date)]
     dates = [(label, value) for label, value in dates if value]
     date_y = y + 13.5 + (len(dates) - 1) * 13.5
     for label, value in dates:

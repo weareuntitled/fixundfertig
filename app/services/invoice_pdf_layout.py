@@ -76,6 +76,12 @@ def get_attr(obj, *names, default=""):
     return default
 
 
+def is_quote(invoice) -> bool:
+    """True for an Angebot: document_type "QUOTE" as string or enum (dict, ORM or SimpleNamespace)."""
+    value = get_attr(invoice, "document_type", default="INVOICE")
+    return str(getattr(value, "value", value)).strip().upper() == "QUOTE"
+
+
 _ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?")  # a time part is ignored
 
 

@@ -7,7 +7,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import (
-    FONTS, LAYOUT, InvItem, format_date, format_service_period, get_attr, payment_due_date, safe_float, safe_str,
+    FONTS, LAYOUT, InvItem, format_date, format_service_period, get_attr, is_quote, payment_due_date, safe_float, safe_str,
 )
 from .invoice_pdf_draw import (
     draw_header, draw_recipient, draw_title_block, draw_identity_line,
@@ -69,7 +69,10 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
             get_attr(invoice, "service_to", default=""),
         )
 
-    due_str = payment_due_date(inv_date)
+    quote = is_quote(invoice)
+    # A quote asks for no payment: no "Zahlbar bis", no payment box.
+    due_str = "" if quote else payment_due_date(inv_date)
+    valid_until = format_date(get_attr(invoice, "valid_until", default="")) if quote else ""
     inv_date = format_date(inv_date)
 
     nr = safe_str(get_attr(invoice, "nr", "invoice_number", default=""))
@@ -105,14 +108,16 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None) -> bytes:
 
         top_y = h - LAYOUT["margin_top"]
         rule_y = draw_header(c, w, mx, top_y, content_w, comp, fonts)
-        y = draw_recipient(c, mx, rule_y, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country, fonts)
-        y = draw_title_block(c, w, mx, y - 39, content_w, invoice, comp, nr, inv_date, service_date, fonts)
+        y = draw_recipient(c, mx, rule_y, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country, fonts, quote)
+        y = draw_title_block(c, w, mx, y - 39, content_w, invoice, comp, nr, inv_date, service_date, fonts,
+                             quote, valid_until)
         if artist_name and legal_name and not uses_artist_wordmark(comp) and not line_holds_artist_name_as_its_own_token:
             y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
         y -= 22
         y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, fonts)
         y = draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, due_str, new_page, fonts)
-        draw_payment_box(c, w, mx, y, content_w, my_bot, comp, nr, new_page, fonts)
+        if not quote:
+            draw_payment_box(c, w, mx, y, content_w, my_bot, comp, nr, new_page, fonts)
         page_footer()
 
         pages = c.getPageNumber()

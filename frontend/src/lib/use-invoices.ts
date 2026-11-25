@@ -63,6 +63,7 @@ export function useAddInvoiceItem() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoices", vars.invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoice-preview-pdf", vars.invoiceId] });
     },
   });
 }
@@ -85,6 +86,7 @@ export function useUpdateInvoiceItem() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoices", vars.invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoice-preview-pdf", vars.invoiceId] });
     },
   });
 }
@@ -129,6 +131,7 @@ export function useDeleteInvoiceItem() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoices", vars.invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoice-preview-pdf", vars.invoiceId] });
     },
   });
 }
