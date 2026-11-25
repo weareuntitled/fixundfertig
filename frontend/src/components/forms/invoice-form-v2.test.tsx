@@ -2,7 +2,7 @@ import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { InvoiceFormV2 } from "./invoice-form-v2";
-import { emptyInvoiceDraft, type InvoiceDraft } from "@/lib/schemas/invoice";
+import { emptyInvoiceDraft, emptyQuoteDraft, type InvoiceDraft } from "@/lib/schemas/invoice";
 
 vi.mock("./customer-selector", () => ({
   CustomerSelector: () => <div>Kunde wählen</div>,
@@ -69,5 +69,96 @@ describe("InvoiceFormV2", () => {
     render(<Harness initial={{ ...base, ust_enabled: true, vat_rate: 19 }} />);
     expect(screen.getByText("476,00 €")).toBeTruthy();
     expect(screen.getByText("76,00 €")).toBeTruthy();
+  });
+});
+
+describe("InvoiceFormV2 for a quote", () => {
+  const quote: InvoiceDraft = {
+    ...emptyQuoteDraft(3, "2026-10-23"),
+    items: [{ description: "DJ-Set", quantity: 1, unit_price: 400 }],
+  };
+
+  it("starts with valid until 30 days after the quote date", () => {
+    expect(quote.document_type).toBe("QUOTE");
+    expect(quote.valid_until).toBe("2026-11-22");
+  });
+
+  it("asks for quote date and valid until instead of service date and payment term", () => {
+    render(<Harness initial={quote} />);
+    expect(screen.getByText("Angebotsnummer")).toBeTruthy();
+    expect((screen.getByLabelText("Angebotsdatum") as HTMLInputElement).value).toBe("2026-10-23");
+    expect((screen.getByLabelText("Gültig bis") as HTMLInputElement).value).toBe("2026-11-22");
+    expect(screen.queryByLabelText("Leistungsdatum")).toBeNull();
+    expect(screen.queryByText(/Zahlungsziel/)).toBeNull();
+  });
+
+  it("moves an untouched valid until along with the quote date", () => {
+    render(<Harness initial={quote} />);
+    fireEvent.change(screen.getByLabelText("Angebotsdatum"), { target: { value: "2026-12-01" } });
+    expect((screen.getByLabelText("Gültig bis") as HTMLInputElement).value).toBe("2026-12-31");
+  });
+
+  it("keeps a chosen valid until when the quote date changes", () => {
+    render(<Harness initial={quote} />);
+    fireEvent.change(screen.getByLabelText("Gültig bis"), { target: { value: "2027-01-15" } });
+    fireEvent.change(screen.getByLabelText("Angebotsdatum"), { target: { value: "2026-12-01" } });
+    expect((screen.getByLabelText("Gültig bis") as HTMLInputElement).value).toBe("2027-01-15");
+  });
+});
+
+describe("InvoiceFormV2 payment plan", () => {
+  const quote: InvoiceDraft = {
+    ...emptyQuoteDraft(3, "2026-10-23"),
+    ust_enabled: true,
+    vat_rate: 19,
+    items: [{ description: "Website", quantity: 1, unit_price: 1000 }],
+  };
+  const percent = (n: number) => screen.getByLabelText(`Prozent Rate ${n}`) as HTMLInputElement;
+  const occasion = (n: number) => screen.getByLabelText(`Anlass Rate ${n}`) as HTMLInputElement;
+
+  it("adds installments with percent and occasion and shows each amount from the gross total", () => {
+    render(<Harness initial={quote} />);
+    fireEvent.click(screen.getByRole("button", { name: "Rate hinzufügen" }));
+    fireEvent.change(percent(1), { target: { value: "50" } });
+    fireEvent.change(occasion(1), { target: { value: "bei Auftrag" } });
+    fireEvent.click(screen.getByRole("button", { name: "Rate hinzufügen" }));
+    fireEvent.change(occasion(2), { target: { value: "nach Livegang" } });
+
+    // the second installment starts with what is left to 100 %
+    expect(percent(2).value).toBe("50");
+    expect(screen.getAllByText("595,00 €")).toHaveLength(2);
+    expect(screen.queryByText(/ergeben zusammen/)).toBeNull();
+  });
+
+  it("warns when the installments do not add up to 100 percent", () => {
+    render(<Harness initial={{ ...quote, payment_plan: [{ percent: 30, label: "bei Auftrag" }] }} />);
+    expect(screen.getByRole("status").textContent).toContain("ergeben zusammen 30 %, nicht 100 %");
+  });
+
+  it("moves and removes installments", () => {
+    render(
+      <Harness
+        initial={{
+          ...quote,
+          payment_plan: [
+            { percent: 30, label: "bei Auftrag" },
+            { percent: 70, label: "nach Livegang" },
+          ],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Rate 2 nach oben" }));
+    expect(occasion(1).value).toBe("nach Livegang");
+    expect(occasion(2).value).toBe("bei Auftrag");
+
+    fireEvent.click(screen.getByRole("button", { name: "Rate 1 entfernen" }));
+    expect(occasion(1).value).toBe("bei Auftrag");
+    expect(screen.queryByLabelText("Anlass Rate 2")).toBeNull();
+  });
+
+  it("invoices have no payment plan", () => {
+    render(<Harness initial={base} />);
+    expect(screen.queryByText("Zahlungsplan")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Rate hinzufügen" })).toBeNull();
   });
 });

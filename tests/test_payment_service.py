@@ -42,6 +42,7 @@ def test_create_payment_link_returns_url(monkeypatch) -> None:
     monkeypatch.setattr(payment_module, "_stripe", mock_stripe)
 
     invoice = MagicMock()
+    invoice.document_type = "INVOICE"
     invoice.id = 1
     invoice.nr = "RE-1001"
     invoice.total_brutto = 250.0
@@ -67,6 +68,7 @@ def test_create_payment_link_returns_url(monkeypatch) -> None:
 
 def test_check_payment_returns_false_when_no_link() -> None:
     invoice = MagicMock()
+    invoice.document_type = "INVOICE"
     invoice.payment_link_url = ""
     company = MagicMock()
     session_mock = MagicMock()
@@ -95,6 +97,7 @@ def test_check_payment_updates_status_when_paid(monkeypatch) -> None:
     monkeypatch.setattr(payment_module, "_stripe", mock_stripe)
 
     invoice = MagicMock()
+    invoice.document_type = "INVOICE"
     invoice.payment_link_url = "https://checkout.stripe.com/pay/cs_test_abc123"
     invoice.payment_provider = "stripe"
     invoice.status = "SENT"
@@ -130,6 +133,7 @@ def test_check_payment_returns_false_when_unpaid(monkeypatch) -> None:
     monkeypatch.setattr(payment_module, "_stripe", mock_stripe)
 
     invoice = MagicMock()
+    invoice.document_type = "INVOICE"
     invoice.payment_link_url = "https://checkout.stripe.com/pay/cs_test_abc123"
     invoice.payment_provider = "stripe"
     invoice.status = "SENT"

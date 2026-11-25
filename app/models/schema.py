@@ -13,6 +13,25 @@ class InvoiceStatus(str, Enum):
     PAID = "PAID"
     FINALIZED = "FINALIZED"
     CANCELLED = "CANCELLED"
+    # Nur für Angebote (DocumentType.QUOTE); siehe logic/document_status.py.
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+
+
+# Status, in denen ein Dokument noch nicht „gestellt" ist: Entwurf oder storniert.
+# Eine Abschlagsrechnung gilt erst ab dem Versand als gestellt; die eine Regel
+# gilt für die Voraussetzung der Schlussrechnung und für den Abzug gleichermaßen.
+NOT_ISSUED_STATUSES = (InvoiceStatus.DRAFT, InvoiceStatus.CANCELLED)
+
+
+def is_issued_status(status) -> bool:
+    """„Gestellt": der Status ist weder Entwurf noch storniert."""
+    return status not in NOT_ISSUED_STATUSES
+
+class DocumentType(str, Enum):
+    """Dokumentart eines Datensatzes in `invoice`: Rechnung oder Angebot."""
+    INVOICE = "INVOICE"
+    QUOTE = "QUOTE"
 
 class TokenPurpose(str, Enum):
     VERIFY_EMAIL = "verify_email"
@@ -101,6 +120,8 @@ class Company(SQLModel, table=True):
     next_invoice_nr: int = 10000
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
+    next_quote_nr: int = 10000
+    quote_prefix: str = "A-"
     user: Optional["User"] = Relationship(back_populates="companies")
     invoices: list["Invoice"] = Relationship(back_populates="company")
     customers: list["Customer"] = Relationship(back_populates="company")
@@ -139,6 +160,12 @@ class Invoice(SQLModel, table=True):
     customer_id: int = Field(foreign_key="customer.id")
     company_id: int = Field(default=0, foreign_key="company.id")
     nr: Optional[str] = None
+    document_type: DocumentType = DocumentType.INVOICE
+    valid_until: str = ""
+    # VAT rate in percent as charged (0 for Kleinunternehmer / USt off); None for legacy rows.
+    vat_rate: Optional[float] = None
+    # Quotes only: JSON list [{"percent": 50.0, "label": "bei Auftrag"}]; amounts are computed, never stored.
+    payment_plan: str = "[]"
     title: str = "Rechnung"
     date: str
     delivery_date: str = ""
@@ -153,6 +180,15 @@ class Invoice(SQLModel, table=True):
     legacy: bool = False
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     related_invoice_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
+    # Rechnung aus einem Angebot (#489); ein Angebot kann mehrere Rechnungen haben.
+    quote_id: Optional[int] = Field(default=None, foreign_key="invoice.id")
+    # Abschlagsrechnung (#490): 0-basierter Index der Rate im Zahlungsplan des Angebots.
+    # NULL heißt: keine Abschlagsrechnung (normale Umwandlung oder Schlussrechnung).
+    down_payment_index: Optional[int] = None
+    # Schlussrechnung (#491): eigener Marker, damit sie sich von normaler Umwandlung
+    # und von Abschlagsrechnungen unterscheidet. `down_payment_index` bleibt NULL.
+    is_final_invoice: bool = False
+    intro_text: str = ""
     payment_link_url: str = ""
     payment_provider: str = ""  # "stripe" | "paypal" | ""
     pdf_bytes: Optional[bytes] = Field(default=None)
@@ -168,6 +204,14 @@ class Invoice(SQLModel, table=True):
     )
     customer: Optional["Customer"] = Relationship(back_populates="invoices")
     company: Optional["Company"] = Relationship(back_populates="invoices")
+    quote: Optional["Invoice"] = Relationship(
+        back_populates="quote_invoices",
+        sa_relationship_kwargs={"remote_side": "Invoice.id", "foreign_keys": "[Invoice.quote_id]"},
+    )
+    quote_invoices: list["Invoice"] = Relationship(
+        back_populates="quote",
+        sa_relationship_kwargs={"foreign_keys": "[Invoice.quote_id]", "order_by": "Invoice.id"},
+    )
 
 class InvoiceRevision(SQLModel, table=True):
     invoice_id: int = Field(foreign_key="invoice.id", primary_key=True)

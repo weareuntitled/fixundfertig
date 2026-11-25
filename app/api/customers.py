@@ -22,7 +22,15 @@ from typing import Iterator
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import select
 
-from data import Customer, Invoice
+from data import (
+    AuditLog,
+    Customer,
+    DocumentType,
+    Invoice,
+    InvoiceAttachment,
+    InvoiceItem,
+    InvoiceRevision,
+)
 from dependencies import db_session, get_current_company, require_session_auth
 from schemas.customer import CustomerCreate, CustomerRead, CustomerUpdate
 
@@ -96,24 +104,58 @@ def update_customer(
     return CustomerRead.model_validate(customer)
 
 
+def _delete_customer_documents(session, customer_id: int) -> None:
+    """Delete the remaining documents of a customer (all non-invoice types).
+
+    Positionen, Revisionen, Anhänge und Protokolleinträge gehören zu den Dokumenten
+    und müssen mit ihnen verschwinden: SQLite vergibt ihre IDs erneut, sonst erbt
+    eine spätere Rechnung die Anhänge eines gelöschten Angebots.
+    """
+    documents = session.exec(select(Invoice).where(Invoice.customer_id == customer_id)).all()
+    document_ids = [int(doc.id) for doc in documents if doc.id is not None]
+    if not document_ids:
+        return
+    for item in session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id.in_(document_ids))).all():
+        session.delete(item)
+    for revision in session.exec(
+        select(InvoiceRevision).where(InvoiceRevision.invoice_id.in_(document_ids))
+    ).all():
+        session.delete(revision)
+    for attachment in session.exec(
+        select(InvoiceAttachment).where(InvoiceAttachment.invoice_id.in_(document_ids))
+    ).all():
+        session.delete(attachment)
+    for entry in session.exec(select(AuditLog).where(AuditLog.invoice_id.in_(document_ids))).all():
+        session.delete(entry)
+    for doc in documents:
+        session.delete(doc)
+
+
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_customer(
     customer_id: int,
     _user_id: int = Depends(require_session_auth),
     session: Iterator = Depends(db_session),
 ):
-    """Delete a customer — only allowed if no invoices reference them."""
+    """Delete a customer — only allowed if no invoices reference them.
+
+    Other document types (e.g. quotes) are deleted along with the customer.
+    """
     customer = session.get(Customer, customer_id)
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
     invoice_count = session.exec(
-        select(Invoice).where(Invoice.customer_id == customer_id)
+        select(Invoice).where(
+            Invoice.customer_id == customer_id,
+            Invoice.document_type == DocumentType.INVOICE,
+        )
     ).first()
     if invoice_count is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Customer has invoices — archive instead of delete",
         )
+    _delete_customer_documents(session, customer_id)
     session.delete(customer)
     session.commit()
     return None

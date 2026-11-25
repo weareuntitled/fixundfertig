@@ -17,7 +17,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-InvoiceStatus = Literal["DRAFT", "OPEN", "SENT", "PAID", "FINALIZED", "CANCELLED"]
+InvoiceStatus = Literal["DRAFT", "OPEN", "SENT", "PAID", "FINALIZED", "CANCELLED", "ACCEPTED", "REJECTED"]
+DocumentType = Literal["INVOICE", "QUOTE"]
 
 
 class InvoiceItem(BaseModel):
@@ -31,6 +32,23 @@ class InvoiceItem(BaseModel):
     unit_price: float = Field(ge=0, le=1_000_000_000)
 
 
+class PaymentInstallment(BaseModel):
+    """Eine Rate des Zahlungsplans eines Angebots (Prozent vom Bruttobetrag + Anlass)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    percent: float = Field(gt=0, le=100)
+    label: str = Field(default="", max_length=200)
+
+
+class PaymentInstallmentRead(PaymentInstallment):
+    """Rate mit ihrem Betrag, berechnet aus dem Bruttobetrag (nicht gespeichert)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    amount: float = 0.0
+
+
 class InvoiceDraft(BaseModel):
     """Input für POST /api/invoices (create) und /api/invoices/preview-pdf.
 
@@ -41,12 +59,14 @@ class InvoiceDraft(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     customer_id: int = Field(gt=0)
+    document_type: DocumentType = "INVOICE"
     title: str = Field(default="Rechnung", max_length=200)
     subject: str = Field(default="", max_length=200)
     date: str = Field(default="", max_length=20)
     delivery_date: str = Field(default="", max_length=20)
     service_from: str = Field(default="", max_length=20)
     service_to: str = Field(default="", max_length=20)
+    valid_until: str = Field(default="", max_length=20)
     recipient_name: str = Field(default="", max_length=200)
     recipient_street: str = Field(default="", max_length=200)
     recipient_postal_code: str = Field(default="", max_length=20)
@@ -57,8 +77,9 @@ class InvoiceDraft(BaseModel):
     items: list[InvoiceItem] = Field(default_factory=list)
     notes: str = Field(default="", max_length=2000)
     status: InvoiceStatus = "OPEN"
+    payment_plan: list[PaymentInstallment] = Field(default_factory=list)
 
-    @field_validator("date", "delivery_date", "service_from", "service_to")
+    @field_validator("date", "delivery_date", "service_from", "service_to", "valid_until")
     @classmethod
     def _validate_iso_date(cls, v: str) -> str:
         if not v:
@@ -91,6 +112,20 @@ class InvoiceAttachmentCreate(BaseModel):
     document_id: int = Field(gt=0)
 
 
+class LinkedInvoiceRead(BaseModel):
+    """Eine aus einem Angebot entstandene Rechnung (Liste am Angebot)."""
+
+    id: int
+    nr: str | None = None
+    status: InvoiceStatus = "DRAFT"
+    total_brutto: float = 0.0
+    # Abschlagsrechnung (#490): Rate des Zahlungsplans, die damit abgerechnet wurde.
+    installment_index: int | None = None
+    is_down_payment: bool = False
+    # Schlussrechnung (#491): eigener Marker, keine Abschlagsrechnung.
+    is_final_invoice: bool = False
+
+
 class InvoiceRead(BaseModel):
     """Output für GET /api/invoices[/...]. Vollständiger Record inkl. server-managed Felder."""
 
@@ -98,11 +133,13 @@ class InvoiceRead(BaseModel):
 
     id: int
     customer_id: int
+    document_type: DocumentType = "INVOICE"
     nr: str | None = None
     title: str = "Rechnung"
     subject: str = ""
     date: str = ""
     delivery_date: str = ""
+    valid_until: str = ""
     recipient_name: str = ""
     recipient_street: str = ""
     recipient_postal_code: str = ""
@@ -113,10 +150,18 @@ class InvoiceRead(BaseModel):
     revision_nr: int = 0
     updated_at: str = ""
     related_invoice_id: int | None = None
+    quote_id: int | None = None
+    quote_nr: str | None = None
+    # Abschlagsrechnung (#490): Index der abgerechneten Rate, sonst None.
+    down_payment_index: int | None = None
+    # Schlussrechnung (#491): eigener Marker.
+    is_final_invoice: bool = False
+    linked_invoices: list[LinkedInvoiceRead] = Field(default_factory=list)
     payment_link_url: str = ""
     payment_provider: str = ""
     items: list[InvoiceItem] = Field(default_factory=list)
     attachments: list[InvoiceAttachmentRead] = Field(default_factory=list)
+    payment_plan: list[PaymentInstallmentRead] = Field(default_factory=list)
 
 
 class InvoiceSendRequest(BaseModel):
@@ -146,11 +191,13 @@ class InvoiceUpdate(BaseModel):
     delivery_date: str | None = Field(default=None, max_length=20)
     service_from: str | None = Field(default=None, max_length=20)
     service_to: str | None = Field(default=None, max_length=20)
+    valid_until: str | None = Field(default=None, max_length=20)
     recipient_name: str | None = Field(default=None, max_length=200)
     recipient_street: str | None = Field(default=None, max_length=200)
     recipient_postal_code: str | None = Field(default=None, max_length=20)
     recipient_city: str | None = Field(default=None, max_length=100)
     intro_text: str | None = Field(default=None, max_length=2000)
+    payment_plan: list[PaymentInstallment] | None = None
     reason: str = Field(default="", max_length=500)
 
 
@@ -163,6 +210,14 @@ class BulkStatusUpdate(BaseModel):
     status: InvoiceStatus
 
 
+class DownPaymentRequest(BaseModel):
+    """Input für POST /api/invoices/{quote_id}/down-payment (#490)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    installment_index: int
+
+
 __all__ = [
     "InvoiceItem",
     "InvoiceDraft",
@@ -170,5 +225,8 @@ __all__ = [
     "InvoiceStatusUpdate",
     "InvoiceUpdate",
     "BulkStatusUpdate",
+    "DownPaymentRequest",
     "InvoiceStatus",
+    "PaymentInstallment",
+    "PaymentInstallmentRead",
 ]

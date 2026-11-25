@@ -53,33 +53,35 @@ class PDFInvoiceRenderer(InvoiceRenderer):
         return _render_reportlab(invoice, company=company, customer=customer)
 
 
-def render_invoice_pdf_bytes(invoice: Any, company: Any) -> bytes:
-    return _render_reportlab(invoice, company=company)
+def render_invoice_pdf_bytes(invoice: Any, company: Any, down_payments: Any = None) -> bytes:
+    return _render_reportlab(invoice, company=company, down_payments=down_payments)
 
 
-def render_invoice_pdf_base64(invoice: Any, company: Any) -> str:
-    return base64.b64encode(render_invoice_pdf_bytes(invoice, company)).decode("ascii")
+def render_invoice_pdf_base64(invoice: Any, company: Any, down_payments: Any = None) -> str:
+    return base64.b64encode(render_invoice_pdf_bytes(invoice, company, down_payments)).decode("ascii")
 
 
 def render_invoice_to_pdf_bytes(*args, **kwargs) -> bytes:
     """Kompatibles Wrapper — akzeptiert (invoice, company) oder Keyword-Args."""
+    down_payments = kwargs.get("down_payments")
     if "invoice" in kwargs or "company" in kwargs or "customer" in kwargs:
         return _render_reportlab(
             kwargs.get("invoice", args[0] if args else None),
             company=kwargs.get("company"),
             customer=kwargs.get("customer"),
+            down_payments=down_payments,
         )
     if len(args) >= 2:
         a, b = args[0], args[1]
         if _looks_like_invoice(a) and _looks_like_company(b):
-            return _render_reportlab(a, company=b)
+            return _render_reportlab(a, company=b, customer=kwargs.get("customer"), down_payments=down_payments)
         if _looks_like_company(a) and _looks_like_invoice(b):
-            return _render_reportlab(b, company=a)
-        return _render_reportlab(a, company=b)
+            return _render_reportlab(b, company=a, customer=kwargs.get("customer"), down_payments=down_payments)
+        return _render_reportlab(a, company=b, down_payments=down_payments)
     if len(args) == 1:
         invoice = args[0]
         company, customer = _extract_company_customer(invoice)
-        return _render_reportlab(invoice, company=company, customer=customer)
+        return _render_reportlab(invoice, company=company, customer=customer, down_payments=down_payments)
     raise TypeError("render_invoice_to_pdf_bytes needs at least (invoice, company)")
 
 

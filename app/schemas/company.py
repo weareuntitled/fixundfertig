@@ -42,6 +42,8 @@ class CompanyRead(BaseModel):
     next_invoice_nr: int = 10000
     invoice_number_template: str = "{seq}"
     invoice_filename_template: str = "rechnung_{nr}"
+    next_quote_nr: int = 10000
+    quote_prefix: str = "A-"
     logo_url: str = ""
     stripe_secret_key: str = ""
     stripe_publishable_key: str = ""
@@ -82,6 +84,8 @@ class CompanyUpdate(BaseModel):
     next_invoice_nr: int | None = None
     invoice_number_template: str | None = None
     invoice_filename_template: str | None = None
+    next_quote_nr: int | None = None
+    quote_prefix: str | None = None
     stripe_secret_key: str | None = None
     stripe_publishable_key: str | None = None
     paypal_email: str | None = None

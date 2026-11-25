@@ -19,6 +19,17 @@ export function useInvoices() {
   });
 }
 
+/** Quotes of the current company; the key sits under ["invoices"] so invoice invalidations refresh it. */
+export function useQuotes() {
+  return useQuery({
+    queryKey: ["invoices", "quotes"],
+    queryFn: () =>
+      api
+        .get<unknown>("/api/invoices?document_type=QUOTE")
+        .then((data) => z.array(invoiceReadSchema).parse(data)),
+  });
+}
+
 export function useInvoice(id: number) {
   return useQuery({
     queryKey: ["invoices", id],
@@ -27,6 +38,50 @@ export function useInvoice(id: number) {
         .get<unknown>(`/api/invoices/${id}`)
         .then((data) => invoiceReadSchema.parse(data)),
     enabled: id > 0,
+  });
+}
+
+/** „In Rechnung umwandeln“: creates an invoice draft from the quote and returns it. */
+export function useConvertQuote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (quoteId: number) =>
+      api
+        .post<unknown>(`/api/invoices/${quoteId}/convert`)
+        .then((data) => invoiceReadSchema.parse(data)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+  });
+}
+
+/** „Schlussrechnung“: creates a draft invoice for the quote with the billed down payments deducted. */
+export function useCreateFinalInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (quoteId: number) =>
+      api
+        .post<unknown>(`/api/invoices/${quoteId}/final-invoice`)
+        .then((data) => invoiceReadSchema.parse(data)),
+    onSuccess: (_data, quoteId) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoices", quoteId] });
+    },
+  });
+}
+
+/** „Abschlagsrechnung“: creates a draft invoice for one installment of the quote's plan. */
+export function useCreateDownPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ quoteId, installmentIndex }: { quoteId: number; installmentIndex: number }) =>
+      api
+        .post<unknown>(`/api/invoices/${quoteId}/down-payment`, { installment_index: installmentIndex })
+        .then((data) => invoiceReadSchema.parse(data)),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoices", vars.quoteId] });
+    },
   });
 }
 
@@ -52,6 +107,7 @@ export function useAddInvoiceItem() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoices", vars.invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoice-preview-pdf", vars.invoiceId] });
     },
   });
 }
@@ -74,6 +130,7 @@ export function useUpdateInvoiceItem() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoices", vars.invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoice-preview-pdf", vars.invoiceId] });
     },
   });
 }
@@ -118,6 +175,7 @@ export function useDeleteInvoiceItem() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["invoices", vars.invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoice-preview-pdf", vars.invoiceId] });
     },
   });
 }

@@ -5,13 +5,17 @@ interface PdfPreviewModalProps {
   open: boolean;
   pdfUrl: string | null;
   invoiceNr?: string;
+  /** "QUOTE" names the document "Angebot" and its file "angebot_{nr}.pdf". */
+  documentType?: "INVOICE" | "QUOTE";
   onClose: () => void;
 }
 
-export function PdfPreviewModal({ open, pdfUrl, invoiceNr, onClose }: PdfPreviewModalProps) {
+export function PdfPreviewModal({ open, pdfUrl, invoiceNr, documentType = "INVOICE", onClose }: PdfPreviewModalProps) {
   if (!open) return null;
 
-  const title = `Rechnung ${invoiceNr || "Vorschau"}`;
+  const quote = documentType === "QUOTE";
+  const title = `${quote ? "Angebot" : "Rechnung"} ${invoiceNr || "Vorschau"}`;
+  const fileName = quote ? `angebot_${invoiceNr || "entwurf"}.pdf` : `rechnung-${invoiceNr || "entwurf"}.pdf`;
   const content = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <button
@@ -35,7 +39,7 @@ export function PdfPreviewModal({ open, pdfUrl, invoiceNr, onClose }: PdfPreview
               <>
                 <a
                   href={pdfUrl}
-                  download={`rechnung-${invoiceNr || "entwurf"}.pdf`}
+                  download={fileName}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   <Download size={14} /> PDF herunterladen

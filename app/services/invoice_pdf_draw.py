@@ -80,12 +80,16 @@ def draw_logo(c: Canvas, mx: float, top_y: float, comp) -> float:
         return 0.0
 
 
+QUOTE_INTRO = "Vielen Dank für Ihre Anfrage. Hiermit biete ich folgende Leistungen an."
+INVOICE_INTRO = "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
+
+
 def draw_recipient(c: Canvas, mx: float, rule_y: float, content_w: float,
                    rec_name: str, rec_street: str, rec_zip: str, rec_city: str, rec_country: str,
-                   fonts: dict[str, str]) -> float:
+                   fonts: dict[str, str], quote: bool = False) -> float:
     y = rule_y - 24
     c.setFillColorRGB(*LAYOUT["col_muted"])
-    draw_tracked(c, mx, y, "RECHNUNG AN", fonts["medium"], 7, 1.0)
+    draw_tracked(c, mx, y, "ANGEBOT AN" if quote else "RECHNUNG AN", fonts["medium"], 7, 1.0)
     y -= 15
 
     lines = [line for line in [rec_name, rec_street, f"{rec_zip} {rec_city}".strip(), rec_country] if line]
@@ -103,14 +107,26 @@ def draw_recipient(c: Canvas, mx: float, rule_y: float, content_w: float,
 
 def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float, invoice, comp,
                      nr: str, inv_date: str, service_date: str,
-                     fonts: dict[str, str]) -> float:
-    """Invoice number, subject and intro on the left, the dates on the right."""
+                     fonts: dict[str, str], quote: bool = False, valid_until: str = "") -> float:
+    """Document number, subject and intro on the left, the dates on the right.
+
+    A quote is titled ANGEBOT and dated Angebotsdatum / Gültig bis instead of
+    Leistungsdatum / Rechnungsdatum.
+    """
     right = w - mx
     left_w = content_w - 160
     ink, muted = LAYOUT["col_ink"], LAYOUT["col_muted"]
 
+    if quote:
+        heading = "ANGEBOT"
+    elif bool(get_attr(invoice, "is_final_invoice", default=False)):
+        heading = "SCHLUSSRECHNUNG"
+    elif get_attr(invoice, "down_payment_index", default=None) is not None:
+        heading = "ABSCHLAGSRECHNUNG"
+    else:
+        heading = "RECHNUNG"
     c.setFillColorRGB(*LAYOUT["col_accent"])
-    draw_tracked(c, mx, y, "RECHNUNG", fonts["medium"], 7.5, 1.6)
+    draw_tracked(c, mx, y, heading, fonts["medium"], 7.5, 1.6)
     y -= 13
     if nr:
         c.setFillColorRGB(*ink)
@@ -129,10 +145,10 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
         y -= 1
 
     intro = safe_str(get_attr(invoice, "intro_text", "intro", default=""))
-    if not intro:
+    if not intro and not quote:
         intro = safe_str(get_attr(comp, "invoice_intro", default="")) if comp is not None else ""
     if not intro:
-        intro = "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
+        intro = QUOTE_INTRO if quote else INVOICE_INTRO
     c.setFillColorRGB(0.235, 0.251, 0.282)
     c.setFont(fonts["regular"], 9)
     for line in wrap_text(intro, fonts["regular"], 9, left_w):
@@ -141,7 +157,11 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
 
     # Dates sit on the right, level with the last line of the intro.
     # The service date is a mandatory invoice detail: without one it is the invoice date.
-    dates = [("Leistungsdatum:", service_date or ("wie Rechnungsdatum" if inv_date else "")), ("Rechnungsdatum:", inv_date)]
+    if quote:
+        dates = [("Angebotsdatum:", inv_date), ("Gültig bis:", valid_until)]
+    else:
+        dates = [("Leistungsdatum:", service_date or ("wie Rechnungsdatum" if inv_date else "")),
+                 ("Rechnungsdatum:", inv_date)]
     dates = [(label, value) for label, value in dates if value]
     date_y = y + 13.5 + (len(dates) - 1) * 13.5
     for label, value in dates:
@@ -218,6 +238,19 @@ def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bo
     return y
 
 
+def draw_due_line(c: Canvas, mx: float, y: float, due_str: str, fonts: dict[str, str]) -> float:
+    """„Zahlbar bis TT.MM.JJJJ." unter den Summen."""
+    if not due_str:
+        return y
+    c.setFont(fonts["regular"], 7.9)
+    c.setFillColorRGB(*LAYOUT["col_muted"])
+    c.drawString(mx, y - 8, "Zahlbar bis")
+    c.setFont(fonts["bold"], 7.9)
+    c.setFillColorRGB(*LAYOUT["col_ink"])
+    c.drawString(mx + stringWidth("Zahlbar bis ", fonts["regular"], 7.9), y - 8, f"{due_str}.")
+    return y - 11.5
+
+
 def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
                 net: float, tax: float, gross: float, tax_rate: float, is_small_business: bool,
                 due_str: str, new_page, fonts: dict[str, str]) -> float:
@@ -258,15 +291,77 @@ def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_b
     y -= 12
     if is_small_business:
         y = draw_note(c, mx, y, content_w, LAYOUT["txt_small_biz"], fonts)
-    if due_str:
-        c.setFont(fonts["regular"], 7.9)
-        c.setFillColorRGB(*muted)
-        c.drawString(mx, y - 8, "Zahlbar bis")
-        c.setFont(fonts["bold"], 7.9)
+    return draw_due_line(c, mx, y, due_str, fonts)
+
+
+def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
+                      net: float, tax: float, tax_rate: float, is_small_business: bool,
+                      deductions: list[dict], sum_net: float, sum_tax: float, rest: float,
+                      due_str: str, new_page, fonts: dict[str, str]) -> float:
+    """Schlussrechnung block: one deduction line per down payment and the three totals.
+
+    Kleinunternehmer get no tax column, no tax amounts and no tax sentence.
+    """
+    right = w - mx
+    ink, muted, hair = LAYOUT["col_ink"], LAYOUT["col_muted"], LAYOUT["col_hair"]
+    show_tax = not is_small_business
+    total_right = right
+    tax_right = right - 105
+    net_right = right - 210 if show_tax else right - 110
+
+    y -= 16.5
+    block_estimate = 185 + 18 * len(deductions)
+    if y - block_estimate < my_bot + 20 * mm:
+        y = new_page()
+
+    c.setFillColorRGB(*LAYOUT["col_accent"])
+    draw_tracked(c, mx, y, "ABSCHLÄGE", fonts["medium"], 7.5, 1.6)
+    c.setFillColorRGB(*muted)
+    if show_tax:
+        draw_tracked(c, net_right, y, "NETTO", fonts["medium"], 7, 1.0, align="right")
+        draw_tracked(c, tax_right, y, "STEUER", fonts["medium"], 7, 1.0, align="right")
+        draw_tracked(c, total_right, y, "GESAMT", fonts["medium"], 7, 1.0, align="right")
+    else:
+        draw_tracked(c, total_right, y, "BETRAG", fonts["medium"], 7, 1.0, align="right")
+    y -= 15
+
+    for row in deductions:
+        c.setFont(fonts["regular"], 9)
         c.setFillColorRGB(*ink)
-        c.drawString(mx + stringWidth("Zahlbar bis ", fonts["regular"], 7.9), y - 8, f"{due_str}.")
-        y -= 11.5
-    return y
+        c.drawString(mx, y, f"Rechnung {row['nr']}")
+        c.drawRightString(net_right, y, format_money(row["net"]))
+        if show_tax:
+            c.drawRightString(tax_right, y, format_money(row["tax"]))
+        c.drawRightString(total_right, y, format_money(row["total"]))
+        c.setStrokeColorRGB(*hair)
+        c.line(mx, y - 6, right, y - 6)
+        y -= 18
+
+    def summary_row(label: str, net_value: float, tax_value: float, total_value: float,
+                    bold: bool = False) -> None:
+        nonlocal y
+        c.setFont(fonts["bold"] if bold else fonts["regular"], 9)
+        c.setFillColorRGB(*(ink if bold else muted))
+        c.drawString(mx, y, label)
+        c.setFillColorRGB(*ink)
+        c.drawRightString(net_right, y, format_money(net_value))
+        if show_tax:
+            c.drawRightString(tax_right, y, format_money(tax_value))
+        c.setFont(fonts["bold"], 12) if bold else c.setFont(fonts["regular"], 9)
+        c.drawRightString(total_right, y, format_money(total_value))
+        y -= 18
+
+    y -= 6
+    summary_row("Gesamtleistung", net, tax, round(net + tax, 2))
+    summary_row("Summe der Abschläge", sum_net, sum_tax, round(sum_net + sum_tax, 2))
+    y -= 2
+    c.setStrokeColorRGB(*LAYOUT["col_accent"])
+    c.setLineWidth(1.5)
+    c.line(mx, y + 6, right, y + 6)
+    c.setLineWidth(LAYOUT["line_width"])
+    summary_row("Restbetrag", round(net - sum_net, 2), round(tax - sum_tax, 2), rest, bold=True)
+    # Die Schlussrechnung ist eine Forderung: sie nennt ihr Zahlungsziel.
+    return draw_due_line(c, mx, y, due_str, fonts)
 
 
 def draw_note(c: Canvas, mx: float, y: float, content_w: float, text: str, fonts: dict[str, str]) -> float:
@@ -353,6 +448,48 @@ def draw_payment_box(c: Canvas, w: float, mx: float, y: float, content_w: float,
         if index < len(laid_out) - 1:
             c.setStrokeColorRGB(*LAYOUT["col_hair"])
             c.line(right_x, top - row_heights[index] + 1.5, right, top - row_heights[index] + 1.5)
+        top -= row_heights[index]
+    return y - box_h
+
+
+def draw_payment_plan(c: Canvas, mx: float, y: float, content_w: float, my_bot: float,
+                      rows: list[tuple[str, str, str]], new_page, fonts: dict[str, str]) -> float:
+    """Quote section "ZAHLUNGSPLAN": one row per installment (percent, occasion, amount)."""
+    if not rows:
+        return y
+
+    pad_x, pad_y, line_h, row_gap = 15, 13.5, 13.5, 7.5
+    percent_w = 60.0
+    label_x = mx + pad_x + percent_w
+    right = mx + content_w - pad_x
+    label_w = right - label_x - 90
+    laid_out = [(percent, wrap_text(label, fonts["regular"], 9, label_w) or [""], amount)
+                for percent, label, amount in rows]
+    row_heights = [line_h * len(lines) + row_gap for _, lines, _ in laid_out]
+    box_h = 2 * pad_y + 20 + sum(row_heights) - row_gap
+
+    y -= 21
+    if y - box_h < my_bot + 20 * mm:
+        y = new_page()
+    c.setFillColorRGB(*LAYOUT["col_surface"])
+    c.roundRect(mx, y - box_h, content_w, box_h, 1.5, stroke=0, fill=1)
+
+    c.setFillColorRGB(*LAYOUT["col_muted"])
+    draw_tracked(c, mx + pad_x, y - pad_y - 6, "ZAHLUNGSPLAN", fonts["medium"], 7, 1.0)
+
+    top = y - pad_y - 20
+    for index, (percent, lines, amount) in enumerate(laid_out):
+        base = top - 10
+        c.setFont(fonts["regular"], 9)
+        c.setFillColorRGB(*LAYOUT["col_ink"])
+        c.drawString(mx + pad_x, base, percent)
+        for line in lines:
+            c.drawString(label_x, base, line)
+            base -= line_h
+        c.drawRightString(right, top - 10, amount)
+        if index < len(laid_out) - 1:
+            c.setStrokeColorRGB(*LAYOUT["col_hair"])
+            c.line(mx + pad_x, top - row_heights[index] + 1.5, right, top - row_heights[index] + 1.5)
         top -= row_heights[index]
     return y - box_h
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from html import escape
 
 from .invoice_pdf_draw import uses_artist_wordmark
-from .invoice_pdf_layout import LAYOUT, format_amount, format_date, get_attr, payment_due_date, safe_str
+from .invoice_pdf_layout import LAYOUT, format_amount, format_date, get_attr, is_quote, payment_due_date, safe_str
 
 INK = "#14161a"
 MUTED = "#6b6f78"
@@ -32,10 +32,15 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
     # An artist signs with their first name, a company with its name.
     sign_off_name = (safe_str(get_attr(company, "first_name")) if wordmark else "") or company_name
 
+    # An Angebot names its validity instead of asking for payment.
+    quote = is_quote(invoice)
+    is_final_invoice = bool(get_attr(invoice, "is_final_invoice", default=False))
+    label = "Angebot" if quote else ("Schlussrechnung" if is_final_invoice else "Rechnung")
     number = safe_str(get_attr(invoice, "nr"))
     inv_date_raw = safe_str(get_attr(invoice, "date"))
     inv_date = format_date(inv_date_raw)
-    due = payment_due_date(inv_date_raw)
+    due = "" if quote else payment_due_date(inv_date_raw)
+    valid_until = format_date(safe_str(get_attr(invoice, "valid_until"))) if quote else ""
     subject_line = safe_str(get_attr(invoice, "subject"))
     gross = float(get_attr(invoice, "total_brutto", default=0) or 0)
 
@@ -49,24 +54,36 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
     # VAT is whatever the total adds on top of the positions.
     net = sum(quantity * price for _, quantity, price in items) if items else gross
     vat = gross - net
-    show_vat = vat > 0.005 and net > 0
+    # A final invoice's total is already the rest after the down payments, so its
+    # position total is not the tax base shown in this summary.
+    show_vat = vat > 0.005 and net > 0 and not is_final_invoice
     vat_rate = f"{round(vat / net * 100, 1):g}".replace(".", ",") if show_vat else ""
     vat_label = f"MwSt. {vat_rate} %"
 
     recipient = safe_str(get_attr(customer, "display_name", "name"))
     greeting = f"Hallo {recipient}," if recipient else "Hallo,"
-    subject = subject_line or f"Rechnung {number} von {company_name} — {format_amount(gross)} €"
+    # An offer always speaks of the offer: a custom subject is added, not replacing it.
+    if quote and subject_line:
+        subject = f"{label} {number} — {subject_line}"
+    else:
+        subject = subject_line or f"{label} {number} von {company_name} — {format_amount(gross)} €"
     message = message.replace("\r\n", "\n").strip()
     # A personal message replaces the standard intro; the PDF hint stays.
-    intro = message or "danke für den Auftrag! Die Rechnung hängt als PDF an, hier das Wichtigste auf einen Blick."
-    attachment_hint = "Die Rechnung hängt als PDF an." if message else ""
+    standard_intro = (
+        "danke für die Anfrage! Das Angebot hängt als PDF an, hier das Wichtigste auf einen Blick."
+        if quote else
+        "danke für den Auftrag! Die Rechnung hängt als PDF an, hier das Wichtigste auf einen Blick."
+    )
+    intro = message or standard_intro
+    attachment_hint = f"{'Das Angebot' if quote else 'Die Rechnung'} hängt als PDF an." if message else ""
     pay_line = f"Bitte bis zum {due} überweisen." if due else ""
+    valid_line = f"Das Angebot ist gültig bis {valid_until}." if valid_until else ""
 
     # ---- plain text
     lines = [greeting, "", intro] + (["", attachment_hint] if attachment_hint else []) + [""]
     if subject_line:
         lines.append(subject_line)
-    lines.append(f"Rechnung {number}" + (f" vom {inv_date}" if inv_date else ""))
+    lines.append(f"{label} {number}" + (f" vom {inv_date}" if inv_date else ""))
     lines.append("")
     for description, quantity, price in items:
         detail = f" ({quantity:g} x {_money(price)})" if quantity != 1 else ""
@@ -77,6 +94,8 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
     lines.append(f"Das macht: {_money(gross)}")
     if pay_line:
         lines.append(pay_line)
+    if valid_line:
+        lines.append(valid_line)
     if small_business:
         lines += ["", LAYOUT["txt_small_biz"]]
     lines += ["", "Liebe Grüße", sign_off_name]
@@ -115,6 +134,9 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
         f'<div style="padding-top:6px;font-size:14px;color:{MUTED};">Bitte bis zum '
         f'<strong style="color:{INK};">{escape(due)}</strong> überweisen.</div>' if due else ""
     )
+    valid_html = (
+        f'<div style="padding-top:6px;font-size:14px;color:{MUTED};">{escape(valid_line)}</div>' if valid_line else ""
+    )
     small_html = (
         f'<p style="margin:18px 0 0;font-size:12px;line-height:1.5;color:{MUTED};">{escape(LAYOUT["txt_small_biz"])}</p>'
         if small_business else ""
@@ -122,7 +144,9 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
     attachment_html = (
         f'<p style="margin:12px 0 0;font-size:13px;color:{MUTED};">{escape(attachment_hint)}</p>' if attachment_hint else ""
     )
-    preheader = f"{_money(gross)}" + (f" · bitte bis {due}" if due else "")
+    preheader = f"{_money(gross)}" + (f" · bitte bis {due}" if due else "") + (
+        f" · gültig bis {valid_until}" if valid_until else ""
+    )
     html = f"""<!DOCTYPE html>
 <html lang="de">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{escape(subject)}</title></head>
@@ -142,10 +166,10 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
 <tr><td style="padding:26px 36px 0;">
 <div style="background:{PAPER};border-radius:14px;padding:22px 24px;">
 {subject_html}
-<div style="font-size:13px;color:{MUTED};">Rechnung {escape(number)}{escape(" vom " + inv_date) if inv_date else ""}</div>
+<div style="font-size:13px;color:{MUTED};">{label} {escape(number)}{escape(" vom " + inv_date) if inv_date else ""}</div>
 <div style="padding-top:16px;font-size:14px;color:{MUTED};">Das macht</div>
 <div style="font-size:40px;font-weight:300;letter-spacing:-0.03em;line-height:1.15;color:{INK};">{_money(gross)}</div>
-{due_html}
+{due_html}{valid_html}
 </div>
 </td></tr>
 <tr><td style="padding:22px 36px 0;">

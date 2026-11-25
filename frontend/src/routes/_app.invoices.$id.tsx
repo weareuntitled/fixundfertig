@@ -246,7 +246,24 @@ function InvoiceDetailPage() {
         backTo="/invoices"
         backLabel="Rechnungen"
         title={<span>Rechnung #{invoice.nr || invoice.id}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
-        subtitle={<>Erstellt am {invoice.date || "Kein Datum"}</>}
+        subtitle={
+          <>
+            Erstellt am {invoice.date || "Kein Datum"}
+            {invoice.quote_id != null && (
+              <>
+                {" · "}
+                {invoice.down_payment_index != null && "Abschlagsrechnung · "}
+                <Link
+                  to="/quotes/$id"
+                  params={{ id: String(invoice.quote_id) }}
+                  className="text-[var(--color-brand-text)] hover:underline"
+                >
+                  Aus Angebot {invoice.quote_nr || `#${invoice.quote_id}`}
+                </Link>
+              </>
+            )}
+          </>
+        }
 actions={
           <>
             <a
@@ -543,7 +560,7 @@ const STATUS_LABELS_FULL: Record<string, string> = {
 };
 
 function getValidTransitions(current: InvoiceStatus): InvoiceStatus[] {
-  const t: Record<InvoiceStatus, InvoiceStatus[]> = { DRAFT: ["OPEN","CANCELLED"], OPEN: ["SENT","PAID","CANCELLED"], SENT: ["PAID","CANCELLED"], PAID: [], FINALIZED: [], CANCELLED: [] };
+  const t: Record<InvoiceStatus, InvoiceStatus[]> = { DRAFT: ["OPEN","CANCELLED"], OPEN: ["SENT","PAID","CANCELLED"], SENT: ["PAID","CANCELLED"], PAID: [], FINALIZED: [], CANCELLED: [], ACCEPTED: [], REJECTED: [] };
   return t[current] || [];
 }
 
