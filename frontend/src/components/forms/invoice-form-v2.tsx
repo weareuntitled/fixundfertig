@@ -3,12 +3,14 @@
  * @purpose Invoice creation form: customer, subject, dates, positions edited in place, totals
  * @input {InvoiceDraft} value - Current invoice draft state
  * @input {(next: InvoiceDraft) => void} onChange - State update callback
- *        A draft with document_type QUOTE swaps service date and payment term for "Gültig bis".
+ *        A draft with document_type QUOTE swaps service date and payment term for "Gültig bis"
+ *        and adds the payment plan (installments) below the totals.
  * @output One white card; every field says what it does and what happens when it is left empty
  */
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Trash2 } from "lucide-react";
 import { CustomerSelector } from "./customer-selector";
+import { PaymentPlanEditor } from "@/components/quote/payment-plan-editor";
 import { dueDateLabel, PAYMENT_TERM_DAYS } from "@/lib/invoice-draft";
 import { addDaysIso, QUOTE_VALIDITY_DAYS, type InvoiceDraft, type InvoiceItem } from "@/lib/schemas/invoice";
 
@@ -354,6 +356,16 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
           </div>
         </div>
       </div>
+
+      {isQuote && (
+        <div className="mt-[var(--space-xl)] border-t border-[var(--color-border)] pt-[var(--space-xl)]">
+          <PaymentPlanEditor
+            value={value.payment_plan ?? []}
+            gross={Math.round(gross * 100) / 100}
+            onChange={(plan) => setField("payment_plan", plan)}
+          />
+        </div>
+      )}
     </div>
   );
 }

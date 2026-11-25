@@ -59,6 +59,21 @@ export function addDaysIso(isoDate: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Eine Rate des Zahlungsplans eines Angebots: Prozent vom Bruttobetrag und Anlass. */
+export const paymentInstallmentSchema = z.object({
+  percent: z.number().positive("Prozent muss > 0 sein").lte(100),
+  label: z.string().max(200).default(""),
+});
+
+export type PaymentInstallment = z.infer<typeof paymentInstallmentSchema>;
+
+/** Rate mit Betrag, vom Backend aus dem Bruttobetrag berechnet (nicht gespeichert). */
+export const paymentInstallmentReadSchema = paymentInstallmentSchema.extend({
+  amount: z.number().default(0),
+});
+
+export type PaymentInstallmentRead = z.infer<typeof paymentInstallmentReadSchema>;
+
 export const invoiceDraftSchema = z.object({
   customer_id: z.number().int().positive("Kunde erforderlich"),
   document_type: documentTypeSchema.default("INVOICE"),
@@ -79,6 +94,7 @@ export const invoiceDraftSchema = z.object({
   items: z.array(invoiceItemSchema).default([]),
   notes: z.string().max(2000).default(""),
   status: invoiceStatusSchema.default("OPEN"),
+  payment_plan: z.array(paymentInstallmentSchema).default([]),
 });
 
 export type InvoiceDraft = z.infer<typeof invoiceDraftSchema>;
@@ -103,6 +119,7 @@ export const emptyInvoiceDraft = (customerId: number): InvoiceDraft => ({
   items: [],
   notes: "",
   status: "OPEN",
+  payment_plan: [],
 });
 
 /** Ein neues Angebot: Entwurf, „gültig bis“ = Angebotsdatum plus 30 Tage. */
@@ -160,6 +177,7 @@ export const invoiceReadSchema = z.object({
   payment_provider: z.string().default(""),
   items: z.array(invoiceItemSchema).default([]),
   attachments: z.array(invoiceAttachmentSchema).default([]),
+  payment_plan: z.array(paymentInstallmentReadSchema).default([]),
 });
 
 export type InvoiceRead = z.infer<typeof invoiceReadSchema>;

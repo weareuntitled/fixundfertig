@@ -24,5 +24,9 @@ export function invoiceDraftProblems(draft: InvoiceDraft): string[] {
     else if (!(item.quantity > 0)) problems.push(`${label}: Menge größer 0 eintragen`);
     else if (item.unit_price < 0) problems.push(`${label}: Preis darf nicht negativ sein`);
   });
+  // A plan that does not add up to 100 % only warns (see PaymentPlanEditor); an empty rate blocks.
+  (draft.payment_plan ?? []).forEach((rate, index) => {
+    if (!(rate.percent > 0)) problems.push(`Rate ${index + 1}: Prozent größer 0 eintragen`);
+  });
   return problems;
 }

@@ -105,3 +105,60 @@ describe("InvoiceFormV2 for a quote", () => {
     expect((screen.getByLabelText("Gültig bis") as HTMLInputElement).value).toBe("2027-01-15");
   });
 });
+
+describe("InvoiceFormV2 payment plan", () => {
+  const quote: InvoiceDraft = {
+    ...emptyQuoteDraft(3, "2026-10-23"),
+    ust_enabled: true,
+    vat_rate: 19,
+    items: [{ description: "Website", quantity: 1, unit_price: 1000 }],
+  };
+  const percent = (n: number) => screen.getByLabelText(`Prozent Rate ${n}`) as HTMLInputElement;
+  const occasion = (n: number) => screen.getByLabelText(`Anlass Rate ${n}`) as HTMLInputElement;
+
+  it("adds installments with percent and occasion and shows each amount from the gross total", () => {
+    render(<Harness initial={quote} />);
+    fireEvent.click(screen.getByRole("button", { name: "Rate hinzufügen" }));
+    fireEvent.change(percent(1), { target: { value: "50" } });
+    fireEvent.change(occasion(1), { target: { value: "bei Auftrag" } });
+    fireEvent.click(screen.getByRole("button", { name: "Rate hinzufügen" }));
+    fireEvent.change(occasion(2), { target: { value: "nach Livegang" } });
+
+    // the second installment starts with what is left to 100 %
+    expect(percent(2).value).toBe("50");
+    expect(screen.getAllByText("595,00 €")).toHaveLength(2);
+    expect(screen.queryByText(/ergeben zusammen/)).toBeNull();
+  });
+
+  it("warns when the installments do not add up to 100 percent", () => {
+    render(<Harness initial={{ ...quote, payment_plan: [{ percent: 30, label: "bei Auftrag" }] }} />);
+    expect(screen.getByRole("status").textContent).toContain("ergeben zusammen 30 %, nicht 100 %");
+  });
+
+  it("moves and removes installments", () => {
+    render(
+      <Harness
+        initial={{
+          ...quote,
+          payment_plan: [
+            { percent: 30, label: "bei Auftrag" },
+            { percent: 70, label: "nach Livegang" },
+          ],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Rate 2 nach oben" }));
+    expect(occasion(1).value).toBe("nach Livegang");
+    expect(occasion(2).value).toBe("bei Auftrag");
+
+    fireEvent.click(screen.getByRole("button", { name: "Rate 1 entfernen" }));
+    expect(occasion(1).value).toBe("bei Auftrag");
+    expect(screen.queryByLabelText("Anlass Rate 2")).toBeNull();
+  });
+
+  it("invoices have no payment plan", () => {
+    render(<Harness initial={base} />);
+    expect(screen.queryByText("Zahlungsplan")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Rate hinzufügen" })).toBeNull();
+  });
+});

@@ -35,4 +35,11 @@ describe("invoiceDraftProblems", () => {
       "Position 4: Preis darf nicht negativ sein",
     ]);
   });
+  it("asks for a percentage on every installment but not for 100 percent in total", () => {
+    const payment_plan = [
+      { percent: 30, label: "bei Auftrag" },
+      { percent: 0, label: "nach Livegang" },
+    ];
+    expect(invoiceDraftProblems({ ...draft, payment_plan })).toEqual(["Rate 2: Prozent größer 0 eintragen"]);
+  });
 });

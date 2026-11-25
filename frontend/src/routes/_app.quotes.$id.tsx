@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { germanDate } from "@/components/quote/quote-list";
+import { QuotePaymentPlanCard } from "@/components/quote/quote-payment-plan-card";
 import {
   useAddInvoiceItem,
   useDeleteInvoiceItem,
@@ -283,6 +284,8 @@ function QuoteDetailPage() {
           Summe <span className="ml-3 font-mono">{eur(quote.total_brutto)}</span>
         </div>
       </div>
+
+      <QuotePaymentPlanCard quoteId={quoteId} gross={quote.total_brutto} plan={quote.payment_plan ?? []} locked={locked} />
 
       <LineItemDialog
         open={itemDialog.open}
