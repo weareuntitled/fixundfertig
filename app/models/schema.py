@@ -148,6 +148,8 @@ class Invoice(SQLModel, table=True):
     nr: Optional[str] = None
     document_type: DocumentType = DocumentType.INVOICE
     valid_until: str = ""
+    # VAT rate in percent as charged (0 for Kleinunternehmer / USt off); None for legacy rows.
+    vat_rate: Optional[float] = None
     title: str = "Rechnung"
     date: str
     delivery_date: str = ""

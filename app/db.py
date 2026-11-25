@@ -205,6 +205,15 @@ def ensure_invoice_valid_until_field(target_engine=None):
 
 ensure_invoice_valid_until_field()
 
+def ensure_invoice_vat_rate_field(target_engine=None):
+    """Ergänzt den Steuersatz des Dokuments in Prozent (NULL bei Altbestand: aus Brutto/Netto ableiten)."""
+    with (target_engine or engine).begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "vat_rate" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN vat_rate REAL")
+
+ensure_invoice_vat_rate_field()
+
 def reconcile_invoice_revision_schema():
     with engine.begin() as conn:
         tables = {
