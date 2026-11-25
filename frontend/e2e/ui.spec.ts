@@ -330,6 +330,45 @@ test("quote detail page previews and downloads the Angebot PDF without invoice a
   );
 });
 
+test("quote detail page sends the Angebot by mail and then shows Gesendet", async ({ page }) => {
+  let quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2099-01-31", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 400, status: "DRAFT",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 400 }],
+    attachments: [{ id: 5, document_id: 9, title: "Technik-Rider", filename: "rider.pdf", mime: "application/pdf",
+      size: 321, created_at: "2026-10-23T10:00:00" }],
+  };
+  let sent: Record<string, unknown> | null = null;
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/customers/7", (route) =>
+    route.fulfill({ json: { id: 7, kdnr: 1, name: "Sisyphos Event GmbH", email: "booking@sisyphos.example" } }),
+  );
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+  await page.route("**/api/invoices/42/send", (route) => {
+    sent = route.request().postDataJSON();
+    quote = { ...quote, status: "SENT" };
+    return route.fulfill({ json: { status: "ok", message: "Angebot an booking@sisyphos.example gesendet" } });
+  });
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  await expect(main.getByText("Entwurf")).toBeVisible();
+  await main.getByRole("button", { name: "Angebot senden" }).click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Angebot senden" })).toBeVisible();
+  await expect(dialog).toContainText("booking@sisyphos.example");
+  await expect(dialog).toContainText("Das Angebot hängt immer als PDF an.");
+  await dialog.getByLabel(/Persönliche Nachricht/).fill("Hier das Angebot für den 12.12.");
+  await dialog.getByRole("button", { name: "Senden" }).click();
+
+  await expect.poll(() => sent).toEqual({ message: "Hier das Angebot für den 12.12.", include_attachments: true });
+  await expect(page.getByText("Angebot an booking@sisyphos.example gesendet")).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  await expect(main.getByText("Gesendet")).toBeVisible();
+});
+
 test("settings: leaving with unsaved changes asks first", async ({ page }) => {
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));
