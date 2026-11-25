@@ -750,6 +750,10 @@ def send_invoice_email_endpoint(
             detail="Customer has no email address",
         )
 
+    quote = invoice.document_type == DocumentType.QUOTE
+    if quote:
+        # A quote may have changed since its PDF was stored: always send the current one.
+        _rerender_quote_pdf(session, invoice)
     pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
     filename = build_invoice_filename(company, invoice, customer)
     payload = payload or InvoiceSendRequest()
@@ -804,12 +808,14 @@ def send_invoice_email_endpoint(
             detail="E-Mail konnte nicht gesendet werden (SMTP nicht konfiguriert)",
         )
 
-    invoice.status = InvoiceStatus.SENT
+    if invoice.document_type != DocumentType.QUOTE or invoice.status == InvoiceStatus.DRAFT:
+        invoice.status = InvoiceStatus.SENT
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     session.add(invoice)
     session.commit()
 
-    return {"status": "ok", "message": f"Rechnung an {customer.email} gesendet"}
+    label = "Angebot" if quote else "Rechnung"
+    return {"status": "ok", "message": f"{label} an {customer.email} gesendet"}
 
 
 @router.delete("/{invoice_id}")
