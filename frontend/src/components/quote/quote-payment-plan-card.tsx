@@ -13,10 +13,12 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 import { PaymentPlanEditor } from "./payment-plan-editor";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { api } from "@/lib/api";
 import { percentLabel } from "@/lib/payment-plan";
 import { useCreateDownPayment } from "@/lib/use-invoices";
 import { useNotification } from "@/lib/use-notifications";
+import { SECONDARY_BUTTON, eur } from "./quote-ui";
 import type {
   LinkedInvoice,
   PaymentInstallment,
@@ -30,10 +32,6 @@ interface QuotePaymentPlanCardProps {
   locked: boolean;
   invoices?: LinkedInvoice[];
 }
-
-const eur = (n: number) => `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
-const BUTTON =
-  "inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-white px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-low)] disabled:cursor-not-allowed disabled:opacity-50";
 
 export function QuotePaymentPlanCard({
   quoteId,
@@ -76,7 +74,7 @@ export function QuotePaymentPlanCard({
         <div className="p-[var(--space-lg)]">
           <PaymentPlanEditor value={draft} gross={gross} onChange={setDraft} />
           <div className="mt-[var(--space-md)] flex justify-end gap-[var(--space-xs)]">
-            <button type="button" onClick={() => setDraft(null)} className={BUTTON}>
+            <button type="button" onClick={() => setDraft(null)} className={SECONDARY_BUTTON}>
               Abbrechen
             </button>
             <button
@@ -98,7 +96,7 @@ export function QuotePaymentPlanCard({
                 type="button"
                 aria-label="Zahlungsplan bearbeiten"
                 onClick={() => setDraft(plan.map(({ percent, label }) => ({ percent, label })))}
-                className={BUTTON}
+                className={SECONDARY_BUTTON}
               >
                 <Pencil size={14} /> Bearbeiten
               </button>
@@ -118,12 +116,15 @@ export function QuotePaymentPlanCard({
                     <span className="min-w-0 flex-1 text-[14px] text-[var(--color-text-heading)]">{rate.label}</span>
                     <span className="font-mono text-[14px] font-bold">{eur(rate.amount)}</span>
                     {billed ? (
-                      <a
-                        href={`/invoices/${billed.id}`}
-                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface-container-low)] px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-high)]"
-                      >
-                        {billed.status === "DRAFT" ? "Entwurf" : "Abgerechnet"} · Rechnung {billed.nr || `#${billed.id}`}
-                      </a>
+                      <span className="flex items-center gap-2">
+                        <StatusBadge status={billed.status} />
+                        <a
+                          href={`/invoices/${billed.id}`}
+                          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface-container-low)] px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-high)]"
+                        >
+                          Rechnung {billed.nr || `#${billed.id}`}
+                        </a>
+                      </span>
                     ) : (
                       <button
                         type="button"
@@ -143,7 +144,7 @@ export function QuotePaymentPlanCard({
                             },
                           )
                         }
-                        className={BUTTON}
+                        className={SECONDARY_BUTTON}
                       >
                         Abschlagsrechnung
                       </button>

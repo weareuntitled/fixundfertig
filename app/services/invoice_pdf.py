@@ -6,6 +6,8 @@ from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas
 
+from models.schema import is_issued_status
+
 from .invoice_pdf_layout import (
     FONTS, LAYOUT, InvItem, format_date, format_money, format_service_period, get_attr, is_quote, payment_due_date, safe_float, safe_str,
 )
@@ -152,7 +154,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
         if is_final_invoice:
             y = draw_final_totals(
                 c, w, mx, y, content_w, my_bot, net, tax, tax_rate, is_small_business,
-                deductions, sum_net, sum_tax, rest, new_page, fonts,
+                deductions, sum_net, sum_tax, rest, due_str, new_page, fonts,
             )
         else:
             y = draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, due_str, new_page, fonts)
@@ -186,7 +188,7 @@ def _vat_rate(invoice, net: float) -> float:
 
 
 def _down_payments_from_quote(invoice) -> list[dict]:
-    """Best effort for callers without a session: read the quote's billed down payments.
+    """Best effort for callers without a session: read the quote's issued down payments.
 
     The API passes the rows explicitly; this only keeps a detached live render honest.
     """
@@ -201,7 +203,7 @@ def _down_payments_from_quote(invoice) -> list[dict]:
             continue
         status = get_attr(other, "status", default="")
         status = str(getattr(status, "value", status)).upper()
-        if status in ("", "CANCELLED", "DRAFT"):
+        if not status or not is_issued_status(status):
             continue
         net = round(
             sum(

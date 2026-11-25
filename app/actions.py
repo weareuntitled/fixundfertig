@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from datetime import datetime
 import os
 from sqlmodel import select
@@ -111,8 +112,14 @@ def _resolve_invoice_pdf_path(filename: str | None) -> str:
         return filename
     return f"storage/invoices/{filename}"
 
-def delete_invoice(invoice_id: int) -> tuple[bool, str]:
-    with get_session() as session:
+def delete_invoice(invoice_id: int, session=None) -> tuple[bool, str]:
+    """Löscht eine Rechnung samt Positionen, Revisionen, Protokollen und PDF-Datei.
+
+    Ohne `session` läuft das Löschen in einer eigenen Session; mit der Session des
+    Aufrufers bleibt das Löschen in derselben Transaktion.
+    """
+    context = get_session() if session is None else nullcontext(session)
+    with context as session:
         inv = session.get(Invoice, int(invoice_id))
         if not inv:
             return False, "Rechnung nicht gefunden"

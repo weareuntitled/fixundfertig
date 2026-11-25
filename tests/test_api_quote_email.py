@@ -67,6 +67,19 @@ def test_quote_mail_with_a_personal_message_still_names_the_angebot_pdf(quote_ap
         assert "Das Angebot hängt als PDF an." in body
 
 
+def test_quote_mail_with_its_own_subject_still_names_the_angebot(quote_api):
+    """Auch mit eigenem Betreff spricht die Mail vom Angebot und nennt die Nummer."""
+    _, _, _, mails, create, send = quote_api
+    quote = create(subject="Hochzeit im Alten Land")
+
+    send(quote)
+    mail = mails[-1]
+
+    assert mail["subject"] == f"Angebot {quote['nr']} — Hochzeit im Alten Land"
+    assert quote["nr"] in mail["subject"]
+    assert "Angebot" in mail["subject"]
+
+
 def test_quote_mail_carries_the_quote_pdf_and_chosen_attachments(quote_api):
     client, company, session, mails, create, send = quote_api
     quote = create()

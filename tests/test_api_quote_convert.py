@@ -19,7 +19,7 @@ def test_startup_adds_quote_link_columns_to_existing_databases(tmp_path):
         conn.exec_driver_sql("CREATE TABLE invoice (id INTEGER PRIMARY KEY, customer_id INTEGER, date TEXT)")
         conn.exec_driver_sql("INSERT INTO invoice (customer_id, date) VALUES (1, '2025-01-01')")
 
-    db.ensure_invoice_quote_link_fields(engine)
+    db.ensure_invoice_quote_fields(engine)
 
     with engine.begin() as conn:
         row = conn.exec_driver_sql("SELECT intro_text, quote_id FROM invoice").fetchone()

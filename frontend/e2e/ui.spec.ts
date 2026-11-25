@@ -440,10 +440,9 @@ test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as 
 
   await main.getByRole("button", { name: "Abschlagsrechnung" }).first().click();
 
-  await expect(main.getByRole("link", { name: /Entwurf · Rechnung 10000/ })).toHaveAttribute(
-    "href",
-    "/invoices/43",
-  );
+  const downPaymentLink = main.getByRole("link", { name: "Rechnung 10000", exact: true });
+  await expect(downPaymentLink).toHaveAttribute("href", "/invoices/43");
+  await expect(downPaymentLink.locator("..").getByText("Entwurf", { exact: true })).toBeVisible();
   await expect(main.getByRole("button", { name: "Abschlagsrechnung" })).toHaveCount(1);
   await expect(main.getByText("Angenommen", { exact: true })).toBeVisible();
 });
@@ -490,7 +489,9 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
 
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
-  await expect(main.getByRole("link", { name: /Abgerechnet · Rechnung 10000/ })).toBeVisible();
+  const downPaymentLink = main.getByRole("link", { name: "Rechnung 10000", exact: true });
+  await expect(downPaymentLink).toBeVisible();
+  await expect(downPaymentLink.locator("..").getByText("Gesendet", { exact: true })).toBeVisible();
 
   await main.getByRole("button", { name: "Schlussrechnung" }).click();
 

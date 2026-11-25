@@ -17,6 +17,17 @@ class InvoiceStatus(str, Enum):
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
 
+
+# Status, in denen ein Dokument noch nicht „gestellt" ist: Entwurf oder storniert.
+# Eine Abschlagsrechnung gilt erst ab dem Versand als gestellt; die eine Regel
+# gilt für die Voraussetzung der Schlussrechnung und für den Abzug gleichermaßen.
+NOT_ISSUED_STATUSES = (InvoiceStatus.DRAFT, InvoiceStatus.CANCELLED)
+
+
+def is_issued_status(status) -> bool:
+    """„Gestellt": der Status ist weder Entwurf noch storniert."""
+    return status not in NOT_ISSUED_STATUSES
+
 class DocumentType(str, Enum):
     """Dokumentart eines Datensatzes in `invoice`: Rechnung oder Angebot."""
     INVOICE = "INVOICE"

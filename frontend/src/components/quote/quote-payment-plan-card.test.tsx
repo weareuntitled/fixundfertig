@@ -91,14 +91,15 @@ describe("QuotePaymentPlanCard", () => {
     expect(JSON.parse(String(init.body))).toEqual({ installment_index: 0 });
   });
 
-  it("marks a sent installment as billed and links its invoice", () => {
+  it("marks a sent installment as billed and names the status of its invoice", () => {
     renderCard({
       invoices: [
         { id: 43, nr: "10000", status: "SENT", total_brutto: 2380, installment_index: 0, is_down_payment: true, is_final_invoice: false },
       ],
     });
 
-    const link = screen.getByRole("link", { name: /Abgerechnet · Rechnung 10000/ });
+    expect(screen.getByText("Gesendet")).toBeTruthy();
+    const link = screen.getByRole("link", { name: /Rechnung 10000/ });
     expect(link.getAttribute("href")).toBe("/invoices/43");
     expect(screen.getAllByRole("button", { name: "Abschlagsrechnung" })).toHaveLength(1);
   });
@@ -110,7 +111,8 @@ describe("QuotePaymentPlanCard", () => {
       ],
     });
 
-    const link = screen.getByRole("link", { name: /Entwurf · Rechnung 10000/ });
+    expect(screen.getByText("Entwurf")).toBeTruthy();
+    const link = screen.getByRole("link", { name: /Rechnung 10000/ });
     expect(link.getAttribute("href")).toBe("/invoices/43");
     expect(screen.queryByText(/Abgerechnet/)).toBeNull();
     expect(screen.getAllByRole("button", { name: "Abschlagsrechnung" })).toHaveLength(1);
@@ -124,6 +126,7 @@ describe("QuotePaymentPlanCard", () => {
     });
 
     expect(screen.getAllByRole("button", { name: "Abschlagsrechnung" })).toHaveLength(2);
+    expect(screen.queryByRole("link", { name: /Rechnung 10000/ })).toBeNull();
     expect(screen.queryByText(/Abgerechnet/)).toBeNull();
   });
 });

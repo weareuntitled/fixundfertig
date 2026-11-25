@@ -7,7 +7,21 @@ Bruttobetrag des Dokuments berechnet (``installments_with_amounts``), nie gespei
 from __future__ import annotations
 
 import json
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
+
+_CENTS = Decimal("0.01")
+
+
+def round_cents(value: float) -> float:
+    """Kaufmännisch auf Cent runden (half-up): 0,125 -> 0,13; 2,345 -> 2,35.
+
+    ``Decimal(str(value))`` nutzt die geschriebene Zahl statt ihrer Binär-
+    Annäherung. Dieselbe Regel gilt im Frontend (``roundCents`` in
+    ``frontend/src/lib/payment-plan.ts``), damit Anzeige, Backend und PDF
+    denselben Cent zeigen.
+    """
+    return float(Decimal(str(float(value))).quantize(_CENTS, rounding=ROUND_HALF_UP))
 
 
 def parse_payment_plan(raw: Any) -> list[dict[str, Any]]:
@@ -48,9 +62,9 @@ def installment_amounts(gross: float, percents: list[float]) -> list[float]:
     When the plan adds up to 100 %, the last installment takes the rounding rest so
     the amounts add up exactly to the gross total.
     """
-    amounts = [round(gross * p / 100.0, 2) for p in percents]
+    amounts = [round_cents(gross * p / 100.0) for p in percents]
     if amounts and abs(sum(percents) - 100.0) < 1e-6:
-        amounts[-1] = round(gross - sum(amounts[:-1]), 2)
+        amounts[-1] = round_cents(gross - sum(amounts[:-1]))
     return amounts
 
 

@@ -37,10 +37,11 @@ from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
 from logic.document_status import (
     accepted_quote_status_reason,
+    creation_status_reason,
     is_accepted_quote,
     status_not_allowed_reason,
 )
-from logic.final_invoice import billed_down_payments
+from logic.final_invoice import issued_down_payments
 from logic.quote_conversion import (
     DownPaymentConflict,
     FinalInvoiceConflict,
@@ -215,7 +216,34 @@ def _document_type_value(invoice: Invoice) -> str:
 
 def _down_payment_rows(session: Session, quote_id: int) -> list[dict]:
     """Billed down payments of a quote in the shape the PDF renderer expects."""
-    return [row.as_dict() for row in billed_down_payments(session, int(quote_id))]
+    return [row.as_dict() for row in issued_down_payments(session, int(quote_id))]
+
+
+def _final_invoice_down_payments(session: Session | None, invoice) -> list[dict] | None:
+    """Die Abschlagsrechnungen, die eine Schlussrechnung abzieht; None für andere Dokumente."""
+    if session is None or not getattr(invoice, "is_final_invoice", False):
+        return None
+    quote_id = getattr(invoice, "quote_id", None)
+    if not quote_id:
+        return None
+    return _down_payment_rows(session, int(quote_id))
+
+
+def _render_document_pdf(session: Session | None, invoice, company=None, customer=None) -> bytes:
+    """PDF eines Dokuments; eine Schlussrechnung zieht ihre Abschlagsrechnungen ab."""
+    comp = company or getattr(invoice, "company", None)
+    cust = customer or getattr(invoice, "customer", None)
+    if session is not None:
+        if comp is None and getattr(invoice, "company_id", None):
+            comp = session.get(Company, int(invoice.company_id))
+        if cust is None and getattr(invoice, "customer_id", None):
+            cust = session.get(Customer, int(invoice.customer_id))
+    return render_invoice_to_pdf_bytes(
+        invoice=invoice,
+        company=comp,
+        customer=cust,
+        down_payments=_final_invoice_down_payments(session, invoice),
+    )
 
 
 def _ensure_status_allowed(invoice: Invoice, new_status: str) -> None:
@@ -518,12 +546,9 @@ def update_invoice(
             preview.__dict__["total_brutto"] = float(invoice.total_brutto or 0)
             is_final = bool(getattr(invoice, "is_final_invoice", False))
             preview.__dict__["is_final_invoice"] = is_final
-            down_payments = (
-                _down_payment_rows(session, int(invoice.quote_id))
-                if is_final and invoice.quote_id
-                else None
+            invoice.pdf_bytes = render_invoice_to_pdf_bytes(
+                preview, down_payments=_final_invoice_down_payments(session, invoice)
             )
-            invoice.pdf_bytes = render_invoice_to_pdf_bytes(preview, down_payments=down_payments)
         except Exception as e:
             logger.exception("PDF re-render failed on invoice update")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"PDF-Neuerstellung fehlgeschlagen: {e}") from e
@@ -554,16 +579,7 @@ def regenerate_invoice_pdf(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
-    company = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
-    customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
-    down_payments = (
-        _down_payment_rows(session, int(invoice.quote_id))
-        if getattr(invoice, "is_final_invoice", False) and invoice.quote_id
-        else None
-    )
-    pdf_bytes = render_invoice_to_pdf_bytes(
-        invoice=invoice, company=company, customer=customer, down_payments=down_payments
-    )
+    pdf_bytes = _render_document_pdf(session, invoice)
 
     next_revision = int(invoice.revision_nr or 0) + 1
     invoice.pdf_bytes = pdf_bytes
@@ -600,23 +616,7 @@ def _resolve_invoice_pdf_bytes(invoice, session=None) -> bytes:
     """
     if getattr(invoice, "pdf_bytes", None):
         return bytes(invoice.pdf_bytes)
-    company = getattr(invoice, "company", None)
-    customer = getattr(invoice, "customer", None)
-    # ponytail: lazy-load company/customer if session available and relationships not loaded
-    if session is not None and company is None and getattr(invoice, "company_id", None):
-        company = session.get(Company, int(invoice.company_id))
-    if session is not None and customer is None and getattr(invoice, "customer_id", None):
-        customer = session.get(Customer, int(invoice.customer_id))
-    down_payments = None
-    if (
-        session is not None
-        and getattr(invoice, "is_final_invoice", False)
-        and getattr(invoice, "quote_id", None)
-    ):
-        down_payments = _down_payment_rows(session, int(invoice.quote_id))
-    return render_invoice_to_pdf_bytes(
-        invoice=invoice, company=company, customer=customer, down_payments=down_payments,
-    )
+    return _render_document_pdf(session, invoice)
 
 
 @router.get(
@@ -673,6 +673,16 @@ def create_invoice(
     session: Iterator = Depends(db_session),
 ):
     """Finalize a draft invoice: assign number, persist items, render PDF, store."""
+    document_type = DocumentType(payload.document_type)
+    doc_status = InvoiceStatus(payload.status)
+    if "status" in payload.model_fields_set:
+        # Ausdrücklich gewählter Status: die Regeln der Dokumentart gelten.
+        reason = creation_status_reason(document_type, doc_status)
+        if reason:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
+    else:
+        # Ohne ausdrücklichen Status: ein Angebot startet im Entwurf, eine Rechnung offen.
+        doc_status = InvoiceStatus.DRAFT if document_type == DocumentType.QUOTE else InvoiceStatus.OPEN
     try:
         inv_id = finalize_invoice_logic(
             session=session,
@@ -689,12 +699,12 @@ def create_invoice(
             },
             items=[it.model_dump() | {"tax_rate": payload.vat_rate} for it in payload.items],
             ust_enabled=payload.ust_enabled,
-            status=InvoiceStatus(payload.status),
+            status=doc_status,
             subject=payload.subject,
             intro_text=payload.intro_text,
             service_from=payload.service_from,
             service_to=payload.service_to,
-            document_type=DocumentType(payload.document_type),
+            document_type=document_type,
             valid_until=payload.valid_until,
             payment_plan=payload.payment_plan,
         )
@@ -716,14 +726,7 @@ def _rerender_quote_pdf(session: Session, invoice: Invoice) -> None:
     is_final = bool(getattr(invoice, "is_final_invoice", False))
     if getattr(invoice, "document_type", None) != DocumentType.QUOTE and not is_final:
         return
-    company = session.get(Company, int(invoice.company_id)) if invoice.company_id else None
-    customer = session.get(Customer, int(invoice.customer_id)) if invoice.customer_id else None
-    down_payments = None
-    if is_final and getattr(invoice, "quote_id", None):
-        down_payments = _down_payment_rows(session, int(invoice.quote_id))
-    invoice.pdf_bytes = render_invoice_to_pdf_bytes(
-        invoice=invoice, company=company, customer=customer, down_payments=down_payments
-    )
+    invoice.pdf_bytes = _render_document_pdf(session, invoice)
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
@@ -740,17 +743,26 @@ def _refresh_final_invoices_for_quote(session: Session, quote_id: int) -> None:
     ).all()
     if not finals:
         return
-    rows = _down_payment_rows(session, int(quote_id))
     for final in finals:
-        company = session.get(Company, int(final.company_id)) if final.company_id else None
-        customer = session.get(Customer, int(final.customer_id)) if final.customer_id else None
         recompute_total_brutto(final, document_vat_rate(final), session)
-        final.pdf_bytes = render_invoice_to_pdf_bytes(
-            invoice=final, company=company, customer=customer, down_payments=rows
-        )
+        final.pdf_bytes = _render_document_pdf(session, final)
         final.revision_nr = int(final.revision_nr or 0) + 1
         session.add(final)
     session.commit()
+
+
+def _refresh_quote_after_down_payment_change(session: Session, invoice: Invoice) -> None:
+    """Nach einer Änderung an einer Abschlagsrechnung: die Schlussrechnungen nachziehen.
+
+    Der Betrag einer Abschlagsrechnung ist der Abzug der Schlussrechnung. Wird die
+    Abschlagsrechnung geändert oder gelöscht, verschiebt sich der Restbetrag.
+    """
+    if getattr(invoice, "down_payment_index", None) is None:
+        return
+    quote_id = getattr(invoice, "quote_id", None)
+    if not quote_id:
+        return
+    _refresh_final_invoices_for_quote(session, int(quote_id))
 
 
 @router.post("/{invoice_id}/items", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
@@ -781,6 +793,7 @@ def add_invoice_item(
     session.commit()
     session.refresh(invoice)
     _rerender_quote_pdf(session, invoice)
+    _refresh_quote_after_down_payment_change(session, invoice)
     return _to_read_model(invoice)
 
 
@@ -812,6 +825,7 @@ def update_invoice_item(
     session.commit()
     session.refresh(invoice)
     _rerender_quote_pdf(session, invoice)
+    _refresh_quote_after_down_payment_change(session, invoice)
     return _to_read_model(invoice)
 
 
@@ -840,6 +854,7 @@ def delete_invoice_item(
     session.commit()
     session.refresh(invoice)
     _rerender_quote_pdf(session, invoice)
+    _refresh_quote_after_down_payment_change(session, invoice)
     return _to_read_model(invoice)
 
 
@@ -1048,7 +1063,17 @@ def delete_invoice_endpoint(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ein Angebot mit Rechnungen lässt sich nicht löschen",
         )
-    ok, msg = delete_invoice(invoice_id)
+    # Vor dem Löschen merken: eine gelöschte Abschlagsrechnung wird nicht mehr abgezogen.
+    down_payment_quote_id = (
+        int(document.quote_id)
+        if document is not None
+        and getattr(document, "down_payment_index", None) is not None
+        and getattr(document, "quote_id", None)
+        else None
+    )
+    ok, msg = delete_invoice(invoice_id, session=session)
     if not ok:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+    if down_payment_quote_id:
+        _refresh_final_invoices_for_quote(session, down_payment_quote_id)
     return {"status": "ok", "message": f"Rechnung #{invoice_id} gelöscht"}

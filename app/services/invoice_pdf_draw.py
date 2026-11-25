@@ -238,6 +238,19 @@ def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bo
     return y
 
 
+def draw_due_line(c: Canvas, mx: float, y: float, due_str: str, fonts: dict[str, str]) -> float:
+    """„Zahlbar bis TT.MM.JJJJ." unter den Summen."""
+    if not due_str:
+        return y
+    c.setFont(fonts["regular"], 7.9)
+    c.setFillColorRGB(*LAYOUT["col_muted"])
+    c.drawString(mx, y - 8, "Zahlbar bis")
+    c.setFont(fonts["bold"], 7.9)
+    c.setFillColorRGB(*LAYOUT["col_ink"])
+    c.drawString(mx + stringWidth("Zahlbar bis ", fonts["regular"], 7.9), y - 8, f"{due_str}.")
+    return y - 11.5
+
+
 def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
                 net: float, tax: float, gross: float, tax_rate: float, is_small_business: bool,
                 due_str: str, new_page, fonts: dict[str, str]) -> float:
@@ -278,21 +291,13 @@ def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_b
     y -= 12
     if is_small_business:
         y = draw_note(c, mx, y, content_w, LAYOUT["txt_small_biz"], fonts)
-    if due_str:
-        c.setFont(fonts["regular"], 7.9)
-        c.setFillColorRGB(*muted)
-        c.drawString(mx, y - 8, "Zahlbar bis")
-        c.setFont(fonts["bold"], 7.9)
-        c.setFillColorRGB(*ink)
-        c.drawString(mx + stringWidth("Zahlbar bis ", fonts["regular"], 7.9), y - 8, f"{due_str}.")
-        y -= 11.5
-    return y
+    return draw_due_line(c, mx, y, due_str, fonts)
 
 
 def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
                       net: float, tax: float, tax_rate: float, is_small_business: bool,
                       deductions: list[dict], sum_net: float, sum_tax: float, rest: float,
-                      new_page, fonts: dict[str, str]) -> float:
+                      due_str: str, new_page, fonts: dict[str, str]) -> float:
     """Schlussrechnung block: one deduction line per down payment and the three totals.
 
     Kleinunternehmer get no tax column, no tax amounts and no tax sentence.
@@ -305,7 +310,7 @@ def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float
     net_right = right - 210 if show_tax else right - 110
 
     y -= 16.5
-    block_estimate = 170 + 18 * len(deductions)
+    block_estimate = 185 + 18 * len(deductions)
     if y - block_estimate < my_bot + 20 * mm:
         y = new_page()
 
@@ -355,7 +360,8 @@ def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float
     c.line(mx, y + 6, right, y + 6)
     c.setLineWidth(LAYOUT["line_width"])
     summary_row("Restbetrag", round(net - sum_net, 2), round(tax - sum_tax, 2), rest, bold=True)
-    return y
+    # Die Schlussrechnung ist eine Forderung: sie nennt ihr Zahlungsziel.
+    return draw_due_line(c, mx, y, due_str, fonts)
 
 
 def draw_note(c: Canvas, mx: float, y: float, content_w: float, text: str, fonts: dict[str, str]) -> float:

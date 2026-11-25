@@ -9,9 +9,7 @@ import { FileSignature } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { InvoiceRead } from "@/lib/schemas/invoice";
 import { quoteDisplayStatus } from "@/lib/quote-status";
-
-const eur = (n: number) =>
-  n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+import { eur } from "./quote-ui";
 
 /** DD.MM.YYYY for an ISO date, or "" when it is not set. */
 export function germanDate(iso: string): string {

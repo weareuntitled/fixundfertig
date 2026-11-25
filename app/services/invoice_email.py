@@ -62,7 +62,11 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
 
     recipient = safe_str(get_attr(customer, "display_name", "name"))
     greeting = f"Hallo {recipient}," if recipient else "Hallo,"
-    subject = subject_line or f"{label} {number} von {company_name} — {format_amount(gross)} €"
+    # An offer always speaks of the offer: a custom subject is added, not replacing it.
+    if quote and subject_line:
+        subject = f"{label} {number} — {subject_line}"
+    else:
+        subject = subject_line or f"{label} {number} von {company_name} — {format_amount(gross)} €"
     message = message.replace("\r\n", "\n").strip()
     # A personal message replaces the standard intro; the PDF hint stays.
     standard_intro = (

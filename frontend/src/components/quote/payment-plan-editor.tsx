@@ -8,6 +8,7 @@
  */
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { installmentAmounts, planPercentTotal, percentLabel } from "@/lib/payment-plan";
+import { ICON_BUTTON, INPUT, eur } from "./quote-ui";
 import type { PaymentInstallment } from "@/lib/schemas/invoice";
 
 interface PaymentPlanEditorProps {
@@ -15,12 +16,6 @@ interface PaymentPlanEditorProps {
   gross: number;
   onChange: (next: PaymentInstallment[]) => void;
 }
-
-const INPUT =
-  "w-full min-h-[44px] bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42] outline-none";
-const ICON_BUTTON =
-  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius)] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-container-low)] disabled:opacity-30";
-const money = (value: number) => `${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 
 export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorProps) {
   const total = planPercentTotal(value);
@@ -75,7 +70,7 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
                   onChange={(e) => update(index, { label: e.target.value })}
                   className={`${INPUT} min-w-[10rem] flex-1`}
                 />
-                <span className="w-28 text-right font-mono text-sm text-[var(--color-text-primary)]">{money(amounts[index] ?? 0)}</span>
+                <span className="w-28 text-right font-mono text-sm text-[var(--color-text-primary)]">{eur(amounts[index] ?? 0)}</span>
                 <div className="flex">
                   <button type="button" aria-label={`Rate ${number} nach oben`} disabled={index === 0} onClick={() => move(index, index - 1)} className={ICON_BUTTON}>
                     <ArrowUp size={16} />

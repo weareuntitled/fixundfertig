@@ -224,36 +224,25 @@ def ensure_invoice_payment_plan_field(target_engine=None):
 ensure_invoice_payment_plan_field()
 
 
-def ensure_invoice_quote_link_fields(target_engine=None):
-    """Ergänzt die gespeicherte Einleitung und den Verweis Rechnung → Angebot (#489)."""
+def ensure_invoice_quote_fields(target_engine=None):
+    """Ergänzt die Felder, die Angebote und ihre Rechnungen brauchen.
+
+    Ein Aufruf, ein PRAGMA: die gespeicherte Einleitung und der Verweis
+    Rechnung → Angebot (#489), der Raten-Index einer Abschlagsrechnung (#490) und
+    der Marker einer Schlussrechnung (#491).
+    """
     with (target_engine or engine).begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
         if "intro_text" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN intro_text TEXT DEFAULT ''")
         if "quote_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN quote_id INTEGER REFERENCES invoice(id)")
-
-ensure_invoice_quote_link_fields()
-
-
-def ensure_invoice_down_payment_index_field(target_engine=None):
-    """Ergänzt den Raten-Index einer Abschlagsrechnung (#490); NULL für alle anderen Dokumente."""
-    with (target_engine or engine).begin() as conn:
-        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
         if "down_payment_index" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN down_payment_index INTEGER")
-
-ensure_invoice_down_payment_index_field()
-
-
-def ensure_invoice_final_invoice_field(target_engine=None):
-    """Ergänzt den Marker einer Schlussrechnung (#491); 0 für alle anderen Dokumente."""
-    with (target_engine or engine).begin() as conn:
-        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
         if "is_final_invoice" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN is_final_invoice INTEGER DEFAULT 0")
 
-ensure_invoice_final_invoice_field()
+ensure_invoice_quote_fields()
 
 
 def reconcile_invoice_revision_schema():

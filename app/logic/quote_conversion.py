@@ -6,21 +6,21 @@ trägt zusätzlich `down_payment_index` = Index der abgerechneten Rate im Zahlun
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from sqlmodel import Session, select
 
 from data import Company, Customer, DocumentType, Invoice, InvoiceStatus
 from logic.final_invoice import (
-    billed_down_payments,
     final_invoice_totals,
-    has_non_cancelled_down_payment,
+    issued_down_payments,
 )
 from logic.invoice import document_vat_rate, finalize_invoice_logic
 from renderer import render_invoice_to_pdf_bytes
 from services.invoice_pdf_draw import INVOICE_INTRO
 from services.invoice_pdf_layout import format_date
-from services.payment_plan import format_percent, parse_payment_plan
+from services.payment_plan import format_percent, parse_payment_plan, round_cents
 
 
 class DownPaymentConflict(Exception):
@@ -39,6 +39,62 @@ def quote_reference_intro(quote: Invoice, company: Any = None) -> str:
     return f"{reference} {standard}"
 
 
+def _quote_positions(quote: Invoice) -> list[dict[str, Any]]:
+    """Die Positionen des Angebots als Rechnungspositionen."""
+    return [
+        {"description": it.description, "quantity": float(it.quantity), "unit_price": float(it.unit_price)}
+        for it in quote.items
+    ]
+
+
+def _quote_recipient(quote: Invoice) -> dict[str, str]:
+    """Die Empfängeranschrift des Angebots für die daraus entstehende Rechnung."""
+    return {
+        "recipient_name": quote.recipient_name or "",
+        "recipient_street": quote.recipient_street or "",
+        "recipient_postal_code": quote.recipient_postal_code or "",
+        "recipient_city": quote.recipient_city or "",
+    }
+
+
+def _invoice_draft_from_quote(
+    session: Session,
+    quote: Invoice,
+    *,
+    title: str,
+    vat_percent: float,
+    intro_text: str,
+    items: list[dict[str, Any]] | None = None,
+) -> Invoice:
+    """Rechnungsentwurf aus einem Angebot: Kopf, Empfänger und Positionen übernommen.
+
+    Ohne eigene `items` werden die Positionen des Angebots übernommen. Das Rechnungs-
+    datum ist der Tag der Erstellung (das Angebotsdatum bleibt im Angebotsbezug).
+    Der Entwurf trägt `quote_id`; das Committen bleibt dem Aufrufer (er ergänzt
+    Betrag und PDF).
+    """
+    positions = _quote_positions(quote) if items is None else items
+    invoice_id = finalize_invoice_logic(
+        session=session,
+        comp_id=int(quote.company_id),
+        cust_id=int(quote.customer_id),
+        title=title,
+        subject=quote.subject or "",
+        date_str=date.today().isoformat(),
+        delivery_str=quote.delivery_date or "",
+        recipient_data=_quote_recipient(quote),
+        items=[it | {"tax_rate": vat_percent} for it in positions],
+        ust_enabled=vat_percent > 0,
+        status=InvoiceStatus.DRAFT,
+        intro_text=intro_text,
+    )
+    invoice = session.get(Invoice, invoice_id)
+    assert invoice is not None
+    invoice.quote_id = int(quote.id)
+    session.add(invoice)
+    return invoice
+
+
 def create_invoice_from_quote(session: Session, quote: Invoice) -> Invoice:
     """Legt einen Rechnungsentwurf zum Angebot an und gibt ihn zurück.
 
@@ -49,34 +105,14 @@ def create_invoice_from_quote(session: Session, quote: Invoice) -> Invoice:
     if quote.document_type != DocumentType.QUOTE:
         raise ValueError("Nur Angebote lassen sich in Rechnungen umwandeln")
     vat_percent = document_vat_rate(quote)
-    items = [
-        {"description": it.description, "quantity": float(it.quantity), "unit_price": float(it.unit_price)}
-        for it in quote.items
-    ]
     company = session.get(Company, int(quote.company_id))
-    invoice_id = finalize_invoice_logic(
-        session=session,
-        comp_id=int(quote.company_id),
-        cust_id=int(quote.customer_id),
+    invoice = _invoice_draft_from_quote(
+        session,
+        quote,
         title="Rechnung",
-        subject=quote.subject or "",
-        date_str="",
-        delivery_str=quote.delivery_date or "",
-        recipient_data={
-            "recipient_name": quote.recipient_name or "",
-            "recipient_street": quote.recipient_street or "",
-            "recipient_postal_code": quote.recipient_postal_code or "",
-            "recipient_city": quote.recipient_city or "",
-        },
-        items=[it | {"tax_rate": vat_percent} for it in items],
-        ust_enabled=vat_percent > 0,
-        status=InvoiceStatus.DRAFT,
+        vat_percent=vat_percent,
         intro_text=quote_reference_intro(quote, company),
     )
-    invoice = session.get(Invoice, invoice_id)
-    assert invoice is not None
-    invoice.quote_id = int(quote.id)
-    session.add(invoice)
     _accept_quote(session, quote)
     session.commit()
     session.refresh(invoice)
@@ -132,32 +168,18 @@ def create_down_payment_invoice(
 
     company = session.get(Company, int(quote.company_id))
     net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in quote.items)
-    amount = round(net * float(rate["percent"]) / 100.0, 2)
+    amount = round_cents(net * float(rate["percent"]) / 100.0)
     is_small = bool(getattr(company, "is_small_business", False))
     vat_percent = 0.0 if is_small else document_vat_rate(quote)
     description = down_payment_description(quote, rate["percent"], rate["label"])
-    invoice_id = finalize_invoice_logic(
-        session=session,
-        comp_id=int(quote.company_id),
-        cust_id=int(quote.customer_id),
+    invoice = _invoice_draft_from_quote(
+        session,
+        quote,
         title="Abschlagsrechnung",
-        subject=quote.subject or "",
-        date_str="",
-        delivery_str=quote.delivery_date or "",
-        recipient_data={
-            "recipient_name": quote.recipient_name or "",
-            "recipient_street": quote.recipient_street or "",
-            "recipient_postal_code": quote.recipient_postal_code or "",
-            "recipient_city": quote.recipient_city or "",
-        },
-        items=[{"description": description, "quantity": 1, "unit_price": amount, "tax_rate": vat_percent}],
-        ust_enabled=vat_percent > 0,
-        status=InvoiceStatus.DRAFT,
+        vat_percent=vat_percent,
         intro_text=down_payment_intro(quote, company, rate["percent"], rate["label"]),
+        items=[{"description": description, "quantity": 1, "unit_price": amount}],
     )
-    invoice = session.get(Invoice, invoice_id)
-    assert invoice is not None
-    invoice.quote_id = int(quote.id)
     invoice.down_payment_index = int(installment_index)
     customer = session.get(Customer, int(quote.customer_id))
     invoice.pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer)
@@ -189,45 +211,28 @@ def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
             f"Zu diesem Angebot gibt es bereits eine Schlussrechnung (Rechnung {existing.nr}). "
             "Stornieren Sie sie, um eine neue zu erzeugen."
         )
-    if not has_non_cancelled_down_payment(session, int(quote.id)):
+    # „Gestellt" heißt: weder Entwurf noch storniert. Dieselbe Liste entscheidet,
+    # ob es die Schlussrechnung geben darf und was abgezogen wird.
+    rows = issued_down_payments(session, int(quote.id))
+    if not rows:
         raise ValueError(
-            "Eine Schlussrechnung entsteht nur aus einem Angebot mit Abschlagsrechnung. "
-            "Stellen Sie zuerst eine Abschlagsrechnung."
+            "Eine Schlussrechnung entsteht nur mit einer gestellten Abschlagsrechnung. "
+            "Senden Sie die Abschlagsrechnung zuerst; ein Entwurf zählt nicht."
         )
 
     company = session.get(Company, int(quote.company_id))
     is_small = bool(getattr(company, "is_small_business", False))
     vat_percent = 0.0 if is_small else document_vat_rate(quote)
-    items = [
-        {"description": it.description, "quantity": float(it.quantity), "unit_price": float(it.unit_price)}
-        for it in quote.items
-    ]
-    invoice_id = finalize_invoice_logic(
-        session=session,
-        comp_id=int(quote.company_id),
-        cust_id=int(quote.customer_id),
+    invoice = _invoice_draft_from_quote(
+        session,
+        quote,
         title="Schlussrechnung",
-        subject=quote.subject or "",
-        date_str="",
-        delivery_str=quote.delivery_date or "",
-        recipient_data={
-            "recipient_name": quote.recipient_name or "",
-            "recipient_street": quote.recipient_street or "",
-            "recipient_postal_code": quote.recipient_postal_code or "",
-            "recipient_city": quote.recipient_city or "",
-        },
-        items=[it | {"tax_rate": vat_percent} for it in items],
-        ust_enabled=vat_percent > 0,
-        status=InvoiceStatus.DRAFT,
+        vat_percent=vat_percent,
         intro_text=quote_reference_intro(quote, company),
     )
-    invoice = session.get(Invoice, invoice_id)
-    assert invoice is not None
-    invoice.quote_id = int(quote.id)
     invoice.is_final_invoice = True
     invoice.vat_rate = vat_percent
 
-    rows = billed_down_payments(session, int(quote.id))
     net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in invoice.items)
     invoice.total_brutto = final_invoice_totals(net, vat_percent, rows)["rest"]
 

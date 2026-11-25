@@ -61,6 +61,40 @@ def test_invoice_statuses_still_work_for_invoices(artist_api, value):
     assert response.json()["status"] == value
 
 
+@pytest.mark.parametrize("value", ["ACCEPTED", "REJECTED"])
+def test_quote_statuses_are_rejected_when_creating_an_invoice(artist_api, value):
+    """Beim Anlegen bekommt eine Rechnung keinen Angebotsstatus."""
+    client, _company, payload, _session = artist_api
+
+    response = client.post("/api/invoices", json=payload | {"status": value})
+
+    assert response.status_code == 400, response.text
+    assert "Angebot" in response.json()["detail"]
+    assert client.get("/api/invoices").json() == []
+
+
+@pytest.mark.parametrize("value", ["SENT", "OPEN", "ACCEPTED", "REJECTED", "PAID", "FINALIZED", "CANCELLED"])
+def test_quotes_are_only_created_as_a_draft(artist_api, value):
+    """Ein Angebot entsteht im Entwurf; „Gesendet“ gibt es durch den Versand."""
+    client, _company, payload, _session = artist_api
+
+    response = client.post(
+        "/api/invoices", json=payload | {"document_type": "QUOTE", "status": value}
+    )
+
+    assert response.status_code == 400, response.text
+    assert "Entwurf" in response.json()["detail"]
+    assert client.get("/api/invoices", params={"document_type": "QUOTE"}).json() == []
+
+
+def test_a_quote_without_a_status_starts_as_a_draft(artist_api):
+    client, _company, payload, _session = artist_api
+
+    quote = client.post("/api/invoices", json=payload | {"document_type": "QUOTE"}).json()
+
+    assert quote["status"] == "DRAFT"
+
+
 def _accepted_quote(client, payload: dict) -> dict:
     quote = _create_quote(client, payload)
     assert _set_status(client, quote["id"], "ACCEPTED").status_code == 200

@@ -22,15 +22,38 @@ def _is_quote(document: Any) -> bool:
     return getattr(document, "document_type", DocumentType.INVOICE) == DocumentType.QUOTE
 
 
-def status_not_allowed_reason(document: Any, new_status: str) -> str | None:
-    """Grund, warum `new_status` für dieses Dokument nicht setzbar ist, sonst None."""
+def status_not_allowed_reason_for_type(document_type: Any, new_status: str) -> str | None:
+    """Grund, warum `new_status` für diese Dokumentart nicht setzbar ist, sonst None."""
     target = InvoiceStatus(new_status)
-    if _is_quote(document):
+    if DocumentType(document_type) == DocumentType.QUOTE:
         if target not in QUOTE_STATUSES:
             return "Dieser Status gilt nur für Rechnungen, nicht für Angebote"
     elif target in QUOTE_ONLY_STATUSES:
         return "Dieser Status gilt nur für Angebote, nicht für Rechnungen"
     return None
+
+
+def status_not_allowed_reason(document: Any, new_status: str) -> str | None:
+    """Grund, warum `new_status` für dieses Dokument nicht setzbar ist, sonst None."""
+    return status_not_allowed_reason_for_type(
+        getattr(document, "document_type", DocumentType.INVOICE), new_status
+    )
+
+
+def creation_status_reason(document_type: Any, new_status: str) -> str | None:
+    """Grund, warum ein Dokument nicht mit diesem Status angelegt werden darf, sonst None.
+
+    Ein Angebot entsteht immer im Entwurf: „Gesendet“ gibt es nur durch den Versand,
+    „Angenommen“ und „Abgelehnt“ erst durch die Entscheidung am Angebot. Eine Rechnung
+    darf keinen Angebotsstatus bekommen.
+    """
+    doc_type = DocumentType(document_type)
+    target = InvoiceStatus(new_status)
+    if doc_type == DocumentType.QUOTE:
+        if target != InvoiceStatus.DRAFT:
+            return "Ein Angebot wird im Entwurf angelegt; „Gesendet“ entsteht durch den Versand"
+        return None
+    return status_not_allowed_reason_for_type(doc_type, target)
 
 
 def is_accepted_quote(document: Any) -> bool:

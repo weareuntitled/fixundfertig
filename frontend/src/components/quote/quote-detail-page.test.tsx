@@ -119,3 +119,49 @@ describe("Angebot-Detailseite: Status", () => {
     expect(screen.queryByRole("button", { name: "Schlussrechnung" })).toBeDisabled();
   });
 });
+
+describe("Angebot-Detailseite: Schlussrechnung", () => {
+  beforeEach(() => {
+    window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
+    fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const downPayment = (status: string) => ({
+    id: 43,
+    nr: "10000",
+    status,
+    total_brutto: 2380,
+    installment_index: 0,
+    is_down_payment: true,
+    is_final_invoice: false,
+  });
+
+  it("cannot be created without a down-payment invoice and says why", async () => {
+    renderQuote({ ...baseQuote, linked_invoices: [] });
+
+    const button = await screen.findByRole("button", { name: "Schlussrechnung" });
+    expect(button).toBeDisabled();
+    expect(await screen.findByText(/Abschlagsrechnung zuerst senden/)).toBeTruthy();
+  });
+
+  it("cannot be created while the down-payment invoice is still a draft", async () => {
+    renderQuote({ ...baseQuote, linked_invoices: [downPayment("DRAFT")] });
+
+    const button = await screen.findByRole("button", { name: "Schlussrechnung" });
+    expect(button).toBeDisabled();
+    expect(await screen.findByText(/Abschlagsrechnung zuerst senden/)).toBeTruthy();
+  });
+
+  it("can be created once the down-payment invoice has been sent", async () => {
+    renderQuote({ ...baseQuote, linked_invoices: [downPayment("SENT")] });
+
+    const button = await screen.findByRole("button", { name: "Schlussrechnung" });
+    expect(button).not.toBeDisabled();
+    expect(screen.queryByText(/Abschlagsrechnung zuerst senden/)).toBeNull();
+  });
+});

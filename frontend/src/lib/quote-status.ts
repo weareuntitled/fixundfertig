@@ -26,3 +26,12 @@ export function quoteDisplayStatus(
 export function isQuoteLocked(quote: { status: InvoiceStatus }): boolean {
   return quote.status === "ACCEPTED";
 }
+
+/**
+ * „Gestellt": der Status ist weder Entwurf noch storniert.
+ * Dieselbe Regel wie im Backend (`is_issued_status` in app/models/schema.py):
+ * eine Abschlagsrechnung zählt erst ab dem Versand als gestellt.
+ */
+export function isIssuedStatus(status: InvoiceStatus | string): boolean {
+  return status !== "DRAFT" && status !== "CANCELLED";
+}

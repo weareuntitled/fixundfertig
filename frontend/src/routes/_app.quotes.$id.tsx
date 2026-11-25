@@ -19,6 +19,7 @@ import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { germanDate } from "@/components/quote/quote-list";
 import { QuotePaymentPlanCard } from "@/components/quote/quote-payment-plan-card";
+import { ICON_BUTTON, INPUT, SECONDARY_BUTTON, eur } from "@/components/quote/quote-ui";
 import { useCustomer } from "@/lib/use-customers";
 import { useUploadDocument } from "@/lib/use-documents";
 import {
@@ -32,7 +33,7 @@ import {
 } from "@/lib/use-invoices";
 import { useInvoicePreviewPdf } from "@/lib/use-invoice-preview-pdf";
 import { useNotification } from "@/lib/use-notifications";
-import { isQuoteLocked, quoteDisplayStatus } from "@/lib/quote-status";
+import { isIssuedStatus, isQuoteLocked, quoteDisplayStatus } from "@/lib/quote-status";
 import type { InvoiceItem, InvoiceStatus } from "@/lib/schemas/invoice";
 import { api } from "@/lib/api";
 
@@ -40,21 +41,11 @@ export const Route = createFileRoute("/_app/quotes/$id")({
   component: QuoteDetailPage,
 });
 
-const eur = (n: number) =>
-  n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
-
 function linkedInvoiceLabel(linked: { is_final_invoice?: boolean; is_down_payment?: boolean }): string {
   if (linked.is_final_invoice) return "Schlussrechnung";
   if (linked.is_down_payment) return "Abschlagsrechnung";
   return "Rechnung";
 }
-
-const INPUT =
-  "w-full min-h-[44px] bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] outline-none focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42]";
-const SECONDARY_BUTTON =
-  "inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-white px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-low)] disabled:cursor-not-allowed disabled:opacity-50";
-const ICON_BUTTON =
-  "inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-overlay)]";
 
 type HeaderDraft = { subject: string; date: string; valid_until: string };
 
@@ -181,6 +172,15 @@ function QuoteDetailPage() {
   const hasFinalInvoice = linkedInvoices.some(
     (linked) => linked.is_final_invoice && linked.status !== "CANCELLED",
   );
+  // Eine Schlussrechnung braucht eine gestellte Abschlagsrechnung: ein Entwurf genügt nicht.
+  const hasIssuedDownPayment = linkedInvoices.some(
+    (linked) => linked.is_down_payment && isIssuedStatus(linked.status),
+  );
+  const finalInvoiceHint = hasFinalInvoice
+    ? "Zu diesem Angebot gibt es bereits eine Schlussrechnung"
+    : hasIssuedDownPayment
+      ? undefined
+      : "Abschlagsrechnung zuerst senden";
 
   const startEdit = () =>
     setHeader({ subject: quote.subject, date: quote.date, valid_until: quote.valid_until });
@@ -250,8 +250,8 @@ function QuoteDetailPage() {
                   onError: (err: Error) => notify("error", err.message),
                 })
               }
-              disabled={finalInvoice.isPending || hasFinalInvoice}
-              title={hasFinalInvoice ? "Zu diesem Angebot gibt es bereits eine Schlussrechnung" : undefined}
+              disabled={finalInvoice.isPending || hasFinalInvoice || !hasIssuedDownPayment}
+              title={finalInvoiceHint}
               className={SECONDARY_BUTTON}
             >
               <FileText size={16} /> {finalInvoice.isPending ? "Erzeuge…" : "Schlussrechnung"}
@@ -268,6 +268,12 @@ function QuoteDetailPage() {
           </>
         }
       />
+
+      {finalInvoiceHint === "Abschlagsrechnung zuerst senden" && (
+        <p role="status" className="-mt-[var(--space-md)] text-[13px] text-[var(--color-text-secondary)]">
+          Abschlagsrechnung zuerst senden: eine Schlussrechnung gibt es nur mit einer gestellten Abschlagsrechnung.
+        </p>
+      )}
 
       <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-lg)] shadow-sm">
         <div className="mb-[var(--space-md)] flex items-center justify-between gap-2">

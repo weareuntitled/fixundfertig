@@ -1,10 +1,12 @@
 """Schlussrechnung (#491): gestellte Abschlagsrechnungen von der Gesamtleistung abziehen.
 
-Abgezogen werden die tatsächlich gestellten Abschlagsrechnungen des Angebots, nicht
-die Prozentwerte des Zahlungsplans. „Gestellt“ heißt: `down_payment_index` ist gesetzt
-und der Status ist weder CANCELLED noch DRAFT. Netto und Steuer werden getrennt
-geführt; die Steuer einer Abschlagsrechnung ist ihr Bruttobetrag minus ihre Netto-
-positionen (bei Kleinunternehmern damit 0).
+„Gestellt“ heißt: die Abschlagsrechnung ist weder im Entwurf noch storniert
+(`is_issued_status`). Diese eine Regel gilt für die Voraussetzung der Schlussrechnung
+(„nur mit einer gestellten Abschlagsrechnung“) und für den Abzug (was abgezogen wird) —
+beide lesen dieselbe Liste `issued_down_payments`. Abgezogen werden die tatsächlich
+gestellten Abschlagsrechnungen des Angebots, nicht die Prozentwerte des Zahlungsplans.
+Netto und Steuer werden getrennt geführt; die Steuer einer Abschlagsrechnung ist ihr
+Bruttobetrag minus ihre Netto-Positionen (bei Kleinunternehmern damit 0).
 """
 from __future__ import annotations
 
@@ -12,7 +14,7 @@ from dataclasses import dataclass
 
 from sqlmodel import Session, select
 
-from data import DocumentType, Invoice, InvoiceStatus
+from data import DocumentType, Invoice, NOT_ISSUED_STATUSES
 
 
 @dataclass(frozen=True)
@@ -37,34 +39,19 @@ def invoice_net(invoice: Invoice) -> float:
     )
 
 
-def has_non_cancelled_down_payment(session: Session, quote_id: int) -> bool:
-    """Ob das Angebot mindestens eine nicht stornierte Abschlagsrechnung hat.
+def issued_down_payments(session: Session, quote_id: int) -> list[DownPaymentDeduction]:
+    """Gestellte, nicht stornierte Abschlagsrechnungen eines Angebots, älteste zuerst.
 
-    Draft zählt mit: der Abschlag ist gestellt, auch wenn er noch nicht versendet
-    wurde. Nur CANCELLED nimmt die Abschlagsrechnung aus der Schlussrechnung.
+    Die Liste ist die einzige Quelle der Wahrheit: sie beantwortet zugleich die
+    Frage „darf es eine Schlussrechnung geben?“ (nicht leer) und „was wird abgezogen?“.
     """
-    statement = (
-        select(Invoice.id)
-        .where(
-            Invoice.quote_id == int(quote_id),
-            Invoice.document_type == DocumentType.INVOICE,
-            Invoice.down_payment_index.is_not(None),
-            Invoice.status != InvoiceStatus.CANCELLED,
-        )
-        .limit(1)
-    )
-    return session.exec(statement).first() is not None
-
-
-def billed_down_payments(session: Session, quote_id: int) -> list[DownPaymentDeduction]:
-    """Gestellte, nicht stornierte Abschlagsrechnungen eines Angebots, älteste zuerst."""
     statement = (
         select(Invoice)
         .where(
             Invoice.quote_id == int(quote_id),
             Invoice.document_type == DocumentType.INVOICE,
             Invoice.down_payment_index.is_not(None),
-            Invoice.status.notin_([InvoiceStatus.CANCELLED, InvoiceStatus.DRAFT]),
+            Invoice.status.notin_(list(NOT_ISSUED_STATUSES)),
         )
         .order_by(Invoice.id)
     )
