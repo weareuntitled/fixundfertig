@@ -2,7 +2,7 @@ from datetime import datetime
 import os
 from sqlmodel import select
 
-from data import AuditLog, Company, Customer, Invoice, InvoiceItem, InvoiceRevision, InvoiceStatus, get_session, log_audit_action
+from data import AuditLog, Company, Customer, DocumentType, Invoice, InvoiceItem, InvoiceRevision, InvoiceStatus, get_session, log_audit_action
 from logic import _next_unique_invoice_number
 
 STATUS_AUDIT_ACTIONS = {
@@ -35,7 +35,7 @@ def update_status_logic(session, invoice_id, target_status):
 def create_correction(original_invoice_id, use_negative_items=True):
     with get_session() as session:
         original = session.get(Invoice, int(original_invoice_id))
-        if not original:
+        if not original or original.document_type != DocumentType.INVOICE:
             return None, "Rechnung nicht gefunden"
 
         items = session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == original.id)).all()

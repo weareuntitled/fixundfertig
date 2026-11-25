@@ -22,7 +22,7 @@ from typing import Iterator
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import select
 
-from data import Expense, Invoice
+from data import DocumentType, Expense, Invoice
 from dependencies import db_session, get_current_company, require_session_auth
 
 
@@ -39,7 +39,10 @@ def list_ledger(
     """List all invoices + expenses for the current company, sorted by date desc."""
     entries: list[dict] = []
 
-    inv_stmt = select(Invoice).where(Invoice.company_id == int(company.id))
+    inv_stmt = select(Invoice).where(
+        Invoice.company_id == int(company.id),
+        Invoice.document_type == DocumentType.INVOICE,
+    )
     if year is not None:
         inv_stmt = inv_stmt.where(Invoice.date.startswith(f"{int(year)}-"))
     for inv in session.exec(inv_stmt).all():

@@ -184,6 +184,16 @@ def ensure_invoice_payment_fields():
 
 ensure_invoice_payment_fields()
 
+def ensure_invoice_document_type_field(target_engine=None):
+    """Ergänzt die Dokumentart; bestehende Datensätze werden Rechnungen."""
+    with (target_engine or engine).begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(invoice)").fetchall()}
+        if "document_type" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN document_type TEXT DEFAULT 'INVOICE'")
+            conn.exec_driver_sql("UPDATE invoice SET document_type = 'INVOICE' WHERE document_type IS NULL OR document_type = ''")
+
+ensure_invoice_document_type_field()
+
 def reconcile_invoice_revision_schema():
     with engine.begin() as conn:
         tables = {

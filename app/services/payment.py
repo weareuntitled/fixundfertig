@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlmodel import Session
 
-from data import Company, Invoice
+from data import Company, DocumentType, Invoice
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def create_payment_link(
         return None
 
     invoice = session.get(Invoice, invoice_id)
-    if not invoice:
+    if not invoice or invoice.document_type != DocumentType.INVOICE:
         return None
 
     stripe = _stripe()
@@ -67,7 +67,7 @@ def check_payment(
 ) -> bool:
     """Check Stripe for a completed payment on this invoice. Updates status to PAID if found."""
     invoice = session.get(Invoice, invoice_id)
-    if not invoice or not invoice.payment_link_url:
+    if not invoice or invoice.document_type != DocumentType.INVOICE or not invoice.payment_link_url:
         return False
 
     if not company.stripe_secret_key:

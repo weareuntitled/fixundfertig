@@ -1,5 +1,6 @@
 from models.schema import (
     InvoiceStatus,
+    DocumentType,
     TokenPurpose,
     User,
     Token,
@@ -35,7 +36,7 @@ from db import (
 )
 
 __all__ = [
-    "InvoiceStatus", "TokenPurpose", "User", "Token", "InvitedEmail",
+    "InvoiceStatus", "DocumentType", "TokenPurpose", "User", "Token", "InvitedEmail",
     "Company", "Customer", "Invoice", "InvoiceRevision", "InvoiceItem",
     "InvoiceAttachment", "InvoiceItemTemplate", "AuditLog", "Expense", "Document", "DocumentMeta",
     "WebhookEvent", "engine", "SessionLocal", "get_session", "session_scope",

@@ -30,7 +30,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
 from data import Company, Customer, Document, Invoice, InvoiceItem as InvoiceItemModel
-from data import InvoiceAttachment, InvoiceRevision, InvoiceStatus
+from data import DocumentType, InvoiceAttachment, InvoiceRevision, InvoiceStatus
 from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
@@ -246,7 +246,7 @@ def list_invoices(
     """List invoices for current company, newest first."""
     statement = (
         select(Invoice)
-        .where(Invoice.company_id == int(company.id))
+        .where(Invoice.company_id == int(company.id), Invoice.document_type == DocumentType.INVOICE)
         .options(selectinload(Invoice.attachments).selectinload(InvoiceAttachment.document))
         .order_by(Invoice.nr.desc())
     )

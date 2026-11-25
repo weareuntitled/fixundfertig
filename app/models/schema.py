@@ -14,6 +14,11 @@ class InvoiceStatus(str, Enum):
     FINALIZED = "FINALIZED"
     CANCELLED = "CANCELLED"
 
+class DocumentType(str, Enum):
+    """Dokumentart eines Datensatzes in `invoice`: Rechnung oder Angebot."""
+    INVOICE = "INVOICE"
+    QUOTE = "QUOTE"
+
 class TokenPurpose(str, Enum):
     VERIFY_EMAIL = "verify_email"
     RESET_PASSWORD = "reset_password"
@@ -139,6 +144,7 @@ class Invoice(SQLModel, table=True):
     customer_id: int = Field(foreign_key="customer.id")
     company_id: int = Field(default=0, foreign_key="company.id")
     nr: Optional[str] = None
+    document_type: DocumentType = DocumentType.INVOICE
     title: str = "Rechnung"
     date: str
     delivery_date: str = ""

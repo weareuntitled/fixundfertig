@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlmodel import Session, select
 
-from data import Company, Customer, Invoice, InvoiceItem, InvoiceStatus
+from data import Company, Customer, DocumentType, Invoice, InvoiceItem, InvoiceStatus
 from invoice_numbering import build_invoice_filename
 from renderer import render_invoice_to_pdf_bytes
 
@@ -191,7 +191,7 @@ def select_invoices_for_company(session: Session, company_id: int, invoice_ids: 
     stmt = (
         select(Invoice)
         .join(Customer, Invoice.customer_id == Customer.id)
-        .where(Customer.company_id == int(company_id))
+        .where(Customer.company_id == int(company_id), Invoice.document_type == DocumentType.INVOICE)
         .order_by(Invoice.id.desc())
     )
     if invoice_ids:
