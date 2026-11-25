@@ -3,13 +3,14 @@
  * @purpose Invoice creation form: customer, subject, dates, positions edited in place, totals
  * @input {InvoiceDraft} value - Current invoice draft state
  * @input {(next: InvoiceDraft) => void} onChange - State update callback
+ *        A draft with document_type QUOTE swaps service date and payment term for "Gültig bis".
  * @output One white card; every field says what it does and what happens when it is left empty
  */
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Trash2 } from "lucide-react";
 import { CustomerSelector } from "./customer-selector";
 import { dueDateLabel, PAYMENT_TERM_DAYS } from "@/lib/invoice-draft";
-import type { InvoiceDraft, InvoiceItem } from "@/lib/schemas/invoice";
+import { addDaysIso, QUOTE_VALIDITY_DAYS, type InvoiceDraft, type InvoiceItem } from "@/lib/schemas/invoice";
 
 interface InvoiceFormV2Props {
   value: InvoiceDraft;
@@ -81,6 +82,16 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
   const taxAmount = value.ust_enabled ? subtotalNet * (value.vat_rate / 100) : 0;
   const gross = subtotalNet + taxAmount;
   const due = dueDateLabel(value.date);
+  const isQuote = value.document_type === "QUOTE";
+
+  /** For quotes an untouched "gültig bis" (date + 30 days) moves along with the quote date. */
+  const setDate = (date: string) => {
+    if (isQuote && value.valid_until === addDaysIso(value.date, QUOTE_VALIDITY_DAYS)) {
+      onChange({ ...value, date, valid_until: addDaysIso(date, QUOTE_VALIDITY_DAYS) });
+    } else {
+      setField("date", date);
+    }
+  };
 
   return (
     <div className="space-y-0">
@@ -106,36 +117,55 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
 
         <div className="col-span-12 grid grid-cols-2 gap-[var(--space-sm)] md:col-span-6">
           <p className="col-span-2 text-[14px] text-[var(--color-text-secondary)]">
-            <span className="font-bold text-[var(--color-text-primary)]">Rechnungsnummer</span>
+            <span className="font-bold text-[var(--color-text-primary)]">{isQuote ? "Angebotsnummer" : "Rechnungsnummer"}</span>
             <br />
-            Wird beim Erstellen vergeben und lässt sich danach nicht mehr ändern.
+            {isQuote
+              ? "Wird beim ersten Speichern vergeben."
+              : "Wird beim Erstellen vergeben und lässt sich danach nicht mehr ändern."}
           </p>
-          <FormField label="Rechnungsdatum">
+          <FormField label={isQuote ? "Angebotsdatum" : "Rechnungsdatum"}>
             {({ id }) => (
-              <input id={id} type="date" value={value.date} onChange={(e) => setField("date", e.target.value)} className={INPUT} />
+              <input id={id} type="date" value={value.date} onChange={(e) => setDate(e.target.value)} className={INPUT} />
             )}
           </FormField>
-          <FormField label="Leistungsdatum" hint="Leer = wie Rechnungsdatum.">
-            {({ id, hintId }) => (
-              <input
-                id={id}
-                aria-describedby={hintId}
-                type="date"
-                value={value.delivery_date}
-                onChange={(e) => setField("delivery_date", e.target.value)}
-                className={INPUT}
-              />
-            )}
-          </FormField>
-          <p className="col-span-2 text-[13px] text-[var(--color-text-secondary)]">
-            Zahlungsziel {PAYMENT_TERM_DAYS} Tage
-            {due ? (
-              <>
-                {" "}
-                · zahlbar bis <span className="font-semibold text-[var(--color-text-primary)]">{due}</span>
-              </>
-            ) : null}
-          </p>
+          {isQuote ? (
+            <FormField label="Gültig bis" hint={`Vorgabe: ${QUOTE_VALIDITY_DAYS} Tage nach dem Angebotsdatum.`}>
+              {({ id, hintId }) => (
+                <input
+                  id={id}
+                  aria-describedby={hintId}
+                  type="date"
+                  value={value.valid_until}
+                  onChange={(e) => setField("valid_until", e.target.value)}
+                  className={INPUT}
+                />
+              )}
+            </FormField>
+          ) : (
+            <>
+              <FormField label="Leistungsdatum" hint="Leer = wie Rechnungsdatum.">
+                {({ id, hintId }) => (
+                  <input
+                    id={id}
+                    aria-describedby={hintId}
+                    type="date"
+                    value={value.delivery_date}
+                    onChange={(e) => setField("delivery_date", e.target.value)}
+                    className={INPUT}
+                  />
+                )}
+              </FormField>
+              <p className="col-span-2 text-[13px] text-[var(--color-text-secondary)]">
+                Zahlungsziel {PAYMENT_TERM_DAYS} Tage
+                {due ? (
+                  <>
+                    {" "}
+                    · zahlbar bis <span className="font-semibold text-[var(--color-text-primary)]">{due}</span>
+                  </>
+                ) : null}
+              </p>
+            </>
+          )}
         </div>
       </div>
 

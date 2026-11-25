@@ -1,0 +1,249 @@
+/**
+ * @schema QuoteDetailPage
+ * @purpose One draft quote: change subject, dates and positions, or delete it
+ * @output Header with "Löschen", a details card with inline editing, the positions with add/edit/remove
+ */
+import { useState } from "react";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Trash2 } from "lucide-react";
+import { LineItemDialog } from "@/components/forms/line-item-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { germanDate } from "@/components/quote/quote-list";
+import {
+  useAddInvoiceItem,
+  useDeleteInvoiceItem,
+  useInvoice,
+  useUpdateInvoiceItem,
+} from "@/lib/use-invoices";
+import { useNotification } from "@/lib/use-notifications";
+import type { InvoiceItem } from "@/lib/schemas/invoice";
+import { api } from "@/lib/api";
+
+export const Route = createFileRoute("/_app/quotes/$id")({
+  component: QuoteDetailPage,
+});
+
+const eur = (n: number) =>
+  n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+
+const INPUT =
+  "w-full min-h-[44px] bg-white border border-[var(--color-border)] rounded-[var(--radius-lg)] px-[var(--space-sm)] py-2 text-[14px] text-[var(--color-text-primary)] outline-none focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42]";
+const SECONDARY_BUTTON =
+  "inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-white px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-low)] disabled:cursor-not-allowed disabled:opacity-50";
+const ICON_BUTTON =
+  "inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-overlay)]";
+
+type HeaderDraft = { subject: string; date: string; valid_until: string };
+
+function QuoteDetailPage() {
+  const { id } = Route.useParams();
+  const quoteId = Number(id);
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { notify } = useNotification();
+  const { data: quote, isLoading, isError } = useInvoice(quoteId);
+  const addItem = useAddInvoiceItem();
+  const updateItem = useUpdateInvoiceItem();
+  const deleteItem = useDeleteInvoiceItem();
+  const [header, setHeader] = useState<HeaderDraft | null>(null);
+  const [itemDialog, setItemDialog] = useState<{ open: boolean; item?: InvoiceItem }>({ open: false });
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+  };
+
+  const saveHeader = useMutation({
+    mutationFn: (changes: Partial<HeaderDraft>) =>
+      api.put(`/api/invoices/${quoteId}`, { ...changes, reason: "Angebot bearbeitet" }),
+    onSuccess: () => {
+      notify("success", "Angebot aktualisiert");
+      setHeader(null);
+      refresh();
+    },
+    onError: (err: Error) => notify("error", err.message),
+  });
+
+  const deleteQuote = useMutation({
+    mutationFn: () => api.delete(`/api/invoices/${quoteId}`),
+    onSuccess: () => {
+      notify("success", "Angebot gelöscht");
+      refresh();
+      void navigate({ to: "/quotes" });
+    },
+    onError: (err: Error) => notify("error", err.message),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-brand-text)]" />
+      </div>
+    );
+  }
+
+  if (isError || !quote || quote.document_type !== "QUOTE") {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <p className="text-sm text-red-500">Angebot nicht gefunden.</p>
+        <Link to="/quotes" className="mt-2 text-xs text-[var(--color-brand-text)] hover:underline">Zurück zur Liste</Link>
+      </div>
+    );
+  }
+
+  const items = quote.items ?? [];
+
+  const startEdit = () =>
+    setHeader({ subject: quote.subject, date: quote.date, valid_until: quote.valid_until });
+
+  const submitHeader = () => {
+    if (!header) return;
+    const changes: Partial<HeaderDraft> = {};
+    (Object.keys(header) as (keyof HeaderDraft)[]).forEach((key) => {
+      if (header[key] !== quote[key]) changes[key] = header[key];
+    });
+    if (Object.keys(changes).length === 0) setHeader(null);
+    else saveHeader.mutate(changes);
+  };
+
+  const saveItem = (item: InvoiceItem) => {
+    const body = { description: item.description, quantity: item.quantity, unit_price: item.unit_price };
+    const done = { onSuccess: () => setItemDialog({ open: false }), onError: (err: Error) => notify("error", err.message) };
+    if (itemDialog.item?.id) updateItem.mutate({ invoiceId: quoteId, itemId: itemDialog.item.id, item: body }, done);
+    else addItem.mutate({ invoiceId: quoteId, item: body }, done);
+  };
+
+  return (
+    <div className="animate-fade-in space-y-[var(--space-lg)]">
+      <PageHeader
+        backTo="/quotes"
+        backLabel="Angebote"
+        title={<span>Angebot {quote.nr || `#${quote.id}`}</span>}
+        subtitle={quote.recipient_name || `Kunde #${quote.customer_id}`}
+        actions={
+          <button type="button" onClick={() => setDeleteOpen(true)} className={SECONDARY_BUTTON}>
+            <Trash2 size={16} /> Löschen
+          </button>
+        }
+      />
+
+      <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-lg)] shadow-sm">
+        <div className="mb-[var(--space-md)] flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Angaben</h2>
+            <StatusBadge status={quote.status} />
+          </div>
+          {!header && (
+            <button type="button" onClick={startEdit} className={SECONDARY_BUTTON}>
+              <Pencil size={16} /> Bearbeiten
+            </button>
+          )}
+        </div>
+
+        {header ? (
+          <div className="grid gap-[var(--space-sm)] md:grid-cols-3">
+            <label className="block text-[14px] font-bold text-[var(--color-text-primary)]">
+              Betreff
+              <input className={INPUT} value={header.subject} onChange={(e) => setHeader({ ...header, subject: e.target.value })} />
+            </label>
+            <label className="block text-[14px] font-bold text-[var(--color-text-primary)]">
+              Angebotsdatum
+              <input type="date" className={INPUT} value={header.date} onChange={(e) => setHeader({ ...header, date: e.target.value })} />
+            </label>
+            <label className="block text-[14px] font-bold text-[var(--color-text-primary)]">
+              Gültig bis
+              <input type="date" className={INPUT} value={header.valid_until} onChange={(e) => setHeader({ ...header, valid_until: e.target.value })} />
+            </label>
+            <div className="flex gap-2 md:col-span-3">
+              <button type="button" onClick={submitHeader} disabled={saveHeader.isPending} className={SECONDARY_BUTTON}>
+                {saveHeader.isPending ? "Speichere…" : "Speichern"}
+              </button>
+              <button type="button" onClick={() => setHeader(null)} className={SECONDARY_BUTTON}>
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        ) : (
+          <dl className="grid gap-[var(--space-sm)] text-[14px] md:grid-cols-3">
+            <div>
+              <dt className="text-[var(--color-text-secondary)]">Betreff</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{quote.subject || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--color-text-secondary)]">Angebotsdatum</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{germanDate(quote.date) || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--color-text-secondary)]">Gültig bis</dt>
+              <dd className="font-semibold text-[var(--color-text-primary)]">{germanDate(quote.valid_until) || "—"}</dd>
+            </div>
+          </dl>
+        )}
+      </div>
+
+      <div className="overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-sm)]">
+          <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Positionen</h2>
+          <button type="button" onClick={() => setItemDialog({ open: true })} className={SECONDARY_BUTTON}>
+            + Position
+          </button>
+        </div>
+        <ul>
+          {items.length === 0 && (
+            <li className="px-[var(--space-lg)] py-8 text-center text-[14px] text-[var(--color-text-secondary)]">Keine Positionen</li>
+          )}
+          {items.map((it, index) => (
+            <li key={it.id ?? index} className="flex items-center gap-3 border-b border-[var(--color-border)] px-[var(--space-lg)] py-2">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-[var(--color-text-heading)]">{it.description}</p>
+                <p className="text-[13px] text-[var(--color-text-secondary)]">
+                  {it.quantity} × {eur(it.unit_price)}
+                </p>
+              </div>
+              <span className="font-mono text-[14px] font-bold">{eur(it.quantity * it.unit_price)}</span>
+              <button type="button" aria-label={`Position ${index + 1} bearbeiten`} onClick={() => setItemDialog({ open: true, item: it })} className={ICON_BUTTON}>
+                <Pencil size={16} />
+              </button>
+              <button
+                type="button"
+                aria-label={`Position ${index + 1} entfernen`}
+                disabled={deleteItem.isPending}
+                onClick={() => it.id && deleteItem.mutate({ invoiceId: quoteId, itemId: it.id })}
+                className={ICON_BUTTON}
+              >
+                <Trash2 size={16} />
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="flex justify-end px-[var(--space-lg)] py-[var(--space-md)] text-[16px] font-semibold">
+          Summe <span className="ml-3 font-mono">{eur(quote.total_brutto)}</span>
+        </div>
+      </div>
+
+      <LineItemDialog
+        open={itemDialog.open}
+        initial={itemDialog.item}
+        onSave={saveItem}
+        onCancel={() => setItemDialog({ open: false })}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Angebot löschen?"
+        message="Das Angebot und seine Positionen werden entfernt."
+        confirmLabel={deleteQuote.isPending ? "Lösche…" : "Löschen"}
+        destructive
+        pending={deleteQuote.isPending}
+        onConfirm={() => {
+          setDeleteOpen(false);
+          deleteQuote.mutate();
+        }}
+        onCancel={() => setDeleteOpen(false)}
+      />
+    </div>
+  );
+}

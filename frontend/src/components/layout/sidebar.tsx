@@ -58,7 +58,7 @@ export function Sidebar({ className = "" }: SidebarProps) {
             <Link
               key={item.id}
               to={item.to}
-              className="group flex items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[13px] font-medium text-[var(--color-text-secondary)] transition-all hover:bg-[var(--color-gray-50)] hover:text-[var(--color-text-heading)] [&.active]:bg-[var(--color-gray-100)] [&.active]:text-[var(--color-text-heading)] [&.active]:font-semibold"
+              className="group flex min-h-[44px] items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-[13px] font-medium text-[var(--color-text-secondary)] transition-all hover:bg-[var(--color-gray-50)] hover:text-[var(--color-text-heading)] [&.active]:bg-[var(--color-gray-100)] [&.active]:text-[var(--color-text-heading)] [&.active]:font-semibold"
               activeProps={{ className: "" }}
             >
               <Icon size={16} strokeWidth={1.75} className="shrink-0 opacity-70 group-[.active]:opacity-100 group-hover:opacity-100 transition-opacity" />

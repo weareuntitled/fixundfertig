@@ -19,6 +19,7 @@ import { Route as AppExportsRouteImport } from './routes/_app.exports'
 import { Route as AppExpensesRouteImport } from './routes/_app.expenses'
 import { Route as AppDocumentsRouteImport } from './routes/_app.documents'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
+import { Route as AppQuotesIndexRouteImport } from './routes/_app.quotes.index'
 import { Route as AppInvoicesIndexRouteImport } from './routes/_app.invoices.index'
 import { Route as AppCustomersIndexRouteImport } from './routes/_app.customers.index'
 import { Route as AppSettingsTaxBankingRouteImport } from './routes/_app.settings.tax-banking'
@@ -27,6 +28,8 @@ import { Route as AppSettingsInvoiceNumbersRouteImport } from './routes/_app.set
 import { Route as AppSettingsIntegrationsRouteImport } from './routes/_app.settings.integrations'
 import { Route as AppSettingsCompanyRouteImport } from './routes/_app.settings.company'
 import { Route as AppSettingsAccountRouteImport } from './routes/_app.settings.account'
+import { Route as AppQuotesNewRouteImport } from './routes/_app.quotes.new'
+import { Route as AppQuotesIdRouteImport } from './routes/_app.quotes.$id'
 import { Route as AppInvoicesNewRouteImport } from './routes/_app.invoices.new'
 import { Route as AppInvoicesIdRouteImport } from './routes/_app.invoices.$id'
 import { Route as AppCustomersIdRouteImport } from './routes/_app.customers.$id'
@@ -80,6 +83,11 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppQuotesIndexRoute = AppQuotesIndexRouteImport.update({
+  id: '/quotes/',
+  path: '/quotes/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppInvoicesIndexRoute = AppInvoicesIndexRouteImport.update({
   id: '/invoices/',
   path: '/invoices/',
@@ -121,6 +129,16 @@ const AppSettingsAccountRoute = AppSettingsAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppQuotesNewRoute = AppQuotesNewRouteImport.update({
+  id: '/quotes/new',
+  path: '/quotes/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppQuotesIdRoute = AppQuotesIdRouteImport.update({
+  id: '/quotes/$id',
+  path: '/quotes/$id',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppInvoicesNewRoute = AppInvoicesNewRouteImport.update({
   id: '/invoices/new',
   path: '/invoices/new',
@@ -149,6 +167,8 @@ export interface FileRoutesByFullPath {
   '/customers/$id': typeof AppCustomersIdRoute
   '/invoices/$id': typeof AppInvoicesIdRoute
   '/invoices/new': typeof AppInvoicesNewRoute
+  '/quotes/$id': typeof AppQuotesIdRoute
+  '/quotes/new': typeof AppQuotesNewRoute
   '/settings/account': typeof AppSettingsAccountRoute
   '/settings/company': typeof AppSettingsCompanyRoute
   '/settings/integrations': typeof AppSettingsIntegrationsRoute
@@ -157,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/settings/tax-banking': typeof AppSettingsTaxBankingRoute
   '/customers/': typeof AppCustomersIndexRoute
   '/invoices/': typeof AppInvoicesIndexRoute
+  '/quotes/': typeof AppQuotesIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -170,6 +191,8 @@ export interface FileRoutesByTo {
   '/customers/$id': typeof AppCustomersIdRoute
   '/invoices/$id': typeof AppInvoicesIdRoute
   '/invoices/new': typeof AppInvoicesNewRoute
+  '/quotes/$id': typeof AppQuotesIdRoute
+  '/quotes/new': typeof AppQuotesNewRoute
   '/settings/account': typeof AppSettingsAccountRoute
   '/settings/company': typeof AppSettingsCompanyRoute
   '/settings/integrations': typeof AppSettingsIntegrationsRoute
@@ -178,6 +201,7 @@ export interface FileRoutesByTo {
   '/settings/tax-banking': typeof AppSettingsTaxBankingRoute
   '/customers': typeof AppCustomersIndexRoute
   '/invoices': typeof AppInvoicesIndexRoute
+  '/quotes': typeof AppQuotesIndexRoute
   '/settings': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -194,6 +218,8 @@ export interface FileRoutesById {
   '/_app/customers/$id': typeof AppCustomersIdRoute
   '/_app/invoices/$id': typeof AppInvoicesIdRoute
   '/_app/invoices/new': typeof AppInvoicesNewRoute
+  '/_app/quotes/$id': typeof AppQuotesIdRoute
+  '/_app/quotes/new': typeof AppQuotesNewRoute
   '/_app/settings/account': typeof AppSettingsAccountRoute
   '/_app/settings/company': typeof AppSettingsCompanyRoute
   '/_app/settings/integrations': typeof AppSettingsIntegrationsRoute
@@ -202,6 +228,7 @@ export interface FileRoutesById {
   '/_app/settings/tax-banking': typeof AppSettingsTaxBankingRoute
   '/_app/customers/': typeof AppCustomersIndexRoute
   '/_app/invoices/': typeof AppInvoicesIndexRoute
+  '/_app/quotes/': typeof AppQuotesIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -218,6 +245,8 @@ export interface FileRouteTypes {
     | '/customers/$id'
     | '/invoices/$id'
     | '/invoices/new'
+    | '/quotes/$id'
+    | '/quotes/new'
     | '/settings/account'
     | '/settings/company'
     | '/settings/integrations'
@@ -226,6 +255,7 @@ export interface FileRouteTypes {
     | '/settings/tax-banking'
     | '/customers/'
     | '/invoices/'
+    | '/quotes/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -239,6 +269,8 @@ export interface FileRouteTypes {
     | '/customers/$id'
     | '/invoices/$id'
     | '/invoices/new'
+    | '/quotes/$id'
+    | '/quotes/new'
     | '/settings/account'
     | '/settings/company'
     | '/settings/integrations'
@@ -247,6 +279,7 @@ export interface FileRouteTypes {
     | '/settings/tax-banking'
     | '/customers'
     | '/invoices'
+    | '/quotes'
     | '/settings'
   id:
     | '__root__'
@@ -262,6 +295,8 @@ export interface FileRouteTypes {
     | '/_app/customers/$id'
     | '/_app/invoices/$id'
     | '/_app/invoices/new'
+    | '/_app/quotes/$id'
+    | '/_app/quotes/new'
     | '/_app/settings/account'
     | '/_app/settings/company'
     | '/_app/settings/integrations'
@@ -270,6 +305,7 @@ export interface FileRouteTypes {
     | '/_app/settings/tax-banking'
     | '/_app/customers/'
     | '/_app/invoices/'
+    | '/_app/quotes/'
     | '/_app/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -350,6 +386,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/quotes/': {
+      id: '/_app/quotes/'
+      path: '/quotes'
+      fullPath: '/quotes/'
+      preLoaderRoute: typeof AppQuotesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/invoices/': {
       id: '/_app/invoices/'
       path: '/invoices'
@@ -405,6 +448,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/account'
       preLoaderRoute: typeof AppSettingsAccountRouteImport
       parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/quotes/new': {
+      id: '/_app/quotes/new'
+      path: '/quotes/new'
+      fullPath: '/quotes/new'
+      preLoaderRoute: typeof AppQuotesNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/quotes/$id': {
+      id: '/_app/quotes/$id'
+      path: '/quotes/$id'
+      fullPath: '/quotes/$id'
+      preLoaderRoute: typeof AppQuotesIdRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/invoices/new': {
       id: '/_app/invoices/new'
@@ -465,8 +522,11 @@ interface AppRouteChildren {
   AppCustomersIdRoute: typeof AppCustomersIdRoute
   AppInvoicesIdRoute: typeof AppInvoicesIdRoute
   AppInvoicesNewRoute: typeof AppInvoicesNewRoute
+  AppQuotesIdRoute: typeof AppQuotesIdRoute
+  AppQuotesNewRoute: typeof AppQuotesNewRoute
   AppCustomersIndexRoute: typeof AppCustomersIndexRoute
   AppInvoicesIndexRoute: typeof AppInvoicesIndexRoute
+  AppQuotesIndexRoute: typeof AppQuotesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -480,8 +540,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppCustomersIdRoute: AppCustomersIdRoute,
   AppInvoicesIdRoute: AppInvoicesIdRoute,
   AppInvoicesNewRoute: AppInvoicesNewRoute,
+  AppQuotesIdRoute: AppQuotesIdRoute,
+  AppQuotesNewRoute: AppQuotesNewRoute,
   AppCustomersIndexRoute: AppCustomersIndexRoute,
   AppInvoicesIndexRoute: AppInvoicesIndexRoute,
+  AppQuotesIndexRoute: AppQuotesIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

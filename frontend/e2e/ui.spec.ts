@@ -241,6 +241,56 @@ test("new invoice: says what is missing, asks before creating and opens the new 
   expect(posted).toMatchObject({ customer_id: 7, ust_enabled: false, items: [{ description: "DJ Performance", unit_price: 400 }] });
 });
 
+test("Angebot anlegen: from the quotes list through the invoice form to the saved draft quote", async ({ page }) => {
+  let posted: Record<string, unknown> | undefined;
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 400, status: "DRAFT",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 400 }],
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));
+  await page.route("**/api/customers", (route) =>
+    route.fulfill({ json: [{ id: 7, name: "Sisyphos Event GmbH", email: "buchhaltung@sisyphos.example" }] }),
+  );
+  await page.route("**/api/invoices**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/invoices" && route.request().method() === "POST") {
+      posted = route.request().postDataJSON();
+      return route.fulfill({ status: 201, json: quote });
+    }
+    if (url.pathname === "/api/invoices/42") return route.fulfill({ json: quote });
+    if (url.pathname === "/api/invoices" && url.searchParams.get("document_type") === "QUOTE") {
+      return route.fulfill({ json: posted ? [quote] : [] });
+    }
+    return route.fulfill({ json: [] });
+  });
+
+  await page.goto("/quotes");
+  await expect(page.getByText("Noch keine Angebote")).toBeVisible();
+  await page.getByRole("link", { name: "Neues Angebot" }).click();
+  await expect(page).toHaveURL(/\/quotes\/new$/);
+
+  await page.getByLabel(/Kunde/).selectOption({ label: "Sisyphos Event GmbH" });
+  await page.getByLabel("Angebotsdatum").fill("2026-10-23");
+  await expect(page.getByLabel("Gültig bis")).toHaveValue("2026-11-22");
+  await page.getByRole("button", { name: "Neue Position" }).click();
+  await page.getByLabel("Beschreibung Position 1").fill("DJ Performance");
+  await page.getByLabel("Einzelpreis Position 1").fill("400");
+  await page.getByRole("button", { name: "Angebot speichern" }).click();
+
+  await expect(page).toHaveURL(/\/quotes\/42$/);
+  await expect(page.getByRole("heading", { name: "Angebot A-10000" })).toBeVisible();
+  expect(posted).toMatchObject({
+    document_type: "QUOTE", status: "DRAFT", customer_id: 7, date: "2026-10-23", valid_until: "2026-11-22",
+    items: [{ description: "DJ Performance", unit_price: 400 }],
+  });
+
+  await page.getByRole("link", { name: "Angebote", exact: true }).first().click();
+  await expect(page.getByRole("main").getByRole("link", { name: /A-10000/ })).toContainText("gültig bis 22.11.2026");
+});
+
 test("settings: leaving with unsaved changes asks first", async ({ page }) => {
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));

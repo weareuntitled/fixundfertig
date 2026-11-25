@@ -8,6 +8,7 @@
 import {
   LayoutDashboard,
   FileText,
+  FileSignature,
   Users,
   Folder,
   BookOpen,
@@ -26,6 +27,7 @@ export interface NavItem {
 export const navItems: readonly NavItem[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/" },
   { id: "invoices", label: "Rechnungen", icon: FileText, to: "/invoices" },
+  { id: "quotes", label: "Angebote", icon: FileSignature, to: "/quotes" },
   { id: "customers", label: "Kunden", icon: Users, to: "/customers" },
   { id: "documents", label: "Belege", icon: Folder, to: "/documents" },
   { id: "ledger", label: "Buchhaltung", icon: BookOpen, to: "/ledger" },

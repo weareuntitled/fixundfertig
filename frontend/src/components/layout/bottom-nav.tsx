@@ -3,7 +3,7 @@
  * @purpose Mobile bottom navigation
  */
 import { Link } from "@tanstack/react-router";
-import { Home, FileText, Users, BarChart3, Settings } from "lucide-react";
+import { Home, FileText, FileSignature, Users, BarChart3, Settings } from "lucide-react";
 
 interface BottomNavProps {
   className?: string;
@@ -12,6 +12,7 @@ interface BottomNavProps {
 const ITEMS = [
   { to: "/", label: "Home", icon: Home },
   { to: "/invoices", label: "Rechnungen", icon: FileText },
+  { to: "/quotes", label: "Angebote", icon: FileSignature },
   { to: "/customers", label: "Kunden", icon: Users },
   { to: "/documents", label: "Belege", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -26,7 +27,7 @@ export function BottomNav({ className = "" }: BottomNavProps) {
         <Link
           key={to}
           to={to}
-          className="flex flex-col items-center gap-0.5 rounded-[8px] px-3 py-1.5 text-[var(--color-text-secondary)] [&.active]:text-[var(--color-text-heading)] transition-colors"
+          className="flex min-h-[44px] min-w-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[8px] px-1 py-1.5 text-[var(--color-text-secondary)] [&.active]:text-[var(--color-text-heading)] transition-colors"
         >
           <Icon size={20} strokeWidth={1.75} />
           <span className="text-[10px] font-medium">{label}</span>

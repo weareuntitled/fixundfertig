@@ -19,6 +19,17 @@ export function useInvoices() {
   });
 }
 
+/** Quotes of the current company; the key sits under ["invoices"] so invoice invalidations refresh it. */
+export function useQuotes() {
+  return useQuery({
+    queryKey: ["invoices", "quotes"],
+    queryFn: () =>
+      api
+        .get<unknown>("/api/invoices?document_type=QUOTE")
+        .then((data) => z.array(invoiceReadSchema).parse(data)),
+  });
+}
+
 export function useInvoice(id: number) {
   return useQuery({
     queryKey: ["invoices", id],

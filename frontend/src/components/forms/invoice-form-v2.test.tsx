@@ -2,7 +2,7 @@ import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { InvoiceFormV2 } from "./invoice-form-v2";
-import { emptyInvoiceDraft, type InvoiceDraft } from "@/lib/schemas/invoice";
+import { emptyInvoiceDraft, emptyQuoteDraft, type InvoiceDraft } from "@/lib/schemas/invoice";
 
 vi.mock("./customer-selector", () => ({
   CustomerSelector: () => <div>Kunde wählen</div>,
@@ -69,5 +69,39 @@ describe("InvoiceFormV2", () => {
     render(<Harness initial={{ ...base, ust_enabled: true, vat_rate: 19 }} />);
     expect(screen.getByText("476,00 €")).toBeTruthy();
     expect(screen.getByText("76,00 €")).toBeTruthy();
+  });
+});
+
+describe("InvoiceFormV2 for a quote", () => {
+  const quote: InvoiceDraft = {
+    ...emptyQuoteDraft(3, "2026-10-23"),
+    items: [{ description: "DJ-Set", quantity: 1, unit_price: 400 }],
+  };
+
+  it("starts with valid until 30 days after the quote date", () => {
+    expect(quote.document_type).toBe("QUOTE");
+    expect(quote.valid_until).toBe("2026-11-22");
+  });
+
+  it("asks for quote date and valid until instead of service date and payment term", () => {
+    render(<Harness initial={quote} />);
+    expect(screen.getByText("Angebotsnummer")).toBeTruthy();
+    expect((screen.getByLabelText("Angebotsdatum") as HTMLInputElement).value).toBe("2026-10-23");
+    expect((screen.getByLabelText("Gültig bis") as HTMLInputElement).value).toBe("2026-11-22");
+    expect(screen.queryByLabelText("Leistungsdatum")).toBeNull();
+    expect(screen.queryByText(/Zahlungsziel/)).toBeNull();
+  });
+
+  it("moves an untouched valid until along with the quote date", () => {
+    render(<Harness initial={quote} />);
+    fireEvent.change(screen.getByLabelText("Angebotsdatum"), { target: { value: "2026-12-01" } });
+    expect((screen.getByLabelText("Gültig bis") as HTMLInputElement).value).toBe("2026-12-31");
+  });
+
+  it("keeps a chosen valid until when the quote date changes", () => {
+    render(<Harness initial={quote} />);
+    fireEvent.change(screen.getByLabelText("Gültig bis"), { target: { value: "2027-01-15" } });
+    fireEvent.change(screen.getByLabelText("Angebotsdatum"), { target: { value: "2026-12-01" } });
+    expect((screen.getByLabelText("Gültig bis") as HTMLInputElement).value).toBe("2027-01-15");
   });
 });

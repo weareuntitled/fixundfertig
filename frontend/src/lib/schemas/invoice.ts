@@ -40,14 +40,32 @@ export const invoiceStatusSchema = z.enum([
 
 export type InvoiceStatus = z.infer<typeof invoiceStatusSchema>;
 
+/** Rechnung oder Angebot; beide laufen über `/api/invoices`. */
+export const documentTypeSchema = z.enum(["INVOICE", "QUOTE"]);
+
+export type DocumentType = z.infer<typeof documentTypeSchema>;
+
+/** Tage zwischen Angebotsdatum und „gültig bis“, wenn nichts anderes gewählt ist. */
+export const QUOTE_VALIDITY_DAYS = 30;
+
+/** ISO-Datum plus `days` Tage, oder "" wenn das Datum fehlt. */
+export function addDaysIso(isoDate: string, days: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate);
+  if (!match) return "";
+  const d = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days));
+  return d.toISOString().slice(0, 10);
+}
+
 export const invoiceDraftSchema = z.object({
   customer_id: z.number().int().positive("Kunde erforderlich"),
+  document_type: documentTypeSchema.default("INVOICE"),
   title: z.string().max(200).default("Rechnung"),
   subject: z.string().max(200).default(""),
   date: isoDate.default(""),
   delivery_date: optionalIsoDate.default(""),
   service_from: optionalIsoDate.default(""),
   service_to: optionalIsoDate.default(""),
+  valid_until: optionalIsoDate.default(""),
   recipient_name: z.string().max(200).default(""),
   recipient_street: z.string().max(200).default(""),
   recipient_postal_code: z.string().max(20).default(""),
@@ -64,12 +82,14 @@ export type InvoiceDraft = z.infer<typeof invoiceDraftSchema>;
 
 export const emptyInvoiceDraft = (customerId: number): InvoiceDraft => ({
   customer_id: customerId,
+  document_type: "INVOICE",
   title: "Rechnung",
   subject: "",
   date: new Date().toISOString().slice(0, 10),
   delivery_date: "",
   service_from: "",
   service_to: "",
+  valid_until: "",
   recipient_name: "",
   recipient_street: "",
   recipient_postal_code: "",
@@ -80,6 +100,19 @@ export const emptyInvoiceDraft = (customerId: number): InvoiceDraft => ({
   items: [],
   notes: "",
   status: "OPEN",
+});
+
+/** Ein neues Angebot: Entwurf, „gültig bis“ = Angebotsdatum plus 30 Tage. */
+export const emptyQuoteDraft = (
+  customerId: number,
+  date: string = new Date().toISOString().slice(0, 10),
+): InvoiceDraft => ({
+  ...emptyInvoiceDraft(customerId),
+  document_type: "QUOTE",
+  title: "Angebot",
+  date,
+  valid_until: addDaysIso(date, QUOTE_VALIDITY_DAYS),
+  status: "DRAFT",
 });
 
 export const invoiceAttachmentSchema = z.object({
@@ -103,11 +136,13 @@ export type InvoiceAttachment = z.infer<typeof invoiceAttachmentSchema>;
 export const invoiceReadSchema = z.object({
   id: z.number().int(),
   customer_id: z.number().int(),
+  document_type: documentTypeSchema.default("INVOICE"),
   nr: z.string().nullable().optional(),
   title: z.string().default("Rechnung"),
   subject: z.string().default(""),
   date: z.string().default(""),
   delivery_date: z.string().default(""),
+  valid_until: z.string().default(""),
   recipient_name: z.string().default(""),
   recipient_street: z.string().default(""),
   recipient_postal_code: z.string().default(""),

@@ -1,0 +1,103 @@
+/**
+ * @schema NewQuotePage
+ * @purpose Quote creation with the invoice form plus "Gültig bis"
+ * @output Saving creates a draft quote (the quote number is assigned now) and opens it.
+ */
+import { useEffect, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { InvoiceFormV2 } from "@/components/forms/invoice-form-v2";
+import { PageHeader } from "@/components/ui/page-header";
+import { useCompany, type Company } from "@/lib/use-company";
+import { useNotification } from "@/lib/use-notifications";
+import { invoiceDraftProblems } from "@/lib/invoice-draft";
+import { emptyQuoteDraft, type InvoiceDraft } from "@/lib/schemas/invoice";
+import { api } from "@/lib/api";
+
+export const Route = createFileRoute("/_app/quotes/new")({
+  component: NewQuotePage,
+});
+
+interface CreatedQuote {
+  id: number;
+  nr?: string;
+}
+
+/** A new quote starts without a customer and follows the company's VAT status. */
+function initialDraft(company: Company | undefined): InvoiceDraft {
+  const smallBusiness = Boolean(company?.is_small_business);
+  return { ...emptyQuoteDraft(0), ust_enabled: !smallBusiness, vat_rate: smallBusiness ? 0 : 19 };
+}
+
+function NewQuotePage() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { notify } = useNotification();
+  const { data: company, isLoading: companyLoading } = useCompany();
+  const [draft, setDraft] = useState<InvoiceDraft | null>(null);
+
+  useEffect(() => {
+    if (!companyLoading && !draft) setDraft(initialDraft(company));
+  }, [companyLoading, company, draft]);
+
+  const save = useMutation({
+    mutationFn: (payload: InvoiceDraft) =>
+      api.post<CreatedQuote>("/api/invoices", { ...payload, document_type: "QUOTE", status: "DRAFT" }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      notify("success", `Angebot ${data.nr ?? ""} gespeichert.`);
+      void navigate({ to: "/quotes/$id", params: { id: String(data.id) } });
+    },
+  });
+
+  if (!draft) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-brand-text)]" />
+      </div>
+    );
+  }
+
+  const problems = invoiceDraftProblems(draft);
+  const ready = problems.length === 0;
+  const hintId = "create-hint";
+
+  return (
+    <div className="animate-fade-in">
+      <PageHeader
+        backTo="/quotes"
+        backLabel="Angebote"
+        title="Neues Angebot"
+        subtitle="Kunde, Positionen und „gültig bis“ erfassen."
+        actions={
+          <button
+            type="button"
+            onClick={() => save.mutate(draft)}
+            disabled={!ready || save.isPending}
+            aria-describedby={ready ? undefined : hintId}
+            className="min-h-[44px] rounded-[var(--radius-lg)] bg-[#001a42] px-[var(--space-md)] py-[var(--space-xs)] text-[14px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {save.isPending ? "Speichere…" : "Angebot speichern"}
+          </button>
+        }
+      />
+
+      {!ready && (
+        <p id={hintId} role="status" className="-mt-4 mb-[var(--space-md)] text-[13px] text-[var(--color-text-secondary)]">
+          Noch nötig: {problems.join(" · ")}
+        </p>
+      )}
+
+      {save.error && (
+        <div role="alert" className="mb-[var(--space-md)] rounded-[var(--radius-lg)] border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-600">
+          <strong>Das hat nicht geklappt.</strong>{" "}
+          {save.error instanceof Error ? save.error.message : "Unbekannter Fehler."} Deine Eingaben sind noch da, du kannst es noch einmal versuchen.
+        </div>
+      )}
+
+      <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-xl)] shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
+        <InvoiceFormV2 value={draft} onChange={setDraft} />
+      </div>
+    </div>
+  );
+}
