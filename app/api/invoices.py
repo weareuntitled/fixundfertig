@@ -26,7 +26,7 @@ from typing import Iterator
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import object_session, selectinload
 from sqlmodel import Session, select
 
 from data import Company, Customer, Document, Invoice, InvoiceItem as InvoiceItemModel
@@ -35,19 +35,27 @@ from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
+from logic.invoice import invoice_net_total
 from logic.document_status import (
     accepted_quote_status_reason,
     creation_status_reason,
     is_accepted_quote,
+    is_rejected_quote,
     status_not_allowed_reason,
 )
 from logic.final_invoice import issued_down_payments
+from logic.quote_billing import BillingConflict, quote_billing, quote_settlement
 from logic.quote_conversion import (
-    DownPaymentConflict,
-    FinalInvoiceConflict,
     create_down_payment_invoice,
     create_final_invoice,
     create_invoice_from_quote,
+)
+from logic.quote_decision import (
+    decision_reset_reason,
+    extended_valid_until,
+    mark_sent_reason,
+    quote_has_invoices,
+    validity_extension_reason,
 )
 from renderer import render_invoice_to_pdf_bytes
 from schemas.invoice import (
@@ -59,6 +67,8 @@ from schemas.invoice import (
     InvoiceItem,
     InvoiceRead,
     LinkedInvoiceRead,
+    QuoteBillingRead,
+    QuoteSettlementRead,
     InvoiceSendRequest,
     InvoiceStatusUpdate,
     InvoiceUpdate,
@@ -154,6 +164,8 @@ def convert_quote_to_invoice(
     quote = _get_invoice_for_company(session, invoice_id, company)
     try:
         invoice = create_invoice_from_quote(session, quote)
+    except BillingConflict as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return _to_read_model(invoice)
@@ -171,7 +183,7 @@ def create_quote_down_payment(
     quote = _get_invoice_for_company(session, invoice_id, company)
     try:
         invoice = create_down_payment_invoice(session, quote, payload.installment_index)
-    except DownPaymentConflict as e:
+    except BillingConflict as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -189,11 +201,67 @@ def create_quote_final_invoice(
     quote = _get_invoice_for_company(session, invoice_id, company)
     try:
         invoice = create_final_invoice(session, quote)
-    except FinalInvoiceConflict as e:
+    except BillingConflict as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return _to_read_model(invoice)
+
+
+@router.post("/{invoice_id}/mark-sent", response_model=InvoiceRead)
+def mark_quote_as_sent(
+    invoice_id: int,
+    company=Depends(get_current_company),
+    _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
+):
+    """Angebot ohne Mailserver auf „Gesendet“ setzen (#497).
+
+    Wer das PDF selbst verschickt, markiert das Angebot so als gesendet. Aus einer
+    Entscheidung („Angenommen“, „Abgelehnt“) geht das nur zurück, solange das Angebot
+    keine Rechnung hat; mit Rechnung bleibt die Entscheidung endgültig (409).
+    """
+    quote = _get_invoice_for_company(session, invoice_id, company)
+    if getattr(quote, "document_type", None) != DocumentType.QUOTE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nur Angebote können als gesendet markiert werden",
+        )
+    reason = mark_sent_reason(quote, quote_has_invoices(session, quote))
+    if reason:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=reason)
+    quote.status = InvoiceStatus.SENT
+    quote.revision_nr = int(quote.revision_nr or 0) + 1
+    session.add(quote)
+    session.commit()
+    session.refresh(quote)
+    return _to_read_model(quote)
+
+
+@router.post("/{invoice_id}/extend-validity", response_model=InvoiceRead)
+def extend_quote_validity(
+    invoice_id: int,
+    company=Depends(get_current_company),
+    _user_id: int = Depends(require_session_auth),
+    session: Iterator = Depends(db_session),
+):
+    """„Gültigkeit verlängern“: „gültig bis“ = heute + 30 Tage (#497)."""
+    quote = _get_invoice_for_company(session, invoice_id, company)
+    if getattr(quote, "document_type", None) != DocumentType.QUOTE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nur Angebote haben eine Gültigkeit",
+        )
+    reason = validity_extension_reason(quote)
+    if reason:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=reason)
+    quote.valid_until = extended_valid_until()
+    quote.revision_nr = int(quote.revision_nr or 0) + 1
+    session.add(quote)
+    session.commit()
+    session.refresh(quote)
+    _rerender_quote_pdf(session, quote)
+    return _to_read_model(quote)
 
 
 def _attachment_to_read(attachment: InvoiceAttachment) -> InvoiceAttachmentRead:
@@ -246,7 +314,13 @@ def _render_document_pdf(session: Session | None, invoice, company=None, custome
     )
 
 
-def _ensure_status_allowed(invoice: Invoice, new_status: str) -> None:
+def _ensure_status_allowed(session: Session, invoice: Invoice, new_status: str) -> None:
+    """Prüft, ob der Statuswechsel erlaubt ist; wirft 409 (Konflikt) oder 400 (ungültig)."""
+    # Das Zurücksetzen einer Entscheidung auf „Gesendet“ kommt vor der Endgültigkeit:
+    # es ist der dokumentierte Rückweg, solange das Angebot keine Rechnung hat.
+    reset = decision_reset_reason(invoice, new_status, quote_has_invoices(session, invoice))
+    if reset:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=reset)
     finality = accepted_quote_status_reason(invoice, new_status)
     if finality:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=finality)
@@ -256,11 +330,37 @@ def _ensure_status_allowed(invoice: Invoice, new_status: str) -> None:
 
 
 def _ensure_quote_editable(invoice: Invoice) -> None:
+    """Angenommene und abgelehnte Angebote sind nur noch lesbar."""
     if is_accepted_quote(invoice):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ein angenommenes Angebot lässt sich nicht mehr ändern",
         )
+    if is_rejected_quote(invoice):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ein abgelehntes Angebot lässt sich nicht mehr ändern",
+        )
+
+
+def _billing_read(invoice: Invoice) -> QuoteBillingRead | None:
+    """Erlaubte Abrechnungsaktionen eines Angebots (#495); None für Rechnungen."""
+    if getattr(invoice, "document_type", None) != DocumentType.QUOTE:
+        return None
+    session = object_session(invoice)
+    if session is None:
+        return None
+    return QuoteBillingRead(**quote_billing(session, invoice).as_dict())
+
+
+def _settlement_read(invoice: Invoice) -> QuoteSettlementRead | None:
+    """Abrechnungsstand eines Angebots (#499); None für Rechnungen."""
+    if getattr(invoice, "document_type", None) != DocumentType.QUOTE:
+        return None
+    session = object_session(invoice)
+    if session is None:
+        return None
+    return QuoteSettlementRead(**quote_settlement(session, invoice).as_dict())
 
 
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
@@ -291,6 +391,8 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         recipient_city=invoice.recipient_city or "",
         legacy=bool(invoice.legacy) if hasattr(invoice, 'legacy') else False,
         total_brutto=float(invoice.total_brutto or 0.0),
+        total_net=invoice_net_total(invoice),
+        vat_rate=document_vat_rate(invoice),
         status=invoice.status.value if hasattr(invoice.status, "value") else str(invoice.status),
         revision_nr=int(invoice.revision_nr or 0),
         updated_at=invoice.updated_at or "",
@@ -329,6 +431,8 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
                 getattr(invoice, "payment_plan", None), float(invoice.total_brutto or 0.0)
             )
         ],
+        billing=_billing_read(invoice),
+        settlement=_settlement_read(invoice),
     )
 
 
@@ -375,7 +479,7 @@ def bulk_status_update(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Invoice {inv_id} not found",
             )
-        _ensure_status_allowed(invoice, payload.status)
+        _ensure_status_allowed(session, invoice, payload.status)
         invoice.status = payload.status
         invoice.revision_nr = int(invoice.revision_nr or 0) + 1
         session.add(invoice)
@@ -458,7 +562,7 @@ def update_invoice_status(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
-    _ensure_status_allowed(invoice, payload.status)
+    _ensure_status_allowed(session, invoice, payload.status)
     invoice.status = payload.status
     invoice.revision_nr = int(invoice.revision_nr or 0) + 1
     invoice.updated_at = invoice.updated_at  # server-computed in real impl
@@ -1027,17 +1131,17 @@ def send_invoice_email_endpoint(
                 *extra_attachments,
             ],
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to send invoice email")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"E-Mail-Versand fehlgeschlagen: {exc}",
+            detail="Der E-Mail-Versand ist fehlgeschlagen.",
         )
 
     if not success:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="E-Mail konnte nicht gesendet werden (SMTP nicht konfiguriert)",
+            detail="Der E-Mail-Versand ist noch nicht eingerichtet.",
         )
 
     if invoice.document_type != DocumentType.QUOTE or invoice.status == InvoiceStatus.DRAFT:

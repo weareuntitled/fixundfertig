@@ -112,6 +112,12 @@ describe("InvoiceFormV2 for a quote", () => {
     fireEvent.change(screen.getByLabelText("Angebotsdatum"), { target: { value: "2026-12-01" } });
     expect((screen.getByLabelText("Gültig bis") as HTMLInputElement).value).toBe("2027-01-15");
   });
+
+  it("names the default intro of the quote, not the one of the invoice", () => {
+    render(<Harness initial={quote} />);
+    expect(screen.getByText(/Hiermit biete ich folgende Leistungen an/)).toBeTruthy();
+    expect(screen.queryByText(/Hiermit stelle ich folgende Leistungen in Rechnung/)).toBeNull();
+  });
 });
 
 describe("InvoiceFormV2 payment plan", () => {

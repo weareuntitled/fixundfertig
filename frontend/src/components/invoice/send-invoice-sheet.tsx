@@ -22,6 +22,17 @@ interface SendInvoiceSheetProps {
   onSend: (message: string, includeAttachments: boolean) => void;
   onCancel: () => void;
   documentType?: "INVOICE" | "QUOTE";
+  /**
+   * Fehlermeldung des Versands. Sie steht im Dialog, nicht als Toast daneben: der
+   * Fehler bleibt, bis er gelesen ist, und der Dialog bleibt offen (#497).
+   */
+  error?: string | null;
+  /**
+   * Ausweg, wenn der Versand nicht klappt: Link zu den Einstellungen, PDF zum
+   * Herunterladen und „Als gesendet markieren“. Die Seite liefert ihn, damit dieser
+   * Baustein ohne Router auskommt.
+   */
+  errorFallback?: React.ReactNode;
 }
 
 export function SendInvoiceSheet({
@@ -35,6 +46,8 @@ export function SendInvoiceSheet({
   onSend,
   onCancel,
   documentType = "INVOICE",
+  error = null,
+  errorFallback = null,
 }: SendInvoiceSheetProps) {
   const quote = documentType === "QUOTE";
   const [message, setMessage] = useState("");
@@ -163,6 +176,20 @@ export function SendInvoiceSheet({
               {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               Anlage hinzufügen
             </button>
+          </div>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            className="mt-4 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-container-low)] p-3"
+          >
+            <p className="text-[13px] font-semibold text-[var(--color-text-heading)]">{error}</p>
+            {errorFallback && (
+              <div className="mt-1.5 text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
+                {errorFallback}
+              </div>
+            )}
           </div>
         )}
 

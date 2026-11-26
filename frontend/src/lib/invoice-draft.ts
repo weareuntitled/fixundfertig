@@ -1,3 +1,4 @@
+import { percentLabel, planPercentTotal } from "./payment-plan";
 import type { InvoiceDraft } from "./schemas/invoice";
 
 /** Payment term printed on every invoice and email. Keep in step with PAYMENT_TERM_DAYS in the backend. */
@@ -28,5 +29,8 @@ export function invoiceDraftProblems(draft: InvoiceDraft): string[] {
   (draft.payment_plan ?? []).forEach((rate, index) => {
     if (!(rate.percent > 0)) problems.push(`Rate ${index + 1}: Prozent größer 0 eintragen`);
   });
+  // Über 100 % fordert mehr als das Angebot: das lässt sich nicht speichern (#495).
+  const planTotal = planPercentTotal(draft.payment_plan ?? []);
+  if (planTotal > 100) problems.push(`Zahlungsplan über 100 % (${percentLabel(planTotal)}) kürzen`);
   return problems;
 }

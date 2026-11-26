@@ -75,7 +75,7 @@ function NewQuotePage() {
   const previewReady = draft.items.length > 0 && draft.customer_id > 0;
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
       <PageHeader
         backTo="/quotes"
         backLabel="Angebote"
@@ -120,6 +120,20 @@ function NewQuotePage() {
 
       <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-xl)] shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
         <InvoiceFormV2 value={draft} onChange={setDraft} />
+      </div>
+
+      {/* Am Handy steht der Speichern-Knopf auch am Ende des Formulars (#498). */}
+      <div className="mt-[var(--space-lg)] md:hidden">
+        <button
+          type="button"
+          data-testid="quote-save-end"
+          onClick={() => save.mutate(draft)}
+          disabled={!ready || save.isPending}
+          aria-describedby={ready ? undefined : hintId}
+          className="min-h-[44px] w-full rounded-[var(--radius-lg)] bg-[#001a42] px-[var(--space-md)] py-[var(--space-xs)] text-[14px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {save.isPending ? "Speichere…" : "Angebot speichern"}
+        </button>
       </div>
 
       <PdfPreviewModal

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { SendInvoiceSheet } from "./send-invoice-sheet";
 
@@ -111,5 +111,26 @@ describe("SendInvoiceSheet", () => {
     setup();
     expect(screen.getByRole("heading", { name: "Rechnung senden" })).toBeInTheDocument();
     expect(screen.getByRole("dialog").textContent).toContain("Die Rechnung hängt immer als PDF an.");
+  });
+
+  it("shows a send error in the dialog, not next to it", () => {
+    setup({ error: "Der E-Mail-Versand ist noch nicht eingerichtet." });
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Der E-Mail-Versand ist noch nicht eingerichtet.");
+    expect(screen.getByRole("dialog")).toContainElement(alert);
+  });
+
+  it("shows the way out next to the error", () => {
+    setup({
+      error: "Der E-Mail-Versand ist noch nicht eingerichtet.",
+      errorFallback: <a href="/api/invoices/1/download">PDF herunterladen</a>,
+    });
+    const alert = screen.getByRole("alert");
+    expect(within(alert).getByRole("link", { name: /PDF herunterladen/ })).toBeInTheDocument();
+  });
+
+  it("shows no error box while the send works", () => {
+    setup();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

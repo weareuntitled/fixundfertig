@@ -28,7 +28,7 @@ const STATUS_CONFIG: Record<
     text: "text-[var(--color-status-draft-text)]",
   },
   OPEN: {
-    label: "Offen",
+    label: "Gestellt",
     dot: "bg-[var(--color-status-open)]",
     bg: "bg-[var(--color-status-open-bg)]",
     text: "text-[var(--color-status-open-text)]",
@@ -46,7 +46,7 @@ const STATUS_CONFIG: Record<
     text: "text-[var(--color-status-paid-text)]",
   },
   FINALIZED: {
-    label: "Finalisiert",
+    label: "Gestellt",
     dot: "bg-[var(--color-status-open)]",
     bg: "bg-[var(--color-status-open-bg)]",
     text: "text-[var(--color-status-open-text)]",
@@ -99,10 +99,10 @@ export function StatusBadge({ status, size = "sm" }: StatusBadgeProps) {
 export const STATUS_LABELS: Record<string, string> = {
   ALL: "Alle",
   DRAFT: "Entwurf",
-  OPEN: "Offen",
+  OPEN: "Gestellt",
   SENT: "Gesendet",
   PAID: "Bezahlt",
-  FINALIZED: "Finalisiert",
+  FINALIZED: "Gestellt",
   CANCELLED: "Storniert",
   ACCEPTED: "Angenommen",
   REJECTED: "Abgelehnt",
