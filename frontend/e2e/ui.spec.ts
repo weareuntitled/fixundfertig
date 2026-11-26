@@ -106,6 +106,10 @@ test("invoice detail page shows preview iframe and download link", async ({ page
     route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%%EOF" }),
   );
   await page.goto("/invoices/123");
+  await expect(page.getByText("Erstellt am 10.06.2026")).toBeVisible();
+  const upload = page.locator("#anlagen").getByRole("button", { name: "Anlage hochladen" });
+  await expect(upload).toHaveCSS("text-transform", "none");
+  await expect(upload).toHaveCSS("min-height", "44px");
   const downloadLink = page.getByRole("main").getByRole("link", { name: /PDF herunterladen/ });
   await expect(downloadLink).toBeVisible();
   await expect(page.getByRole("main").getByRole("button", { name: "Anlage hochladen" }).first()).toBeVisible();
@@ -326,6 +330,37 @@ test("Angebot: die Seite zeigt Netto, USt, Gesamt und den Abrechnungsstand", asy
   await expect(main.getByRole("definition").filter({ hasText: "1.785,00 €" })).toBeVisible();
 });
 
+test("Angebot: ungespeicherte Position und Zahlungsplan vor Navigation schützen", async ({ page }) => {
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Kunde",
+    total_brutto: 119, status: "DRAFT",
+    items: [{ id: 1, description: "Design", quantity: 1, unit_price: 100 }],
+    payment_plan: [{ percent: 50, label: "Anzahlung", amount: 59.5 }],
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices?**", (route) => route.fulfill({ json: [quote] }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+  await page.goto("/quotes");
+  await page.getByRole("main").getByRole("link", { name: /A-10000/ }).click();
+  await page.getByRole("button", { name: "Position 1 bearbeiten" }).click();
+  await page.getByLabel("Beschreibung", { exact: true }).fill("Geändert");
+  await page.goBack();
+  const warning = page.getByRole("alertdialog", { name: "Ungespeicherte Eingaben verwerfen?" });
+  await expect(warning).toBeVisible();
+  await warning.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByLabel("Beschreibung", { exact: true })).toHaveValue("Geändert");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("dialog", { name: "Position bearbeiten" }).getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByRole("button", { name: "Position 1 bearbeiten" })).toBeFocused();
+  await page.getByRole("button", { name: "Zahlungsplan bearbeiten" }).click();
+  await page.getByLabel("Prozent Rate 1").fill("40");
+  await page.getByRole("main").getByRole("link", { name: "Angebote", exact: true }).click();
+  await expect(warning).toBeVisible();
+  await warning.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByLabel("Prozent Rate 1")).toHaveValue("40");
+});
+
 test("Angebot anlegen: from the quotes list through the invoice form to the saved draft quote", async ({ page }) => {
   let posted: Record<string, unknown> | undefined;
   let previewed: Record<string, unknown> | undefined;
@@ -359,7 +394,7 @@ test("Angebot anlegen: from the quotes list through the invoice form to the save
 
   await page.goto("/quotes");
   await expect(page.getByText("Noch keine Angebote")).toBeVisible();
-  await page.getByRole("link", { name: "Neues Angebot" }).click();
+  await page.getByRole("link", { name: "Neues Angebot" }).first().click();
   await expect(page).toHaveURL(/\/quotes\/new$/);
 
   await page.getByRole("combobox", { name: /Kunde/ }).selectOption({ label: "Sisyphos Event GmbH" });
@@ -368,6 +403,10 @@ test("Angebot anlegen: from the quotes list through the invoice form to the save
   await page.getByRole("button", { name: "Neue Position" }).click();
   await page.getByLabel("Beschreibung Position 1").fill("DJ Performance");
   await page.getByLabel("Einzelpreis Position 1").fill("400");
+  await page.getByRole("link", { name: "Angebote", exact: true }).first().click();
+  await expect(page.getByRole("alertdialog", { name: "Ungespeicherte Eingaben verwerfen?" })).toBeVisible();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByLabel("Beschreibung Position 1")).toHaveValue("DJ Performance");
   await page.getByRole("button", { name: "PDF-Vorschau" }).click();
   await expect(page.getByRole("heading", { name: "PDF-Vorschau · Angebot Entwurf" })).toBeVisible();
   await expect.poll(() => previewed?.document_type).toBe("QUOTE");
@@ -413,8 +452,7 @@ test("quote detail page previews and downloads the Angebot PDF without invoice a
   await main.getByRole("menuitem", { name: "Vorschau" }).click();
   await expect(page.getByRole("heading", { name: "PDF-Vorschau · Angebot A-10000" })).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("link", { name: /PDF herunterladen/ })).toHaveAttribute(
-    "download",
-    "angebot_A-10000.pdf",
+    "href", "/api/invoices/42/download",
   );
 });
 
@@ -536,7 +574,7 @@ test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each o
   await confirm.getByRole("button", { name: "Abrechnen" }).click();
 
   await expect(page).toHaveURL(/\/invoices\/43$/);
-  await expect(page.getByRole("heading", { name: /Rechnung #10000/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Rechnung 10000/ })).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Aus Angebot A-10000" }).click();
 
   await expect(page).toHaveURL(/\/quotes\/42$/);
@@ -593,7 +631,7 @@ test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as 
 
   // Nach dem Anlegen geht es zur Abschlagsrechnung.
   await expect(page).toHaveURL(/\/invoices\/43$/);
-  await expect(page.getByRole("heading", { name: /Rechnung #10000/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Abschlagsrechnung 10000/ })).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __spa?: boolean }).__spa)).toBe(true);
 });
 

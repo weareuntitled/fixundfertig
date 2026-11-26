@@ -17,6 +17,7 @@ from logic.final_invoice import (
     issued_down_payments,
 )
 from logic.invoice import document_vat_rate, finalize_invoice_logic
+from invoice_numbering import build_invoice_filename
 from logic.quote_billing import BillingConflict, ensure_billable
 from renderer import render_invoice_to_pdf_bytes
 from services.invoice_pdf_draw import DOWN_PAYMENT_INTRO, INVOICE_INTRO
@@ -185,6 +186,7 @@ def create_down_payment_invoice(
     )
     invoice.down_payment_index = int(installment_index)
     customer = session.get(Customer, int(quote.customer_id))
+    invoice.pdf_filename = build_invoice_filename(company, invoice, customer)
     invoice.pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer)
     session.add(invoice)
     _accept_quote(session, quote)

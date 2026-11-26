@@ -26,6 +26,7 @@ export function QuoteList({ quotes }: { quotes: InvoiceRead[] }) {
         </div>
         <p className="text-[15px] font-medium text-[var(--color-text-primary)]">Noch keine Angebote</p>
         <p className="mt-1 text-[13px] text-[var(--color-text-tertiary)]">Schreibe dein erstes Angebot</p>
+        <Link to="/quotes/new" className="mt-4 inline-flex min-h-[44px] items-center rounded-lg bg-[var(--color-text-heading)] px-4 text-sm font-semibold text-white">Neues Angebot</Link>
       </div>
     );
   }

@@ -61,6 +61,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
   const [removed, setRemoved] = useState<{ item: InvoiceItem; index: number } | null>(null);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
   const [touched, setTouched] = useState<Set<number>>(new Set());
+  const [validityTouched, setValidityTouched] = useState(false);
   const errorBase = useId();
 
   useEffect(() => {
@@ -103,7 +104,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
 
   /** For quotes an untouched "gültig bis" (date + 30 days) moves along with the quote date. */
   const setDate = (date: string) => {
-    if (isQuote && value.valid_until === addDaysIso(value.date, QUOTE_VALIDITY_DAYS)) {
+    if (isQuote && !validityTouched && value.valid_until === addDaysIso(value.date, QUOTE_VALIDITY_DAYS)) {
       onChange({ ...value, date, valid_until: addDaysIso(date, QUOTE_VALIDITY_DAYS) });
     } else {
       setField("date", date);
@@ -125,7 +126,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                 type="text"
                 value={value.subject}
                 onChange={(e) => setField("subject", e.target.value)}
-                placeholder="z. B. DJ-Set Hammahalle, Sa auf So"
+                placeholder="z. B. Website-Relaunch, Phase 1"
                 className={INPUT}
               />
             )}
@@ -146,14 +147,16 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
             )}
           </FormField>
           {isQuote ? (
-            <FormField label="Gültig bis" hint={`Vorgabe: ${QUOTE_VALIDITY_DAYS} Tage nach dem Angebotsdatum.`}>
+            <FormField label="Gültig bis" hint={value.date && value.valid_until && value.valid_until < value.date ? "Gültig bis darf nicht vor dem Angebotsdatum liegen." : `Vorgabe: ${QUOTE_VALIDITY_DAYS} Tage nach dem Angebotsdatum.`}>
               {({ id, hintId }) => (
                 <input
                   id={id}
                   aria-describedby={hintId}
                   type="date"
+                  min={value.date || undefined}
+                  aria-invalid={Boolean(value.date && value.valid_until && value.valid_until < value.date)}
                   value={value.valid_until}
-                  onChange={(e) => setField("valid_until", e.target.value)}
+                  onChange={(e) => { setValidityTouched(true); setField("valid_until", e.target.value); }}
                   className={INPUT}
                 />
               )}

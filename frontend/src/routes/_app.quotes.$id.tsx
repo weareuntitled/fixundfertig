@@ -8,7 +8,7 @@
  *   with net, VAT and gross, the payment plan and the invoices of the quote.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarPlus,
@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
+import { CustomerSelector } from "@/components/forms/customer-selector";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -52,7 +53,7 @@ import { useInvoicePreviewPdf } from "@/lib/use-invoice-preview-pdf";
 import { useBillDownPayment } from "@/lib/use-quote-billing";
 import { useNotification } from "@/lib/use-notifications";
 import { isQuoteLocked, quoteDisplayStatus } from "@/lib/quote-status";
-import type { BillingAction, InvoiceItem, InvoiceStatus } from "@/lib/schemas/invoice";
+import { addDaysIso, QUOTE_VALIDITY_DAYS, type BillingAction, type InvoiceItem, type InvoiceStatus } from "@/lib/schemas/invoice";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/_app/quotes/$id")({
@@ -65,7 +66,7 @@ function linkedInvoiceLabel(linked: { is_final_invoice?: boolean; is_down_paymen
   return "Rechnung";
 }
 
-type HeaderDraft = { subject: string; date: string; valid_until: string };
+type HeaderDraft = { subject: string; date: string; valid_until: string; customer_id: number; intro_text: string; vat_rate: number };
 
 /** Welche Abrechnung soll laufen? „down_payment“ nennt zusätzlich die Rate. */
 type BillingRequest = { kind: "convert" | "final" | "down_payment"; index?: number };
@@ -88,6 +89,17 @@ function QuoteDetailPage() {
   // Am Handy stehen die Kopfaktionen im „Mehr"-Menü, am Desktop nebeneinander (#498).
   const isWide = useMediaQuery(WIDE_SCREEN, true);
   const [header, setHeader] = useState<HeaderDraft | null>(null);
+  const [validityTouched, setValidityTouched] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<InvoiceItem | null>(null);
+  const [itemDirty, setItemDirty] = useState(false);
+  const [planDirty, setPlanDirty] = useState(false);
+  const headerDirty = Boolean(header && quote && Object.entries(header).some(([key, value]) => value !== quote[key as keyof HeaderDraft]));
+  const dirty = headerDirty || itemDirty || planDirty;
+  const leaving = useBlocker({
+    shouldBlockFn: () => dirty,
+    enableBeforeUnload: () => dirty,
+    withResolver: true,
+  });
   const [itemDialog, setItemDialog] = useState<{ open: boolean; item?: InvoiceItem }>({ open: false });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
@@ -415,15 +427,14 @@ function QuoteDetailPage() {
     ...moreItems,
   ];
 
-  const startEdit = () =>
-    setHeader({ subject: quote.subject, date: quote.date, valid_until: quote.valid_until });
+  const startEdit = () => {
+    setValidityTouched(quote.valid_until !== addDaysIso(quote.date, QUOTE_VALIDITY_DAYS));
+    setHeader({ subject: quote.subject, date: quote.date, valid_until: quote.valid_until, customer_id: quote.customer_id, intro_text: quote.intro_text, vat_rate: quote.vat_rate });
+  };
 
   const submitHeader = () => {
     if (!header) return;
-    const changes: Partial<HeaderDraft> = {};
-    (Object.keys(header) as (keyof HeaderDraft)[]).forEach((key) => {
-      if (header[key] !== quote[key]) changes[key] = header[key];
-    });
+    const changes = Object.fromEntries(Object.entries(header).filter(([key, value]) => value !== quote[key as keyof HeaderDraft])) as Partial<HeaderDraft>;
     if (Object.keys(changes).length === 0) setHeader(null);
     else saveHeader.mutate(changes);
   };
@@ -557,28 +568,38 @@ function QuoteDetailPage() {
         )}
 
         {header && !readOnly ? (
-          <div className="grid gap-[var(--space-sm)] md:grid-cols-3">
+          <form onSubmit={(e) => { e.preventDefault(); submitHeader(); }} className="grid gap-[var(--space-sm)] md:grid-cols-3">
+            <div className="md:col-span-3"><CustomerSelector value={header.customer_id} onChange={(customer_id) => setHeader({ ...header, customer_id })} /></div>
             <label className="block text-[14px] font-bold text-[var(--color-text-primary)]">
               Betreff
               <input className={INPUT} value={header.subject} onChange={(e) => setHeader({ ...header, subject: e.target.value })} />
             </label>
+            <label className="block text-[14px] font-bold text-[var(--color-text-primary)] md:col-span-2">
+              Einleitung
+              <textarea className={INPUT} value={header.intro_text} onChange={(e) => setHeader({ ...header, intro_text: e.target.value })} maxLength={2000} />
+            </label>
+            <label className="block text-[14px] font-bold text-[var(--color-text-primary)]">
+              Umsatzsteuer (%)
+              <input type="number" min="0" max="100" step="0.01" className={INPUT} value={header.vat_rate} onChange={(e) => setHeader({ ...header, vat_rate: Number(e.target.value) })} />
+            </label>
             <label className="block text-[14px] font-bold text-[var(--color-text-primary)]">
               Angebotsdatum
-              <input type="date" className={INPUT} value={header.date} onChange={(e) => setHeader({ ...header, date: e.target.value })} />
+              <input type="date" required className={INPUT} value={header.date} onChange={(e) => setHeader({ ...header, date: e.target.value, valid_until: validityTouched ? header.valid_until : addDaysIso(e.target.value, QUOTE_VALIDITY_DAYS) })} />
             </label>
             <label className="block text-[14px] font-bold text-[var(--color-text-primary)]">
               Gültig bis
-              <input type="date" className={INPUT} value={header.valid_until} onChange={(e) => setHeader({ ...header, valid_until: e.target.value })} />
+              <input type="date" min={header.date} className={INPUT} value={header.valid_until} onChange={(e) => { setValidityTouched(true); setHeader({ ...header, valid_until: e.target.value }); }} />
+              {header.date && header.valid_until && header.valid_until < header.date && <span role="alert" className="text-red-700">Gültig bis darf nicht vor dem Angebotsdatum liegen.</span>}
             </label>
             <div className="flex gap-2 md:col-span-3">
-              <button type="button" onClick={submitHeader} disabled={saveHeader.isPending} className={SECONDARY_BUTTON}>
+              <button type="submit" disabled={saveHeader.isPending || !header.date || Boolean(header.valid_until && header.valid_until < header.date)} className={SECONDARY_BUTTON}>
                 {saveHeader.isPending ? "Speichere…" : "Speichern"}
               </button>
               <button type="button" onClick={() => setHeader(null)} className={SECONDARY_BUTTON}>
                 Abbrechen
               </button>
             </div>
-          </div>
+          </form>
         ) : (
           <dl className="grid gap-[var(--space-sm)] text-[14px] md:grid-cols-3">
             <div>
@@ -662,7 +683,7 @@ function QuoteDetailPage() {
                     type="button"
                     aria-label={`Position ${index + 1} entfernen`}
                     disabled={deleteItem.isPending}
-                    onClick={() => it.id && deleteItem.mutate({ invoiceId: quoteId, itemId: it.id })}
+                    onClick={() => setItemToDelete(it)}
                     className={ICON_BUTTON}
                   >
                     <Trash2 size={16} />
@@ -699,6 +720,7 @@ function QuoteDetailPage() {
         invoices={linkedInvoices}
         billing={billing}
         onBillRate={(index) => requestBilling({ kind: "down_payment", index })}
+        onDirtyChange={setPlanDirty}
       />
 
       <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-lg)] shadow-sm">
@@ -736,12 +758,44 @@ function QuoteDetailPage() {
         initial={itemDialog.item}
         onSave={saveItem}
         onCancel={() => setItemDialog({ open: false })}
+        onDirtyChange={setItemDirty}
+        suspendFocus={leaving.status === "blocked"}
+      />
+
+      <ConfirmDialog
+        open={itemToDelete !== null}
+        title="Position entfernen?"
+        message="Die Position wird aus dem Angebot entfernt."
+        confirmLabel="Entfernen"
+        destructive
+        pending={deleteItem.isPending}
+        onConfirm={() => {
+          if (itemToDelete?.id) deleteItem.mutate({ invoiceId: quoteId, itemId: itemToDelete.id }, {
+            onSuccess: () => { setItemToDelete(null); notify("success", "Position entfernt"); },
+            onError: (err: Error) => notify("error", err.message),
+          });
+        }}
+        onCancel={() => setItemToDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={leaving.status === "blocked"}
+        title="Ungespeicherte Eingaben verwerfen?"
+        message="Ihre Änderungen gehen verloren."
+        confirmLabel="Verwerfen"
+        destructive
+        onConfirm={() => leaving.status === "blocked" && leaving.proceed()}
+        onCancel={() => leaving.status === "blocked" && leaving.reset()}
       />
 
       <PdfPreviewModal
         open={previewOpen}
         pdfUrl={previewUrl}
+        error={preview.isError}
+        refreshing={preview.isFetching}
+        onRetry={() => void preview.refetch()}
         invoiceNr={quote.nr || undefined}
+        downloadUrl={`/api/invoices/${quoteId}/download`}
         documentType="QUOTE"
         onClose={() => setPreviewOpen(false)}
       />

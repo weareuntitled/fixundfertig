@@ -30,7 +30,7 @@ export function Sidebar({ className = "" }: SidebarProps) {
             FixundFertig
           </p>
           <p className="text-[10px] font-medium text-[var(--color-text-tertiary)] tracking-wide uppercase">
-            Invoicing
+            Büro
           </p>
         </div>
       </Link>
@@ -39,7 +39,7 @@ export function Sidebar({ className = "" }: SidebarProps) {
       <div className="px-4 pb-3">
         <Link
           to="/invoices/new"
-          className="w-full inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[8px] bg-[var(--color-text-heading)] py-2 px-3 text-[13px] font-medium text-white shadow-sm transition-all hover:bg-[var(--color-gray-700)] active:scale-[0.98]"
+          className="w-full inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[8px] border border-[var(--color-border)] bg-white py-2 px-3 text-[13px] font-medium text-[var(--color-text-heading)] transition-all hover:bg-[var(--color-gray-50)] active:scale-[0.98]"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
             <path d="M12 5v14M5 12h14" />
@@ -77,7 +77,7 @@ export function Sidebar({ className = "" }: SidebarProps) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[12.5px] font-medium text-[var(--color-text-primary)]">
-              {user?.first_name || user?.email || "User"}
+              {user?.first_name || user?.email || "Benutzer"}
             </div>
             <div className="truncate text-[10.5px] text-[var(--color-text-tertiary)]">
               {user?.email || "—"}

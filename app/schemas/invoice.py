@@ -208,6 +208,7 @@ class InvoiceRead(BaseModel):
     nr: str | None = None
     title: str = "Rechnung"
     subject: str = ""
+    intro_text: str = ""
     date: str = ""
     delivery_date: str = ""
     valid_until: str = ""
@@ -266,6 +267,8 @@ class InvoiceUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    customer_id: int | None = Field(default=None, gt=0)
+    vat_rate: float | None = Field(default=None, ge=0, le=100)
     title: str | None = Field(default=None, max_length=200)
     subject: str | None = Field(default=None, max_length=200)
     date: str | None = Field(default=None, max_length=20)

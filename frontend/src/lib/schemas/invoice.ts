@@ -217,6 +217,7 @@ export const invoiceReadSchema = z.object({
   nr: z.string().nullable().optional(),
   title: z.string().default("Rechnung"),
   subject: z.string().default(""),
+  intro_text: z.string().default(""),
   date: z.string().default(""),
   delivery_date: z.string().default(""),
   valid_until: z.string().default(""),

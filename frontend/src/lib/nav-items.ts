@@ -25,12 +25,12 @@ export interface NavItem {
 }
 
 export const navItems: readonly NavItem[] = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/" },
+  { id: "dashboard", label: "Start", icon: LayoutDashboard, to: "/" },
   { id: "invoices", label: "Rechnungen", icon: FileText, to: "/invoices" },
   { id: "quotes", label: "Angebote", icon: FileSignature, to: "/quotes" },
   { id: "customers", label: "Kunden", icon: Users, to: "/customers" },
   { id: "documents", label: "Belege", icon: Folder, to: "/documents" },
   { id: "ledger", label: "Buchhaltung", icon: BookOpen, to: "/ledger" },
-  { id: "exports", label: "Exports", icon: Download, to: "/exports" },
+  { id: "exports", label: "Export", icon: Download, to: "/exports" },
   { id: "settings", label: "Einstellungen", icon: Settings, to: "/settings" },
 ] as const;

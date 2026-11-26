@@ -142,7 +142,7 @@ def test_a_rejected_quote_cannot_be_changed(artist_api):
 
 def test_an_expired_quote_can_extend_its_validity(artist_api):
     client, _company, payload, _session = artist_api
-    quote = _create_quote(client, payload, valid_until="2020-01-31")
+    quote = _create_quote(client, payload, date="2020-01-01", valid_until="2020-01-31")
 
     response = client.post(f"/api/invoices/{quote['id']}/extend-validity")
 
@@ -155,7 +155,7 @@ def test_an_expired_quote_can_extend_its_validity(artist_api):
 @pytest.mark.parametrize("status", ["ACCEPTED", "REJECTED"])
 def test_a_decided_quote_keeps_its_validity(artist_api, status):
     client, _company, payload, _session = artist_api
-    quote = _create_quote(client, payload, valid_until="2020-01-31")
+    quote = _create_quote(client, payload, date="2020-01-01", valid_until="2020-01-31")
     assert _set_status(client, quote["id"], status).status_code == 200
 
     response = client.post(f"/api/invoices/{quote['id']}/extend-validity")

@@ -112,7 +112,7 @@ test("a11y: Neues Angebot", async ({ page }) => {
 
 test("a11y: Rechnungsseite", async ({ page }) => {
   await page.goto("/invoices/43");
-  await expect(page.getByRole("heading", { level: 1, name: /Rechnung #10000/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /Abschlagsrechnung 10000/ })).toBeVisible();
   await expect(page).toHaveTitle("Rechnung 10000 · FixundFertig");
   await expectNoSeriousViolations(page);
 });

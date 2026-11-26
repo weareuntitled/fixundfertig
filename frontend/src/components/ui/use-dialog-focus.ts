@@ -28,12 +28,15 @@ function focusables(container: HTMLElement): HTMLElement[] {
 interface Options {
   /** Called on Escape. Leave it out while a running step must not be interrupted. */
   onEscape?: () => void;
+  suspended?: boolean;
 }
 
-export function useDialogFocus<T extends HTMLElement = HTMLElement>(open: boolean, { onEscape }: Options = {}) {
+export function useDialogFocus<T extends HTMLElement = HTMLElement>(open: boolean, { onEscape, suspended = false }: Options = {}) {
   const ref = useRef<T>(null);
   const onEscapeRef = useRef(onEscape);
   onEscapeRef.current = onEscape;
+  const suspendedRef = useRef(suspended);
+  suspendedRef.current = suspended;
   // Captured while rendering the opening frame: by the time effects run, autoFocus has already moved focus.
   const triggerRef = useRef<HTMLElement | null>(null);
   const wasOpen = useRef(false);
@@ -43,7 +46,7 @@ export function useDialogFocus<T extends HTMLElement = HTMLElement>(open: boolea
   wasOpen.current = open;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || suspended) return;
     const trigger = triggerRef.current;
     const container = ref.current;
     if (!container) return;
@@ -90,9 +93,9 @@ export function useDialogFocus<T extends HTMLElement = HTMLElement>(open: boolea
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("focusin", onFocusIn);
-      if (trigger && trigger.isConnected) trigger.focus();
+      if (!suspendedRef.current && trigger && trigger.isConnected) trigger.focus();
     };
-  }, [open]);
+  }, [open, suspended]);
 
   return ref;
 }

@@ -81,6 +81,16 @@ describe("QuotePaymentPlanCard", () => {
     ]);
   });
 
+  it("keeps changes when discarding the payment plan is declined", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await renderCard();
+    fireEvent.click(screen.getByRole("button", { name: "Zahlungsplan bearbeiten" }));
+    fireEvent.change(screen.getByLabelText("Prozent Rate 1"), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText("Prozent Rate 1")).toHaveValue(30);
+  });
+
   it("blocks a plan over 100 % and says why", async () => {
     await renderCard();
     fireEvent.click(screen.getByRole("button", { name: "Zahlungsplan bearbeiten" }));
