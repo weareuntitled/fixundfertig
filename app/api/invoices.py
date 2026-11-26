@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
+from sqlalchemy.orm import object_session
 
 from data import Company, Customer, Document, Invoice, InvoiceItem as InvoiceItemModel
 from data import DocumentType, InvoiceAttachment, InvoiceRevision, InvoiceStatus
@@ -41,7 +42,7 @@ from logic.document_status import (
     is_accepted_quote,
     status_not_allowed_reason,
 )
-from logic.final_invoice import issued_down_payments
+from logic.final_invoice import final_invoice_totals, invoice_net, issued_down_payments
 from logic.quote_conversion import (
     DownPaymentConflict,
     FinalInvoiceConflict,
@@ -55,6 +56,8 @@ from schemas.invoice import (
     DownPaymentRequest,
     InvoiceAttachmentCreate,
     InvoiceAttachmentRead,
+    FinalBreakdownRead,
+    FinalDeductionRead,
     InvoiceDraft,
     InvoiceItem,
     InvoiceRead,
@@ -263,6 +266,22 @@ def _ensure_quote_editable(invoice: Invoice) -> None:
         )
 
 
+def _final_breakdown(invoice: Invoice) -> FinalBreakdownRead | None:
+    """Gesamtleistung, Abzüge und Restbetrag einer Schlussrechnung; None für andere Dokumente."""
+    if not getattr(invoice, "is_final_invoice", False) or not getattr(invoice, "quote_id", None):
+        return None
+    session = object_session(invoice)
+    if session is None:
+        return None
+    rows = issued_down_payments(session, int(invoice.quote_id))
+    totals = final_invoice_totals(invoice_net(invoice), document_vat_rate(invoice), rows)
+    return FinalBreakdownRead(
+        net=totals["net"], tax=totals["tax"], gross=totals["gross"],
+        deductions=[FinalDeductionRead(**row.as_dict()) for row in rows],
+        rest_net=totals["rest_net"], rest_tax=totals["rest_tax"], rest=totals["rest"],
+    )
+
+
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
     """Convert SQLModel Invoice + Items to InvoiceRead (Pydantic)."""
     items: list[InvoiceItem] = []
@@ -303,6 +322,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
             else None
         ),
         is_final_invoice=bool(getattr(invoice, "is_final_invoice", False)),
+        final_breakdown=_final_breakdown(invoice),
         linked_invoices=[
             LinkedInvoiceRead(
                 id=int(linked.id),

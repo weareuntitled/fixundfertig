@@ -321,3 +321,29 @@ def test_customer_mails_address_the_customer_formally(artist_api, monkeypatch):
             assert "Das macht" not in body
             for informal in (" du ", " dein", " dir ", " dich "):
                 assert informal not in body.lower()
+
+
+# ---- Rechnungsseite
+
+
+def test_final_invoice_read_carries_total_deductions_and_rest(artist_api):
+    client, company, payload, session = artist_api
+    _quote, down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+
+    breakdown = client.get(f"/api/invoices/{final['id']}").json()["final_breakdown"]
+
+    assert breakdown == {
+        "net": 4000.0, "tax": 760.0, "gross": 4760.0,
+        "deductions": [{
+            "id": down_payment["id"], "nr": down_payment["nr"], "date": date.today().isoformat(),
+            "net": 2000.0, "tax": 380.0, "total": 2380.0,
+        }],
+        "rest_net": 2000.0, "rest_tax": 380.0, "rest": 2380.0,
+    }
+
+
+def test_other_documents_have_no_final_breakdown(artist_api):
+    client, _company, payload, _session = artist_api
+    created = _post(client, "/api/invoices", payload)
+
+    assert client.get(f"/api/invoices/{created['id']}").json()["final_breakdown"] is None
