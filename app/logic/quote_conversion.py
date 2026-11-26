@@ -7,6 +7,7 @@ trägt zusätzlich `down_payment_index` = Index der abgerechneten Rate im Zahlun
 from __future__ import annotations
 
 from datetime import date
+import json
 from typing import Any
 
 from sqlmodel import Session, select
@@ -221,6 +222,7 @@ def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
         intro_text=quote_reference_intro(quote, company),
     )
     invoice.is_final_invoice = True
+    invoice.final_deductions_json = json.dumps([row.as_dict() for row in rows], ensure_ascii=False)
     invoice.vat_rate = vat_percent
 
     net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in invoice.items)

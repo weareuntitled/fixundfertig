@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import pytest
 from datetime import date
 from io import BytesIO
 
@@ -351,3 +352,375 @@ def test_other_documents_have_no_final_breakdown(artist_api):
     created = _post(client, "/api/invoices", payload)
 
     assert client.get(f"/api/invoices/{created['id']}").json()["final_breakdown"] is None
+
+
+def test_final_invoice_keeps_original_deductions_after_cancellation(artist_api, monkeypatch):
+    client, company, payload, session = artist_api
+    _quote, down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    before = client.get(f"/api/invoices/{final['id']}").json()
+    result = client.put(f"/api/invoices/{down_payment['id']}/status", json={"status": "CANCELLED"})
+    assert result.status_code == 200, result.text
+    session.expire_all()
+    after = client.get(f"/api/invoices/{final['id']}").json()
+    assert after["total_brutto"] == 2380.0
+    assert after["final_breakdown"] == before["final_breakdown"]
+    assert client.post(f"/api/invoices/{final['id']}/regenerate-pdf").status_code == 200
+    text = _flat(_pdf(client, final["id"]))
+    assert f"abzüglich Abschlagsrechnung {down_payment['nr']}" in text
+    assert "2.380,00" in text
+    mail = _mail_for(client, session, monkeypatch, payload, final["id"])
+    assert f"abzüglich Abschlagsrechnung {down_payment['nr']}" in mail["text"]
+    assert "Restbetrag: 2.380,00 €" in mail["text"]
+
+
+def test_detached_final_email_uses_snapshot_and_rejects_unknown_history(artist_api):
+    from services.invoice_email import build_invoice_email
+
+    client, company, payload, session = artist_api
+    _quote, down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    invoice = session.get(invoices.Invoice, final["id"])
+    customer = session.get(invoices.Customer, payload["customer_id"])
+    # Public renderer must work without a caller looking up today's linked invoices.
+    list(invoice.items)
+    session.expunge(invoice)
+    mail = build_invoice_email(company=company, customer=customer, invoice=invoice)
+    assert f"abzüglich Abschlagsrechnung {down_payment['nr']}" in mail.text
+    assert "Restbetrag: 2.380,00 €" in mail.text
+    invoice.final_deductions_json = None
+    with pytest.raises(ValueError, match="prüfen"):
+        build_invoice_email(company=company, customer=customer, invoice=invoice)
+
+
+def test_final_header_edit_keeps_saved_tax_and_deductions_after_company_change(artist_api, monkeypatch):
+    client, company, payload, session = artist_api
+    _quote, down, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    company.is_small_business = True
+    session.add(company)
+    session.commit()
+    assert client.put(f"/api/invoices/{down['id']}/status", json={"status": "CANCELLED"}).status_code == 200
+    updated = client.put(f"/api/invoices/{final['id']}", json={"subject": "Relaunch"})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["final_breakdown"]["rest"] == 2380
+    text = _flat(_pdf(client, final["id"]))
+    assert "4.760,00" in text
+    assert "2.380,00" in text
+    mail = _mail_for(client, session, monkeypatch, payload, final["id"])
+    assert "Gesamtleistung: 4.760,00 €" in mail["text"]
+    assert "Kleinunternehmer" not in mail["text"]
+
+
+def test_public_renderers_take_snapshot_even_when_caller_supplies_other_deductions(artist_api):
+    from renderer import render_invoice_to_pdf_bytes
+    from services.invoice_email import build_invoice_email
+
+    client, company, payload, session = artist_api
+    _quote, down, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    invoice = session.get(invoices.Invoice, final["id"])
+    customer = session.get(invoices.Customer, payload["customer_id"])
+    document = invoice.model_dump() | {"items": [item.model_dump() for item in invoice.items]}
+    text = _flat(render_invoice_to_pdf_bytes(document, company=company, customer=customer, down_payments=[]))
+    assert f"abzüglich Abschlagsrechnung {down['nr']}" in text
+    assert "2.380,00" in text
+    mail = build_invoice_email(invoice=document, company=company, customer=customer, down_payments=[])
+    assert f"abzüglich Abschlagsrechnung {down['nr']}" in mail.text
+    document["final_deductions_json"] = None
+    with pytest.raises(ValueError, match="prüfen"):
+        render_invoice_to_pdf_bytes(document, company=company, down_payments=[])
+    with pytest.raises(ValueError, match="prüfen"):
+        build_invoice_email(invoice=document, company=company, customer=customer, down_payments=[])
+
+
+def test_historical_final_download_keeps_file_backed_pdf(artist_api, tmp_path):
+    client, company, payload, session = artist_api
+    _quote, _down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    stored = _pdf(client, final["id"])
+    path = tmp_path / "historical-final.pdf"
+    path.write_bytes(stored)
+    invoice = session.get(invoices.Invoice, final["id"])
+    invoice.pdf_bytes = None
+    invoice.pdf_filename = str(path)
+    invoice.final_deductions_json = None
+    session.add(invoice)
+    session.commit()
+    assert _pdf(client, final["id"]) == stored
+    assert client.get(f"/api/invoices/{final['id']}/preview-pdf").content == stored
+    assert path.read_bytes() == stored
+
+
+def test_legacy_pdf_api_preserves_saved_final_and_blocks_unknown_history(artist_api, monkeypatch, tmp_path):
+    from contextlib import contextmanager
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    import viewer
+
+    client, company, payload, session = artist_api
+    _quote, _down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    stored = _pdf(client, final["id"])
+    invoice = session.get(invoices.Invoice, final["id"])
+    invoice.final_deductions_json = None
+    company.user_id = 1
+    session.add(invoice)
+    session.add(company)
+    session.commit()
+
+    @contextmanager
+    def get_session():
+        yield session
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(viewer, "get_session", get_session)
+    monkeypatch.setattr(viewer, "require_auth", lambda: True)
+    monkeypatch.setattr(viewer, "get_current_user_id", lambda _session: 1)
+    viewer._invoice_pdf_cache.clear()
+    app = FastAPI()
+    app.add_api_route("/api/invoices/{invoice_id}/pdf", viewer.invoice_pdf)
+    with TestClient(app) as legacy:
+        assert legacy.get(f"/api/invoices/{final['id']}/pdf").content == stored
+        assert not (tmp_path / "storage").exists()
+        invoice.pdf_bytes = None
+        session.add(invoice)
+        session.commit()
+        viewer._invoice_pdf_cache.clear()
+        blocked = legacy.get(f"/api/invoices/{final['id']}/pdf")
+        assert blocked.status_code == 409, blocked.text
+        assert "prüfen" in blocked.json()["detail"]
+        assert not (tmp_path / "storage").exists()
+
+
+def test_final_pdf_export_never_falls_back_to_an_ordinary_invoice(artist_api):
+    from logic.exports import export_invoices_pdf_zip
+    from zipfile import ZipFile
+
+    client, company, payload, session = artist_api
+    _quote, down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    invoice = session.get(invoices.Invoice, final["id"])
+    snapshot = invoice.final_deductions_json
+    stored = _pdf(client, final["id"])
+    invoice.final_deductions_json = None
+    session.add(invoice)
+    session.commit()
+    archive = export_invoices_pdf_zip(session, company.id, [final["id"]])
+    with ZipFile(BytesIO(archive)) as files:
+        assert files.read(files.namelist()[0]) == stored
+    invoice.pdf_bytes = None
+    session.add(invoice)
+    session.commit()
+    with pytest.raises(ValueError, match="prüfen"):
+        export_invoices_pdf_zip(session, company.id, [final["id"]])
+    invoice.final_deductions_json = snapshot
+    session.add(invoice)
+    session.commit()
+    archive = export_invoices_pdf_zip(session, company.id, [final["id"]])
+    with ZipFile(BytesIO(archive)) as files:
+        text = _flat(files.read(files.namelist()[0]))
+        assert f"abzüglich Abschlagsrechnung {down_payment['nr']}" in text
+        assert "2.380,00" in text
+
+
+def test_historical_final_invoice_preserves_pdf_and_blocks_changes(artist_api, monkeypatch):
+    client, company, payload, session = artist_api
+    _quote, down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    stored = _pdf(client, final["id"])
+    invoice = session.get(invoices.Invoice, final["id"])
+    invoice.final_deductions_json = None
+    session.add(invoice)
+    session.commit()
+    assert client.get(f"/api/invoices/{final['id']}").json()["final_breakdown"] is None
+    assert _pdf(client, final["id"]) == stored
+    assert client.get(f"/api/invoices/{final['id']}/preview-pdf").content == stored
+    for response in (
+        client.post(f"/api/invoices/{final['id']}/regenerate-pdf"),
+        client.put(f"/api/invoices/{final['id']}", json={"subject": "Changed"}),
+        client.put(f"/api/invoices/{final['id']}/items/{final['items'][0]['id']}",
+                   json={"description": "Website", "quantity": 1, "unit_price": 5000}),
+    ):
+        assert response.status_code == 409, response.text
+        assert "prüfen" in response.json()["detail"]
+    customer = session.get(invoices.Customer, payload["customer_id"])
+    customer.email = "kunde@example.com"
+    session.add(customer)
+    session.commit()
+    sent = []
+    monkeypatch.setattr(invoices, "send_email", lambda **kwargs: sent.append(kwargs) or True)
+    response = client.post(f"/api/invoices/{final['id']}/send")
+    assert response.status_code == 409, response.text
+    assert sent == []
+    assert client.put(f"/api/invoices/{down_payment['id']}/status", json={"status": "CANCELLED"}).status_code == 200
+    assert _pdf(client, final["id"]) == stored
+    assert client.get(f"/api/invoices/{final['id']}").json()["total_brutto"] == 2380
+    invoice = session.get(invoices.Invoice, final["id"])
+    invoice.pdf_bytes = None
+    session.add(invoice)
+    session.commit()
+    assert client.get(f"/api/invoices/{final['id']}/download").status_code == 409
+
+
+@pytest.mark.parametrize("mutation", ["header", "add", "edit", "remove", "cancel", "bulk_cancel", "delete"])
+@pytest.mark.parametrize("historical", [False, True])
+def test_linked_mutations_preserve_final_history_after_reload(artist_api, mutation, historical):
+    client, company, payload, session = artist_api
+    _quote, down, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    invoice = session.get(invoices.Invoice, final["id"])
+    if historical:
+        invoice.final_deductions_json = None
+        session.add(invoice)
+        session.commit()
+    before = client.get(f"/api/invoices/{final['id']}").json()
+    stored = _pdf(client, final["id"])
+    base = f"/api/invoices/{down['id']}"
+    item = {"description": "Geändert", "quantity": 1, "unit_price": 1000}
+    if mutation == "header":
+        response = client.put(base, json={"date": "2026-01-01", "subject": "Geändert"})
+    elif mutation == "add":
+        response = client.post(base + "/items", json=item)
+    elif mutation == "edit":
+        response = client.put(base + f"/items/{down['items'][0]['id']}", json=item)
+    elif mutation == "remove":
+        response = client.delete(base + f"/items/{down['items'][0]['id']}")
+    elif mutation == "cancel":
+        response = client.put(base + "/status", json={"status": "CANCELLED"})
+    elif mutation == "bulk_cancel":
+        response = client.post("/api/invoices/bulk-status", json={"invoice_ids": [down["id"]], "status": "CANCELLED"})
+    else:
+        response = client.delete(base)
+    assert response.status_code in (200, 201), response.text
+    session.expunge_all()
+    after = client.get(f"/api/invoices/{final['id']}").json()
+    assert after["total_brutto"] == 2380
+    assert after["final_breakdown"] == before["final_breakdown"]
+    assert after["revision_nr"] == before["revision_nr"]
+    assert _pdf(client, final["id"]) == stored
+    invoice = session.get(invoices.Invoice, final["id"])
+    list(invoice.items)
+    session.expunge(invoice)
+    if historical:
+        with pytest.raises(ValueError, match="prüfen"):
+            invoices.recompute_total_brutto(invoice, 19)
+    else:
+        invoices.recompute_total_brutto(invoice, 19)
+        assert invoice.total_brutto == 2380
+        assert before["final_breakdown"]["deductions"][0]["nr"] == down["nr"]
+
+
+@pytest.mark.parametrize("snapshot", [None, "broken", "{}", "null", '[{"id":1}]',
+    '[{"id":1,"nr":"10000","date":"2026-01-01","net":2000,"tax":380,"total":NaN}]',
+    '[{"id":1,"nr":"10000","date":"2026-01-01","net":2000,"tax":380,"total":2000}]',
+    '[{"id":1,"nr":"10000","net":2000,"tax":380,"total":2380}]',
+])
+def test_unreliable_snapshot_blocks_every_write_without_touching_saved_pdf(artist_api, snapshot, monkeypatch):
+    client, company, payload, session = artist_api
+    _quote, _down, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    invoice = session.get(invoices.Invoice, final["id"])
+    invoice.final_deductions_json = snapshot
+    customer = session.get(invoices.Customer, payload["customer_id"])
+    customer.email = "kunde@example.com"
+    session.add(invoice)
+    session.add(customer)
+    session.commit()
+    stored = _pdf(client, final["id"])
+    before = client.get(f"/api/invoices/{final['id']}").json()
+    sent = []
+    monkeypatch.setattr(invoices, "send_email", lambda **kwargs: sent.append(kwargs) or True)
+    base = f"/api/invoices/{final['id']}"
+    for method, path, body in [
+        ("post", "/regenerate-pdf", None), ("post", "/send", None),
+        ("put", "", {"subject": "Geändert"}),
+        ("post", "/items", {"description": "Extra", "quantity": 1, "unit_price": 100}),
+        ("put", f"/items/{final['items'][0]['id']}", {"description": "Extra", "quantity": 2, "unit_price": 100}),
+        ("delete", f"/items/{final['items'][0]['id']}", None),
+    ]:
+        response = client.request(method, base + path, json=body)
+        assert response.status_code == 409, response.text
+        assert "prüfen" in response.json()["detail"]
+    assert sent == []
+    session.expire_all()
+    assert client.get(base).json() == before
+    assert _pdf(client, final["id"]) == stored
+
+
+def test_legacy_email_uses_snapshot_and_blocks_unreviewed_history(artist_api, monkeypatch):
+    from contextlib import contextmanager
+    from pages import _shared as shared
+
+    client, company, payload, session = artist_api
+    _quote, down, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    invoice = session.get(invoices.Invoice, final["id"])
+    customer = session.get(invoices.Customer, payload["customer_id"])
+    customer.email = "kunde@example.com"
+    session.add(customer)
+    session.commit()
+    sent, notices = [], []
+
+    @contextmanager
+    def get_session():
+        yield session
+
+    monkeypatch.setattr(shared, "get_session", get_session)
+    monkeypatch.setattr(shared, "send_email", lambda **kwargs: sent.append(kwargs) or True)
+    monkeypatch.setattr(shared.ui, "notify", lambda message, **kwargs: notices.append(message))
+    shared.send_invoice_email(company, customer, invoice)
+    assert f"abzüglich Abschlagsrechnung {down['nr']}" in sent[0]["text"]
+    assert "Restbetrag: 2.380,00 €" in sent[0]["text"]
+    invoice.final_deductions_json = None
+    shared.send_invoice_email(company, customer, invoice)
+    assert len(sent) == 1
+    assert "prüfen" in notices[-1]
+    with pytest.raises(ValueError, match="prüfen"):
+        shared.build_invoice_mailto(company, customer, invoice)
+
+
+def test_final_snapshot_survives_database_reopen_and_startup(artist_api, tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlmodel import Session, SQLModel, create_engine
+    import db
+    import dependencies
+
+    _client, template_company, payload, source_session = artist_api
+    engine = create_engine(f"sqlite:///{tmp_path / 'snapshot.db'}", connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine)
+    company = invoices.Company(**template_company.model_dump())
+    company.is_small_business = False
+    customer = invoices.Customer(**source_session.get(invoices.Customer, payload["customer_id"]).model_dump())
+    customer.email = "kunde@example.com"
+    with Session(engine) as session:
+        session.add(company)
+        session.add(customer)
+        session.commit()
+
+    def db_session():
+        with Session(engine) as session:
+            yield session
+
+    def current_company():
+        with Session(engine) as session:
+            return session.get(invoices.Company, template_company.id)
+
+    app = FastAPI()
+    app.include_router(invoices.router)
+    app.dependency_overrides[dependencies.db_session] = db_session
+    app.dependency_overrides[dependencies.get_current_company] = current_company
+    app.dependency_overrides[dependencies.require_session_auth] = lambda: 1
+    sent = []
+    monkeypatch.setattr(invoices, "send_email", lambda **kwargs: sent.append(kwargs) or True)
+    with TestClient(app) as client:
+        quote = _create_quote(client, payload, vat_rate=19)
+        down = _post(client, f"/api/invoices/{quote['id']}/down-payment", {"installment_index": 0})
+        _send(client, down["id"])
+        final = _post(client, f"/api/invoices/{quote['id']}/final-invoice")
+        stored = _pdf(client, final["id"])
+        assert client.delete(f"/api/invoices/{down['id']}").status_code == 200
+        engine.dispose()
+        # Startup must preserve the existing snapshot, rather than backfill from today's links.
+        db.ensure_invoice_quote_fields(engine)
+        after = client.get(f"/api/invoices/{final['id']}").json()
+        assert after["final_breakdown"] == final["final_breakdown"]
+        assert after["total_brutto"] == 2380
+        assert _pdf(client, final["id"]) == stored
+        assert client.post(f"/api/invoices/{final['id']}/regenerate-pdf").status_code == 200
+        text = _flat(_pdf(client, final["id"]))
+        assert f"abzüglich Abschlagsrechnung {down['nr']}" in text
+        assert "2.380,00" in text
+        assert client.post(f"/api/invoices/{final['id']}/send").status_code == 200
+        assert f"abzüglich Abschlagsrechnung {down['nr']}" in sent[0]["text"]
+    engine.dispose()

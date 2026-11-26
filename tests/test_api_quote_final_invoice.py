@@ -77,8 +77,26 @@ def test_startup_adds_the_final_invoice_marker_column(tmp_path):
     db.ensure_invoice_quote_fields(engine)
 
     with engine.begin() as conn:
-        row = conn.exec_driver_sql("SELECT is_final_invoice FROM invoice").fetchone()
-    assert tuple(row) == (0,)
+        row = conn.exec_driver_sql("SELECT is_final_invoice, final_deductions_json, customer_id, date FROM invoice").fetchone()
+    assert tuple(row) == (0, None, 1, "2025-01-01")
+    db.ensure_invoice_quote_fields(engine)
+
+
+def test_startup_does_not_guess_historical_final_deductions_or_replace_pdf(tmp_path):
+    from sqlmodel import create_engine
+    import db
+
+    engine = create_engine(f"sqlite:///{tmp_path}/historical.db")
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE invoice (id INTEGER PRIMARY KEY, is_final_invoice INTEGER, total_brutto REAL, pdf_bytes BLOB)")
+        conn.exec_driver_sql("INSERT INTO invoice VALUES (1, 1, 2380, ?)", (b"%PDF historical original",))
+    db.ensure_invoice_quote_fields(engine)
+    db.ensure_invoice_quote_fields(engine)
+    engine.dispose()
+    with engine.connect() as conn:
+        row = conn.exec_driver_sql("SELECT is_final_invoice, total_brutto, pdf_bytes, final_deductions_json FROM invoice").fetchone()
+    assert tuple(row) == (1, 2380, b"%PDF historical original", None)
+    engine.dispose()
 
 
 def test_final_invoice_deducts_only_sent_and_not_cancelled_down_payments(artist_api):
@@ -225,8 +243,8 @@ def test_a_sent_down_payment_qualifies_a_final_invoice_and_is_deducted(artist_ap
     assert invoice["total_brutto"] == 2380.0
 
 
-def test_deleting_a_down_payment_frees_the_rest_amount(artist_api):
-    """Eine gelöschte Abschlagsrechnung wird nicht mehr abgezogen."""
+def test_deleting_a_down_payment_keeps_the_final_snapshot(artist_api):
+    """Ein späteres Löschen ändert den ursprünglichen Abzug nicht."""
     client, company, payload, session = artist_api
     _standard_company(company, session)
 
@@ -240,11 +258,11 @@ def test_deleting_a_down_payment_frees_the_rest_amount(artist_api):
 
     assert deleted.status_code == 200, deleted.text
     refreshed = client.get(f"/api/invoices/{invoice['id']}").json()
-    assert refreshed["total_brutto"] == 4760.0
+    assert refreshed["total_brutto"] == 2380.0
 
 
-def test_changing_the_amount_of_a_down_payment_moves_the_rest_amount(artist_api):
-    """Der Betrag der Abschlagsrechnung verschiebt den Restbetrag der Schlussrechnung."""
+def test_changing_the_amount_of_a_down_payment_keeps_the_final_snapshot(artist_api):
+    """Spätere Änderungen verschieben den Restbetrag nicht."""
     client, company, payload, session = artist_api
     _standard_company(company, session)
     quote = _create_quote(client, payload, vat_rate=19)
@@ -261,8 +279,7 @@ def test_changing_the_amount_of_a_down_payment_moves_the_rest_amount(artist_api)
 
     assert changed.status_code == 200, changed.text
     refreshed = client.get(f"/api/invoices/{invoice['id']}").json()
-    # 4.000 netto + 760 Steuer − (1.000 netto + 190 Steuer) = 3.570 Restbetrag.
-    assert refreshed["total_brutto"] == 3570.0
+    assert refreshed["total_brutto"] == 2380.0
 
 
 def test_only_quotes_can_become_a_final_invoice(artist_api):

@@ -35,6 +35,8 @@ from styles import (
 
 
 from services.email import send_email
+from services.invoice_email import build_invoice_email
+from services.invoice_pdf import stored_invoice_pdf
 
 # Re-export everything from extracted modules
 from pages.shared_helpers import (  # noqa: F401
@@ -153,6 +155,10 @@ def download_invoice_file(invoice: Invoice) -> None:
 
 
 def build_invoice_mailto(comp: Company | None, customer: Customer | None, invoice: Invoice) -> str:
+    if invoice.is_final_invoice:
+        email = build_invoice_email(company=comp, customer=customer, invoice=invoice)
+        recipient = customer.email if customer and customer.email else ""
+        return f"mailto:{recipient}?{urlencode({'subject': email.subject, 'body': email.text})}"
     subject = f"Rechnung {invoice.nr or ''}".strip()
     amount = f"{float(invoice.total_brutto or 0):,.2f} EUR"
 
@@ -175,6 +181,13 @@ def build_invoice_mailto(comp: Company | None, customer: Customer | None, invoic
 
 
 def send_invoice_email(comp: Company | None, customer: Customer | None, invoice: Invoice) -> None:
+    final_email = None
+    if invoice.is_final_invoice:
+        try:
+            final_email = build_invoice_email(company=comp, customer=customer, invoice=invoice)
+        except ValueError as exc:
+            ui.notify(str(exc), color="red")
+            return
     if not customer or not customer.email:
         ui.notify("Keine Email-Adresse beim Kunden hinterlegt", color="red")
         return
@@ -184,7 +197,7 @@ def send_invoice_email(comp: Company | None, customer: Customer | None, invoice:
         company = s.exec(select(Company)).first() or comp or Company()
 
     filename = build_invoice_filename(company, invoice, customer_db) if invoice.nr else "rechnung.pdf"
-    pdf_bytes = invoice.pdf_bytes
+    pdf_bytes = stored_invoice_pdf(invoice)
     if not pdf_bytes:
         pdf_bytes = render_invoice_to_pdf_bytes(invoice)
 
@@ -201,6 +214,8 @@ def send_invoice_email(comp: Company | None, customer: Customer | None, invoice:
             (comp.name if comp else "").strip(),
         ]
     ).strip()
+    if final_email is not None:
+        subject, body = final_email.subject, final_email.text
 
     try:
         sent = send_email(

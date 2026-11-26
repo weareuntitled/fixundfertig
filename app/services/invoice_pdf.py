@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas
-
-from models.schema import is_issued_status
 
 from .invoice_pdf_layout import (
     FONTS, LAYOUT, InvItem, format_date, format_money, format_service_period, get_attr, is_quote, payment_due_date, safe_float, safe_str,
@@ -17,6 +16,22 @@ from .invoice_pdf_draw import (
     company_legal_name, uses_artist_wordmark,
 )
 from .payment_plan import format_percent, installments_with_amounts
+
+
+def stored_invoice_pdf(invoice) -> bytes | None:
+    """Read an existing PDF without regenerating or replacing historical output."""
+    if getattr(invoice, "pdf_bytes", None):
+        return bytes(invoice.pdf_bytes)
+    filename = getattr(invoice, "pdf_filename", None)
+    if isinstance(filename, str) and filename.strip():
+        path = Path(filename)
+        if not path.is_absolute() and not filename.startswith("storage/"):
+            path = Path("storage/invoices") / path
+        try:
+            return path.read_bytes() or None
+        except OSError:
+            pass
+    return None
 
 
 def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payments=None) -> bytes:
@@ -62,13 +77,16 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
     is_final_invoice = bool(get_attr(invoice, "is_final_invoice", default=False))
 
     net = round(sum(i.quantity * i.unit_price for i in items), 2)
-    tax_rate = 0.0 if is_small_business else _vat_rate(invoice, net)
+    tax_rate = (safe_float(get_attr(invoice, "vat_rate", default=0)) / 100.0
+                if is_final_invoice else (0.0 if is_small_business else _vat_rate(invoice, net)))
+    if is_final_invoice and tax_rate > 0:
+        is_small_business = False
     tax = round(net * tax_rate, 2)
 
     deductions: list[dict] = []
     if is_final_invoice:
-        if down_payments is None:
-            down_payments = _down_payments_from_quote(invoice)
+        from logic.final_invoice import final_deductions
+        down_payments = [row.as_dict() for row in final_deductions(invoice)]
         for row in (down_payments or []):
             if isinstance(row, dict):
                 deductions.append({
@@ -210,42 +228,6 @@ def _vat_rate(invoice, net: float) -> float:
     if net > 0 and gross > net + 0.005:
         return round((gross - net) / net, 3)
     return 0.0
-
-
-def _down_payments_from_quote(invoice) -> list[dict]:
-    """Best effort for callers without a session: read the quote's issued down payments.
-
-    The API passes the rows explicitly; this only keeps a detached live render honest.
-    """
-    try:
-        quote = get_attr(invoice, "quote", default=None)
-        linked = getattr(quote, "quote_invoices", None) or []
-    except Exception:
-        return []
-    rows: list[dict] = []
-    for other in linked:
-        if get_attr(other, "down_payment_index", default=None) is None:
-            continue
-        status = get_attr(other, "status", default="")
-        status = str(getattr(status, "value", status)).upper()
-        if not status or not is_issued_status(status):
-            continue
-        net = round(
-            sum(
-                safe_float(get_attr(it, "quantity")) * safe_float(get_attr(it, "unit_price"))
-                for it in (get_attr(other, "items", default=None) or [])
-            ),
-            2,
-        )
-        total = round(safe_float(get_attr(other, "total_brutto", default=0)), 2)
-        rows.append({
-            "nr": safe_str(get_attr(other, "nr")),
-            "date": safe_str(get_attr(other, "date")),
-            "net": net,
-            "tax": round(max(total - net, 0.0), 2),
-            "total": total,
-        })
-    return rows
 
 
 def _is_name_token_char(char: str) -> bool:

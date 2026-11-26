@@ -36,5 +36,5 @@ def test_quote_pdf_names_itself_and_its_language() -> None:
 
 def test_invoice_kinds_carry_their_own_title() -> None:
     assert _read(_doc(nr="10010", down_payment_index=0)).metadata.title == "Abschlagsrechnung 10010 – Studio Muster"
-    assert _read(_doc(nr="10012", is_final_invoice=True)).metadata.title == "Schlussrechnung 10012 – Studio Muster"
+    assert _read(_doc(nr="10012", is_final_invoice=True, final_deductions_json="[]")).metadata.title == "Schlussrechnung 10012 – Studio Muster"
     assert _read(_doc(nr="10013")).metadata.title == "Rechnung 10013 – Studio Muster"
