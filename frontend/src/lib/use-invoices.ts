@@ -85,6 +85,31 @@ export function useCreateDownPayment() {
   });
 }
 
+/** „Als gesendet markieren“: setzt ein Angebot ohne Mailserver auf „Gesendet“ (#497). */
+export function useMarkQuoteSent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (quoteId: number) => api.post<unknown>(`/api/invoices/${quoteId}/mark-sent`),
+    onSuccess: (_data, quoteId) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoices", quoteId] });
+    },
+  });
+}
+
+/** „Gültigkeit verlängern“: „gültig bis“ = heute + 30 Tage (#497). */
+export function useExtendQuoteValidity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (quoteId: number) =>
+      api.post<{ valid_until: string }>(`/api/invoices/${quoteId}/extend-validity`),
+    onSuccess: (_data, quoteId) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoices", quoteId] });
+    },
+  });
+}
+
 export function useUpdateInvoiceStatus() {
   const qc = useQueryClient();
   return useMutation({

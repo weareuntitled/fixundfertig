@@ -128,8 +128,12 @@ def test_accepted_quote_positions_cannot_be_changed(artist_api):
     assert reread["total_brutto"] == quote["total_brutto"]
 
 
-@pytest.mark.parametrize("value", ["DRAFT", "SENT", "REJECTED"])
+@pytest.mark.parametrize("value", ["DRAFT", "SENT"])
 def test_quotes_that_are_not_accepted_stay_changeable(artist_api, value):
+    """Entwürfe und gesendete Angebote lassen sich ändern.
+
+    Abgelehnte Angebote sind nur noch lesbar (#497, `test_api_quote_decisions.py`).
+    """
     client, _company, payload, _session = artist_api
     quote = _create_quote(client, payload)
     _set_status(client, quote["id"], value)
@@ -139,8 +143,13 @@ def test_quotes_that_are_not_accepted_stay_changeable(artist_api, value):
     assert response.status_code == 200, response.text
 
 
-@pytest.mark.parametrize("target", ["DRAFT", "SENT", "REJECTED"])
+@pytest.mark.parametrize("target", ["DRAFT", "REJECTED"])
 def test_an_accepted_quote_cannot_leave_that_status(artist_api, target):
+    """Angenommen ist endgültig — bis auf das Zurücksetzen auf „Gesendet“.
+
+    Das Zurücksetzen einer Entscheidung ist der dokumentierte Rückweg und geht, solange
+    das Angebot keine Rechnung hat (`test_api_quote_decisions.py`).
+    """
     client, _company, payload, _session = artist_api
     quote = _accepted_quote(client, payload)
 

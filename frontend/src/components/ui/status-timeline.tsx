@@ -2,7 +2,7 @@
  * @schema StatusTimeline
  * @purpose Horizontal stepper showing invoice status progression with visual indicators
  * @input {string} currentStatus - Current invoice status value
- * @output Renders 4-step timeline: Entwurf → Finalisiert → Gesendet → Bezahlt
+ * @output Renders 4-step timeline: Entwurf → Gestellt → Gesendet → Bezahlt
  * @tokens Uses: color-brand, color-brand-text, color-border, color-text-primary, color-text-muted
  */
 import { Check, Circle, Mail, CreditCard } from "lucide-react";
@@ -13,7 +13,7 @@ interface StatusTimelineProps {
 
 const STEPS = [
   { key: "DRAFT", label: "Entwurf", icon: Check },
-  { key: "OPEN", label: "Finalisiert", icon: Circle },
+  { key: "OPEN", label: "Gestellt", icon: Circle },
   { key: "SENT", label: "Gesendet", icon: Mail },
   { key: "PAID", label: "Bezahlt", icon: CreditCard },
 ] as const;

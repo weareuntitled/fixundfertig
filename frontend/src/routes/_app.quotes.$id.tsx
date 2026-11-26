@@ -1,16 +1,30 @@
 /**
  * @schema QuoteDetailPage
  * @purpose One quote: change subject, dates and positions, mark it accepted or rejected, send it,
- *   turn it into an invoice draft, or delete it
+ *   mark it as sent without a mail server, take a decision back, extend its validity, turn it into
+ *   an invoice draft, or delete it
  * @output Header with "PDF herunterladen", "Vorschau", "Angebot senden" (mail dialog with attachments),
  *   "In Rechnung umwandeln" and "Löschen" (no invoice actions), a details card
  *   with status actions and inline editing, the positions with add/edit/remove. An accepted quote is
- *   locked (no editing).
+ *   locked (no editing), a rejected one is read-only.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, ExternalLink, FileText, Lock, Pencil, Send, Trash2, X } from "lucide-react";
+import {
+  CalendarPlus,
+  Check,
+  CheckCheck,
+  Download,
+  ExternalLink,
+  FileText,
+  Lock,
+  Pencil,
+  Send,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -28,7 +42,9 @@ import {
   useConvertQuote,
   useCreateFinalInvoice,
   useDeleteInvoiceItem,
+  useExtendQuoteValidity,
   useInvoice,
+  useMarkQuoteSent,
   useUpdateInvoiceItem,
 } from "@/lib/use-invoices";
 import { useInvoicePreviewPdf } from "@/lib/use-invoice-preview-pdf";
@@ -61,12 +77,16 @@ function QuoteDetailPage() {
   const deleteItem = useDeleteInvoiceItem();
   const convert = useConvertQuote();
   const finalInvoice = useCreateFinalInvoice();
+  const markSent = useMarkQuoteSent();
+  const extendValidity = useExtendQuoteValidity();
   const [header, setHeader] = useState<HeaderDraft | null>(null);
   const [itemDialog, setItemDialog] = useState<{ open: boolean; item?: InvoiceItem }>({ open: false });
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const { data: customer } = useCustomer(quote?.customer_id ?? 0);
   const uploadDocument = useUploadDocument();
   const addAttachment = useAddInvoiceAttachment();
@@ -100,6 +120,7 @@ function QuoteDetailPage() {
     onSuccess: (_data, status) => {
       notify("success", status === "ACCEPTED" ? "Angebot angenommen" : "Angebot abgelehnt");
       setAcceptOpen(false);
+      setRejectOpen(false);
       setHeader(null);
       refresh();
     },
@@ -127,15 +148,41 @@ function QuoteDetailPage() {
       }),
     onSuccess: (data) => {
       setSendOpen(false);
+      setSendError(null);
       notify("success", data?.message || "Angebot gesendet");
       refresh();
     },
-    onError: (err: Error) => notify("error", err.message),
+    // Der Fehler bleibt im Dialog: er steht dort, solange er gelesen werden muss,
+    // und der Dialog bleibt offen (mit dem Ausweg „als gesendet markieren“).
+    onError: (err: Error) => setSendError(err.message),
   });
+
+  const markAsSent = () =>
+    markSent.mutate(quoteId, {
+      onSuccess: () => {
+        setSendOpen(false);
+        setSendError(null);
+        notify("success", "Angebot als gesendet markiert");
+        refresh();
+      },
+      onError: (err: Error) => notify("error", err.message),
+    });
+
+  const extendQuoteValidity = () =>
+    extendValidity.mutate(quoteId, {
+      onSuccess: (data) => {
+        notify("success", `Gültigkeit verlängert bis ${germanDate(data?.valid_until ?? "")}`);
+        refresh();
+      },
+      onError: (err: Error) => notify("error", err.message),
+    });
 
   const openSend = () => {
     if (!customer?.email) notify("error", "Der Kunde hat keine E-Mail-Adresse.");
-    else setSendOpen(true);
+    else {
+      setSendError(null);
+      setSendOpen(true);
+    }
   };
 
   const deleteQuote = useMutation({
@@ -168,7 +215,14 @@ function QuoteDetailPage() {
   const items = quote.items ?? [];
   const linkedInvoices = quote.linked_invoices ?? [];
   const locked = isQuoteLocked(quote);
+  const rejected = quote.status === "REJECTED";
+  // Ein abgelehntes Angebot ist nur noch lesbar: kein Bearbeiten, kein Abrechnen, kein Senden.
+  const readOnly = locked || rejected;
   const decided = quote.status === "ACCEPTED" || quote.status === "REJECTED";
+  const expired = quoteDisplayStatus(quote) === "EXPIRED";
+  // Eine Rechnung macht die Entscheidung endgültig: dann gibt es keinen Rückweg mehr.
+  const hasInvoice = linkedInvoices.some((linked) => linked.status !== "CANCELLED");
+  const canTakeDecisionBack = decided && !hasInvoice;
   const hasFinalInvoice = linkedInvoices.some(
     (linked) => linked.is_final_invoice && linked.status !== "CANCELLED",
   );
@@ -176,11 +230,18 @@ function QuoteDetailPage() {
   const hasIssuedDownPayment = linkedInvoices.some(
     (linked) => linked.is_down_payment && isIssuedStatus(linked.status),
   );
+  // Der Hinweis zur Schlussrechnung steht nur dort, wo er etwas zu tun gibt:
+  // wenn eine Abschlagsrechnung noch Entwurf ist.
+  const draftDownPayment = linkedInvoices.find(
+    (linked) => linked.is_down_payment && linked.status === "DRAFT",
+  );
   const finalInvoiceHint = hasFinalInvoice
     ? "Zu diesem Angebot gibt es bereits eine Schlussrechnung"
-    : hasIssuedDownPayment
-      ? undefined
-      : "Abschlagsrechnung zuerst senden";
+    : draftDownPayment
+      ? `Stellen Sie zuerst die Abschlagsrechnung ${draftDownPayment.nr || `#${draftDownPayment.id}`}; ein Entwurf zählt nicht.`
+      : hasIssuedDownPayment
+        ? undefined
+        : "Eine Schlussrechnung entsteht nur mit einer gestellten Abschlagsrechnung.";
 
   const startEdit = () =>
     setHeader({ subject: quote.subject, date: quote.date, valid_until: quote.valid_until });
@@ -217,45 +278,73 @@ function QuoteDetailPage() {
             <button type="button" onClick={() => setPreviewOpen(true)} className={SECONDARY_BUTTON}>
               <ExternalLink size={16} /> Vorschau
             </button>
-            <button type="button" onClick={openSend} disabled={sendQuote.isPending} className={SECONDARY_BUTTON}>
-              <Send size={16} /> Angebot senden
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                convert.mutate(quoteId, {
-                  onSuccess: (invoice) => {
-                    notify("success", invoice.nr ? `Rechnungsentwurf ${invoice.nr} angelegt` : "Rechnungsentwurf angelegt");
-                    void navigate({ to: "/invoices/$id", params: { id: String(invoice.id) } });
-                  },
-                  onError: (err: Error) => notify("error", err.message),
-                })
-              }
-              disabled={convert.isPending}
-              className={SECONDARY_BUTTON}
-            >
-              <FileText size={16} /> {convert.isPending ? "Wandle um…" : "In Rechnung umwandeln"}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                finalInvoice.mutate(quoteId, {
-                  onSuccess: (invoice) => {
-                    notify(
-                      "success",
-                      invoice.nr ? `Schlussrechnung ${invoice.nr} angelegt` : "Schlussrechnung angelegt",
-                    );
-                    void navigate({ to: "/invoices/$id", params: { id: String(invoice.id) } });
-                  },
-                  onError: (err: Error) => notify("error", err.message),
-                })
-              }
-              disabled={finalInvoice.isPending || hasFinalInvoice || !hasIssuedDownPayment}
-              title={finalInvoiceHint}
-              className={SECONDARY_BUTTON}
-            >
-              <FileText size={16} /> {finalInvoice.isPending ? "Erzeuge…" : "Schlussrechnung"}
-            </button>
+            {!rejected && (
+              <button type="button" onClick={openSend} disabled={sendQuote.isPending} className={SECONDARY_BUTTON}>
+                <Send size={16} /> Angebot senden
+              </button>
+            )}
+            {quote.status === "DRAFT" && (
+              <button
+                type="button"
+                onClick={markAsSent}
+                disabled={markSent.isPending}
+                title="Sie haben das PDF selbst verschickt? Dann markieren Sie das Angebot so als gesendet."
+                className={SECONDARY_BUTTON}
+              >
+                <CheckCheck size={16} /> {markSent.isPending ? "Markiere…" : "Als gesendet markieren"}
+              </button>
+            )}
+            {canTakeDecisionBack && (
+              <button
+                type="button"
+                onClick={markAsSent}
+                disabled={markSent.isPending}
+                title="Die Entscheidung zurücknehmen: das Angebot steht wieder auf „Gesendet“."
+                className={SECONDARY_BUTTON}
+              >
+                <Undo2 size={16} /> {markSent.isPending ? "Nehme zurück…" : "Entscheidung zurücknehmen"}
+              </button>
+            )}
+            {!rejected && (
+              <button
+                type="button"
+                onClick={() =>
+                  convert.mutate(quoteId, {
+                    onSuccess: (invoice) => {
+                      notify("success", invoice.nr ? `Rechnungsentwurf ${invoice.nr} angelegt` : "Rechnungsentwurf angelegt");
+                      void navigate({ to: "/invoices/$id", params: { id: String(invoice.id) } });
+                    },
+                    onError: (err: Error) => notify("error", err.message),
+                  })
+                }
+                disabled={convert.isPending}
+                className={SECONDARY_BUTTON}
+              >
+                <FileText size={16} /> {convert.isPending ? "Wandle um…" : "In Rechnung umwandeln"}
+              </button>
+            )}
+            {!rejected && (
+              <button
+                type="button"
+                onClick={() =>
+                  finalInvoice.mutate(quoteId, {
+                    onSuccess: (invoice) => {
+                      notify(
+                        "success",
+                        invoice.nr ? `Schlussrechnung ${invoice.nr} angelegt` : "Schlussrechnung angelegt",
+                      );
+                      void navigate({ to: "/invoices/$id", params: { id: String(invoice.id) } });
+                    },
+                    onError: (err: Error) => notify("error", err.message),
+                  })
+                }
+                disabled={finalInvoice.isPending || hasFinalInvoice || !hasIssuedDownPayment}
+                title={finalInvoiceHint}
+                className={SECONDARY_BUTTON}
+              >
+                <FileText size={16} /> {finalInvoice.isPending ? "Erzeuge…" : "Schlussrechnung"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setDeleteOpen(true)}
@@ -269,9 +358,17 @@ function QuoteDetailPage() {
         }
       />
 
-      {finalInvoiceHint === "Abschlagsrechnung zuerst senden" && (
-        <p role="status" className="-mt-[var(--space-md)] text-[13px] text-[var(--color-text-secondary)]">
-          Abschlagsrechnung zuerst senden: eine Schlussrechnung gibt es nur mit einer gestellten Abschlagsrechnung.
+      {draftDownPayment && (
+        <p className="-mt-[var(--space-md)] text-[13px] text-[var(--color-text-secondary)]">
+          Die Abschlagsrechnung{" "}
+          <Link
+            to="/invoices/$id"
+            params={{ id: String(draftDownPayment.id) }}
+            className="font-semibold text-[var(--color-brand-text)] hover:underline"
+          >
+            {draftDownPayment.nr || `#${draftDownPayment.id}`}
+          </Link>{" "}
+          ist noch nicht gestellt. Stellen Sie sie, dann zieht die Schlussrechnung die Abschlagsrechnungen ab.
         </p>
       )}
 
@@ -281,7 +378,7 @@ function QuoteDetailPage() {
             <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Angaben</h2>
             <StatusBadge status={quoteDisplayStatus(quote)} />
           </div>
-          {!header && !locked && (
+          {!header && !readOnly && (
             <button type="button" onClick={startEdit} className={SECONDARY_BUTTON}>
               <Pencil size={16} /> Bearbeiten
             </button>
@@ -293,19 +390,37 @@ function QuoteDetailPage() {
             <button type="button" onClick={() => setAcceptOpen(true)} disabled={setStatus.isPending} className={SECONDARY_BUTTON}>
               <Check size={16} /> Angenommen
             </button>
-            <button type="button" onClick={() => setStatus.mutate("REJECTED")} disabled={setStatus.isPending} className={SECONDARY_BUTTON}>
+            <button type="button" onClick={() => setRejectOpen(true)} disabled={setStatus.isPending} className={SECONDARY_BUTTON}>
               <X size={16} /> Abgelehnt
             </button>
           </div>
         )}
 
-        {locked && (
+        {readOnly && (
           <p className="mb-[var(--space-md)] flex items-center gap-2 text-[14px] text-[var(--color-text-secondary)]">
-            <Lock size={14} /> Angenommen – das Angebot ist nicht mehr änderbar.
+            <Lock size={14} />
+            {rejected
+              ? "Abgelehnt – das Angebot ist nur noch lesbar."
+              : "Angenommen – das Angebot ist nicht mehr änderbar."}
           </p>
         )}
 
-        {header && !locked ? (
+        {expired && (
+          <p className="mb-[var(--space-md)] flex flex-wrap items-center gap-2 text-[14px] text-[var(--color-text-secondary)]">
+            <CalendarPlus size={14} />
+            Gültig bis {germanDate(quote.valid_until)} – abgelaufen.
+            <button
+              type="button"
+              onClick={extendQuoteValidity}
+              disabled={extendValidity.isPending}
+              className={SECONDARY_BUTTON}
+            >
+              {extendValidity.isPending ? "Verlängere…" : "Gültigkeit verlängern"}
+            </button>
+          </p>
+        )}
+
+        {header && !readOnly ? (
           <div className="grid gap-[var(--space-sm)] md:grid-cols-3">
             <label className="block text-[14px] font-bold text-[var(--color-text-primary)]">
               Betreff
@@ -349,7 +464,7 @@ function QuoteDetailPage() {
       <div className="overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-sm)]">
           <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Positionen</h2>
-          {!locked && (
+          {!readOnly && (
             <button type="button" onClick={() => setItemDialog({ open: true })} className={SECONDARY_BUTTON}>
               + Position
             </button>
@@ -368,7 +483,7 @@ function QuoteDetailPage() {
                 </p>
               </div>
               <span className="font-mono text-[14px] font-bold">{eur(it.quantity * it.unit_price)}</span>
-              {!locked && (
+              {!readOnly && (
                 <>
                   <button type="button" aria-label={`Position ${index + 1} bearbeiten`} onClick={() => setItemDialog({ open: true, item: it })} className={ICON_BUTTON}>
                     <Pencil size={16} />
@@ -397,6 +512,7 @@ function QuoteDetailPage() {
         gross={quote.total_brutto}
         plan={quote.payment_plan ?? []}
         locked={locked}
+        readOnly={rejected}
         invoices={linkedInvoices}
       />
 
@@ -454,18 +570,62 @@ function QuoteDetailPage() {
         uploading={uploadDocument.isPending || addAttachment.isPending}
         onAddFile={addFileAsAttachment}
         pending={sendQuote.isPending}
+        error={sendError}
+        errorFallback={
+          <>
+            <p>
+              Richten Sie den Versand unter{" "}
+              <Link to="/settings" className="font-semibold text-[var(--color-brand-text)] hover:underline">
+                Einstellungen → E-Mail
+              </Link>{" "}
+              ein oder verschicken Sie das Angebot selbst:{" "}
+              <a
+                href={`/api/invoices/${quoteId}/download`}
+                className="font-semibold text-[var(--color-brand-text)] hover:underline"
+              >
+                PDF herunterladen
+              </a>{" "}
+              und danach das Angebot als gesendet markieren.
+            </p>
+            <button
+              type="button"
+              onClick={markAsSent}
+              disabled={markSent.isPending}
+              className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50"
+            >
+              <CheckCheck size={14} /> {markSent.isPending ? "Markiere…" : "Als gesendet markieren"}
+            </button>
+          </>
+        }
         onSend={(message, includeAttachments) => sendQuote.mutate({ message, includeAttachments })}
-        onCancel={() => setSendOpen(false)}
+        onCancel={() => {
+          setSendOpen(false);
+          setSendError(null);
+        }}
       />
 
       <ConfirmDialog
         open={acceptOpen}
         title="Angebot annehmen?"
-        message="Ein angenommenes Angebot lässt sich danach nicht mehr ändern."
+        message={
+          expired
+            ? `Dieses Angebot war nur bis ${germanDate(quote.valid_until)} gültig. Ein angenommenes Angebot lässt sich danach nicht mehr ändern.`
+            : "Ein angenommenes Angebot lässt sich danach nicht mehr ändern."
+        }
         confirmLabel={setStatus.isPending ? "Speichere…" : "Annehmen"}
         pending={setStatus.isPending}
         onConfirm={() => setStatus.mutate("ACCEPTED")}
         onCancel={() => setAcceptOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={rejectOpen}
+        title="Angebot als abgelehnt markieren?"
+        message="Danach ist das Angebot nur noch lesbar. Sie können die Entscheidung zurücknehmen, solange keine Rechnung existiert."
+        confirmLabel={setStatus.isPending ? "Speichere…" : "Abgelehnt"}
+        pending={setStatus.isPending}
+        onConfirm={() => setStatus.mutate("REJECTED")}
+        onCancel={() => setRejectOpen(false)}
       />
 
       <ConfirmDialog

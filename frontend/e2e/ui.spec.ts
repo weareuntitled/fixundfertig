@@ -116,6 +116,40 @@ test("invoice detail page shows preview iframe and download link", async ({ page
   await expect(page.getByRole("heading", { name: /PDF-Vorschau · Rechnung RE-2026-0001/ })).toBeVisible();
 });
 
+test("invoice detail page calls the issued state 'Gestellt' in the button and the timeline", async ({ page }) => {
+  await page.route("**/api/invoices/123", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 123,
+        customer_id: 1,
+        nr: "RE-2026-0001",
+        title: "Test-Rechnung",
+        date: "2026-06-10",
+        total_brutto: 119.0,
+        status: "DRAFT",
+        items: [],
+      }),
+    }),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: 1, email: "test@example.com", is_active: true }),
+    }),
+  );
+  await page.route("**/api/invoices/123/preview-pdf", (route) =>
+    route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%%EOF" }),
+  );
+
+  await page.goto("/invoices/123");
+  await expect(page.getByRole("button", { name: "Als gestellt markieren" })).toBeVisible();
+  await expect(page.getByText("Gestellt").first()).toBeVisible();
+  await expect(page.getByText("Offen")).toHaveCount(0);
+});
+
 test("settings page configures and previews the artist invoice profile", async ({ page }) => {
   const company = {
     id: 1, name: "Daniel S.", first_name: "Daniel", last_name: "Beispiel",
@@ -367,6 +401,44 @@ test("quote detail page sends the Angebot by mail and then shows Gesendet", asyn
   await expect(page.getByText("Angebot an booking@sisyphos.example gesendet")).toBeVisible();
   await expect(dialog).toHaveCount(0);
   await expect(main.getByText("Gesendet")).toBeVisible();
+});
+
+test("Versand ohne Mailserver: the error stays in the dialog and offers a way out", async ({ page }) => {
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2099-01-31", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 400, status: "DRAFT",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 400 }],
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/customers/7", (route) =>
+    route.fulfill({ json: { id: 7, kdnr: 1, name: "Sisyphos Event GmbH", email: "booking@sisyphos.example" } }),
+  );
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+  await page.route("**/api/invoices/42/send", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Der E-Mail-Versand ist fehlgeschlagen." }),
+    }),
+  );
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  await main.getByRole("button", { name: "Angebot senden" }).click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Angebot senden" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Senden" }).click();
+
+  // Der Fehler steht im Dialog, ohne Fachwort, mit Ausweg — und der Dialog bleibt offen.
+  await expect(dialog.getByRole("alert")).toContainText("Der E-Mail-Versand ist fehlgeschlagen.");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toContainText("SMTP");
+  await expect(page.getByText("Der E-Mail-Versand ist fehlgeschlagen.")).toHaveCount(1);
+  await expect(dialog.getByRole("link", { name: /Einstellungen/ })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: /PDF herunterladen/ })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Als gesendet markieren/ })).toBeVisible();
 });
 
 test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each other", async ({ page }) => {

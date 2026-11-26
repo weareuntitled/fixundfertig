@@ -6,6 +6,7 @@
  * @input {number} gross - Gross total; amounts in the editor are computed from it
  * @input {PaymentInstallmentRead[]} plan - Installments with amounts as the API returns them
  * @input {boolean} locked - Accepted quotes cannot be changed (but their installments stay billable)
+ * @input {boolean} readOnly - Rejected quotes are read-only: nothing to change, nothing to bill
  * @input {LinkedInvoice[]} invoices - Invoices of this quote; each down payment carries its installment index
  * @output Saving PUTs `payment_plan`; billing POSTs `installment_index` to /api/invoices/{id}/down-payment
  */
@@ -30,6 +31,7 @@ interface QuotePaymentPlanCardProps {
   gross: number;
   plan: PaymentInstallmentRead[];
   locked: boolean;
+  readOnly?: boolean;
   invoices?: LinkedInvoice[];
 }
 
@@ -38,6 +40,7 @@ export function QuotePaymentPlanCard({
   gross,
   plan,
   locked,
+  readOnly = false,
   invoices = [],
 }: QuotePaymentPlanCardProps) {
   const qc = useQueryClient();
@@ -65,7 +68,7 @@ export function QuotePaymentPlanCard({
     onError: (err: Error) => notify("error", err.message),
   });
 
-  const editing = draft !== null && !locked;
+  const editing = draft !== null && !locked && !readOnly;
   const invalid = (draft ?? []).some((rate) => !(rate.percent > 0));
 
   return (
@@ -91,7 +94,7 @@ export function QuotePaymentPlanCard({
         <>
           <div className="flex items-center justify-between border-b border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-sm)]">
             <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Zahlungsplan</h2>
-            {!locked && (
+            {!locked && !readOnly && (
               <button
                 type="button"
                 aria-label="Zahlungsplan bearbeiten"
@@ -125,6 +128,8 @@ export function QuotePaymentPlanCard({
                           Rechnung {billed.nr || `#${billed.id}`}
                         </a>
                       </span>
+                    ) : readOnly ? (
+                      <span className="text-[13px] text-[var(--color-text-secondary)]">nicht abrechenbar</span>
                     ) : (
                       <button
                         type="button"
