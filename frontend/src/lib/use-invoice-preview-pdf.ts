@@ -14,7 +14,7 @@ export function useInvoicePreviewPdf(invoiceId: number | null) {
       const response = await fetch(`/api/invoices/${invoiceId}/preview-pdf`, {
         credentials: "include",
       });
-      if (!response.ok) return null;
+      if (!response.ok) throw new Error("Die PDF-Vorschau konnte nicht geladen werden.");
       return response.blob();
     },
     enabled: invoiceId !== null,

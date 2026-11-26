@@ -20,7 +20,7 @@ export function useInvoicePreview(draft: InvoiceDraft, delay: number = 800) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(debounced),
       });
-      if (!response.ok) return null;
+      if (!response.ok) throw new Error("Die PDF-Vorschau konnte nicht geladen werden.");
       return response.blob();
     },
     enabled: debounced.items.length > 0 && debounced.customer_id > 0,

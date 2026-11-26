@@ -43,6 +43,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
+import { germanDate } from "@/components/quote/quote-list";
+import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/quote/quote-ui";
 
 export const Route = createFileRoute("/_app/invoices/$id")({
   component: InvoiceDetailPage,
@@ -248,10 +250,10 @@ function InvoiceDetailPage() {
         backTo="/invoices"
         backLabel="Rechnungen"
         documentTitle={`${invoice.is_final_invoice ? "Schlussrechnung" : "Rechnung"} ${invoice.nr || invoice.id}`}
-        title={<span>{invoice.is_final_invoice ? `Schlussrechnung ${invoice.nr || invoice.id}` : `Rechnung #${invoice.nr || invoice.id}`}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
+        title={<span>{invoice.is_final_invoice ? "Schlussrechnung" : invoice.down_payment_index != null ? "Abschlagsrechnung" : "Rechnung"} {invoice.nr || invoice.id}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
         subtitle={
           <>
-            Erstellt am {invoice.date || "Kein Datum"}
+            Erstellt am {germanDate(invoice.date) || "Kein Datum"}
             {invoice.quote_id != null && (
               <>
                 {" · "}
@@ -271,7 +273,7 @@ actions={
           <>
             <a
               href={`/api/invoices/${invoice.id}/download`}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
+              className={SECONDARY_BUTTON}
             >
               <Download size={16} />
               PDF herunterladen
@@ -292,7 +294,7 @@ actions={
               type="button"
               onClick={() => headerFileInput.current?.click()}
               disabled={uploadDocument.isPending || addAttachment.isPending}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
+              className={SECONDARY_BUTTON}
             >
               {uploadDocument.isPending || addAttachment.isPending ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
               Anlage hochladen
@@ -307,7 +309,7 @@ actions={
                 type="button"
                 onClick={handleSend}
                 disabled={sendEmail.isPending}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 bg-[#001a42] px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50"
+                className={PRIMARY_BUTTON}
               >
                 {sendEmail.isPending ? (
                   <Loader2 size={16} className="animate-spin" />
@@ -518,6 +520,9 @@ actions={
       <PdfPreviewModal
         open={previewOpen}
         pdfUrl={previewUrl}
+        error={preview.isError}
+        refreshing={preview.isFetching}
+        onRetry={() => void preview.refetch()}
         invoiceNr={invoice.nr || undefined}
         onClose={() => setPreviewOpen(false)}
       />

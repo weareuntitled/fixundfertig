@@ -359,7 +359,7 @@ test("Angebot anlegen: from the quotes list through the invoice form to the save
 
   await page.goto("/quotes");
   await expect(page.getByText("Noch keine Angebote")).toBeVisible();
-  await page.getByRole("link", { name: "Neues Angebot" }).click();
+  await page.getByRole("link", { name: "Neues Angebot" }).first().click();
   await expect(page).toHaveURL(/\/quotes\/new$/);
 
   await page.getByRole("combobox", { name: /Kunde/ }).selectOption({ label: "Sisyphos Event GmbH" });
@@ -368,6 +368,10 @@ test("Angebot anlegen: from the quotes list through the invoice form to the save
   await page.getByRole("button", { name: "Neue Position" }).click();
   await page.getByLabel("Beschreibung Position 1").fill("DJ Performance");
   await page.getByLabel("Einzelpreis Position 1").fill("400");
+  await page.getByRole("link", { name: "Angebote", exact: true }).first().click();
+  await expect(page.getByRole("alertdialog", { name: "Ungespeicherte Eingaben verwerfen?" })).toBeVisible();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByLabel("Beschreibung Position 1")).toHaveValue("DJ Performance");
   await page.getByRole("button", { name: "PDF-Vorschau" }).click();
   await expect(page.getByRole("heading", { name: "PDF-Vorschau · Angebot Entwurf" })).toBeVisible();
   await expect.poll(() => previewed?.document_type).toBe("QUOTE");
@@ -536,7 +540,7 @@ test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each o
   await confirm.getByRole("button", { name: "Abrechnen" }).click();
 
   await expect(page).toHaveURL(/\/invoices\/43$/);
-  await expect(page.getByRole("heading", { name: /Rechnung #10000/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Rechnung 10000/ })).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Aus Angebot A-10000" }).click();
 
   await expect(page).toHaveURL(/\/quotes\/42$/);
@@ -593,7 +597,7 @@ test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as 
 
   // Nach dem Anlegen geht es zur Abschlagsrechnung.
   await expect(page).toHaveURL(/\/invoices\/43$/);
-  await expect(page.getByRole("heading", { name: /Rechnung #10000/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Abschlagsrechnung 10000/ })).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __spa?: boolean }).__spa)).toBe(true);
 });
 

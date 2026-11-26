@@ -63,6 +63,36 @@ def test_valid_until_can_be_chosen(artist_api):
     assert body["valid_until"] == "2026-12-31"
 
 
+def test_quote_dates_are_required_and_valid_on_creation_and_update(artist_api):
+    client, _company, payload, _session = artist_api
+    invalid = _quote(payload, date="2026-10-23", valid_until="2026-10-22")
+    assert client.post("/api/invoices", json=invalid).status_code == 422
+    assert client.post("/api/invoices", json=_quote(payload, date="")).status_code == 422
+
+    quote = client.post("/api/invoices", json=_quote(payload, date="2026-10-23", valid_until="2026-11-22")).json()
+    assert client.put(f"/api/invoices/{quote['id']}", json={"date": "2026-11-23"}).status_code == 422
+    assert client.put(f"/api/invoices/{quote['id']}", json={"date": ""}).status_code == 422
+    assert client.get(f"/api/invoices/{quote['id']}").json()["date"] == "2026-10-23"
+
+
+def test_quote_customer_intro_and_vat_can_be_changed_before_acceptance(artist_api):
+    client, company, payload, session = artist_api
+    company.is_small_business = False
+    customer = data.Customer(company_id=company.id, kdnr=2, name="Neuer Kunde")
+    session.add(customer)
+    session.commit()
+    quote = client.post("/api/invoices", json=_quote(payload)).json()
+    response = client.put(f"/api/invoices/{quote['id']}", json={
+        "customer_id": customer.id, "intro_text": "Neue Einleitung", "vat_rate": 19,
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["customer_id"] == customer.id
+    assert response.json()["recipient_name"] == "Neuer Kunde"
+    assert response.json()["intro_text"] == "Neue Einleitung"
+    assert response.json()["vat_rate"] == 19
+    assert response.json()["total_brutto"] == round(response.json()["total_net"] * 1.19, 2)
+
+
 def test_invoice_and_quote_counters_are_independent(artist_api):
     client, _company, payload, _session = artist_api
 

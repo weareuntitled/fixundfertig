@@ -24,7 +24,7 @@ function QuotesListPage() {
             Angebote
           </h1>
           <p className="mt-1.5 text-[15px] text-[var(--color-text-secondary)]">
-            {quotes ? `${quotes.length} Angebote insgesamt` : "Lädt…"}
+            {quotes ? `${quotes.length} ${quotes.length === 1 ? "Angebot" : "Angebote"} insgesamt` : "Lädt…"}
           </p>
         </div>
         <Link

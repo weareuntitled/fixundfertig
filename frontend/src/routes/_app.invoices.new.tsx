@@ -163,7 +163,7 @@ function NewInvoicePage() {
         onCancel={() => setConfirmOpen(false)}
       />
 
-      <PdfPreviewModal open={previewOpen} pdfUrl={previewUrl} invoiceNr="entwurf" onClose={() => setPreviewOpen(false)} />
+      <PdfPreviewModal open={previewOpen} pdfUrl={previewUrl} error={preview.isError} refreshing={preview.isFetching} onRetry={() => void preview.refetch()} invoiceNr="entwurf" onClose={() => setPreviewOpen(false)} />
     </div>
   );
 }

@@ -405,6 +405,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         nr=invoice.nr,
         title=invoice.title or "Rechnung",
         subject=invoice.subject or "",
+        intro_text=getattr(invoice, "intro_text", "") if isinstance(getattr(invoice, "intro_text", ""), str) else "",
         date=invoice.date or "",
         delivery_date=invoice.delivery_date or "",
         valid_until=getattr(invoice, "valid_until", "") or "",
@@ -616,7 +617,44 @@ def update_invoice(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_quote_editable(invoice)
 
+    if invoice.document_type == DocumentType.QUOTE:
+        from datetime import date
+        quote_date = payload.date if payload.date is not None else invoice.date
+        valid_until = payload.valid_until if payload.valid_until is not None else invoice.valid_until
+        try:
+            date.fromisoformat(quote_date)
+            if valid_until:
+                date.fromisoformat(valid_until)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="Bitte ein gültiges Datum eingeben.")
+        if not quote_date or (valid_until and valid_until < quote_date):
+            raise HTTPException(status_code=422, detail="Angebotsdatum ist erforderlich; gültig bis darf nicht davor liegen.")
+
+    if (payload.customer_id is not None or payload.vat_rate is not None) and invoice.document_type != DocumentType.QUOTE:
+        raise HTTPException(status_code=422, detail="Kunde und Umsatzsteuer können nur bei Angeboten geändert werden.")
+
+    new_customer = None
+    if payload.customer_id is not None and payload.customer_id != invoice.customer_id:
+        new_customer = session.get(Customer, payload.customer_id)
+        if not new_customer or new_customer.company_id != invoice.company_id:
+            raise HTTPException(status_code=422, detail="Kunde nicht gefunden.")
+
+    company = session.get(Company, invoice.company_id)
+    if payload.vat_rate and company and company.is_small_business:
+        raise HTTPException(status_code=422, detail="Für Kleinunternehmer ist keine Umsatzsteuer vorgesehen.")
+
     changed = False
+    if new_customer is not None:
+        invoice.customer_id = new_customer.id
+        invoice.recipient_name = (getattr(new_customer, "display_name", None) or new_customer.name or "").strip()
+        invoice.recipient_street = (new_customer.recipient_street or new_customer.strasse or "").strip()
+        invoice.recipient_postal_code = (new_customer.recipient_postal_code or new_customer.plz or "").strip()
+        invoice.recipient_city = (new_customer.recipient_city or new_customer.ort or "").strip()
+        changed = True
+    if payload.vat_rate is not None and payload.vat_rate != invoice.vat_rate:
+        invoice.vat_rate = payload.vat_rate
+        recompute_total_brutto(invoice, payload.vat_rate, session)
+        changed = True
     for field in ("title", "subject", "date", "delivery_date", "recipient_name",
                   "recipient_street", "recipient_postal_code", "recipient_city",
                   "valid_until"):
@@ -663,7 +701,8 @@ def update_invoice(
                 address_zip=invoice.recipient_postal_code,
                 address_city=invoice.recipient_city,
                 address_country=getattr(cust, "country", "") or "",
-                ust_enabled=not bool(getattr(comp, "is_small_business", False)) if comp else True,
+                ust_enabled=(bool(invoice.vat_rate) if invoice.document_type == DocumentType.QUOTE
+                             else not bool(getattr(comp, "is_small_business", False)) if comp else True),
                 document_type=invoice.document_type, valid_until=invoice.valid_until,
                 payment_plan=invoice.payment_plan, vat_rate=invoice.vat_rate,
                 down_payment_index=getattr(invoice, "down_payment_index", None),
@@ -804,6 +843,10 @@ def create_invoice(
 ):
     """Finalize a draft invoice: assign number, persist items, render PDF, store."""
     document_type = DocumentType(payload.document_type)
+    if document_type == DocumentType.QUOTE and (
+        not payload.date or (payload.valid_until and payload.valid_until < payload.date)
+    ):
+        raise HTTPException(status_code=422, detail="Angebotsdatum ist erforderlich; gültig bis darf nicht davor liegen.")
     doc_status = InvoiceStatus(payload.status)
     if "status" in payload.model_fields_set:
         # Ausdrücklich gewählter Status: die Regeln der Dokumentart gelten.

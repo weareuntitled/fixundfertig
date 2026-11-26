@@ -3,11 +3,12 @@
  * @purpose Quote creation with the invoice form plus "Gültig bis"
  * @output Saving creates a draft quote (the quote number is assigned now) and opens it.
  */
-import { useEffect, useMemo, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createFileRoute, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { InvoiceFormV2 } from "@/components/forms/invoice-form-v2";
 import { PageHeader } from "@/components/ui/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
 import { useInvoicePreview } from "@/lib/use-invoice-preview";
 import { useCompany, type Company } from "@/lib/use-company";
@@ -37,6 +38,8 @@ function NewQuotePage() {
   const { notify } = useNotification();
   const { data: company, isLoading: companyLoading } = useCompany();
   const [draft, setDraft] = useState<InvoiceDraft | null>(null);
+  const initial = useRef<InvoiceDraft | null>(null);
+  const saved = useRef(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const preview = useInvoicePreview(draft ?? emptyQuoteDraft(0), 800);
   const previewUrl = useMemo(() => (preview.data ? URL.createObjectURL(preview.data) : null), [preview.data]);
@@ -48,13 +51,24 @@ function NewQuotePage() {
   }, [previewUrl]);
 
   useEffect(() => {
-    if (!companyLoading && !draft) setDraft(initialDraft(company));
+    if (!companyLoading && !draft) {
+      initial.current = initialDraft(company);
+      setDraft(initial.current);
+    }
   }, [companyLoading, company, draft]);
+
+  const dirty = Boolean(draft && initial.current && JSON.stringify(draft) !== JSON.stringify(initial.current));
+  const leaving = useBlocker({
+    shouldBlockFn: () => dirty && !saved.current,
+    enableBeforeUnload: () => dirty && !saved.current,
+    withResolver: true,
+  });
 
   const save = useMutation({
     mutationFn: (payload: InvoiceDraft) =>
       api.post<CreatedQuote>("/api/invoices", { ...payload, document_type: "QUOTE", status: "DRAFT" }),
     onSuccess: (data) => {
+      saved.current = true;
       qc.invalidateQueries({ queryKey: ["invoices"] });
       notify("success", `Angebot ${data.nr ?? ""} gespeichert.`);
       void navigate({ to: "/quotes/$id", params: { id: String(data.id) } });
@@ -139,9 +153,21 @@ function NewQuotePage() {
       <PdfPreviewModal
         open={previewOpen}
         pdfUrl={previewUrl}
+        error={preview.isError}
+        refreshing={preview.isFetching}
+        onRetry={() => void preview.refetch()}
         invoiceNr="Entwurf"
         documentType="QUOTE"
         onClose={() => setPreviewOpen(false)}
+      />
+      <ConfirmDialog
+        open={leaving.status === "blocked"}
+        title="Ungespeicherte Eingaben verwerfen?"
+        message="Ihre Änderungen gehen verloren."
+        confirmLabel="Verwerfen"
+        destructive
+        onConfirm={() => leaving.status === "blocked" && leaving.proceed()}
+        onCancel={() => leaving.status === "blocked" && leaving.reset()}
       />
     </div>
   );

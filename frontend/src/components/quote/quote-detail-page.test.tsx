@@ -116,6 +116,30 @@ describe("Angebot-Detailseite: Status", () => {
     expect(await screen.findByText("Abgelaufen")).toBeTruthy();
   });
 
+  it("follows a default validity date while editing and saves with Enter", async () => {
+    renderQuote({ ...baseQuote, valid_until: "2026-11-22" });
+    fireEvent.click(await screen.findByRole("button", { name: "Bearbeiten" }));
+    fireEvent.change(screen.getByLabelText("Angebotsdatum"), { target: { value: "2026-11-01" } });
+    expect(screen.getByLabelText("Gültig bis")).toHaveValue("2026-12-01");
+    fireEvent.submit(screen.getByLabelText("Betreff").closest("form")!);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/invoices/7" && init?.method === "PUT")).toBe(true));
+  });
+
+  it("keeps a manually changed validity date when the offer date changes", async () => {
+    renderQuote({ ...baseQuote, valid_until: "2026-11-22" });
+    fireEvent.click(await screen.findByRole("button", { name: "Bearbeiten" }));
+    fireEvent.change(screen.getByLabelText("Gültig bis"), { target: { value: "2026-12-10" } });
+    fireEvent.change(screen.getByLabelText("Angebotsdatum"), { target: { value: "2026-11-01" } });
+    expect(screen.getByLabelText("Gültig bis")).toHaveValue("2026-12-10");
+  });
+
+  it("asks before removing a position", async () => {
+    renderQuote(baseQuote);
+    fireEvent.click(await screen.findByRole("button", { name: "Position 1 entfernen" }));
+    expect(screen.getByRole("alertdialog", { name: "Position entfernen?" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/invoices/7/items/1" && init?.method === "DELETE")).toBe(false);
+  });
+
   it("marks a quote as accepted after confirming and then locks it", async () => {
     renderQuote(baseQuote);
     fireEvent.click(await screen.findByRole("button", { name: "Annehmen" }));

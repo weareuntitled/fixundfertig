@@ -18,6 +18,10 @@ export function dueDateLabel(isoDate: string): string {
 export function invoiceDraftProblems(draft: InvoiceDraft): string[] {
   const problems: string[] = [];
   if (!(draft.customer_id > 0)) problems.push("Kunde auswählen");
+  if (draft.document_type === "QUOTE") {
+    if (!draft.date) problems.push("Angebotsdatum eintragen");
+    if (draft.date && draft.valid_until && draft.valid_until < draft.date) problems.push("Gültig bis darf nicht vor dem Angebotsdatum liegen");
+  }
   if (draft.items.length === 0) problems.push("mindestens eine Position anlegen");
   draft.items.forEach((item, index) => {
     const label = `Position ${index + 1}`;
