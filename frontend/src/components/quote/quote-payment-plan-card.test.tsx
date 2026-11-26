@@ -115,6 +115,17 @@ describe("QuotePaymentPlanCard", () => {
     expect(screen.getAllByRole("button", { name: "Abschlag 178,50 € abrechnen" })).toHaveLength(2);
   });
 
+  it("disables all rate buttons while the page bills a rate", async () => {
+    const onBillRate = vi.fn();
+    await renderCard({ onBillRate, billingPending: true });
+    const buttons = screen.getAllByRole("button", { name: /Abschlag .* abrechnen/ });
+    buttons.forEach((button) => {
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    });
+    expect(onBillRate).not.toHaveBeenCalled();
+  });
+
   it("bills an installment through the down-payment endpoint", async () => {
     fetchMock.mockImplementation(() =>
       Promise.resolve({

@@ -188,13 +188,14 @@ def quote_billing(session: Session, quote: Invoice) -> QuoteBilling:
             else _blocked("Das Angebot hat keinen Zahlungsplan.")
         )
         issued = [inv for inv in downs if is_issued_status(inv.status)]
-        if issued:
-            final_invoice = BillingAction()
-        elif downs:
+        drafts = [inv for inv in downs if inv.status == InvoiceStatus.DRAFT]
+        if drafts:
             final_invoice = _blocked(
-                f"Stellen Sie zuerst die Abschlagsrechnung {downs[0].nr}; ein Entwurf zählt nicht.",
-                downs[0],
+                f"Stellen oder stornieren Sie zuerst die Abschlagsrechnung {drafts[0].nr}; ein Entwurf zählt nicht.",
+                drafts[0],
             )
+        elif issued:
+            final_invoice = BillingAction()
         else:
             final_invoice = _blocked(
                 "Eine Schlussrechnung entsteht nur mit einer gestellten Abschlagsrechnung."

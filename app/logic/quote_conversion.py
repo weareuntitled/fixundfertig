@@ -85,6 +85,7 @@ def _invoice_draft_from_quote(
         ust_enabled=vat_percent > 0,
         status=InvoiceStatus.DRAFT,
         intro_text=intro_text,
+        commit=False,
     )
     invoice = session.get(Invoice, invoice_id)
     assert invoice is not None

@@ -174,6 +174,7 @@ def finalize_invoice_logic(
     document_type: DocumentType = DocumentType.INVOICE,
     valid_until: str = "",
     payment_plan: Optional[List[Any]] = None,
+    commit: bool = True,
 ) -> int:
     comp = session.get(Company, int(comp_id))
     cust = session.get(Customer, int(cust_id))
@@ -279,7 +280,10 @@ def finalize_invoice_logic(
             unit_price=float(it["unit_price"]),
         ))
 
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     return int(inv.id)
 
 

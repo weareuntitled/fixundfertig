@@ -720,6 +720,7 @@ function QuoteDetailPage() {
         invoices={linkedInvoices}
         billing={billing}
         onBillRate={(index) => requestBilling({ kind: "down_payment", index })}
+        billingPending={billingPending}
         onDirtyChange={setPlanDirty}
       />
 

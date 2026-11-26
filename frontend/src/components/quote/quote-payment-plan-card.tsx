@@ -41,6 +41,7 @@ interface QuotePaymentPlanCardProps {
   billing?: QuoteBilling | null;
   /** Bills a rate; wenn die Seite sie nicht vorgibt, passiert das hier. */
   onBillRate?: (installmentIndex: number) => void;
+  billingPending?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
 }
 
@@ -53,6 +54,7 @@ export function QuotePaymentPlanCard({
   invoices = [],
   billing = null,
   onBillRate,
+  billingPending = false,
   onDirtyChange,
 }: QuotePaymentPlanCardProps) {
   const qc = useQueryClient();
@@ -63,7 +65,7 @@ export function QuotePaymentPlanCard({
     onDirtyChange?.(dirty);
     return () => onDirtyChange?.(false);
   }, [dirty, onDirtyChange]);
-  const { billRate, isPending: billingPending } = useBillDownPayment(quoteId);
+  const { billRate, isPending: ownBillingPending } = useBillDownPayment(quoteId);
 
   // Only an active (not cancelled) down payment blocks its installment.
   const billedRates = new Map<number, LinkedInvoice>();
@@ -160,7 +162,7 @@ export function QuotePaymentPlanCard({
                   ) : (
                     <button
                       type="button"
-                      disabled={billingPending}
+                      disabled={billingPending || ownBillingPending}
                       onClick={() => (onBillRate ? onBillRate(index) : billRate(index))}
                       className={SECONDARY_BUTTON}
                     >
