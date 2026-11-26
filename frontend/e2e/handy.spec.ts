@@ -180,7 +180,7 @@ test("Neues Angebot am Handy: Einzelpreis und Betrag sichtbar, Speichern am Form
   });
 
   await page.goto("/quotes/new");
-  await page.getByLabel(/Kunde/).selectOption({ label: "Sisyphos Event GmbH" });
+  await page.getByRole("combobox", { name: /Kunde/ }).selectOption({ label: "Sisyphos Event GmbH" });
   await page.getByRole("button", { name: "Neue Position" }).click();
   await page.getByLabel("Beschreibung Position 1").fill("DJ-Set");
   await page.getByLabel("Einzelpreis Position 1").fill("400");

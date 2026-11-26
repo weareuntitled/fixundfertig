@@ -28,10 +28,12 @@ function contrast(a: string, b: string): number {
 
 function badgeColors(status: string) {
   const { container } = render(<StatusBadge status={status} />);
-  const cls = container.firstElementChild!.className;
+  const badge = container.firstElementChild!;
+  const cls = badge.className;
   const text = cls.match(/text-\[var\((--[\w-]+)\)\]/)![1];
   const bg = cls.match(/bg-\[var\((--[\w-]+)\)\]/)![1];
-  return { text: token(text), bg: token(bg) };
+  const dot = badge.querySelector("span > span")!.className.match(/bg-\[var\((--[\w-]+)\)\]/)![1];
+  return { text: token(text), bg: token(bg), dot: token(dot) };
 }
 
 const STATUSES = ["DRAFT", "OPEN", "SENT", "PAID", "FINALIZED", "CANCELLED", "ACCEPTED", "REJECTED", "EXPIRED"];
@@ -42,13 +44,18 @@ describe("StatusBadge", () => {
     expect(contrast(text, bg)).toBeGreaterThanOrEqual(4.5);
   });
 
+  it.each(STATUSES)("%s dot reaches 3:1 on its background", (status) => {
+    const { dot, bg } = badgeColors(status);
+    expect(contrast(dot, bg)).toBeGreaterThanOrEqual(3);
+  });
+
   it("shows Abgelaufen in its own colour, not the one of Gestellt", () => {
     expect(badgeColors("EXPIRED")).not.toEqual(badgeColors("OPEN"));
     expect(badgeColors("EXPIRED")).not.toEqual(badgeColors("SENT"));
   });
 
   it("muted and danger text reach 4.5:1 on white and on the page background", () => {
-    for (const name of ["--color-text-muted", "--color-text-tertiary", "--color-text-secondary", "--color-text-danger", "--color-text-link", "--color-brand-text"]) {
+    for (const name of ["--color-text-muted", "--color-text-tertiary", "--color-text-secondary", "--color-text-danger", "--color-text-link", "--color-text-success", "--color-text-warning", "--color-brand-text"]) {
       expect(contrast(token(name), "#ffffff"), name).toBeGreaterThanOrEqual(4.5);
       expect(contrast(token(name), token("--color-background")), name).toBeGreaterThanOrEqual(4.5);
     }

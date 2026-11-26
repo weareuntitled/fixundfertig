@@ -339,7 +339,7 @@ actions={
       {/* ── Inline Edit Form ── */}
       {editingHeader && (
         <div className="bg-white border border-[var(--color-border)] rounded-[var(--radius-xl)] p-[var(--space-lg)] mb-[var(--space-xl)] shadow-sm animate-fade-in">
-          <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-[var(--space-md)]">Bearbeiten</h3>
+          <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-[var(--space-md)]">Bearbeiten</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-md)]">
             <label className="flex flex-col gap-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Titel</span>
@@ -386,7 +386,7 @@ actions={
 
       {/* ── Status Timeline Card ── */}
       <div className="bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] p-[var(--space-lg)] mb-[var(--space-xl)] shadow-sm">
-        <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-[var(--space-md)]">Statusverfolgung</h3>
+        <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-[var(--space-md)]">Statusverfolgung</h2>
         <StatusTimeline currentStatus={invoice.status} />
 
         {banner && (
@@ -418,7 +418,7 @@ actions={
           {/* Line Items */}
           <div className="bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] shadow-sm overflow-hidden">
             <div className="px-[var(--space-lg)] py-[var(--space-md)] border-b border-[var(--color-border)] flex justify-between items-center">
-              <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Positionen</h3>
+              <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Positionen</h2>
               {isDraft && (
                 <button
                   type="button"

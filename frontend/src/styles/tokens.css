@@ -178,7 +178,7 @@
   --color-text-link: var(--color-blue-600);
   --color-text-link-hover: var(--color-blue-700);
   --color-text-danger: var(--color-red-600);
-  --color-text-success: var(--color-green-600);
+  --color-text-success: var(--color-green-700);
   --color-text-warning: var(--color-amber-600);
 
   /* ── Borders (Apple 1px with hairline) ── */
@@ -216,7 +216,7 @@
   --color-status-cancelled-bg: var(--color-red-50);
   --color-status-cancelled-text: var(--color-red-700);
   /* Expired asks for a decision: amber, never the blue of "Offen". */
-  --color-status-expired: var(--color-amber-500);
+  --color-status-expired: var(--color-amber-600);
   --color-status-expired-bg: var(--color-amber-50);
   --color-status-expired-text: var(--color-amber-700);
 

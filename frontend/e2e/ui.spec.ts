@@ -257,7 +257,7 @@ test("new invoice: says what is missing, asks before creating and opens the new 
   await expect(page.getByText("Noch nötig: Kunde auswählen · mindestens eine Position anlegen")).toBeVisible();
   await expect(page.getByLabel("Umsatzsteuer ausweisen")).not.toBeChecked();
 
-  await page.getByLabel(/Kunde/).selectOption({ label: "Sisyphos Event GmbH" });
+  await page.getByRole("combobox", { name: /Kunde/ }).selectOption({ label: "Sisyphos Event GmbH" });
   await page.getByRole("button", { name: "Neue Position" }).click();
   await expect(page.getByText("Noch nötig: Position 1 beschreiben")).toBeVisible();
   await page.getByLabel("Beschreibung Position 1").fill("DJ Performance");
@@ -362,7 +362,7 @@ test("Angebot anlegen: from the quotes list through the invoice form to the save
   await page.getByRole("link", { name: "Neues Angebot" }).click();
   await expect(page).toHaveURL(/\/quotes\/new$/);
 
-  await page.getByLabel(/Kunde/).selectOption({ label: "Sisyphos Event GmbH" });
+  await page.getByRole("combobox", { name: /Kunde/ }).selectOption({ label: "Sisyphos Event GmbH" });
   await page.getByLabel("Angebotsdatum").fill("2026-10-23");
   await expect(page.getByLabel("Gültig bis")).toHaveValue("2026-11-22");
   await page.getByRole("button", { name: "Neue Position" }).click();

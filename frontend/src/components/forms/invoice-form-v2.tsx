@@ -208,7 +208,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
 
       {/* Positions, edited in place. Am Handy gestapelt, damit nichts seitlich scrollt (#498). */}
       <div className="mb-[var(--space-xl)]">
-        <h3 className="mb-[var(--space-md)] text-[20px] font-semibold text-[var(--color-text-primary)]">Positionen</h3>
+        <h2 className="mb-[var(--space-md)] text-[20px] font-semibold text-[var(--color-text-primary)]">Positionen</h2>
         <div className="w-full">
           <table className="block w-full border-collapse text-left md:table">
             <thead className="hidden md:table-header-group">

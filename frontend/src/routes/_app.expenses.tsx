@@ -4,6 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "@/lib/api";
+import { useDialogFocus } from "@/components/ui/use-dialog-focus";
 
 export const Route = createFileRoute("/_app/expenses")({
   component: ExpensesPage,
@@ -126,6 +127,7 @@ function ExpenseForm({ onClose, onCreated }: ExpenseFormProps) {
   const [category, setCategory] = useState("Sonstiges");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState(0);
+  const dialogRef = useDialogFocus<HTMLFormElement>(true, { onEscape: onClose });
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,10 +140,14 @@ function ExpenseForm({ onClose, onCreated }: ExpenseFormProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
       <form
+        ref={dialogRef}
         onSubmit={submit}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="expense-dialog-title"
         className="w-full max-w-md rounded-xl border border-[var(--color-border)] bg-white p-6 shadow-lg"
       >
-        <h2 className="mb-4 text-base font-semibold text-[var(--color-text-heading)]">Neue Ausgabe</h2>
+        <h2 id="expense-dialog-title" className="mb-4 text-base font-semibold text-[var(--color-text-heading)]">Neue Ausgabe</h2>
         <div className="space-y-3">
           <label className="block text-xs font-medium text-[var(--color-text-primary)]">
             Datum
@@ -189,13 +195,13 @@ function ExpenseForm({ onClose, onCreated }: ExpenseFormProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-gray-50)]"
+            className="min-h-[44px] rounded-md px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-gray-50)]"
           >
             Abbrechen
           </button>
           <button
             type="submit"
-            className="rounded-md bg-[var(--color-text-heading)] px-3 py-2 text-sm font-semibold text-white"
+            className="min-h-[44px] rounded-md bg-[var(--color-text-heading)] px-3 py-2 text-sm font-semibold text-white"
           >
             Speichern
           </button>

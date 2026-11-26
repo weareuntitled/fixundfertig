@@ -37,9 +37,9 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
 
   return (
     <section aria-labelledby="payment-plan-heading">
-      <h3 id="payment-plan-heading" className="mb-1 text-[20px] font-semibold text-[var(--color-text-primary)]">
+      <h2 id="payment-plan-heading" className="mb-1 text-[20px] font-semibold text-[var(--color-text-primary)]">
         Zahlungsplan
-      </h3>
+      </h2>
       <p className="mb-[var(--space-md)] text-[12px] text-[var(--color-text-secondary)]">
         Optional. Raten in Prozent vom Gesamtbetrag, z. B. „50 % bei Auftrag“. Steht im PDF mit Betrag je Rate.
       </p>

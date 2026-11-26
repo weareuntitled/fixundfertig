@@ -27,17 +27,29 @@ const QUOTES = [
 ];
 const DOWN_PAYMENT = {
   id: 43, customer_id: 7, document_type: "INVOICE", nr: "10000", title: "Abschlagsrechnung", date: "2026-10-24",
-  recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, status: "OPEN", quote_id: 42, quote_nr: "A-10000",
-  down_payment_index: 0, installment_index: 0, is_down_payment: true, is_final_invoice: false,
+  recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, total_net: 2000, vat_rate: 19, status: "OPEN",
+  quote_id: 42, quote_nr: "A-10000", down_payment_index: 0, installment_index: 0,
+  is_down_payment: true, is_final_invoice: false,
   items: [{ id: 2, description: "Abschlag 50 % gemäß Angebot A-10000 – bei Auftrag", quantity: 1, unit_price: 2000 }],
 };
 const QUOTE = {
   ...QUOTES[0],
-  items: [{ id: 1, description: "Website", quantity: 1, unit_price: 4000 }],
+  total_net: 4000,
+  vat_rate: 19,
+  items: [
+    { id: 1, description: "SEO-Grundeinrichtung für die neue Seite", quantity: 1, unit_price: 4000 },
+  ],
   payment_plan: [
     { percent: 50, label: "bei Auftrag", amount: 2380 },
     { percent: 50, label: "nach Livegang", amount: 2380 },
   ],
+  settlement: { billed_brutto: 2380, total_brutto: 4760, open_brutto: 2380, billed_count: 1 },
+  billing: {
+    convert: { allowed: false, reason: "Es gibt schon eine Abschlagsrechnung.", invoice_id: null, invoice_nr: null },
+    down_payment: { allowed: false, reason: "Es gibt schon eine Abschlagsrechnung.", invoice_id: null, invoice_nr: null },
+    final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+    requires_acceptance: false,
+  },
   linked_invoices: [DOWN_PAYMENT],
 };
 
@@ -57,12 +69,15 @@ async function mockApi(page: Page) {
   });
 }
 
+/**
+ * axe runs every rule; only "serious" and "critical" fail the test.
+ * The report lists every violation so a new one is easy to place.
+ */
 async function expectNoSeriousViolations(page: Page) {
-  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
-  const serious = results.violations
-    .filter((v) => v.impact === "serious" || v.impact === "critical")
-    .map((v) => `${v.id}: ${v.nodes.map((n) => `${n.target.join(" ")} [${n.any.map((c) => c.message).join("; ")}]`).join(", ")}`);
-  expect(serious).toEqual([]);
+  const results = await new AxeBuilder({ page }).analyze();
+  const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+  const report = results.violations.map((v) => `[${v.impact}] ${v.id}`);
+  expect(blocking, `axe-Verstöße: ${report.join(", ")}`).toEqual([]);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -83,6 +98,8 @@ test("a11y: Angebotsseite", async ({ page }) => {
   await page.goto("/quotes/42");
   await expect(page.getByRole("heading", { level: 1, name: "Angebot A-10000" })).toBeVisible();
   await expect(page).toHaveTitle("Angebot A-10000 · FixundFertig");
+  // Die Seite trägt Positionen, Zahlungsplan und Abrechnungsstand.
+  await expect(page.getByTestId("position-description").first()).toBeVisible();
   await expectNoSeriousViolations(page);
 });
 
@@ -99,3 +116,48 @@ test("a11y: Rechnungsseite", async ({ page }) => {
   await expect(page).toHaveTitle("Rechnung 10000 · FixundFertig");
   await expectNoSeriousViolations(page);
 });
+
+/**
+ * A11Y-01: Der Fokusring war ein Schein mit 12 % Deckkraft und in der
+ * Seitenleiste gar nicht sichtbar. Jetzt ist es eine Outline, die auch neben
+ * eigenen shadow-Klassen sichtbar bleibt (mindestens 3:1 gegen den Grund).
+ */
+test("Fokus: die Seitenleiste zeigt beim Tab einen sichtbaren Ring", async ({ page }) => {
+  await page.goto("/quotes");
+  await expect(page.getByRole("heading", { level: 1, name: "Angebote" })).toBeVisible();
+  await page.keyboard.press("Tab");
+  // Der Ring läuft mit (transition-all animiert outline-color mit).
+  await page.waitForTimeout(400);
+  const ring = await page.evaluate(() => {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el) return null;
+    const style = getComputedStyle(el);
+    let background = "rgba(0, 0, 0, 0)";
+    for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+      const value = getComputedStyle(node).backgroundColor;
+      if (value && !value.startsWith("rgba(0, 0, 0, 0)")) { background = value; break; }
+    }
+    return {
+      name: el.textContent?.trim().slice(0, 40) ?? "",
+      width: style.outlineWidth,
+      style: style.outlineStyle,
+      color: style.outlineColor,
+      background,
+    };
+  });
+  expect(ring, "nichts war fokussiert").not.toBeNull();
+  expect(ring!.style, `Fokusring fehlt bei „${ring!.name}“`).toBe("solid");
+  expect(parseFloat(ring!.width)).toBeGreaterThanOrEqual(2);
+  expect(contrast(ring!.color, ring!.background)).toBeGreaterThanOrEqual(3);
+});
+
+/** Kontrastverhältnis zweier CSS-Farben nach WCAG 2.1. */
+function contrast(foreground: string, background: string): number {
+  const luminance = (color: string) => {
+    const [r, g, b] = color.match(/[\d.]+/g)!.slice(0, 3).map((v) => Number(v) / 255);
+    const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  };
+  const [hi, lo] = [luminance(foreground), luminance(background)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
