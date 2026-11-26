@@ -17,18 +17,15 @@ from logic.final_invoice import (
     issued_down_payments,
 )
 from logic.invoice import document_vat_rate, finalize_invoice_logic
+from logic.quote_billing import BillingConflict, ensure_billable
 from renderer import render_invoice_to_pdf_bytes
 from services.invoice_pdf_draw import INVOICE_INTRO
 from services.invoice_pdf_layout import format_date
 from services.payment_plan import format_percent, parse_payment_plan, round_cents
 
 
-class DownPaymentConflict(Exception):
+class DownPaymentConflict(BillingConflict):
     """Die Rate wurde bereits abgerechnet und ihre Abschlagsrechnung ist nicht storniert."""
-
-
-class FinalInvoiceConflict(Exception):
-    """Zum Angebot gibt es bereits eine nicht stornierte Schlussrechnung."""
 
 
 def quote_reference_intro(quote: Invoice, company: Any = None) -> str:
@@ -104,6 +101,7 @@ def create_invoice_from_quote(session: Session, quote: Invoice) -> Invoice:
     """
     if quote.document_type != DocumentType.QUOTE:
         raise ValueError("Nur Angebote lassen sich in Rechnungen umwandeln")
+    ensure_billable(session, quote, "convert")
     vat_percent = document_vat_rate(quote)
     company = session.get(Company, int(quote.company_id))
     invoice = _invoice_draft_from_quote(
@@ -148,6 +146,7 @@ def create_down_payment_invoice(
     """Abschlagsrechnung (Rechnungsentwurf) für eine Rate des Zahlungsplans anlegen."""
     if quote.document_type != DocumentType.QUOTE:
         raise ValueError("Nur Angebote lassen sich als Abschlag abrechnen")
+    ensure_billable(session, quote, "down_payment")
     plan = parse_payment_plan(quote.payment_plan)
     if installment_index < 0 or installment_index >= len(plan):
         raise ValueError("Diese Rate gibt es im Zahlungsplan des Angebots nicht")
@@ -199,26 +198,10 @@ def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
     """
     if quote.document_type != DocumentType.QUOTE:
         raise ValueError("Nur Angebote lassen sich als Schlussrechnung abrechnen")
-    existing = session.exec(
-        select(Invoice).where(
-            Invoice.quote_id == int(quote.id),
-            Invoice.is_final_invoice == True,  # noqa: E712 — SQLModel column comparison
-            Invoice.status != InvoiceStatus.CANCELLED,
-        )
-    ).first()
-    if existing is not None:
-        raise FinalInvoiceConflict(
-            f"Zu diesem Angebot gibt es bereits eine Schlussrechnung (Rechnung {existing.nr}). "
-            "Stornieren Sie sie, um eine neue zu erzeugen."
-        )
-    # „Gestellt" heißt: weder Entwurf noch storniert. Dieselbe Liste entscheidet,
-    # ob es die Schlussrechnung geben darf und was abgezogen wird.
+    ensure_billable(session, quote, "final_invoice")
+    # „Gestellt" heißt: weder Entwurf noch storniert. Dieselbe Liste entscheidet
+    # (in `quote_billing`), ob es die Schlussrechnung geben darf, und was abgezogen wird.
     rows = issued_down_payments(session, int(quote.id))
-    if not rows:
-        raise ValueError(
-            "Eine Schlussrechnung entsteht nur mit einer gestellten Abschlagsrechnung. "
-            "Senden Sie die Abschlagsrechnung zuerst; ein Entwurf zählt nicht."
-        )
 
     company = session.get(Company, int(quote.company_id))
     is_small = bool(getattr(company, "is_small_business", False))

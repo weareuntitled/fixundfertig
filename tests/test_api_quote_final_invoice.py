@@ -25,7 +25,11 @@ def _create_quote(client, payload: dict, **overrides) -> dict:
     } | overrides
     response = client.post("/api/invoices", json=body)
     assert response.status_code == 201, response.text
-    return response.json()
+    quote = response.json()
+    # Abrechnen geht nur aus „Gesendet“ oder „Angenommen“ (#495).
+    sent = client.put(f"/api/invoices/{quote['id']}/status", json={"status": "SENT"})
+    assert sent.status_code == 200, sent.text
+    return quote
 
 
 def _down_payment(client, quote_id: int, index: int) -> dict:
@@ -198,12 +202,13 @@ def test_a_draft_down_payment_does_not_qualify_a_final_invoice(artist_api):
     client, company, payload, session = artist_api
     _standard_company(company, session)
     quote = _create_quote(client, payload, vat_rate=19)
-    _down_payment(client, quote["id"], 0)
+    draft = _down_payment(client, quote["id"], 0)
 
     response = _final(client, quote["id"])
 
-    assert response.status_code == 400, response.text
-    assert "gestellten Abschlagsrechnung" in response.json()["detail"]
+    assert response.status_code == 409, response.text
+    assert f"Abschlagsrechnung {draft['nr']}" in response.json()["detail"]
+    assert "Entwurf zählt nicht" in response.json()["detail"]
     assert all(item["is_final_invoice"] is False for item in client.get("/api/invoices").json())
 
 
@@ -292,8 +297,8 @@ def test_a_final_invoice_needs_an_issued_down_payment(artist_api):
 
     response = _final(client, quote["id"])
 
-    assert response.status_code == 400, response.text
-    assert "Abschlagsrechnung" in response.json()["detail"]
+    assert response.status_code == 409, response.text
+    assert "gestellten Abschlagsrechnung" in response.json()["detail"]
     assert client.get("/api/invoices").json() == []
 
 
@@ -305,7 +310,7 @@ def test_a_cancelled_down_payment_does_not_qualify_a_final_invoice(artist_api):
 
     response = _final(client, quote["id"])
 
-    assert response.status_code == 400, response.text
+    assert response.status_code == 409, response.text
     invoices = client.get("/api/invoices").json()
     assert all(item["is_final_invoice"] is False for item in invoices)
 

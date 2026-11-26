@@ -24,7 +24,11 @@ def _create_quote(client, payload: dict, **overrides) -> dict:
     } | overrides
     response = client.post("/api/invoices", json=body)
     assert response.status_code == 201, response.text
-    return response.json()
+    quote = response.json()
+    # Abrechnen geht nur aus „Gesendet“ oder „Angenommen“ (#495).
+    sent = client.put(f"/api/invoices/{quote['id']}/status", json={"status": "SENT"})
+    assert sent.status_code == 200, sent.text
+    return quote
 
 
 def _down_payment(client, quote_id: int, index: int):
@@ -216,7 +220,7 @@ def test_only_quotes_can_be_billed_by_installment(artist_api):
     assert response.status_code == 400, response.text
 
 
-@pytest.mark.parametrize("start", ["DRAFT", "SENT", "ACCEPTED"])
+@pytest.mark.parametrize("start", ["SENT", "ACCEPTED"])
 def test_a_quote_can_be_billed_even_when_it_is_already_accepted(artist_api, start):
     client, _company, payload, _session = artist_api
     quote = _create_quote(client, payload)

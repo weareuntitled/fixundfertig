@@ -26,7 +26,7 @@ from typing import Iterator
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import object_session, selectinload
 from sqlmodel import Session, select
 
 from data import Company, Customer, Document, Invoice, InvoiceItem as InvoiceItemModel
@@ -42,9 +42,8 @@ from logic.document_status import (
     status_not_allowed_reason,
 )
 from logic.final_invoice import issued_down_payments
+from logic.quote_billing import BillingConflict, quote_billing
 from logic.quote_conversion import (
-    DownPaymentConflict,
-    FinalInvoiceConflict,
     create_down_payment_invoice,
     create_final_invoice,
     create_invoice_from_quote,
@@ -59,6 +58,7 @@ from schemas.invoice import (
     InvoiceItem,
     InvoiceRead,
     LinkedInvoiceRead,
+    QuoteBillingRead,
     InvoiceSendRequest,
     InvoiceStatusUpdate,
     InvoiceUpdate,
@@ -154,6 +154,8 @@ def convert_quote_to_invoice(
     quote = _get_invoice_for_company(session, invoice_id, company)
     try:
         invoice = create_invoice_from_quote(session, quote)
+    except BillingConflict as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return _to_read_model(invoice)
@@ -171,7 +173,7 @@ def create_quote_down_payment(
     quote = _get_invoice_for_company(session, invoice_id, company)
     try:
         invoice = create_down_payment_invoice(session, quote, payload.installment_index)
-    except DownPaymentConflict as e:
+    except BillingConflict as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -189,7 +191,7 @@ def create_quote_final_invoice(
     quote = _get_invoice_for_company(session, invoice_id, company)
     try:
         invoice = create_final_invoice(session, quote)
-    except FinalInvoiceConflict as e:
+    except BillingConflict as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -263,6 +265,16 @@ def _ensure_quote_editable(invoice: Invoice) -> None:
         )
 
 
+def _billing_read(invoice: Invoice) -> QuoteBillingRead | None:
+    """Erlaubte Abrechnungsaktionen eines Angebots (#495); None für Rechnungen."""
+    if getattr(invoice, "document_type", None) != DocumentType.QUOTE:
+        return None
+    session = object_session(invoice)
+    if session is None:
+        return None
+    return QuoteBillingRead(**quote_billing(session, invoice).as_dict())
+
+
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
     """Convert SQLModel Invoice + Items to InvoiceRead (Pydantic)."""
     items: list[InvoiceItem] = []
@@ -329,6 +341,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
                 getattr(invoice, "payment_plan", None), float(invoice.total_brutto or 0.0)
             )
         ],
+        billing=_billing_read(invoice),
     )
 
 
