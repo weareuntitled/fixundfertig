@@ -7,9 +7,11 @@ interface LineItemDialogProps {
   initial?: InvoiceItem;
   onSave: (item: InvoiceItem) => void;
   onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  suspendFocus?: boolean;
 }
 
-export function LineItemDialog({ open, initial, onSave, onCancel }: LineItemDialogProps) {
+export function LineItemDialog({ open, initial, onSave, onCancel, onDirtyChange, suspendFocus = false }: LineItemDialogProps) {
   const [description, setDescription] = useState(initial?.description ?? "");
   const [quantity, setQuantity] = useState<number>(initial?.quantity ?? 1);
   const [unitPrice, setUnitPrice] = useState<number>(initial?.unit_price ?? 0);
@@ -22,7 +24,15 @@ export function LineItemDialog({ open, initial, onSave, onCancel }: LineItemDial
     }
   }, [open, initial]);
 
-  const dialogRef = useDialogFocus<HTMLFormElement>(open, { onEscape: onCancel });
+  const dirty = open && (description !== (initial?.description ?? "") || quantity !== (initial?.quantity ?? 1) || unitPrice !== (initial?.unit_price ?? 0));
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
+  const cancel = () => {
+    if (!dirty || window.confirm("Ungespeicherte Eingaben verwerfen?")) onCancel();
+  };
+  const dialogRef = useDialogFocus<HTMLFormElement>(open, { onEscape: cancel, suspended: suspendFocus });
 
   if (!open) return null;
 
@@ -101,7 +111,7 @@ export function LineItemDialog({ open, initial, onSave, onCancel }: LineItemDial
         <div className="flex justify-end gap-2">
           <button
             type="button"
-            onClick={onCancel}
+            onClick={cancel}
             className="min-h-[44px] rounded-[var(--radius)] px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-text-secondary)]"
           >
             Abbrechen

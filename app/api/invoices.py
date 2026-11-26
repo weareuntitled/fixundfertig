@@ -827,6 +827,8 @@ def download_invoice_pdf(
     pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
     fallback = "angebot" if getattr(invoice, "document_type", None) == DocumentType.QUOTE else "rechnung"
     filename = (getattr(invoice, "pdf_filename", "") or "").strip() or f"{fallback}-{invoice_id}.pdf"
+    if getattr(invoice, "down_payment_index", None) is not None and filename == f"rechnung_{invoice.nr}.pdf":
+        filename = f"abschlagsrechnung_{invoice.nr}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

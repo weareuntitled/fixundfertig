@@ -140,6 +140,16 @@ describe("Angebot-Detailseite: Status", () => {
     expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/invoices/7/items/1" && init?.method === "DELETE")).toBe(false);
   });
 
+  it("keeps an edited position when discarding is declined", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderQuote(baseQuote);
+    fireEvent.click(await screen.findByRole("button", { name: "Position 1 bearbeiten" }));
+    fireEvent.change(screen.getByLabelText("Beschreibung"), { target: { value: "Neuer Text" } });
+    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText("Beschreibung")).toHaveValue("Neuer Text");
+  });
+
   it("marks a quote as accepted after confirming and then locks it", async () => {
     renderQuote(baseQuote);
     fireEvent.click(await screen.findByRole("button", { name: "Annehmen" }));

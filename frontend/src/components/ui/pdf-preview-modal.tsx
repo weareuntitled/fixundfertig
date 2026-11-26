@@ -6,6 +6,7 @@ interface PdfPreviewModalProps {
   open: boolean;
   pdfUrl: string | null;
   invoiceNr?: string;
+  downloadUrl?: string;
   /** "QUOTE" names the document "Angebot" and its file "angebot_{nr}.pdf". */
   documentType?: "INVOICE" | "QUOTE";
   error?: boolean;
@@ -14,7 +15,7 @@ interface PdfPreviewModalProps {
   onClose: () => void;
 }
 
-export function PdfPreviewModal({ open, pdfUrl, invoiceNr, documentType = "INVOICE", error, refreshing, onRetry, onClose }: PdfPreviewModalProps) {
+export function PdfPreviewModal({ open, pdfUrl, invoiceNr, downloadUrl, documentType = "INVOICE", error, refreshing, onRetry, onClose }: PdfPreviewModalProps) {
   const dialogRef = useDialogFocus<HTMLElement>(open, { onEscape: onClose });
   if (!open) return null;
 
@@ -40,8 +41,8 @@ export function PdfPreviewModal({ open, pdfUrl, invoiceNr, documentType = "INVOI
             {pdfUrl && (
               <>
                 <a
-                  href={pdfUrl}
-                  download={fileName}
+                  href={downloadUrl || pdfUrl}
+                  download={downloadUrl ? undefined : fileName}
                   className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-[var(--color-brand)] px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   <Download size={14} /> PDF herunterladen

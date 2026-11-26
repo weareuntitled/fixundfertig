@@ -90,6 +90,25 @@ def test_small_business_down_payment_has_no_tax(artist_api):
     assert "Umsatzsteuer nicht erhoben" in _flat_pdf(client, invoice["id"])
 
 
+def test_down_payment_download_names_the_document_type(artist_api):
+    client, _company, payload, _session = artist_api
+    quote = _create_quote(client, payload)
+    invoice = _down_payment(client, quote["id"], 0).json()
+    response = client.get(f"/api/invoices/{invoice['id']}/download")
+    assert response.headers["content-disposition"] == f'attachment; filename="abschlagsrechnung_{invoice["nr"]}.pdf"'
+
+
+def test_down_payment_respects_a_custom_invoice_filename_template(artist_api):
+    client, company, payload, session = artist_api
+    company.invoice_filename_template = "beleg-{nr}"
+    session.add(company)
+    session.commit()
+    quote = _create_quote(client, payload)
+    invoice = _down_payment(client, quote["id"], 0).json()
+    response = client.get(f"/api/invoices/{invoice['id']}/download")
+    assert response.headers["content-disposition"] == f'attachment; filename="beleg-{invoice["nr"]}.pdf"'
+
+
 def test_pdf_calls_it_a_down_payment_and_names_quote_and_percentage(artist_api):
     client, company, payload, session = artist_api
     company.is_small_business = False

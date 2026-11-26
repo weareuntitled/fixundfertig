@@ -28,7 +28,7 @@ export function ClientInfoCard({ client, dueDate }: ClientInfoCardProps) {
         {dueDate && (
           <div className="text-right">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
-              Fälligkeitsdatum
+              Leistungsdatum
             </p>
             <p className="text-sm font-semibold text-[var(--color-text-primary)]">{dueDate}</p>
           </div>

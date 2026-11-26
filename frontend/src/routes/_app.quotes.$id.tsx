@@ -91,10 +91,13 @@ function QuoteDetailPage() {
   const [header, setHeader] = useState<HeaderDraft | null>(null);
   const [validityTouched, setValidityTouched] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<InvoiceItem | null>(null);
+  const [itemDirty, setItemDirty] = useState(false);
+  const [planDirty, setPlanDirty] = useState(false);
   const headerDirty = Boolean(header && quote && Object.entries(header).some(([key, value]) => value !== quote[key as keyof HeaderDraft]));
+  const dirty = headerDirty || itemDirty || planDirty;
   const leaving = useBlocker({
-    shouldBlockFn: () => headerDirty,
-    enableBeforeUnload: () => headerDirty,
+    shouldBlockFn: () => dirty,
+    enableBeforeUnload: () => dirty,
     withResolver: true,
   });
   const [itemDialog, setItemDialog] = useState<{ open: boolean; item?: InvoiceItem }>({ open: false });
@@ -717,6 +720,7 @@ function QuoteDetailPage() {
         invoices={linkedInvoices}
         billing={billing}
         onBillRate={(index) => requestBilling({ kind: "down_payment", index })}
+        onDirtyChange={setPlanDirty}
       />
 
       <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-lg)] shadow-sm">
@@ -754,6 +758,8 @@ function QuoteDetailPage() {
         initial={itemDialog.item}
         onSave={saveItem}
         onCancel={() => setItemDialog({ open: false })}
+        onDirtyChange={setItemDirty}
+        suspendFocus={leaving.status === "blocked"}
       />
 
       <ConfirmDialog
@@ -789,6 +795,7 @@ function QuoteDetailPage() {
         refreshing={preview.isFetching}
         onRetry={() => void preview.refetch()}
         invoiceNr={quote.nr || undefined}
+        downloadUrl={`/api/invoices/${quoteId}/download`}
         documentType="QUOTE"
         onClose={() => setPreviewOpen(false)}
       />

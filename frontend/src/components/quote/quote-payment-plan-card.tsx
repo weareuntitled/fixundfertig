@@ -13,7 +13,7 @@
  * @input {(index: number) => void} onBillRate - Bills a rate; the page uses it to ask first (#499)
  * @output Saving PUTs `payment_plan`; billing POSTs `installment_index` to /api/invoices/{id}/down-payment
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Pencil } from "lucide-react";
@@ -41,6 +41,7 @@ interface QuotePaymentPlanCardProps {
   billing?: QuoteBilling | null;
   /** Bills a rate; wenn die Seite sie nicht vorgibt, passiert das hier. */
   onBillRate?: (installmentIndex: number) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export function QuotePaymentPlanCard({
@@ -52,10 +53,16 @@ export function QuotePaymentPlanCard({
   invoices = [],
   billing = null,
   onBillRate,
+  onDirtyChange,
 }: QuotePaymentPlanCardProps) {
   const qc = useQueryClient();
   const { notify } = useNotification();
   const [draft, setDraft] = useState<PaymentInstallment[] | null>(null);
+  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(plan.map(({ percent, label }) => ({ percent, label })));
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
   const { billRate, isPending: billingPending } = useBillDownPayment(quoteId);
 
   // Only an active (not cancelled) down payment blocks its installment.
@@ -94,7 +101,7 @@ export function QuotePaymentPlanCard({
         <div className="p-[var(--space-lg)]">
           <PaymentPlanEditor value={draft} gross={gross} onChange={setDraft} />
           <div className="mt-[var(--space-md)] flex justify-end gap-[var(--space-xs)]">
-            <button type="button" onClick={() => setDraft(null)} className={SECONDARY_BUTTON}>
+            <button type="button" onClick={() => { if (!dirty || window.confirm("Ungespeicherte Eingaben verwerfen?")) setDraft(null); }} className={SECONDARY_BUTTON}>
               Abbrechen
             </button>
             <button

@@ -377,10 +377,10 @@ actions={
             </label>
           </div>
           <div className="flex gap-[var(--space-sm)] mt-[var(--space-md)] pt-[var(--space-md)] border-t border-[var(--color-border)]">
-            <button type="button" onClick={handleSaveHeader} disabled={updateInvoice.isPending} className="px-[var(--space-md)] py-[var(--space-xs)] bg-black text-white rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-blue-990)] disabled:opacity-50">
+            <button type="button" onClick={handleSaveHeader} disabled={updateInvoice.isPending} className={PRIMARY_BUTTON}>
               {updateInvoice.isPending ? "Speichere…" : "Speichern"}
             </button>
-            <button type="button" onClick={() => setEditingHeader(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-high)]">
+            <button type="button" onClick={() => setEditingHeader(false)} className={SECONDARY_BUTTON}>
               Abbrechen
             </button>
           </div>
@@ -415,7 +415,7 @@ actions={
               plz: invoice.recipient_postal_code || customer?.recipient_postal_code || customer?.plz || "",
               ort: invoice.recipient_city || customer?.recipient_city || customer?.ort || "",
             }}
-            dueDate={invoice.delivery_date}
+            dueDate={invoice.delivery_date.replace(/\d{4}-\d{2}-\d{2}/g, germanDate)}
           />
 
           {/* Line Items */}
@@ -426,7 +426,7 @@ actions={
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
+                  className={SECONDARY_BUTTON}
                 >
                   + Position
                 </button>
@@ -524,6 +524,7 @@ actions={
         refreshing={preview.isFetching}
         onRetry={() => void preview.refetch()}
         invoiceNr={invoice.nr || undefined}
+        downloadUrl={`/api/invoices/${invoiceId}/download`}
         onClose={() => setPreviewOpen(false)}
       />
 
