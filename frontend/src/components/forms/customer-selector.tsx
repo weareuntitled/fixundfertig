@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Select } from "@/components/forms/select";
+import { useDialogFocus } from "@/components/ui/use-dialog-focus";
 import { useCustomers, useCreateCustomer, type Customer } from "@/lib/use-customers";
 
 interface CustomerSelectorProps {
@@ -23,6 +24,7 @@ export function CustomerSelector({ value, onChange, className = "" }: CustomerSe
   const createCustomer = useCreateCustomer();
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({ vorname: "", nachname: "", email: "" });
+  const dialogRef = useDialogFocus<HTMLDivElement>(modalOpen, { onEscape: () => setModalOpen(false) });
 
   const handleCreate = async () => {
     const result = await createCustomer.mutateAsync(form);
@@ -62,7 +64,8 @@ export function CustomerSelector({ value, onChange, className = "" }: CustomerSe
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className="flex items-center justify-center h-10 w-10 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white hover:bg-[var(--color-surface-container-low)] transition-colors shrink-0"
+          aria-label="Neuen Kunden anlegen"
+          className="flex items-center justify-center h-11 w-11 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white hover:bg-[var(--color-surface-container-low)] transition-colors shrink-0"
           title="Neuen Kunden anlegen"
         >
           <Plus size={18} />
@@ -75,28 +78,34 @@ export function CustomerSelector({ value, onChange, className = "" }: CustomerSe
           onClick={() => setModalOpen(false)}
         >
           <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-customer-title"
             className="bg-white rounded-[var(--radius-xl)] shadow-xl p-6 w-full max-w-sm border border-[var(--color-border)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-[var(--color-text-primary)]">
+              <h3 id="new-customer-title" className="text-base font-bold text-[var(--color-text-primary)]">
                 Neuen Kunden anlegen
               </h3>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="rounded-full p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-container-low)]"
+                aria-label="Schließen"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-container-low)]"
               >
                 <X size={18} />
               </button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-[var(--color-text-secondary)] mb-1">
+                <label htmlFor="new-customer-vorname" className="block text-xs font-semibold text-[var(--color-text-secondary)] mb-1">
                   Vorname
                 </label>
                 <input
                   type="text"
+                  id="new-customer-vorname"
                   value={form.vorname}
                   onChange={(e) => setForm({ ...form, vorname: e.target.value })}
                   className="w-full h-10 px-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:border-transparent"
@@ -104,11 +113,12 @@ export function CustomerSelector({ value, onChange, className = "" }: CustomerSe
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[var(--color-text-secondary)] mb-1">
+                <label htmlFor="new-customer-nachname" className="block text-xs font-semibold text-[var(--color-text-secondary)] mb-1">
                   Nachname
                 </label>
                 <input
                   type="text"
+                  id="new-customer-nachname"
                   value={form.nachname}
                   onChange={(e) => setForm({ ...form, nachname: e.target.value })}
                   className="w-full h-10 px-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:border-transparent"
@@ -116,11 +126,12 @@ export function CustomerSelector({ value, onChange, className = "" }: CustomerSe
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[var(--color-text-secondary)] mb-1">
+                <label htmlFor="new-customer-email" className="block text-xs font-semibold text-[var(--color-text-secondary)] mb-1">
                   E-Mail
                 </label>
                 <input
                   type="email"
+                  id="new-customer-email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   className="w-full h-10 px-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:border-transparent"
@@ -132,7 +143,7 @@ export function CustomerSelector({ value, onChange, className = "" }: CustomerSe
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="px-4 py-2 text-sm font-semibold rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-low)] transition-colors"
+                className="min-h-[44px] px-4 py-2 text-sm font-semibold rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-low)] transition-colors"
               >
                 Abbrechen
               </button>
@@ -140,7 +151,7 @@ export function CustomerSelector({ value, onChange, className = "" }: CustomerSe
                 type="button"
                 onClick={handleCreate}
                 disabled={!form.vorname || !form.nachname || createCustomer.isPending}
-                className="px-4 py-2 text-sm font-semibold rounded-[var(--radius-lg)] bg-[var(--color-brand)] text-white hover:bg-[var(--color-brand-hover)] disabled:opacity-50 transition-colors"
+                className="min-h-[44px] px-4 py-2 text-sm font-semibold rounded-[var(--radius-lg)] bg-[var(--color-brand)] text-white hover:bg-[var(--color-brand-hover)] disabled:opacity-50 transition-colors"
               >
                 {createCustomer.isPending ? "Wird angelegt..." : "Anlegen"}
               </button>

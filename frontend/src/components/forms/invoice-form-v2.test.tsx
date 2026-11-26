@@ -20,6 +20,14 @@ const base: InvoiceDraft = {
 };
 
 describe("InvoiceFormV2", () => {
+  it("names a wrong field's problem right at the field", () => {
+    render(<Harness initial={base} />);
+    const quantity = screen.getByLabelText("Menge Position 1");
+    fireEvent.change(quantity, { target: { value: "0" } });
+    expect(quantity).toHaveAttribute("aria-invalid", "true");
+    expect(quantity).toHaveAccessibleDescription("Menge größer 0 eintragen");
+  });
+
   it("says what an empty service date means and shows the payment deadline", () => {
     render(<Harness initial={base} />);
     expect(screen.getByLabelText("Leistungsdatum").getAttribute("aria-describedby")).toBeTruthy();

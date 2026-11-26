@@ -6,6 +6,7 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useDialogFocus } from "@/components/ui/use-dialog-focus";
 import { Loader2, Paperclip, Upload } from "lucide-react";
 
 export const MAX_MESSAGE_LENGTH = 2000;
@@ -55,14 +56,7 @@ export function SendInvoiceSheet({
     }
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending) onCancel();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, pending, onCancel]);
+  const dialogRef = useDialogFocus<HTMLFormElement>(open, { onEscape: pending ? undefined : onCancel });
 
   if (!open) return null;
 
@@ -78,6 +72,7 @@ export function SendInvoiceSheet({
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:px-4">
       <div className="absolute inset-0 bg-black/40" onClick={() => !pending && onCancel()} />
       <form
+        ref={dialogRef}
         onSubmit={submit}
         role="dialog"
         aria-modal="true"
@@ -89,7 +84,7 @@ export function SendInvoiceSheet({
         </h3>
         <p className="mb-5 break-words text-[14px] text-[var(--color-text-secondary)]">
           An {recipientName}
-          {recipientEmail && <span className="text-[var(--color-text-tertiary)]"> · {recipientEmail}</span>}
+          {recipientEmail && <span className="text-[var(--color-text-secondary)]"> · {recipientEmail}</span>}
         </p>
 
         <label
@@ -176,14 +171,14 @@ export function SendInvoiceSheet({
             type="button"
             onClick={onCancel}
             disabled={pending}
-            className="min-h-[44px] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50 sm:min-h-0 sm:py-[var(--space-xs)]"
+            className="min-h-[44px] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50"
           >
             Abbrechen
           </button>
           <button
             type="submit"
             disabled={pending}
-            className="min-h-[44px] rounded-[var(--radius-lg)] bg-[#001a42] px-[var(--space-md)] text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 sm:min-h-0 sm:py-[var(--space-xs)]"
+            className="min-h-[44px] rounded-[var(--radius-lg)] bg-[#001a42] px-[var(--space-md)] text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {pending ? "Sende…" : "Senden"}
           </button>

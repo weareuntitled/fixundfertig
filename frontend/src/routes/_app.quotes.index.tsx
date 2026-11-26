@@ -3,6 +3,7 @@
  * @purpose All quotes of the current company, with the way to write a new one
  */
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { Plus } from "lucide-react";
 import { QuoteList } from "@/components/quote/quote-list";
 import { useQuotes } from "@/lib/use-invoices";
@@ -12,6 +13,7 @@ export const Route = createFileRoute("/_app/quotes/")({
 });
 
 function QuotesListPage() {
+  useDocumentTitle("Angebote");
   const { data: quotes, isLoading, isError } = useQuotes();
 
   return (

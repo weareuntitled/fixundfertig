@@ -123,9 +123,18 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
     company_tax_id = safe_str(get_attr(comp, "tax_id"))
     company_vat_id = safe_str(get_attr(comp, "vat_id"))
 
+    kind = _document_kind(invoice)
+    doc_label = f"{kind} {nr}".strip()
+    company_name = artist_name or legal_name
+
     def draw_document(total_pages: int) -> tuple[bytes, int]:
         buf = BytesIO()
-        c = Canvas(buf, pagesize=A4)
+        # Language and title make the PDF readable for screen readers and name the viewer window.
+        c = Canvas(buf, pagesize=A4, lang="de-DE")
+        c.setTitle(f"{doc_label} – {company_name}" if company_name else doc_label)
+        c.setAuthor(company_name)
+        c.setSubject(f"{doc_label} an {rec_name}" if rec_name else doc_label)
+        c.setCreator("FixundFertig")
         c.setLineWidth(LAYOUT["line_width"])
 
         def set_font(bold=False, size=10, color=LAYOUT["col_primary"]):
@@ -170,6 +179,17 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
 
     _, page_count = draw_document(0)
     return draw_document(page_count)[0]
+
+
+def _document_kind(invoice) -> str:
+    """The document's name as a reader would say it: Angebot, Schlussrechnung, Abschlagsrechnung or Rechnung."""
+    if is_quote(invoice):
+        return "Angebot"
+    if bool(get_attr(invoice, "is_final_invoice", default=False)):
+        return "Schlussrechnung"
+    if get_attr(invoice, "down_payment_index", default=None) is not None:
+        return "Abschlagsrechnung"
+    return "Rechnung"
 
 
 def _vat_rate(invoice, net: float) -> float:

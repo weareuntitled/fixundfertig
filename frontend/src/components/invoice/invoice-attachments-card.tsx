@@ -82,6 +82,7 @@ function AttachmentPicker({
   return (
     <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-[var(--space-md)]">
       <select
+        aria-label="Vorhandenen Beleg auswählen"
         value={selectedId ?? ""}
         onChange={(event) => onSelect(event.target.value ? Number(event.target.value) : null)}
         className="min-h-[44px] flex-1 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[13px] text-[var(--color-text-primary)]"

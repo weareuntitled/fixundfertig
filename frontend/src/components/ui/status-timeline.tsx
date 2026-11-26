@@ -49,13 +49,13 @@ export function StatusTimeline({ currentStatus }: StatusTimelineProps) {
           return (
             <div
               key={step.key}
-              className={`flex flex-row md:flex-col items-center gap-4 md:gap-2 ${
-                isPending ? "opacity-50" : ""
-              }`}
+              aria-current={isCurrent ? "step" : undefined}
+              className="flex flex-row md:flex-col items-center gap-4 md:gap-2"
             >
               {/* Circle */}
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
+                aria-hidden="true"
+                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${isPending ? "opacity-50 " : ""}${
                   isCompleted
                     ? "bg-[var(--color-brand)] text-[var(--color-text-on-brand)] border-2 border-white"
                     : isCurrent

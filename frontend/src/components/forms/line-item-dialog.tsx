@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { InvoiceItem } from "@/lib/schemas/invoice";
+import { useDialogFocus } from "@/components/ui/use-dialog-focus";
 
 interface LineItemDialogProps {
   open: boolean;
@@ -21,6 +22,8 @@ export function LineItemDialog({ open, initial, onSave, onCancel }: LineItemDial
     }
   }, [open, initial]);
 
+  const dialogRef = useDialogFocus<HTMLFormElement>(open, { onEscape: onCancel });
+
   if (!open) return null;
 
   const submit = (e: React.FormEvent) => {
@@ -33,13 +36,14 @@ export function LineItemDialog({ open, initial, onSave, onCancel }: LineItemDial
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
       <form
+        ref={dialogRef}
         onSubmit={submit}
         className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--color-surface-border)] bg-[var(--color-surface-card)] p-6 shadow-xl"
         role="dialog"
         aria-modal="true"
-        aria-label="Position bearbeiten"
+        aria-labelledby="line-item-dialog-title"
       >
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-[0.15em] text-[var(--color-text-primary)]">
+        <h2 id="line-item-dialog-title" className="mb-4 text-sm font-bold uppercase tracking-[0.15em] text-[var(--color-text-primary)]">
           {initial ? "Position bearbeiten" : "Neue Position"}
         </h2>
 
@@ -96,14 +100,14 @@ export function LineItemDialog({ open, initial, onSave, onCancel }: LineItemDial
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-[var(--radius)] px-3 py-2 text-xs font-medium text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-text-secondary)]"
+            className="min-h-[44px] rounded-[var(--radius)] px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-text-secondary)]"
           >
             Abbrechen
           </button>
           <button
             type="submit"
             disabled={!isValid}
-            className="rounded-[var(--radius)] bg-[var(--color-brand)] px-4 py-2 text-xs font-semibold text-[var(--color-text-on-brand)] transition-all hover:bg-[var(--color-brand-hover)] disabled:opacity-50"
+            className="min-h-[44px] rounded-[var(--radius)] bg-[var(--color-brand)] px-4 py-2 text-xs font-semibold text-[var(--color-text-on-brand)] transition-all hover:bg-[var(--color-brand-hover)] disabled:opacity-50"
           >
             Übernehmen
           </button>

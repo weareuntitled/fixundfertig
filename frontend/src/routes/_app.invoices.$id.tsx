@@ -39,6 +39,7 @@ import { SummaryCard } from "@/components/invoice/summary-card";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { PageHeader } from "@/components/ui/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
 
@@ -229,7 +230,7 @@ function InvoiceDetailPage() {
 
   if (isError || !invoice) return (
     <div className="flex flex-col items-center justify-center py-16">
-      <p className="text-sm text-red-500">Rechnung nicht gefunden.</p>
+      <p className="text-sm text-red-600">Rechnung nicht gefunden.</p>
       <Link to="/invoices" className="mt-2 text-xs text-[var(--color-brand-text)] hover:underline">Zurück zur Liste</Link>
     </div>
   );
@@ -245,6 +246,7 @@ function InvoiceDetailPage() {
       <PageHeader
         backTo="/invoices"
         backLabel="Rechnungen"
+        documentTitle={`Rechnung ${invoice.nr || invoice.id}`}
         title={<span>Rechnung #{invoice.nr || invoice.id}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
         subtitle={
           <>
@@ -256,7 +258,7 @@ function InvoiceDetailPage() {
                 <Link
                   to="/quotes/$id"
                   params={{ id: String(invoice.quote_id) }}
-                  className="text-[var(--color-brand-text)] hover:underline"
+                  className="text-[var(--color-brand-text)] underline underline-offset-2"
                 >
                   Aus Angebot {invoice.quote_nr || `#${invoice.quote_id}`}
                 </Link>
@@ -531,26 +533,16 @@ actions={
         onCancel={() => setSendOpen(false)}
       />
 
-      {/* ── Delete Confirmation Modal ── */}
-      {deleteConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteConfirmOpen(false)} />
-          <div className="relative bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] shadow-xl p-[var(--space-xl)] max-w-sm w-full mx-4 animate-fade-in">
-            <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-2">Rechnung löschen?</h3>
-            <p className="text-[14px] text-[var(--color-text-secondary)] mb-6">
-              Rechnung #{invoice.nr || invoice.id} wird endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
-            </p>
-            <div className="flex gap-[var(--space-sm)] justify-end">
-              <button type="button" onClick={() => setDeleteConfirmOpen(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-high)]">
-                Abbrechen
-              </button>
-              <button type="button" onClick={handleDeleteInvoice} disabled={deleteInvoice.isPending} className="px-[var(--space-md)] py-[var(--space-xs)] bg-red-600 text-white rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-red-700 disabled:opacity-50">
-                {deleteInvoice.isPending ? "Lösche…" : "Endgültig löschen"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Rechnung löschen?"
+        message={`Rechnung #${invoice.nr || invoice.id} wird endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.`}
+        confirmLabel={deleteInvoice.isPending ? "Lösche…" : "Endgültig löschen"}
+        destructive
+        pending={deleteInvoice.isPending}
+        onConfirm={handleDeleteInvoice}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }
