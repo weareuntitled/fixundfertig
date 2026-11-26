@@ -215,7 +215,7 @@ function QuoteDetailPage() {
   if (isError || !quote || quote.document_type !== "QUOTE") {
     return (
       <div className="flex flex-col items-center justify-center py-16">
-        <p className="text-sm text-red-500">Angebot nicht gefunden.</p>
+        <p className="text-sm text-red-600">Angebot nicht gefunden.</p>
         <Link to="/quotes" className="mt-2 text-xs text-[var(--color-brand-text)] hover:underline">Zurück zur Liste</Link>
       </div>
     );
@@ -441,6 +441,7 @@ function QuoteDetailPage() {
         backTo="/quotes"
         backLabel="Angebote"
         title={<span>Angebot {quote.nr || `#${quote.id}`}</span>}
+        documentTitle={`Angebot ${quote.nr || `#${quote.id}`}`}
         subtitle={quote.recipient_name || `Kunde #${quote.customer_id}`}
         actions={
           <>

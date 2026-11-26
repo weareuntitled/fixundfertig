@@ -8,6 +8,7 @@
  * @output One white card; every field says what it does and what happens when it is left empty
  */
 import { useEffect, useId, useState, type ReactNode } from "react";
+import { FieldError } from "@/components/ui/field-error";
 import { Trash2 } from "lucide-react";
 import { CustomerSelector } from "./customer-selector";
 import { PaymentPlanEditor } from "@/components/quote/payment-plan-editor";
@@ -60,6 +61,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
   const [removed, setRemoved] = useState<{ item: InvoiceItem; index: number } | null>(null);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
   const [touched, setTouched] = useState<Set<number>>(new Set());
+  const errorBase = useId();
 
   useEffect(() => {
     if (!removed) return;
@@ -206,7 +208,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
 
       {/* Positions, edited in place. Am Handy gestapelt, damit nichts seitlich scrollt (#498). */}
       <div className="mb-[var(--space-xl)]">
-        <h3 className="mb-[var(--space-md)] text-[20px] font-semibold text-[var(--color-text-primary)]">Positionen</h3>
+        <h2 className="mb-[var(--space-md)] text-[20px] font-semibold text-[var(--color-text-primary)]">Positionen</h2>
         <div className="w-full">
           <table className="block w-full border-collapse text-left md:table">
             <thead className="hidden md:table-header-group">
@@ -234,6 +236,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                         type="text"
                         aria-label={`Beschreibung Position ${number}`}
                         aria-invalid={descriptionBad}
+                        aria-describedby={descriptionBad ? `${errorBase}-d${idx}` : undefined}
                         value={it.description}
                         autoFocus={focusIndex === idx}
                         onChange={(e) => updateItemField(idx, "description", e.target.value)}
@@ -242,6 +245,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                         placeholder="z. B. DJ-Set, 4 bis 7 Uhr"
                         className={`${CELL_INPUT} ${descriptionBad ? "border-b-red-500" : ""}`}
                       />
+                      {descriptionBad && <FieldError id={`${errorBase}-d${idx}`}>Beschreibung eintragen</FieldError>}
                     </td>
                     <td className="w-[calc(50%_-_0.25rem)] px-[var(--space-sm)] py-[var(--space-sm)] md:w-auto md:table-cell">
                       <FieldLabel text="Menge" />
@@ -250,12 +254,14 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                         inputMode="decimal"
                         aria-label={`Menge Position ${number}`}
                         aria-invalid={quantityBad}
+                        aria-describedby={quantityBad ? `${errorBase}-q${idx}` : undefined}
                         min="0.01"
                         step="any"
                         value={it.quantity}
                         onChange={(e) => updateItemField(idx, "quantity", Number(e.target.value))}
                         className={`${CELL_INPUT} text-right font-mono text-sm ${quantityBad ? "border-b-red-500" : ""}`}
                       />
+                      {quantityBad && <FieldError id={`${errorBase}-q${idx}`}>Menge größer 0 eintragen</FieldError>}
                     </td>
                     <td className="w-[calc(50%_-_0.25rem)] px-[var(--space-sm)] py-[var(--space-sm)] md:w-auto md:table-cell">
                       <FieldLabel text="Einzelpreis" />
@@ -266,6 +272,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                           inputMode="decimal"
                           aria-label={`Einzelpreis Position ${number}`}
                           aria-invalid={priceBad}
+                          aria-describedby={priceBad ? `${errorBase}-p${idx}` : undefined}
                           min="0"
                           step="0.01"
                           value={it.unit_price}
@@ -273,6 +280,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                           className={`${CELL_INPUT} w-full text-right font-mono text-sm md:w-24 ${priceBad ? "border-b-red-500" : ""}`}
                         />
                       </div>
+                      {priceBad && <FieldError id={`${errorBase}-p${idx}`}>Preis nicht negativ</FieldError>}
                     </td>
                     <td className="grow px-[var(--space-sm)] py-[var(--space-sm)] text-right font-mono text-sm text-[var(--color-text-primary)] md:table-cell">
                       <FieldLabel text="Betrag" />
@@ -299,7 +307,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                   <button
                     type="button"
                     onClick={addItem}
-                    className="flex items-center gap-[var(--space-xs)] text-[14px] font-semibold text-[var(--color-brand-text)] transition-colors hover:text-[var(--color-brand-text-hover)]"
+                    className="flex min-h-[44px] items-center gap-[var(--space-xs)] text-[14px] font-semibold text-[var(--color-brand-text)] transition-colors hover:text-[var(--color-brand-text-hover)]"
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-[18px] w-[18px]" aria-hidden="true">
                       <path d="M12 5v14M5 12h14" />
@@ -342,7 +350,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
               }
               className="h-4 w-4 rounded border-[var(--color-border)] accent-[#001a42]"
             />
-            <label htmlFor="ust-ausweisen" className="cursor-pointer select-none text-[14px] text-[var(--color-text-primary)]">
+            <label htmlFor="ust-ausweisen" className="flex min-h-[44px] flex-1 cursor-pointer select-none items-center text-[14px] text-[var(--color-text-primary)]">
               Umsatzsteuer ausweisen
             </label>
           </div>
@@ -361,7 +369,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                   max="100"
                   value={value.vat_rate}
                   onChange={(e) => setField("vat_rate", Number(e.target.value))}
-                  className="w-16 rounded border border-[var(--color-border)] bg-[var(--color-surface-bright)] px-1 py-0.5 text-right font-mono text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42]"
+                  className="min-h-[44px] w-16 rounded border border-[var(--color-border)] bg-[var(--color-surface-bright)] px-1 py-0.5 text-right font-mono text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42]"
                 />
                 <span className="font-mono text-sm text-[var(--color-text-secondary)]">%</span>
               </div>

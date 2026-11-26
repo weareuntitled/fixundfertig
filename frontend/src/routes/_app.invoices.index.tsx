@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { Plus, Search, FileText, X } from "lucide-react";
 import { useInvoices } from "@/lib/use-invoices";
 import { useState, useMemo } from "react";
@@ -14,6 +15,7 @@ const eur = (n: number) =>
   n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 
 function InvoicesListPage() {
+  useDocumentTitle("Rechnungen");
   const { data: invoices, isLoading, isError } = useInvoices();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
