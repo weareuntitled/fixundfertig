@@ -337,7 +337,10 @@
   to { transform: rotate(360deg); }
 }
 
-.animate-fade-in { animation: fadeIn 0.25s var(--ease-out-expo) both; }
+/* fill-mode "backwards" statt "both": danach bleibt keine Transform-Matrix stehen,
+   sonst richten sich Dialoge (position: fixed) nach dem Container statt nach dem
+   Bildschirm (#498). */
+.animate-fade-in { animation: fadeIn 0.25s var(--ease-out-expo) backwards; }
 .animate-fade-in-scale { animation: fadeInScale 0.2s var(--ease-out-expo) both; }
 .animate-slide-in-right { animation: slideInRight 0.25s var(--ease-out-expo) both; }
 .animate-spin { animation: spin 0.8s linear infinite; }

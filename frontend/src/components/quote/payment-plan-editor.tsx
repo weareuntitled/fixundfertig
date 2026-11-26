@@ -47,7 +47,7 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
             const number = index + 1;
             return (
               <li key={index} className="flex flex-wrap items-center gap-[var(--space-xs)] border-b border-[var(--color-border)] pb-[var(--space-xs)]">
-                <div className="flex w-28 items-center gap-1">
+                <div className="flex w-24 shrink-0 items-center gap-1 sm:w-28">
                   <input
                     type="number"
                     inputMode="decimal"
@@ -69,10 +69,12 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
                   maxLength={200}
                   placeholder="z. B. bei Auftrag"
                   onChange={(e) => update(index, { label: e.target.value })}
-                  className={`${INPUT} min-w-[10rem] flex-1`}
+                  className={`${INPUT} min-w-0 basis-0 grow sm:min-w-[10rem]`}
                 />
-                <span className="w-28 text-right font-mono text-sm text-[var(--color-text-primary)]">{eur(amounts[index] ?? 0)}</span>
-                <div className="flex">
+                <span className="whitespace-nowrap font-mono text-sm text-[var(--color-text-primary)] sm:w-28 sm:text-right">
+                  {eur(amounts[index] ?? 0)}
+                </span>
+                <div className="ml-auto flex sm:ml-0">
                   <button type="button" aria-label={`Rate ${number} nach oben`} disabled={index === 0} onClick={() => move(index, index - 1)} className={ICON_BUTTON}>
                     <ArrowUp size={16} />
                   </button>

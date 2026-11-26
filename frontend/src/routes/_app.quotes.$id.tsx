@@ -34,6 +34,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { germanDate } from "@/components/quote/quote-list";
 import { QuotePaymentPlanCard } from "@/components/quote/quote-payment-plan-card";
 import { ICON_BUTTON, INPUT, PRIMARY_BUTTON, SECONDARY_BUTTON, eur, settlementLabel } from "@/components/quote/quote-ui";
+import { useMediaQuery, WIDE_SCREEN } from "@/hooks/use-media-query";
 import { useCustomer } from "@/lib/use-customers";
 import { useUploadDocument } from "@/lib/use-documents";
 import {
@@ -84,6 +85,8 @@ function QuoteDetailPage() {
   const markSent = useMarkQuoteSent();
   const extendValidity = useExtendQuoteValidity();
   const { billRate, isPending: billingPending } = useBillDownPayment(quoteId);
+  // Am Handy stehen die Kopfaktionen im „Mehr"-Menü, am Desktop nebeneinander (#498).
+  const isWide = useMediaQuery(WIDE_SCREEN, true);
   const [header, setHeader] = useState<HeaderDraft | null>(null);
   const [itemDialog, setItemDialog] = useState<{ open: boolean; item?: InvoiceItem }>({ open: false });
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -402,6 +405,16 @@ function QuoteDetailPage() {
     },
   ];
 
+  // Am Handy wandert der Download mit ins Menü: die Kopfzeile bleibt schmal (#498).
+  const mobileMoreItems: ActionMenuItem[] = [
+    {
+      label: "PDF herunterladen",
+      icon: <Download size={15} />,
+      href: `/api/invoices/${quoteId}/download`,
+    },
+    ...moreItems,
+  ];
+
   const startEdit = () =>
     setHeader({ subject: quote.subject, date: quote.date, valid_until: quote.valid_until });
 
@@ -423,7 +436,7 @@ function QuoteDetailPage() {
   };
 
   return (
-    <div className="animate-fade-in space-y-[var(--space-lg)]">
+    <div className="animate-fade-in space-y-[var(--space-lg)] pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
       <PageHeader
         backTo="/quotes"
         backLabel="Angebote"
@@ -473,10 +486,12 @@ function QuoteDetailPage() {
                 triggerAttributes={{ "data-primary": "true" }}
               />
             )}
-            <a href={`/api/invoices/${quoteId}/download`} className={SECONDARY_BUTTON}>
-              <Download size={16} /> PDF herunterladen
-            </a>
-            <ActionMenu items={moreItems} />
+            {isWide && (
+              <a href={`/api/invoices/${quoteId}/download`} className={SECONDARY_BUTTON}>
+                <Download size={16} /> PDF herunterladen
+              </a>
+            )}
+            <ActionMenu items={isWide ? moreItems : mobileMoreItems} />
           </>
         }
       />
@@ -496,7 +511,7 @@ function QuoteDetailPage() {
       )}
 
       <div className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white p-[var(--space-lg)] shadow-sm">
-        <div className="mb-[var(--space-md)] flex items-center justify-between gap-2">
+        <div className="mb-[var(--space-md)] flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Angaben</h2>
             <StatusBadge status={quoteDisplayStatus(quote)} />
@@ -609,7 +624,7 @@ function QuoteDetailPage() {
       </div>
 
       <div className="overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-sm)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-sm)]">
           <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Positionen</h2>
           {!readOnly && (
             <button type="button" onClick={() => setItemDialog({ open: true })} className={SECONDARY_BUTTON}>
@@ -622,14 +637,21 @@ function QuoteDetailPage() {
             <li className="px-[var(--space-lg)] py-8 text-center text-[14px] text-[var(--color-text-secondary)]">Keine Positionen</li>
           )}
           {items.map((it, index) => (
-            <li key={it.id ?? index} className="flex items-center gap-3 border-b border-[var(--color-border)] px-[var(--space-lg)] py-2">
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-[var(--color-text-heading)]">{it.description}</p>
-                <p className="text-[13px] text-[var(--color-text-secondary)]">
+            <li
+              key={it.id ?? index}
+              data-testid="position-row"
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[var(--color-border)] px-[var(--space-lg)] py-2"
+            >
+              {/* Am Handy zweizeilig: oben die Beschreibung, unten Betrag und Aktionen (#498). */}
+              <div className="w-full min-w-0 grow sm:w-auto">
+                <p data-testid="position-description" className="font-semibold text-[var(--color-text-heading)]">{it.description}</p>
+                <p className="whitespace-nowrap text-[13px] text-[var(--color-text-secondary)]">
                   {it.quantity} × {eur(it.unit_price)}
                 </p>
               </div>
-              <span className="font-mono text-[14px] font-bold">{eur(it.quantity * it.unit_price)}</span>
+              <span data-testid="position-amount" className="whitespace-nowrap font-mono text-[14px] font-bold">
+                {eur(it.quantity * it.unit_price)}
+              </span>
               {!readOnly && (
                 <>
                   <button type="button" aria-label={`Position ${index + 1} bearbeiten`} onClick={() => setItemDialog({ open: true, item: it })} className={ICON_BUTTON}>
@@ -653,15 +675,15 @@ function QuoteDetailPage() {
           <dl className="ml-auto max-w-sm space-y-1 text-[14px]">
             <div className="flex items-center justify-between gap-4">
               <dt className="text-[var(--color-text-secondary)]">Netto</dt>
-              <dd className="font-mono">{eur(quote.total_net)}</dd>
+              <dd className="whitespace-nowrap font-mono">{eur(quote.total_net)}</dd>
             </div>
             <div className="flex items-center justify-between gap-4">
               <dt className="text-[var(--color-text-secondary)]">USt {vatRateLabel}</dt>
-              <dd className="font-mono">{eur(vatAmount)}</dd>
+              <dd className="whitespace-nowrap font-mono">{eur(vatAmount)}</dd>
             </div>
             <div className="flex items-center justify-between gap-4 text-[16px] font-semibold">
               <dt>Gesamt (brutto)</dt>
-              <dd className="font-mono">{eur(quote.total_brutto)}</dd>
+              <dd className="whitespace-nowrap font-mono">{eur(quote.total_brutto)}</dd>
             </div>
           </dl>
         </div>
@@ -686,7 +708,7 @@ function QuoteDetailPage() {
           <>
             <ul>
               {linkedInvoices.map((linked) => (
-                <li key={linked.id} className="flex min-h-[44px] items-center justify-between gap-3 border-b border-[var(--color-border)] last:border-b-0">
+                <li key={linked.id} className="flex min-h-[44px] flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] last:border-b-0">
                   <Link
                     to="/invoices/$id"
                     params={{ id: String(linked.id) }}
@@ -696,7 +718,7 @@ function QuoteDetailPage() {
                   </Link>
                   <span className="flex items-center gap-3">
                     <StatusBadge status={linked.status} />
-                    <span className="font-mono text-[14px] font-bold">{eur(linked.total_brutto)}</span>
+                    <span className="whitespace-nowrap font-mono text-[14px] font-bold">{eur(linked.total_brutto)}</span>
                   </span>
                 </li>
               ))}

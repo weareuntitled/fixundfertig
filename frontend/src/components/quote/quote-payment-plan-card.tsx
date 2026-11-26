@@ -109,7 +109,7 @@ export function QuotePaymentPlanCard({
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-sm)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-sm)]">
             <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Zahlungsplan</h2>
             {!locked && !readOnly && (
               <button
@@ -137,37 +137,44 @@ export function QuotePaymentPlanCard({
               <ol>
                 {plan.map((rate, index) => {
                   const billed = billedRates.get(index);
+                  const action = billed ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <StatusBadge status={billed.status} />
+                      <Link
+                        to="/invoices/$id"
+                        params={{ id: String(billed.id) }}
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface-container-low)] px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-high)]"
+                      >
+                        Abschlagsrechnung {billed.nr || `#${billed.id}`}
+                      </Link>
+                    </span>
+                  ) : readOnly || downPaymentBlocked ? (
+                    <span className="text-[13px] text-[var(--color-text-secondary)]">nicht abrechenbar</span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={billingPending}
+                      onClick={() => (onBillRate ? onBillRate(index) : billRate(index))}
+                      className={SECONDARY_BUTTON}
+                    >
+                      Abschlag {eur(rate.amount)} abrechnen
+                    </button>
+                  );
                   return (
                     <li
                       key={index}
-                      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--color-border)] px-[var(--space-lg)] py-2 last:border-b-0"
+                      data-testid="rate-row"
+                      className="flex flex-col gap-2 border-b border-[var(--color-border)] px-[var(--space-lg)] py-2 last:border-b-0 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-1"
                     >
-                      <span className="w-16 shrink-0 font-mono text-[14px]">{percentLabel(rate.percent)}</span>
-                      <span className="min-w-0 flex-1 text-[14px] text-[var(--color-text-heading)]">{rate.label}</span>
-                      <span className="font-mono text-[14px] font-bold">{eur(rate.amount)}</span>
-                      {billed ? (
-                        <span className="flex items-center gap-2">
-                          <StatusBadge status={billed.status} />
-                          <Link
-                            to="/invoices/$id"
-                            params={{ id: String(billed.id) }}
-                            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-[var(--color-surface-container-low)] px-[var(--space-md)] text-[14px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-container-high)]"
-                          >
-                            Abschlagsrechnung {billed.nr || `#${billed.id}`}
-                          </Link>
-                        </span>
-                      ) : readOnly || downPaymentBlocked ? (
-                        <span className="text-[13px] text-[var(--color-text-secondary)]">nicht abrechenbar</span>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={billingPending}
-                          onClick={() => (onBillRate ? onBillRate(index) : billRate(index))}
-                          className={SECONDARY_BUTTON}
-                        >
-                          Abschlag {eur(rate.amount)} abrechnen
-                        </button>
-                      )}
+                      {/* Am Handy zweizeilig: oben Prozent und Anlass, unten Betrag und Aktion (#498). */}
+                      <div className="flex min-w-0 items-baseline gap-3 sm:contents">
+                        <span className="w-16 shrink-0 whitespace-nowrap font-mono text-[14px]">{percentLabel(rate.percent)}</span>
+                        <span data-testid="rate-label" className="min-w-0 grow text-[14px] text-[var(--color-text-heading)]">{rate.label}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 sm:contents">
+                        <span data-testid="rate-amount" className="whitespace-nowrap font-mono text-[14px] font-bold">{eur(rate.amount)}</span>
+                        {action}
+                      </div>
                     </li>
                   );
                 })}

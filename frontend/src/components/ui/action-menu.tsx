@@ -8,7 +8,9 @@ import { MoreHorizontal } from "lucide-react";
 export interface ActionMenuItem {
   label: string;
   icon: ReactNode;
-  onSelect: () => void;
+  onSelect?: () => void;
+  /** Ziel statt Aktion: der Eintrag wird ein Link (z. B. „PDF herunterladen“). */
+  href?: string;
   disabled?: boolean;
   danger?: boolean;
 }
@@ -73,24 +75,35 @@ export function ActionMenu({
           role="menu"
           className="animate-fade-in-scale absolute right-0 z-30 mt-1 w-56 origin-top-right overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white py-1 shadow-lg"
         >
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              disabled={item.disabled}
-              onClick={() => {
-                setOpen(false);
-                item.onSelect();
-              }}
-              className={`flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-medium transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50 ${
-                item.danger ? "text-red-600 hover:bg-red-50" : "text-[var(--color-text-primary)]"
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </button>
-          ))}
+          {items.map((item) => {
+            const className = `flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-medium transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50 ${
+              item.danger ? "text-red-600 hover:bg-red-50" : "text-[var(--color-text-primary)]"
+            }`;
+            if (item.href) {
+              return (
+                <a key={item.label} role="menuitem" href={item.href} className={className}>
+                  {item.icon}
+                  {item.label}
+                </a>
+              );
+            }
+            return (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                disabled={item.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  item.onSelect?.();
+                }}
+                className={className}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

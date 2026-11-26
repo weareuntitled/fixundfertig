@@ -31,10 +31,12 @@ export function LineItemDialog({ open, initial, onSave, onCancel }: LineItemDial
   const isValid = description.trim().length > 0 && quantity > 0 && unitPrice >= 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+    // Am Handy liegt der Dialog als Blatt am unteren Rand, damit er vollständig
+    // sichtbar bleibt und der Toast oben ihn nicht verdeckt (#498).
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-4 backdrop-blur-sm sm:items-center">
       <form
         onSubmit={submit}
-        className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--color-surface-border)] bg-[var(--color-surface-card)] p-6 shadow-xl"
+        className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-[var(--radius-lg)] border border-[var(--color-surface-border)] bg-[var(--color-surface-card)] p-6 shadow-xl sm:rounded-[var(--radius-lg)]"
         role="dialog"
         aria-modal="true"
         aria-label="Position bearbeiten"
