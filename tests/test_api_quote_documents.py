@@ -133,3 +133,40 @@ def test_no_accent_line_touches_the_rest_line(artist_api):
         assert not (row_bottom <= line_y <= row_top), (line_y, rest_y)
     lines_between = [y for y in _accent_lines(pdf_bytes) if row_top < y < previous_baseline - 2]
     assert lines_between, "the rest line is set off by an accent line above it"
+
+
+# ---- Abschlagsrechnung
+
+
+def test_down_payment_pdf_says_the_service_is_not_yet_rendered(artist_api):
+    client, company, payload, session = artist_api
+    _standard_company(company, session)
+    quote = _create_quote(client, payload, vat_rate=19)
+    down_payment = _post(client, f"/api/invoices/{quote['id']}/down-payment", {"installment_index": 0})
+
+    text = _flat(_pdf(client, down_payment["id"]))
+
+    assert "ABSCHLAGSRECHNUNG" in text
+    assert "wie Rechnungsdatum" not in text
+    assert "Leistungsdatum" not in text
+    assert "folgende Leistungen in Rechnung" not in text
+    assert "Vereinbarungsgemäß berechne ich folgende Abschlagszahlung." in text
+    assert f"Leistung: noch nicht erbracht – Anzahlung gemäß Angebot {quote['nr']}" in text
+    assert f"Rechnungsdatum: {TODAY}" in text
+
+
+def test_down_payment_pdf_keeps_its_texts_after_an_edit(artist_api):
+    client, company, payload, session = artist_api
+    _standard_company(company, session)
+    quote = _create_quote(client, payload, vat_rate=19)
+    down_payment = _post(client, f"/api/invoices/{quote['id']}/down-payment", {"installment_index": 0})
+    response = client.put(
+        f"/api/invoices/{down_payment['id']}", json={"recipient_name": "Club Beispiel GmbH", "reason": "Test"}
+    )
+    assert response.status_code == 200, response.text
+
+    text = _flat(_pdf(client, down_payment["id"]))
+
+    assert "wie Rechnungsdatum" not in text
+    assert f"Leistung: noch nicht erbracht – Anzahlung gemäß Angebot {quote['nr']}" in text
+    assert "Relaunch Website" in text

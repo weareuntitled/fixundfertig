@@ -539,6 +539,8 @@ def update_invoice(
                 document_type=invoice.document_type, valid_until=invoice.valid_until,
                 payment_plan=invoice.payment_plan, vat_rate=invoice.vat_rate,
                 down_payment_index=getattr(invoice, "down_payment_index", None),
+                subject=invoice.subject or "",
+                quote_nr=(invoice.quote.nr if getattr(invoice, "quote", None) else ""),
             )
             preview.__dict__["intro_text"] = invoice.intro_text or ""
             preview.__dict__["line_items"] = clean_items

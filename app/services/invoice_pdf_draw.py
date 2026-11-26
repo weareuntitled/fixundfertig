@@ -82,6 +82,25 @@ def draw_logo(c: Canvas, mx: float, top_y: float, comp) -> float:
 
 QUOTE_INTRO = "Vielen Dank für Ihre Anfrage. Hiermit biete ich folgende Leistungen an."
 INVOICE_INTRO = "Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung."
+# Abschlagsrechnung (#496): eine Anzahlung vor der Leistung, keine erbrachte Leistung.
+# Formulierung vom Steuerberater zu prüfen (§ 14 Abs. 4 Nr. 6 UStG).
+DOWN_PAYMENT_INTRO = "Vereinbarungsgemäß berechne ich folgende Abschlagszahlung."
+
+
+def down_payment_service_note(quote_nr: str) -> str:
+    """Steht bei der Abschlagsrechnung anstelle des Leistungsdatums.
+
+    Formulierung vom Steuerberater zu prüfen.
+    """
+    note = "Leistung: noch nicht erbracht – Anzahlung"
+    return f"{note} gemäß Angebot {quote_nr}" if quote_nr else note
+
+
+def _quote_nr(invoice) -> str:
+    """Nummer des Angebots, aus dem ein Dokument entstand ('' ohne Angebot)."""
+    return safe_str(get_attr(invoice, "quote_nr", default="")) or safe_str(
+        get_attr(get_attr(invoice, "quote", default=None), "nr", default="")
+    )
 
 
 def draw_recipient(c: Canvas, mx: float, rule_y: float, content_w: float,
@@ -117,11 +136,12 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
     left_w = content_w - 160
     ink, muted = LAYOUT["col_ink"], LAYOUT["col_muted"]
 
+    down_payment = not quote and get_attr(invoice, "down_payment_index", default=None) is not None
     if quote:
         heading = "ANGEBOT"
     elif bool(get_attr(invoice, "is_final_invoice", default=False)):
         heading = "SCHLUSSRECHNUNG"
-    elif get_attr(invoice, "down_payment_index", default=None) is not None:
+    elif down_payment:
         heading = "ABSCHLAGSRECHNUNG"
     else:
         heading = "RECHNUNG"
@@ -145,20 +165,30 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
         y -= 1
 
     intro = safe_str(get_attr(invoice, "intro_text", "intro", default=""))
-    if not intro and not quote:
+    # The company's own invoice intro speaks of rendered services: not for a down payment.
+    if not intro and not quote and not down_payment:
         intro = safe_str(get_attr(comp, "invoice_intro", default="")) if comp is not None else ""
     if not intro:
-        intro = QUOTE_INTRO if quote else INVOICE_INTRO
+        intro = QUOTE_INTRO if quote else (DOWN_PAYMENT_INTRO if down_payment else INVOICE_INTRO)
     c.setFillColorRGB(0.235, 0.251, 0.282)
     c.setFont(fonts["regular"], 9)
     for line in wrap_text(intro, fonts["regular"], 9, left_w):
         c.drawString(mx, y, line)
         y -= 13.5
+    if down_payment:
+        # Too long for the date column: the note gets its own line under the intro.
+        y -= 4
+        for line in wrap_text(down_payment_service_note(_quote_nr(invoice)), fonts["regular"], 9, left_w):
+            c.drawString(mx, y, line)
+            y -= 13.5
 
     # Dates sit on the right, level with the last line of the intro.
     # The service date is a mandatory invoice detail: without one it is the invoice date.
+    # A down payment has no service date yet; the note above says so.
     if quote:
         dates = [("Angebotsdatum:", inv_date), ("Gültig bis:", valid_until)]
+    elif down_payment:
+        dates = [("Rechnungsdatum:", inv_date)]
     else:
         dates = [("Leistungsdatum:", service_date or ("wie Rechnungsdatum" if inv_date else "")),
                  ("Rechnungsdatum:", inv_date)]
