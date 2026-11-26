@@ -12,6 +12,7 @@ import { Trash2 } from "lucide-react";
 import { CustomerSelector } from "./customer-selector";
 import { PaymentPlanEditor } from "@/components/quote/payment-plan-editor";
 import { dueDateLabel, PAYMENT_TERM_DAYS } from "@/lib/invoice-draft";
+import { defaultIntroText } from "@/lib/document-intro";
 import { addDaysIso, QUOTE_VALIDITY_DAYS, type InvoiceDraft, type InvoiceItem } from "@/lib/schemas/invoice";
 
 interface InvoiceFormV2Props {
@@ -173,7 +174,10 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
 
       {/* Intro text */}
       <div className="mb-[var(--space-xl)]">
-        <FormField label="Einleitung" hint="Optional. Ohne Text steht: „Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung.“">
+        <FormField
+          label="Einleitung"
+          hint={`Optional. Ohne Text steht: „${defaultIntroText(value.document_type)}“`}
+        >
           {({ id, hintId }) => (
             <textarea
               id={id}

@@ -13,7 +13,25 @@ export interface ActionMenuItem {
   danger?: boolean;
 }
 
-export function ActionMenu({ items }: { items: ActionMenuItem[] }) {
+export interface ActionMenuProps {
+  items: ActionMenuItem[];
+  /** Text of the trigger; default "Mehr". */
+  label?: string;
+  /** Icon of the trigger; default the three-dot icon. */
+  icon?: ReactNode;
+  /** Look of the trigger; default the quiet "Mehr" look. */
+  triggerClassName?: string;
+  /** Further attributes of the trigger, e.g. `data-primary` on the quote page. */
+  triggerAttributes?: Record<string, string>;
+}
+
+export function ActionMenu({
+  items,
+  label = "Mehr",
+  icon,
+  triggerClassName,
+  triggerAttributes,
+}: ActionMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -41,9 +59,14 @@ export function ActionMenu({ items }: { items: ActionMenuItem[] }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] transition-colors hover:bg-[var(--color-surface-container-high)]"
+        {...triggerAttributes}
+        className={
+          triggerClassName ??
+          "inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] transition-colors hover:bg-[var(--color-surface-container-high)]"
+        }
       >
-        <MoreHorizontal size={16} /> Mehr
+        {icon ?? <MoreHorizontal size={16} />}
+        {label}
       </button>
       {open && (
         <div

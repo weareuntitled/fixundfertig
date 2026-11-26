@@ -275,6 +275,57 @@ test("new invoice: says what is missing, asks before creating and opens the new 
   expect(posted).toMatchObject({ customer_id: 7, ust_enabled: false, items: [{ description: "DJ Performance", unit_price: 400 }] });
 });
 
+test("Angebotsliste: zeigt den Abrechnungsstand je Angebot", async ({ page }) => {
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 1785, status: "ACCEPTED",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 1500 }],
+    settlement: { billed_brutto: 714, total_brutto: 1785, open_brutto: 1071, billed_count: 1 },
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));
+  await page.route("**/api/invoices**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/invoices" && url.searchParams.get("document_type") === "QUOTE") {
+      return route.fulfill({ json: [quote] });
+    }
+    return route.fulfill({ json: [] });
+  });
+
+  await page.goto("/quotes");
+  const row = page.getByRole("main").getByRole("link", { name: /A-10000/ });
+  await expect(row).toContainText("abgerechnet 714,00 € von 1.785,00 € · offen 1.071,00 €");
+});
+
+test("Angebot: die Seite zeigt Netto, USt, Gesamt und den Abrechnungsstand", async ({ page }) => {
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 1785, total_net: 1500, vat_rate: 19, status: "ACCEPTED",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 1500 }],
+    settlement: { billed_brutto: 714, total_brutto: 1785, open_brutto: 1071, billed_count: 1 },
+    billing: {
+      convert: { allowed: false, reason: "Es gibt bereits eine Abschlagsrechnung (10000). Rechnen Sie den Rest mit der Schlussrechnung ab.", invoice_id: 43, invoice_nr: "10000" },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: false,
+    },
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  await expect(main.getByText("abgerechnet 714,00 € von 1.785,00 € · offen 1.071,00 €")).toBeVisible();
+  await expect(main.getByText("Netto", { exact: true })).toBeVisible();
+  await expect(main.getByText("USt 19 %")).toBeVisible();
+  await expect(main.getByText("Gesamt (brutto)")).toBeVisible();
+  await expect(main.getByRole("definition").filter({ hasText: "1.500,00 €" })).toBeVisible();
+  await expect(main.getByRole("definition").filter({ hasText: "285,00 €" })).toBeVisible();
+  await expect(main.getByRole("definition").filter({ hasText: "1.785,00 €" })).toBeVisible();
+});
+
 test("Angebot anlegen: from the quotes list through the invoice form to the saved draft quote", async ({ page }) => {
   let posted: Record<string, unknown> | undefined;
   let previewed: Record<string, unknown> | undefined;
@@ -352,11 +403,14 @@ test("quote detail page previews and downloads the Angebot PDF without invoice a
   const download = main.getByRole("link", { name: /PDF herunterladen/ });
   await expect(download).toBeVisible();
   expect(await download.getAttribute("href")).toBe("/api/invoices/42/download");
-  for (const invoiceAction of [/Zahlungslink/, /bezahlt/i, /Storn/, /An Kunde senden/, /Mehr/]) {
+  for (const invoiceAction of [/Zahlungslink/, /bezahlt/i, /Storn/, /An Kunde senden/]) {
     await expect(main.getByRole("button", { name: invoiceAction })).toHaveCount(0);
   }
+  // Die primäre Aktion des Entwurfs ist das Senden; der Rest liegt im Menü.
+  await expect(main.getByRole("button", { name: "Senden" })).toBeVisible();
 
-  await main.getByRole("button", { name: "Vorschau" }).click();
+  await main.getByRole("button", { name: "Mehr" }).click();
+  await main.getByRole("menuitem", { name: "Vorschau" }).click();
   await expect(page.getByRole("heading", { name: "PDF-Vorschau · Angebot A-10000" })).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("link", { name: /PDF herunterladen/ })).toHaveAttribute(
     "download",
@@ -388,7 +442,7 @@ test("quote detail page sends the Angebot by mail and then shows Gesendet", asyn
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
   await expect(main.getByText("Entwurf")).toBeVisible();
-  await main.getByRole("button", { name: "Angebot senden" }).click();
+  await main.getByRole("button", { name: "Senden" }).click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Angebot senden" })).toBeVisible();
@@ -425,7 +479,7 @@ test("Versand ohne Mailserver: the error stays in the dialog and offers a way ou
 
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
-  await main.getByRole("button", { name: "Angebot senden" }).click();
+  await main.getByRole("button", { name: "Senden" }).click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Angebot senden" })).toBeVisible();
@@ -455,6 +509,12 @@ test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each o
     total_brutto: 400, status: converted ? "ACCEPTED" : "SENT",
     items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 400 }],
     linked_invoices: converted ? [{ id: 43, nr: "10000", status: "DRAFT", total_brutto: 400 }] : [],
+    billing: {
+      convert: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: true,
+    },
   });
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote() }));
@@ -467,7 +527,13 @@ test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each o
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
   await expect(main.getByText("Noch keine Rechnung zu diesem Angebot.")).toBeVisible();
-  await main.getByRole("button", { name: "In Rechnung umwandeln" }).click();
+  await main.getByRole("button", { name: "Mehr" }).click();
+  await main.getByRole("menuitem", { name: "In Rechnung umwandeln" }).click();
+
+  // Das Angebot gilt mit dem Abrechnen als angenommen; danach fragt die Seite.
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText("gilt das Angebot als angenommen");
+  await confirm.getByRole("button", { name: "Abrechnen" }).click();
 
   await expect(page).toHaveURL(/\/invoices\/43$/);
   await expect(page.getByRole("heading", { name: /Rechnung #10000/ })).toBeVisible();
@@ -475,7 +541,8 @@ test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each o
 
   await expect(page).toHaveURL(/\/quotes\/42$/);
   await expect(main.getByRole("link", { name: /Rechnung 10000/ })).toHaveAttribute("href", "/invoices/43");
-  await expect(main.getByRole("button", { name: "Löschen" })).toBeDisabled();
+  await main.getByRole("button", { name: "Mehr" }).click();
+  await expect(main.getByRole("menuitem", { name: "Löschen" })).toBeDisabled();
 });
 
 test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as Entwurf", async ({ page }) => {
@@ -498,6 +565,12 @@ test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as 
     linked_invoices: billed
       ? [{ id: 43, nr: "10000", status: "DRAFT", total_brutto: 2380, installment_index: 0, is_down_payment: true }]
       : [],
+    billing: {
+      convert: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: false,
+    },
   });
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote() }));
@@ -505,18 +578,61 @@ test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as 
     billed = true;
     return route.fulfill({ status: 201, json: invoice });
   });
+  await page.route("**/api/invoices/43", (route) => route.fulfill({ json: invoice }));
 
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
-  await expect(main.getByRole("button", { name: "Abschlagsrechnung" })).toHaveCount(2);
+  // Der Knopf nennt den Betrag der Rate.
+  await expect(main.getByRole("button", { name: "Abschlag 2.380,00 € abrechnen" })).toHaveCount(2);
 
-  await main.getByRole("button", { name: "Abschlagsrechnung" }).first().click();
+  // Merkmal setzen: überlebt nur, wenn die Seite nicht neu geladen wird.
+  await page.evaluate(() => {
+    (window as unknown as { __spa?: boolean }).__spa = true;
+  });
+  await main.getByRole("button", { name: "Abschlag 2.380,00 € abrechnen" }).first().click();
 
-  const downPaymentLink = main.getByRole("link", { name: "Rechnung 10000", exact: true });
+  // Nach dem Anlegen geht es zur Abschlagsrechnung.
+  await expect(page).toHaveURL(/\/invoices\/43$/);
+  await expect(page.getByRole("heading", { name: /Rechnung #10000/ })).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __spa?: boolean }).__spa)).toBe(true);
+});
+
+test("Abschlagsrechnung: the quote lists the down payment with a link to it", async ({ page }) => {
+  const invoice = {
+    id: 43, customer_id: 7, document_type: "INVOICE", nr: "10000", title: "Abschlagsrechnung",
+    date: "", recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, status: "DRAFT",
+    quote_id: 42, quote_nr: "A-10000", down_payment_index: 0,
+    items: [{ id: 2, description: "Abschlag 50 % gemäß Angebot A-10000 – bei Auftrag", quantity: 1, unit_price: 2000 }],
+  };
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 4760, status: "ACCEPTED",
+    items: [{ id: 1, description: "Website", quantity: 1, unit_price: 4000 }],
+    payment_plan: [
+      { percent: 50, label: "bei Auftrag", amount: 2380 },
+      { percent: 50, label: "nach Livegang", amount: 2380 },
+    ],
+    linked_invoices: [
+      { id: 43, nr: "10000", status: "DRAFT", total_brutto: 2380, installment_index: 0, is_down_payment: true },
+    ],
+    billing: {
+      convert: { allowed: false, reason: "Es gibt bereits eine Abschlagsrechnung (10000). Rechnen Sie den Rest mit der Schlussrechnung ab.", invoice_id: 43, invoice_nr: "10000" },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: false,
+    },
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  const downPaymentLink = main.getByRole("link", { name: "Abschlagsrechnung 10000", exact: true }).first();
   await expect(downPaymentLink).toHaveAttribute("href", "/invoices/43");
   await expect(downPaymentLink.locator("..").getByText("Entwurf", { exact: true })).toBeVisible();
-  await expect(main.getByRole("button", { name: "Abschlagsrechnung" })).toHaveCount(1);
-  await expect(main.getByText("Angenommen", { exact: true })).toBeVisible();
+  // Der gesperrte Umwandeln-Knopf steht als Text mit Grund da.
+  await expect(main.getByText(/Rechnen Sie den Rest mit der Schlussrechnung ab/)).toBeVisible();
 });
 
 test("Schlussrechnung: a quote with a down payment becomes a final invoice that links back", async ({ page }) => {
@@ -550,6 +666,12 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
             is_down_payment: false, is_final_invoice: true },
         ]
       : [downPayment],
+    billing: {
+      convert: { allowed: false, reason: "Es gibt bereits eine Abschlagsrechnung (10000). Rechnen Sie den Rest mit der Schlussrechnung ab.", invoice_id: 43, invoice_nr: "10000" },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: false,
+    },
   });
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote() }));
@@ -561,10 +683,11 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
 
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
-  const downPaymentLink = main.getByRole("link", { name: "Rechnung 10000", exact: true });
+  const downPaymentLink = main.getByRole("link", { name: "Abschlagsrechnung 10000", exact: true }).first();
   await expect(downPaymentLink).toBeVisible();
   await expect(downPaymentLink.locator("..").getByText("Gesendet", { exact: true })).toBeVisible();
 
+  // Die Schlussrechnung ist der nächste Schritt und damit der Primärknopf.
   await main.getByRole("button", { name: "Schlussrechnung" }).click();
 
   await expect(page).toHaveURL(/\/invoices\/44$/);

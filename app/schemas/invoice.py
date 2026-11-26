@@ -161,6 +161,19 @@ class QuoteBillingRead(BaseModel):
     requires_acceptance: bool = False
 
 
+class QuoteSettlementRead(BaseModel):
+    """Abrechnungsstand eines Angebots (#499): abgerechnet, gesamt, offen.
+
+    `billed_brutto` ist die Summe der gestellten Rechnungen zum Angebot (brutto),
+    `total_brutto` der Bruttobetrag des Angebots, `open_brutto` der Rest.
+    """
+
+    billed_brutto: float = 0.0
+    total_brutto: float = 0.0
+    open_brutto: float = 0.0
+    billed_count: int = 0
+
+
 class InvoiceRead(BaseModel):
     """Output für GET /api/invoices[/...]. Vollständiger Record inkl. server-managed Felder."""
 
@@ -181,6 +194,10 @@ class InvoiceRead(BaseModel):
     recipient_city: str = ""
     legacy: bool = False
     total_brutto: float
+    # Nettobetrag aus den Positionen und der Steuersatz des Dokuments (#499):
+    # damit zeigt die Angebotsseite Netto, USt und Gesamt statt einer Summe.
+    total_net: float = 0.0
+    vat_rate: float = 0.0
     status: InvoiceStatus = "DRAFT"
     revision_nr: int = 0
     updated_at: str = ""
@@ -199,6 +216,8 @@ class InvoiceRead(BaseModel):
     payment_plan: list[PaymentInstallmentRead] = Field(default_factory=list)
     # Nur Angebote: welche Abrechnungsaktionen erlaubt sind; sonst None.
     billing: QuoteBillingRead | None = None
+    # Nur Angebote: wie viel vom Angebot schon abgerechnet ist; sonst None.
+    settlement: QuoteSettlementRead | None = None
 
 
 class InvoiceSendRequest(BaseModel):

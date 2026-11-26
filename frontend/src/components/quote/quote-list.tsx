@@ -1,6 +1,6 @@
 /**
  * @schema QuoteList
- * @purpose Quote rows: number, customer, amount, valid until, status
+ * @purpose Quote rows: number, customer, amount, valid until, status and how much is billed already
  * @input {InvoiceRead[]} quotes - Quotes from GET /api/invoices?document_type=QUOTE
  * @output One card per quote linking to /quotes/$id, or an empty state
  */
@@ -9,7 +9,7 @@ import { FileSignature } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { InvoiceRead } from "@/lib/schemas/invoice";
 import { quoteDisplayStatus } from "@/lib/quote-status";
-import { eur } from "./quote-ui";
+import { eur, settlementLabel, settlementPercent } from "./quote-ui";
 
 /** DD.MM.YYYY for an ISO date, or "" when it is not set. */
 export function germanDate(iso: string): string {
@@ -34,6 +34,7 @@ export function QuoteList({ quotes }: { quotes: InvoiceRead[] }) {
     <div className="space-y-2">
       {quotes.map((quote) => {
         const validUntil = germanDate(quote.valid_until);
+        const percent = settlementPercent(quote.settlement);
         return (
           <Link
             key={quote.id}
@@ -58,6 +59,18 @@ export function QuoteList({ quotes }: { quotes: InvoiceRead[] }) {
                 {quote.subject && (
                   <div className="mt-0.5 truncate text-[12.5px] text-[var(--color-text-tertiary)]">{quote.subject}</div>
                 )}
+                <div className="mt-1 flex items-center gap-2 text-[12px] text-[var(--color-text-tertiary)]">
+                  <span
+                    className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-[var(--color-gray-200)]"
+                    aria-hidden="true"
+                  >
+                    <span
+                      className="block h-full rounded-full bg-[var(--color-brand-text)]"
+                      style={{ width: `${percent}%` }}
+                    />
+                  </span>
+                  <span>{settlementLabel(quote.settlement)}</span>
+                </div>
               </div>
               <div className="text-right font-mono text-[15px] font-semibold tabular-nums text-[var(--color-text-primary)]">
                 {eur(quote.total_brutto)}

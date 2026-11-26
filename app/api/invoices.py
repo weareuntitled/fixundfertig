@@ -35,6 +35,7 @@ from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
+from logic.invoice import invoice_net_total
 from logic.document_status import (
     accepted_quote_status_reason,
     creation_status_reason,
@@ -43,7 +44,7 @@ from logic.document_status import (
     status_not_allowed_reason,
 )
 from logic.final_invoice import issued_down_payments
-from logic.quote_billing import BillingConflict, quote_billing
+from logic.quote_billing import BillingConflict, quote_billing, quote_settlement
 from logic.quote_conversion import (
     create_down_payment_invoice,
     create_final_invoice,
@@ -67,6 +68,7 @@ from schemas.invoice import (
     InvoiceRead,
     LinkedInvoiceRead,
     QuoteBillingRead,
+    QuoteSettlementRead,
     InvoiceSendRequest,
     InvoiceStatusUpdate,
     InvoiceUpdate,
@@ -351,6 +353,16 @@ def _billing_read(invoice: Invoice) -> QuoteBillingRead | None:
     return QuoteBillingRead(**quote_billing(session, invoice).as_dict())
 
 
+def _settlement_read(invoice: Invoice) -> QuoteSettlementRead | None:
+    """Abrechnungsstand eines Angebots (#499); None für Rechnungen."""
+    if getattr(invoice, "document_type", None) != DocumentType.QUOTE:
+        return None
+    session = object_session(invoice)
+    if session is None:
+        return None
+    return QuoteSettlementRead(**quote_settlement(session, invoice).as_dict())
+
+
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
     """Convert SQLModel Invoice + Items to InvoiceRead (Pydantic)."""
     items: list[InvoiceItem] = []
@@ -379,6 +391,8 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         recipient_city=invoice.recipient_city or "",
         legacy=bool(invoice.legacy) if hasattr(invoice, 'legacy') else False,
         total_brutto=float(invoice.total_brutto or 0.0),
+        total_net=invoice_net_total(invoice),
+        vat_rate=document_vat_rate(invoice),
         status=invoice.status.value if hasattr(invoice.status, "value") else str(invoice.status),
         revision_nr=int(invoice.revision_nr or 0),
         updated_at=invoice.updated_at or "",
@@ -418,6 +432,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
             )
         ],
         billing=_billing_read(invoice),
+        settlement=_settlement_read(invoice),
     )
 
 

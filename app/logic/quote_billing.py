@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import update
 from sqlmodel import Session, select
 
-from data import DocumentType, Invoice, InvoiceStatus, is_issued_status
+from data import DocumentType, Invoice, InvoiceStatus, NOT_ISSUED_STATUSES, is_issued_status
 from services.payment_plan import parse_payment_plan
 
 DRAFT_REASON = "Ein Entwurf lässt sich nicht abrechnen. Senden Sie das Angebot zuerst."
@@ -62,6 +62,64 @@ class QuoteBilling:
             "final_invoice": self.final_invoice.as_dict(),
             "requires_acceptance": self.requires_acceptance,
         }
+
+
+@dataclass(frozen=True)
+class QuoteSettlement:
+    """Wie viel vom Angebot ist schon abgerechnet (#499).
+
+    Grundlage sind die gestellten Rechnungen zum Angebot: nicht storniert und nicht
+    im Entwurf. Der Zahlungsplan zählt nicht — er ist der Plan, nicht die Rechnung.
+    """
+
+    billed_brutto: float = 0.0
+    total_brutto: float = 0.0
+    open_brutto: float = 0.0
+    billed_count: int = 0
+
+    def as_dict(self) -> dict:
+        return {
+            "billed_brutto": self.billed_brutto,
+            "total_brutto": self.total_brutto,
+            "open_brutto": self.open_brutto,
+            "billed_count": self.billed_count,
+        }
+
+
+def issued_invoices(session: Session, quote_id: int) -> list[Invoice]:
+    """Gestellte Rechnungen zum Angebot, älteste zuerst.
+
+    „Gestellt“ heißt: weder Entwurf noch storniert (`NOT_ISSUED_STATUSES`). Dieselbe
+    Regel wie beim Abzug der Abschlagsrechnungen (`logic.final_invoice`).
+    """
+    statement = (
+        select(Invoice)
+        .where(
+            Invoice.quote_id == int(quote_id),
+            Invoice.document_type == DocumentType.INVOICE,
+            Invoice.status.notin_(list(NOT_ISSUED_STATUSES)),
+        )
+        .order_by(Invoice.id)
+    )
+    return list(session.exec(statement).all())
+
+
+def quote_settlement(session: Session, quote: Invoice) -> QuoteSettlement:
+    """Abrechnungsstand eines Angebots: abgerechnet, Angebot gesamt, offen.
+
+    Die Summe ist der Bruttobetrag der gestellten Rechnungen zum Angebot (Abschläge
+    und gegebenenfalls eine Vollrechnung), verglichen mit dem Bruttobetrag des
+    Angebots. Was gestellt ist, zählt; was im Entwurf liegt, zählt nicht mit.
+    """
+    total = round(float(quote.total_brutto or 0.0), 2)
+    invoices = issued_invoices(session, int(quote.id))
+    billed = round(sum(float(inv.total_brutto or 0.0) for inv in invoices), 2)
+    return QuoteSettlement(
+        billed_brutto=billed,
+        total_brutto=total,
+        open_brutto=round(max(total - billed, 0.0), 2),
+        billed_count=len(invoices),
+    )
 
 
 def _blocked(reason: str, invoice: Invoice | None = None) -> BillingAction:

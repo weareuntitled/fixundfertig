@@ -102,6 +102,14 @@ def _calc_gross(items: List[Dict[str, Any]], *, ust_enabled: bool, is_small_busi
     return net + tax
 
 
+def invoice_net_total(invoice: Invoice) -> float:
+    """Nettobetrag eines Dokuments aus den Positionen, auf Cent gerundet."""
+    return round(
+        sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or [])),
+        2,
+    )
+
+
 def document_vat_rate(invoice: Invoice) -> float:
     """VAT rate in percent the document charges.
 

@@ -4,7 +4,8 @@
  * @input {PaymentInstallment[]} value - Installments in order
  * @input {number} gross - Gross total the amounts are computed from (amounts are never stored)
  * @input {(next: PaymentInstallment[]) => void} onChange
- * @output A list with the amount per installment and a warning (not a block) when the sum is not 100 %
+ * @output A list with the amount per installment; a warning (not a block) when the sum is not 100 %,
+ *   a blocking hint when the sum is over 100 % (#495)
  */
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { installmentAmounts, planPercentTotal, percentLabel } from "@/lib/payment-plan";
@@ -99,7 +100,14 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
         </ol>
       )}
 
-      {value.length > 0 && Math.abs(total - 100) > 0.001 && (
+      {value.length > 0 && total > 100 && (
+        <p role="alert" className="mt-[var(--space-xs)] rounded-[var(--radius)] bg-[var(--color-red-50)] px-3 py-2 text-[13px] text-[var(--color-red-600)]">
+          Die Raten ergeben zusammen {percentLabel(total)}, mehr als 100 %. Bitte kürzen — das lässt sich nicht
+          speichern.
+        </p>
+      )}
+
+      {value.length > 0 && total <= 100 && Math.abs(total - 100) > 0.001 && (
         <p role="status" className="mt-[var(--space-xs)] rounded-[var(--radius)] bg-[var(--color-amber-50)] px-3 py-2 text-[13px] text-[var(--color-amber-700)]">
           Die Raten ergeben zusammen {percentLabel(total)}, nicht 100 %. Speichern geht trotzdem.
         </p>
