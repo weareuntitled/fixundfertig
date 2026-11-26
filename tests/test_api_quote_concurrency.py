@@ -109,3 +109,18 @@ def test_two_simultaneous_down_payments_for_one_rate_create_one_invoice(parallel
 
     assert codes == [201, 409]
     assert len(_invoices_of(engine, quote["id"])) == 1
+
+
+def test_failure_after_invoice_creation_rolls_back_entire_transaction(parallel_api, monkeypatch):
+    client, engine, quote = parallel_api
+
+    def fail_render(*args, **kwargs):
+        raise RuntimeError("PDF failed")
+
+    monkeypatch.setattr(quote_conversion, "render_invoice_to_pdf_bytes", fail_render)
+    with pytest.raises(RuntimeError, match="PDF failed"):
+        client.post(f"/api/invoices/{quote['id']}/down-payment", json={"installment_index": 0})
+
+    with Session(engine) as session:
+        assert session.exec(select(data.Invoice).where(data.Invoice.document_type == data.DocumentType.INVOICE)).all() == []
+    assert client.get(f"/api/invoices/{quote['id']}").json()["status"] == "SENT"

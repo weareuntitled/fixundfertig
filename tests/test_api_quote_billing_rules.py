@@ -115,6 +115,52 @@ def test_no_further_installment_after_the_final_invoice(artist_api):
     assert _invoice_count(client) == 2
 
 
+def test_final_invoice_waits_for_every_draft_down_payment(artist_api):
+    client, _company, payload, _session = artist_api
+    quote = _quote(client, payload)
+    issued = _down_payment(client, quote["id"], 0).json()
+    draft = _down_payment(client, quote["id"], 1).json()
+    _set_status(client, issued["id"], "SENT")
+
+    billing = _billing(client, quote["id"])["final_invoice"]
+    response = _final(client, quote["id"])
+
+    assert billing["allowed"] is False
+    assert billing["invoice_id"] == draft["id"]
+    assert "Entwurf" in billing["reason"]
+    assert response.status_code == 409
+    _set_status(client, draft["id"], "CANCELLED")
+    assert _final(client, quote["id"]).status_code == 201
+
+
+@pytest.mark.parametrize("path", ["status", "bulk-status", "send", "payment-link"])
+def test_legacy_draft_cannot_be_issued_after_final_invoice(artist_api, path):
+    from data import Invoice, InvoiceStatus
+
+    client, _company, payload, session = artist_api
+    quote = _quote(client, payload)
+    issued = _down_payment(client, quote["id"], 0).json()
+    draft = _down_payment(client, quote["id"], 1).json()
+    _set_status(client, issued["id"], "SENT")
+    _set_status(client, draft["id"], "CANCELLED")
+    assert _final(client, quote["id"]).status_code == 201
+    legacy = session.get(Invoice, draft["id"])
+    legacy.status = InvoiceStatus.DRAFT
+    session.add(legacy)
+    session.commit()
+
+    if path == "status":
+        response = client.put(f"/api/invoices/{draft['id']}/status", json={"status": "SENT"})
+    elif path == "bulk-status":
+        response = client.post("/api/invoices/bulk-status", json={"invoice_ids": [draft["id"]], "status": "SENT"})
+    elif path == "send":
+        response = client.post(f"/api/invoices/{draft['id']}/send")
+    else:
+        response = client.post(f"/api/invoices/{draft['id']}/payment-link")
+    assert response.status_code == 409, response.text
+    assert "Schlussrechnung" in response.json()["detail"]
+
+
 def test_cancelling_the_full_invoice_frees_the_quote_again(artist_api):
     client, _company, payload, _session = artist_api
     quote = _quote(client, payload)

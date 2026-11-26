@@ -44,7 +44,7 @@ from logic.document_status import (
     status_not_allowed_reason,
 )
 from logic.final_invoice import final_invoice_totals, issued_down_payments
-from logic.quote_billing import BillingConflict, quote_billing, quote_settlement
+from logic.quote_billing import BillingConflict, lock_quote_for_billing, quote_billing, quote_settlement
 from logic.quote_conversion import (
     create_down_payment_invoice,
     create_final_invoice,
@@ -318,6 +318,7 @@ def _render_document_pdf(session: Session | None, invoice, company=None, custome
 
 def _ensure_status_allowed(session: Session, invoice: Invoice, new_status: str) -> None:
     """Prüft, ob der Statuswechsel erlaubt ist; wirft 409 (Konflikt) oder 400 (ungültig)."""
+    _ensure_down_payment_can_be_issued(session, invoice, new_status)
     # Das Zurücksetzen einer Entscheidung auf „Gesendet“ kommt vor der Endgültigkeit:
     # es ist der dokumentierte Rückweg, solange das Angebot keine Rechnung hat.
     reset = decision_reset_reason(invoice, new_status, quote_has_invoices(session, invoice))
@@ -329,6 +330,25 @@ def _ensure_status_allowed(session: Session, invoice: Invoice, new_status: str) 
     reason = status_not_allowed_reason(invoice, new_status)
     if reason:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
+
+
+def _ensure_down_payment_can_be_issued(session: Session, invoice: Invoice, new_status: str) -> None:
+    if (getattr(invoice, "down_payment_index", None) is None or not getattr(invoice, "quote_id", None)
+            or invoice.status not in (InvoiceStatus.DRAFT, InvoiceStatus.CANCELLED)
+            or new_status in (InvoiceStatus.DRAFT, InvoiceStatus.CANCELLED)):
+        return
+    quote = session.get(Invoice, invoice.quote_id)
+    if quote is None:
+        return
+    lock_quote_for_billing(session, quote)
+    final = session.exec(select(Invoice).where(
+        Invoice.quote_id == invoice.quote_id,
+        Invoice.is_final_invoice == True,  # noqa: E712
+        Invoice.status != InvoiceStatus.CANCELLED,
+    )).first()
+    if final:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Die Schlussrechnung {final.nr} rechnet den Rest bereits ab.")
 
 
 def _ensure_quote_editable(invoice: Invoice) -> None:
@@ -526,6 +546,7 @@ def generate_invoice_payment_link(
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+    _ensure_down_payment_can_be_issued(session, invoice, InvoiceStatus.SENT)
     url = create_payment_link(invoice_id=invoice_id, company=company, session=session)
     return {"payment_link_url": url}
 
@@ -1150,6 +1171,7 @@ def send_invoice_email_endpoint(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
+    _ensure_down_payment_can_be_issued(session, invoice, InvoiceStatus.SENT)
     customer = session.get(Customer, invoice.customer_id) if invoice.customer_id else None
     if not customer or not customer.email:
         raise HTTPException(
