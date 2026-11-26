@@ -43,7 +43,7 @@ from logic.document_status import (
     is_rejected_quote,
     status_not_allowed_reason,
 )
-from logic.final_invoice import issued_down_payments
+from logic.final_invoice import final_invoice_totals, issued_down_payments
 from logic.quote_billing import BillingConflict, quote_billing, quote_settlement
 from logic.quote_conversion import (
     create_down_payment_invoice,
@@ -63,6 +63,8 @@ from schemas.invoice import (
     DownPaymentRequest,
     InvoiceAttachmentCreate,
     InvoiceAttachmentRead,
+    FinalBreakdownRead,
+    FinalDeductionRead,
     InvoiceDraft,
     InvoiceItem,
     InvoiceRead,
@@ -363,6 +365,27 @@ def _settlement_read(invoice: Invoice) -> QuoteSettlementRead | None:
     return QuoteSettlementRead(**quote_settlement(session, invoice).as_dict())
 
 
+def _final_breakdown(invoice: Invoice) -> FinalBreakdownRead | None:
+    """Gesamtleistung, Abzüge und Restbetrag einer Schlussrechnung; None für andere Dokumente."""
+    # Nur eine echte Schlussrechnung mit Angebot: eine entkoppelte Instanz (Mock,
+    # Testdouble) trägt keine Sitzung und keine Angebots-ID.
+    if getattr(invoice, "is_final_invoice", False) is not True:
+        return None
+    quote_id = getattr(invoice, "quote_id", None)
+    if not isinstance(quote_id, int):
+        return None
+    session = object_session(invoice)
+    if session is None:
+        return None
+    rows = issued_down_payments(session, quote_id)
+    totals = final_invoice_totals(invoice_net_total(invoice), document_vat_rate(invoice), rows)
+    return FinalBreakdownRead(
+        net=totals["net"], tax=totals["tax"], gross=totals["gross"],
+        deductions=[FinalDeductionRead(**row.as_dict()) for row in rows],
+        rest_net=totals["rest_net"], rest_tax=totals["rest_tax"], rest=totals["rest"],
+    )
+
+
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
     """Convert SQLModel Invoice + Items to InvoiceRead (Pydantic)."""
     items: list[InvoiceItem] = []
@@ -405,6 +428,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
             else None
         ),
         is_final_invoice=bool(getattr(invoice, "is_final_invoice", False)),
+        final_breakdown=_final_breakdown(invoice),
         linked_invoices=[
             LinkedInvoiceRead(
                 id=int(linked.id),
@@ -643,6 +667,8 @@ def update_invoice(
                 document_type=invoice.document_type, valid_until=invoice.valid_until,
                 payment_plan=invoice.payment_plan, vat_rate=invoice.vat_rate,
                 down_payment_index=getattr(invoice, "down_payment_index", None),
+                subject=invoice.subject or "",
+                quote_nr=(invoice.quote.nr if getattr(invoice, "quote", None) else ""),
             )
             preview.__dict__["intro_text"] = invoice.intro_text or ""
             preview.__dict__["line_items"] = clean_items
@@ -1105,6 +1131,7 @@ def send_invoice_email_endpoint(
         customer=customer,
         invoice=invoice,
         message=payload.message,
+        down_payments=_final_invoice_down_payments(session, invoice),
     )
 
     smtp_config = {

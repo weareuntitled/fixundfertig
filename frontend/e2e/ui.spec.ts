@@ -691,7 +691,7 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
   await main.getByRole("button", { name: "Schlussrechnung" }).click();
 
   await expect(page).toHaveURL(/\/invoices\/44$/);
-  await expect(page.getByRole("heading", { name: "Rechnung #10001" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Schlussrechnung 10001" })).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Aus Angebot A-10000" }).click();
 
   await expect(page).toHaveURL(/\/quotes\/42$/);

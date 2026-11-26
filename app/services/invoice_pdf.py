@@ -73,6 +73,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
             if isinstance(row, dict):
                 deductions.append({
                     "nr": safe_str(row.get("nr")),
+                    "date": format_date(row.get("date") or ""),
                     "net": safe_float(row.get("net")),
                     "tax": safe_float(row.get("tax")),
                     "total": safe_float(row.get("total")),
@@ -80,6 +81,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
             else:
                 deductions.append({
                     "nr": safe_str(get_attr(row, "nr")),
+                    "date": format_date(get_attr(row, "date")),
                     "net": safe_float(get_attr(row, "net")),
                     "tax": safe_float(get_attr(row, "tax")),
                     "total": safe_float(get_attr(row, "total")),
@@ -134,7 +136,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
 
         def page_footer() -> None:
             draw_footer(c, w, mx, content_w, my_bot, comp, company_tax_id, company_vat_id,
-                        fonts, c.getPageNumber(), total_pages or 1)
+                        fonts, c.getPageNumber(), total_pages or 1, quote)
 
         def new_page() -> float:
             page_footer()
@@ -147,7 +149,10 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
         y = draw_recipient(c, mx, rule_y, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country, fonts, quote)
         y = draw_title_block(c, w, mx, y - 39, content_w, invoice, comp, nr, inv_date, service_date, fonts,
                              quote, valid_until)
-        if artist_name and legal_name and not uses_artist_wordmark(comp) and not line_holds_artist_name_as_its_own_token:
+        # An invoice names the legal person above the services; a quote needs no such
+        # line (#496): its footer already names the Anbieter with the legal name.
+        if (not quote and artist_name and legal_name and not uses_artist_wordmark(comp)
+                and not line_holds_artist_name_as_its_own_token):
             y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
         y -= 22
         y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, fonts)
@@ -215,6 +220,7 @@ def _down_payments_from_quote(invoice) -> list[dict]:
         total = round(safe_float(get_attr(other, "total_brutto", default=0)), 2)
         rows.append({
             "nr": safe_str(get_attr(other, "nr")),
+            "date": safe_str(get_attr(other, "date")),
             "net": net,
             "tax": round(max(total - net, 0.0), 2),
             "total": total,

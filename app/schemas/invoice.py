@@ -139,6 +139,29 @@ class LinkedInvoiceRead(BaseModel):
     is_final_invoice: bool = False
 
 
+class FinalDeductionRead(BaseModel):
+    """Eine von der Schlussrechnung abgezogene Abschlagsrechnung (#496)."""
+
+    id: int
+    nr: str = ""
+    date: str = ""
+    net: float = 0.0
+    tax: float = 0.0
+    total: float = 0.0
+
+
+class FinalBreakdownRead(BaseModel):
+    """Gesamtleistung, Abzüge und Restbetrag einer Schlussrechnung, wie im PDF (#496)."""
+
+    net: float
+    tax: float
+    gross: float
+    deductions: list[FinalDeductionRead] = Field(default_factory=list)
+    rest_net: float
+    rest_tax: float
+    rest: float
+
+
 class BillingActionRead(BaseModel):
     """Eine Abrechnungsaktion eines Angebots: erlaubt, oder gesperrt mit Grund (#495).
 
@@ -208,6 +231,8 @@ class InvoiceRead(BaseModel):
     down_payment_index: int | None = None
     # Schlussrechnung (#491): eigener Marker.
     is_final_invoice: bool = False
+    # Schlussrechnung (#496): Aufschlüsselung für die Rechnungsseite, sonst None.
+    final_breakdown: FinalBreakdownRead | None = None
     linked_invoices: list[LinkedInvoiceRead] = Field(default_factory=list)
     payment_link_url: str = ""
     payment_provider: str = ""

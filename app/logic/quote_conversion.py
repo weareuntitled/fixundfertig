@@ -19,7 +19,7 @@ from logic.final_invoice import (
 from logic.invoice import document_vat_rate, finalize_invoice_logic
 from logic.quote_billing import BillingConflict, ensure_billable
 from renderer import render_invoice_to_pdf_bytes
-from services.invoice_pdf_draw import INVOICE_INTRO
+from services.invoice_pdf_draw import DOWN_PAYMENT_INTRO, INVOICE_INTRO
 from services.invoice_pdf_layout import format_date
 from services.payment_plan import format_percent, parse_payment_plan, round_cents
 
@@ -88,6 +88,7 @@ def _invoice_draft_from_quote(
     invoice = session.get(Invoice, invoice_id)
     assert invoice is not None
     invoice.quote_id = int(quote.id)
+    invoice.quote = quote  # the PDF names the quote ("gemäß Angebot …") before the next flush
     session.add(invoice)
     return invoice
 
@@ -132,12 +133,15 @@ def down_payment_description(quote: Invoice, percent: float, label: str) -> str:
 
 
 def down_payment_intro(quote: Invoice, company: Any, percent: float, label: str) -> str:
-    """Einleitung: „Abschlagsrechnung zu Angebot A-10000 über 50 % – bei Auftrag.“ + Standardtext."""
+    """Einleitung: „Abschlagsrechnung zu Angebot A-10000 über 50 % – bei Auftrag.“ + Abschlagstext.
+
+    Der eigene Rechnungs-Standardtext der Firma spricht von erbrachten Leistungen und
+    gilt deshalb nicht. Formulierung vom Steuerberater zu prüfen.
+    """
     text = f"Abschlagsrechnung zu Angebot {quote.nr} über {format_percent(percent)}"
     if label:
         text = f"{text} – {label}"
-    standard = (getattr(company, "invoice_intro", "") or "").strip() or INVOICE_INTRO
-    return f"{text}. {standard}"
+    return f"{text}. {DOWN_PAYMENT_INTRO}"
 
 
 def create_down_payment_invoice(

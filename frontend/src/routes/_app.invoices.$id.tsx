@@ -36,6 +36,7 @@ import { StatusTimeline } from "@/components/ui/status-timeline";
 import { ClientInfoCard } from "@/components/invoice/client-info-card";
 import { InvoiceAttachmentsCard } from "@/components/invoice/invoice-attachments-card";
 import { SummaryCard } from "@/components/invoice/summary-card";
+import { FinalBreakdown } from "@/components/invoice/final-breakdown";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { PageHeader } from "@/components/ui/page-header";
@@ -245,7 +246,7 @@ function InvoiceDetailPage() {
       <PageHeader
         backTo="/invoices"
         backLabel="Rechnungen"
-        title={<span>Rechnung #{invoice.nr || invoice.id}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
+        title={<span>{invoice.is_final_invoice ? `Schlussrechnung ${invoice.nr || invoice.id}` : `Rechnung #${invoice.nr || invoice.id}`}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
         subtitle={
           <>
             Erstellt am {invoice.date || "Kein Datum"}
@@ -468,7 +469,7 @@ actions={
 
         {/* Right 1/3 */}
         <div className="space-y-[var(--space-gutter)]">
-          <SummaryCard subtotal={invoice.total_brutto} taxRate={19} ustEnabled={!company?.is_small_business} />
+          {invoice.final_breakdown ? <FinalBreakdown breakdown={invoice.final_breakdown} /> : <SummaryCard subtotal={invoice.total_brutto} taxRate={19} ustEnabled={!company?.is_small_business} />}
 
           {/* Status Actions */}
           {validTransitions.length > 0 && (
