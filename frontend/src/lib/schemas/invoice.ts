@@ -197,6 +197,13 @@ export const quoteSettlementSchema = z.object({
 
 export type QuoteSettlement = z.infer<typeof quoteSettlementSchema>;
 
+export const finalBreakdownSchema = z.object({
+  net: z.number(), tax: z.number(), gross: z.number(),
+  deductions: z.array(z.object({ id: z.number(), nr: z.string(), date: z.string(), net: z.number(), tax: z.number(), total: z.number() })),
+  rest_net: z.number(), rest_tax: z.number(), rest: z.number(),
+});
+export type FinalBreakdownRead = z.infer<typeof finalBreakdownSchema>;
+
 /**
  * Read-side mirror of `app/schemas/invoice.py:InvoiceRead`.
  * Backend liefert: id, customer_id, nr, title, date, delivery_date,
@@ -234,6 +241,7 @@ export const invoiceReadSchema = z.object({
   down_payment_index: z.number().int().nullable().default(null),
   /** Schlussrechnung: eigener Marker. */
   is_final_invoice: z.boolean().default(false),
+  final_breakdown: finalBreakdownSchema.nullable().default(null),
   /** Angebot: die daraus entstandenen Rechnungen. */
   linked_invoices: z.array(linkedInvoiceSchema).default([]),
   payment_link_url: z.string().default(""),

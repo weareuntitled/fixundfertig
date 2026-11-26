@@ -31,7 +31,11 @@ def _create_quote(client, payload: dict, **overrides) -> dict:
     } | overrides
     response = client.post("/api/invoices", json=body)
     assert response.status_code == 201, response.text
-    return response.json()
+    quote = response.json()
+    # Abrechnen geht nur aus „Gesendet“ oder „Angenommen“ (#495).
+    sent = client.put(f"/api/invoices/{quote['id']}/status", json={"status": "SENT"})
+    assert sent.status_code == 200, sent.text
+    return quote
 
 
 def _post(client, url: str, body: dict | None = None) -> dict:
