@@ -73,6 +73,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
             if isinstance(row, dict):
                 deductions.append({
                     "nr": safe_str(row.get("nr")),
+                    "date": format_date(row.get("date") or ""),
                     "net": safe_float(row.get("net")),
                     "tax": safe_float(row.get("tax")),
                     "total": safe_float(row.get("total")),
@@ -80,6 +81,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
             else:
                 deductions.append({
                     "nr": safe_str(get_attr(row, "nr")),
+                    "date": format_date(get_attr(row, "date")),
                     "net": safe_float(get_attr(row, "net")),
                     "tax": safe_float(get_attr(row, "tax")),
                     "total": safe_float(get_attr(row, "total")),
@@ -215,6 +217,7 @@ def _down_payments_from_quote(invoice) -> list[dict]:
         total = round(safe_float(get_attr(other, "total_brutto", default=0)), 2)
         rows.append({
             "nr": safe_str(get_attr(other, "nr")),
+            "date": safe_str(get_attr(other, "date")),
             "net": net,
             "tax": round(max(total - net, 0.0), 2),
             "total": total,

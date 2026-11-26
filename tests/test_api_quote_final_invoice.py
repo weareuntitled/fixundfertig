@@ -133,7 +133,7 @@ def test_final_invoice_pdf_names_itself_and_lists_the_deduction(artist_api):
 
     assert "SCHLUSSRECHNUNG" in text
     assert "A-10000" in text
-    assert "Rechnung 10000" in text
+    assert "abzüglich Abschlagsrechnung 10000 vom" in text
     assert "2.000,00" in text
     assert "380,00" in text
     assert "Gesamtleistung" in text
@@ -188,7 +188,7 @@ def test_the_final_invoice_shows_a_payment_due_date_and_the_deductions(artist_ap
     assert "Zahlbar bis" in text
     assert "ZAHLUNGSINFORMATIONEN" in text
     assert "IBAN" in text
-    assert "ABSCHLÄGE" in text
+    assert "ABRECHNUNG" in text
     assert "Gesamtleistung" in text
     assert "Restbetrag" in text
 

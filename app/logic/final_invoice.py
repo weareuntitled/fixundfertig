@@ -26,9 +26,14 @@ class DownPaymentDeduction:
     net: float
     tax: float
     total: float
+    # Rechnungsdatum (ISO), damit PDF, Mail und App „vom [Datum]“ nennen können.
+    date: str = ""
 
     def as_dict(self) -> dict:
-        return {"id": self.id, "nr": self.nr, "net": self.net, "tax": self.tax, "total": self.total}
+        return {
+            "id": self.id, "nr": self.nr, "date": self.date,
+            "net": self.net, "tax": self.tax, "total": self.total,
+        }
 
 
 def invoice_net(invoice: Invoice) -> float:
@@ -66,6 +71,7 @@ def issued_down_payments(session: Session, quote_id: int) -> list[DownPaymentDed
                 net=net,
                 tax=round(max(total - net, 0.0), 2),
                 total=total,
+                date=str(invoice.date or ""),
             )
         )
     return rows
