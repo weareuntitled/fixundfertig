@@ -119,7 +119,7 @@ def test_personal_message_replaces_the_standard_intro(sent):
     for body in (mail["text"], mail["html"]):
         assert "Danke für die geile Nacht!" in body
         assert "Bis bald in der Hamma." in body
-        assert "danke für den Auftrag" not in body
+        assert "vielen Dank für Ihren Auftrag" not in body
         assert "hängt als PDF an" in body
     assert mail["text"].startswith("Hallo Club Beispiel,\n\nDanke für die geile Nacht!")
     assert "<br>" in mail["html"]
@@ -136,7 +136,7 @@ def test_personal_message_is_escaped(sent):
 def test_without_a_message_the_standard_intro_stays(sent, message):
     send, _ = sent
     mail, _ = send(message=message)
-    assert "danke für den Auftrag" in mail["text"]
+    assert "vielen Dank für Ihren Auftrag" in mail["text"]
 
 
 def test_message_is_limited_to_two_thousand_characters(artist_api, sent):

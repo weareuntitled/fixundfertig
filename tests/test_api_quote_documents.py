@@ -257,3 +257,67 @@ def test_invoice_pdf_still_names_the_legal_person_above_the_services():
     ).split("\n")]
 
     assert "untitled ux (Test Inhaber)" in strings
+
+
+# ---- Mails
+
+
+def _mail_for(client, session, monkeypatch, payload, invoice_id: int) -> dict:
+    customer = session.get(invoices.Customer, payload["customer_id"])
+    customer.email = "buchhaltung@club.example"
+    session.add(customer)
+    session.commit()
+    mails: list[dict] = []
+    monkeypatch.setattr(invoices, "send_email", lambda **kwargs: mails.append(kwargs) or True)
+    response = client.post(f"/api/invoices/{invoice_id}/send")
+    assert response.status_code == 200, response.text
+    return mails[-1]
+
+
+def test_down_payment_mail_names_kind_and_number(artist_api, monkeypatch):
+    client, company, payload, session = artist_api
+    _standard_company(company, session)
+    quote = _create_quote(client, payload, vat_rate=19)
+    down_payment = _post(client, f"/api/invoices/{quote['id']}/down-payment", {"installment_index": 0})
+
+    mail = _mail_for(client, session, monkeypatch, payload, down_payment["id"])
+
+    assert mail["subject"] == f"Abschlagsrechnung {down_payment['nr']} — Relaunch Website"
+    for body in (mail["text"], mail["html"]):
+        assert f"Abschlagsrechnung {down_payment['nr']}" in body
+        assert f"Rechnung {down_payment['nr']}" not in body.replace("Abschlagsrechnung", "")
+        assert "2.380,00 €" in body
+
+
+def test_final_invoice_mail_shows_total_deductions_and_rest(artist_api, monkeypatch):
+    client, company, payload, session = artist_api
+    _quote, down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+
+    mail = _mail_for(client, session, monkeypatch, payload, final["id"])
+
+    assert mail["subject"] == f"Schlussrechnung {final['nr']} — Relaunch Website"
+    text = mail["text"]
+    total = text.index("Gesamtleistung: 4.760,00 €")
+    deduction = text.index(f"abzüglich Abschlagsrechnung {down_payment['nr']} vom {TODAY}: 2.380,00 €")
+    rest = text.index("Restbetrag: 2.380,00 €")
+    assert total < deduction < rest
+    html = mail["html"]
+    assert "Gesamtleistung" in html
+    assert f"abzüglich Abschlagsrechnung {down_payment['nr']} vom {TODAY}" in html
+    assert "Restbetrag" in html
+    assert "4.760,00 €" in html
+
+
+def test_customer_mails_address_the_customer_formally(artist_api, monkeypatch):
+    client, company, payload, session = artist_api
+    _quote, _down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
+    quote_mail = _mail_for(client, session, monkeypatch, payload, _quote["id"])
+    final_mail = _mail_for(client, session, monkeypatch, payload, final["id"])
+
+    for mail in (quote_mail, final_mail):
+        for body in (mail["text"], mail["html"]):
+            assert "Ihre" in body
+            assert "danke für" not in body
+            assert "Das macht" not in body
+            for informal in (" du ", " dein", " dir ", " dich "):
+                assert informal not in body.lower()

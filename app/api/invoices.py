@@ -1003,6 +1003,7 @@ def send_invoice_email_endpoint(
         customer=customer,
         invoice=invoice,
         message=payload.message,
+        down_payments=_final_invoice_down_payments(session, invoice),
     )
 
     smtp_config = {
