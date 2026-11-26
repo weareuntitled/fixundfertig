@@ -556,7 +556,7 @@ actions={
 }
 
 const STATUS_LABELS_FULL: Record<string, string> = {
-  DRAFT: "Entwurf", OPEN: "Offen", SENT: "Gesendet", PAID: "Bezahlt", FINALIZED: "Finalisiert", CANCELLED: "Storniert",
+  DRAFT: "Entwurf", OPEN: "Als gestellt markieren", SENT: "Gesendet", PAID: "Bezahlt", FINALIZED: "Als gestellt markieren", CANCELLED: "Storniert",
 };
 
 function getValidTransitions(current: InvoiceStatus): InvoiceStatus[] {
@@ -566,9 +566,9 @@ function getValidTransitions(current: InvoiceStatus): InvoiceStatus[] {
 
 function getStatusBanner(status: string): { title: string; message: string } | null {
   const banners: Record<string, { title: string; message: string }> = {
-    DRAFT: { title: "Entwurf", message: "Diese Rechnung ist ein Entwurf. Bearbeiten und finalisieren, um sie an den Kunden zu senden." },
-    OPEN: { title: "Aktion erforderlich", message: "Diese Rechnung ist finalisiert und bereit, an den Kunden gesendet zu werden." },
-    FINALIZED: { title: "Aktion erforderlich", message: "Diese Rechnung ist finalisiert und bereit, an den Kunden gesendet zu werden." },
+    DRAFT: { title: "Entwurf", message: "Diese Rechnung ist ein Entwurf. Stellen Sie sie, um sie an den Kunden zu senden." },
+    OPEN: { title: "Aktion erforderlich", message: "Diese Rechnung ist gestellt und bereit, an den Kunden gesendet zu werden." },
+    FINALIZED: { title: "Aktion erforderlich", message: "Diese Rechnung ist gestellt und bereit, an den Kunden gesendet zu werden." },
     SENT: { title: "Warten auf Zahlung", message: "Die Rechnung wurde an den Kunden gesendet. Zahlung steht aus." },
     PAID: { title: "Bezahlt", message: "Diese Rechnung wurde vollständig beglichen." },
     CANCELLED: { title: "Storniert", message: "Diese Rechnung wurde storniert und ist nicht mehr aktiv." },

@@ -41,6 +41,17 @@ class PaymentInstallment(BaseModel):
     label: str = Field(default="", max_length=200)
 
 
+def _plan_not_over_100(plan: list[PaymentInstallment] | None) -> list[PaymentInstallment] | None:
+    """Ein Zahlungsplan über 100 % fordert mehr als das Angebot (#495): nicht speicherbar."""
+    if not plan:
+        return plan
+    total = round(sum(rate.percent for rate in plan), 2)
+    if total > 100:
+        text = f"{total:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+        raise ValueError(f"Die Raten ergeben zusammen {text} %, mehr als 100 %. Bitte kürzen.")
+    return plan
+
+
 class PaymentInstallmentRead(PaymentInstallment):
     """Rate mit ihrem Betrag, berechnet aus dem Bruttobetrag (nicht gespeichert)."""
 
@@ -78,6 +89,8 @@ class InvoiceDraft(BaseModel):
     notes: str = Field(default="", max_length=2000)
     status: InvoiceStatus = "OPEN"
     payment_plan: list[PaymentInstallment] = Field(default_factory=list)
+
+    _check_plan = field_validator("payment_plan")(_plan_not_over_100)
 
     @field_validator("date", "delivery_date", "service_from", "service_to", "valid_until")
     @classmethod
@@ -149,6 +162,41 @@ class FinalBreakdownRead(BaseModel):
     rest: float
 
 
+class BillingActionRead(BaseModel):
+    """Eine Abrechnungsaktion eines Angebots: erlaubt, oder gesperrt mit Grund (#495).
+
+    `invoice_id`/`invoice_nr` nennen die Rechnung, die die Aktion sperrt (für einen Link).
+    """
+
+    allowed: bool = True
+    reason: str = ""
+    invoice_id: int | None = None
+    invoice_nr: str | None = None
+
+
+class QuoteBillingRead(BaseModel):
+    """Erlaubte Abrechnungsaktionen eines Angebots (`logic.quote_billing.quote_billing`)."""
+
+    convert: BillingActionRead
+    down_payment: BillingActionRead
+    final_invoice: BillingActionRead
+    # Das Angebot ist gesendet, nicht angenommen: Abrechnen nimmt es an, die Oberfläche fragt nach.
+    requires_acceptance: bool = False
+
+
+class QuoteSettlementRead(BaseModel):
+    """Abrechnungsstand eines Angebots (#499): abgerechnet, gesamt, offen.
+
+    `billed_brutto` ist die Summe der gestellten Rechnungen zum Angebot (brutto),
+    `total_brutto` der Bruttobetrag des Angebots, `open_brutto` der Rest.
+    """
+
+    billed_brutto: float = 0.0
+    total_brutto: float = 0.0
+    open_brutto: float = 0.0
+    billed_count: int = 0
+
+
 class InvoiceRead(BaseModel):
     """Output für GET /api/invoices[/...]. Vollständiger Record inkl. server-managed Felder."""
 
@@ -169,6 +217,10 @@ class InvoiceRead(BaseModel):
     recipient_city: str = ""
     legacy: bool = False
     total_brutto: float
+    # Nettobetrag aus den Positionen und der Steuersatz des Dokuments (#499):
+    # damit zeigt die Angebotsseite Netto, USt und Gesamt statt einer Summe.
+    total_net: float = 0.0
+    vat_rate: float = 0.0
     status: InvoiceStatus = "DRAFT"
     revision_nr: int = 0
     updated_at: str = ""
@@ -187,6 +239,10 @@ class InvoiceRead(BaseModel):
     items: list[InvoiceItem] = Field(default_factory=list)
     attachments: list[InvoiceAttachmentRead] = Field(default_factory=list)
     payment_plan: list[PaymentInstallmentRead] = Field(default_factory=list)
+    # Nur Angebote: welche Abrechnungsaktionen erlaubt sind; sonst None.
+    billing: QuoteBillingRead | None = None
+    # Nur Angebote: wie viel vom Angebot schon abgerechnet ist; sonst None.
+    settlement: QuoteSettlementRead | None = None
 
 
 class InvoiceSendRequest(BaseModel):
@@ -224,6 +280,8 @@ class InvoiceUpdate(BaseModel):
     intro_text: str | None = Field(default=None, max_length=2000)
     payment_plan: list[PaymentInstallment] | None = None
     reason: str = Field(default="", max_length=500)
+
+    _check_plan = field_validator("payment_plan")(_plan_not_over_100)
 
 
 class BulkStatusUpdate(BaseModel):

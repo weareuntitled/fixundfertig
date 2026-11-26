@@ -61,14 +61,22 @@ def is_accepted_quote(document: Any) -> bool:
     return _is_quote(document) and getattr(document, "status", None) == InvoiceStatus.ACCEPTED
 
 
+def is_rejected_quote(document: Any) -> bool:
+    """Ein abgelehntes Angebot ist nur noch lesbar (Kopf und Positionen)."""
+    return _is_quote(document) and getattr(document, "status", None) == InvoiceStatus.REJECTED
+
+
 def accepted_quote_status_reason(document: Any, new_status: str) -> str | None:
     """ACCEPTED ist für Angebote endgültig: kein Statuswechsel mehr hinaus.
 
-    Der Status ACCEPTED selbst bleibt setzbar (idempotent). Der Aufrufer wertet
-    einen Grund als Konflikt (409), nicht als ungültigen Status (400).
+    Der Status ACCEPTED selbst bleibt setzbar (idempotent). Ebenso „Gesendet“: das ist
+    das Zurücksetzen einer Entscheidung und wird in `logic.quote_decision` geprüft
+    (zurücknehmen geht, solange das Angebot keine Rechnung hat).
+
+    Der Aufrufer wertet einen Grund als Konflikt (409), nicht als ungültigen Status (400).
     """
     if not is_accepted_quote(document):
         return None
-    if InvoiceStatus(new_status) == InvoiceStatus.ACCEPTED:
+    if InvoiceStatus(new_status) in (InvoiceStatus.ACCEPTED, InvoiceStatus.SENT):
         return None
     return "Ein angenommenes Angebot ist endgültig; sein Status lässt sich nicht mehr ändern"

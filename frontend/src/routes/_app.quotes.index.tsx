@@ -15,7 +15,7 @@ function QuotesListPage() {
   const { data: quotes, isLoading, isError } = useQuotes();
 
   return (
-    <div className="animate-fade-in space-y-6">
+    <div className="animate-fade-in space-y-6 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-[32px] font-semibold tracking-tight text-[var(--color-text-heading)] leading-[1.1]">

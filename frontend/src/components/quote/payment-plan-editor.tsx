@@ -4,7 +4,8 @@
  * @input {PaymentInstallment[]} value - Installments in order
  * @input {number} gross - Gross total the amounts are computed from (amounts are never stored)
  * @input {(next: PaymentInstallment[]) => void} onChange
- * @output A list with the amount per installment and a warning (not a block) when the sum is not 100 %
+ * @output A list with the amount per installment; a warning (not a block) when the sum is not 100 %,
+ *   a blocking hint when the sum is over 100 % (#495)
  */
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { installmentAmounts, planPercentTotal, percentLabel } from "@/lib/payment-plan";
@@ -46,7 +47,7 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
             const number = index + 1;
             return (
               <li key={index} className="flex flex-wrap items-center gap-[var(--space-xs)] border-b border-[var(--color-border)] pb-[var(--space-xs)]">
-                <div className="flex w-28 items-center gap-1">
+                <div className="flex w-24 shrink-0 items-center gap-1 sm:w-28">
                   <input
                     type="number"
                     inputMode="decimal"
@@ -68,10 +69,12 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
                   maxLength={200}
                   placeholder="z. B. bei Auftrag"
                   onChange={(e) => update(index, { label: e.target.value })}
-                  className={`${INPUT} min-w-[10rem] flex-1`}
+                  className={`${INPUT} min-w-0 basis-0 grow sm:min-w-[10rem]`}
                 />
-                <span className="w-28 text-right font-mono text-sm text-[var(--color-text-primary)]">{eur(amounts[index] ?? 0)}</span>
-                <div className="flex">
+                <span className="whitespace-nowrap font-mono text-sm text-[var(--color-text-primary)] sm:w-28 sm:text-right">
+                  {eur(amounts[index] ?? 0)}
+                </span>
+                <div className="ml-auto flex sm:ml-0">
                   <button type="button" aria-label={`Rate ${number} nach oben`} disabled={index === 0} onClick={() => move(index, index - 1)} className={ICON_BUTTON}>
                     <ArrowUp size={16} />
                   </button>
@@ -99,7 +102,14 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
         </ol>
       )}
 
-      {value.length > 0 && Math.abs(total - 100) > 0.001 && (
+      {value.length > 0 && total > 100 && (
+        <p role="alert" className="mt-[var(--space-xs)] rounded-[var(--radius)] bg-[var(--color-red-50)] px-3 py-2 text-[13px] text-[var(--color-red-600)]">
+          Die Raten ergeben zusammen {percentLabel(total)}, mehr als 100 %. Bitte kürzen — das lässt sich nicht
+          speichern.
+        </p>
+      )}
+
+      {value.length > 0 && total <= 100 && Math.abs(total - 100) > 0.001 && (
         <p role="status" className="mt-[var(--space-xs)] rounded-[var(--radius)] bg-[var(--color-amber-50)] px-3 py-2 text-[13px] text-[var(--color-amber-700)]">
           Die Raten ergeben zusammen {percentLabel(total)}, nicht 100 %. Speichern geht trotzdem.
         </p>

@@ -38,10 +38,9 @@ class DownPaymentDeduction:
 
 def invoice_net(invoice: Invoice) -> float:
     """Netto aus den Positionen eines Dokuments, auf Cent gerundet."""
-    return round(
-        sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or [])),
-        2,
-    )
+    from logic.invoice import invoice_net_total
+
+    return invoice_net_total(invoice)
 
 
 def issued_down_payments(session: Session, quote_id: int) -> list[DownPaymentDeduction]:
