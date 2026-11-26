@@ -572,13 +572,13 @@ def issuer_lines(comp) -> list[str]:
 
 def draw_footer(c: Canvas, w: float, mx: float, content_w: float, my_bot: float,
                 comp, company_tax_id: str, company_vat_id: str,
-                fonts: dict[str, str], page_no: int, page_total: int):
+                fonts: dict[str, str], page_no: int, page_total: int, quote: bool = False):
     footer_y = my_bot + 16 * mm
     muted = LAYOUT["col_muted"]
     size = 7
 
     columns = [
-        (1.5, "RECHNUNGSAUSSTELLER", issuer_lines(comp)),
+        (1.5, "ANBIETER" if quote else "RECHNUNGSAUSSTELLER", issuer_lines(comp)),
         (1.0, "KONTAKT", [safe_str(get_attr(comp, "email")), safe_str(get_attr(comp, "phone"))]),
         (1.2, "STEUER", [
             prefixed_value("Steuernr.: ", company_tax_id),

@@ -170,3 +170,90 @@ def test_down_payment_pdf_keeps_its_texts_after_an_edit(artist_api):
     assert "wie Rechnungsdatum" not in text
     assert f"Leistung: noch nicht erbracht – Anzahlung gemäß Angebot {quote['nr']}" in text
     assert "Relaunch Website" in text
+
+
+# ---- Umgewandelte Rechnung
+
+
+def test_converted_invoice_pdf_carries_the_subject(artist_api):
+    client, _company, payload, _session = artist_api
+    quote = _create_quote(client, payload)
+    invoice = _post(client, f"/api/invoices/{quote['id']}/convert")
+
+    text = _flat(_pdf(client, invoice["id"]))
+
+    assert invoice["subject"] == "Relaunch Website"
+    assert "Relaunch Website" in text
+
+
+def test_edited_invoice_pdf_keeps_the_subject(artist_api):
+    client, _company, payload, _session = artist_api
+    created = _post(client, "/api/invoices", payload | {"subject": "DJ-Set Hammahalle"})
+    response = client.put(f"/api/invoices/{created['id']}", json={"recipient_name": "Club X", "reason": "Test"})
+    assert response.status_code == 200, response.text
+
+    assert "DJ-Set Hammahalle" in _flat(_pdf(client, created["id"]))
+
+
+# ---- Angebot
+
+
+def test_quote_pdf_names_the_offerer_not_an_invoice_issuer(artist_api):
+    client, _company, payload, _session = artist_api
+    quote = _create_quote(client, payload)
+
+    text = _flat(_pdf(client, quote["id"]))
+
+    assert "ANBIETER Daniel Beispiel" in text
+    assert "RECHNUNGSAUSSTELLER" not in text
+
+
+def test_invoice_pdf_still_names_the_invoice_issuer(artist_api):
+    client, _company, payload, _session = artist_api
+    created = _post(client, "/api/invoices", payload)
+
+    text = _flat(_pdf(client, created["id"]))
+
+    assert "RECHNUNGSAUSSTELLER Daniel Beispiel" in text
+    assert "ANBIETER" not in text
+
+
+def _identity_company():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=1, name="untitled ux", first_name="Test", last_name="Inhaber",
+        business_type="Agentur", street="Musterstraße 1", postal_code="10115", city="Berlin",
+        is_small_business=True, email="", phone="", iban="", bank_name="", tax_id="", vat_id="",
+    )
+
+
+def _identity_document(document_type: str):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        document_type=document_type, nr="A-10000", date="2026-10-23", valid_until="2026-11-22",
+        recipient_name="Kunde GmbH", subject="Relaunch", intro_text="",
+        line_items=[SimpleNamespace(description="Webdesign", quantity=1.0, unit_price=1000.0)],
+    )
+
+
+def test_quote_pdf_has_no_stray_name_line_under_the_intro():
+    from services.invoice_pdf import render_invoice_to_pdf_bytes
+
+    strings = [s.strip() for s in pdf_text(
+        render_invoice_to_pdf_bytes(_identity_document("QUOTE"), company=_identity_company())
+    ).split("\n")]
+
+    assert "untitled ux (Test Inhaber)" not in strings
+    assert "ANBIETER" in strings
+
+
+def test_invoice_pdf_still_names_the_legal_person_above_the_services():
+    from services.invoice_pdf import render_invoice_to_pdf_bytes
+
+    strings = [s.strip() for s in pdf_text(
+        render_invoice_to_pdf_bytes(_identity_document("INVOICE"), company=_identity_company())
+    ).split("\n")]
+
+    assert "untitled ux (Test Inhaber)" in strings
