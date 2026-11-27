@@ -85,7 +85,8 @@ test("invoice detail page shows preview iframe and download link", async ({ page
         recipient_street: "",
         recipient_postal_code: "",
         recipient_city: "",
-        total_brutto: 119.0,
+        total_brutto: 107.0,
+        totals: { net: 100, vat_rate: 7, tax: 7, gross: 107, payable: 107 },
         status: "OPEN",
         revision_nr: 0,
         updated_at: "",
@@ -107,6 +108,12 @@ test("invoice detail page shows preview iframe and download link", async ({ page
   );
   await page.goto("/invoices/123");
   await expect(page.getByText("Erstellt am 10.06.2026")).toBeVisible();
+  const summary = page.getByRole("heading", { name: "Zusammenfassung" }).locator("..");
+  await expect(summary).toContainText("USt (7 %)");
+  await expect(summary).toContainText("100,00 €");
+  await expect(summary).toContainText("7,00 €");
+  await expect(summary).toContainText("107,00 €");
+  await expect(summary).not.toContainText("19 %");
   const upload = page.locator("#anlagen").getByRole("button", { name: "Anlage hochladen" });
   await expect(upload).toHaveCSS("text-transform", "none");
   await expect(upload).toHaveCSS("min-height", "44px");
@@ -157,6 +164,7 @@ test("invoice detail page calls the issued state 'Gestellt' in the button and th
         title: "Test-Rechnung",
         date: "2026-06-10",
         total_brutto: 119.0,
+        totals: { net: 100, vat_rate: 19, tax: 19, gross: 119, payable: 119 },
         status: "DRAFT",
         items: [],
       }),

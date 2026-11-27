@@ -1,31 +1,20 @@
 /**
  * @schema SummaryCard
- * @purpose Invoice financial summary with subtotal, tax, discount, and total due
- * @input {number} subtotal - Net subtotal amount
- * @input {number} taxRate - Tax percentage (0-100)
- * @input {boolean} ustEnabled - Whether VAT is applied
- * @input {number} discount - Discount amount (always 0 for now)
+ * @purpose Invoice financial summary: net, VAT with the document's rate, and gross
+ * @input {TotalsRead} totals - Belegsummen from the API; the card does not calculate
  * @output Renders summary card with line-by-line breakdown and prominent total
  * @tokens Uses: card-bg, card-border, card-radius, card-shadow, color-text-primary, color-text-muted
  */
+import type { TotalsRead } from "@/lib/schemas/invoice";
 
 interface SummaryCardProps {
-  subtotal: number;
-  taxRate: number;
-  ustEnabled: boolean;
-  discount?: number;
+  totals: TotalsRead;
 }
 
-export function SummaryCard({ subtotal, taxRate, ustEnabled, discount = 0 }: SummaryCardProps) {
-  // subtotal is gross (total_brutto from backend includes tax or not)
-  // ponytail: derive net from gross, no separate net field on invoice model
-  const net = ustEnabled ? subtotal / (1 + taxRate / 100) : subtotal;
-  const taxAmount = ustEnabled ? subtotal - net : 0;
-  const total = subtotal - discount;
+const fmt = (n: number) =>
+  n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 
-  const fmt = (n: number) =>
-    n.toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " €";
-
+export function SummaryCard({ totals }: SummaryCardProps) {
   return (
     <div className="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-[var(--card-radius)] shadow-[var(--card-shadow)] p-5">
       <h3 className="text-base font-semibold text-[var(--color-text-primary)] mb-4 border-b border-[var(--color-border)] pb-3">
@@ -35,23 +24,19 @@ export function SummaryCard({ subtotal, taxRate, ustEnabled, discount = 0 }: Sum
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-[var(--color-text-muted)]">Nettobetrag</span>
-          <span className="font-mono text-[var(--color-text-primary)]">{fmt(net)}</span>
+          <span className="font-mono text-[var(--color-text-primary)]">{fmt(totals.net)}</span>
         </div>
-        {ustEnabled && (
-        <div className="flex justify-between">
-          <span className="text-[var(--color-text-muted)]">
-            USt ({taxRate}%)
-          </span>
-          <span className="font-mono text-[var(--color-text-primary)]">{fmt(taxAmount)}</span>
-        </div>
+        {totals.vat_rate > 0 && (
+          <div className="flex justify-between">
+            <span className="text-[var(--color-text-muted)]">
+              USt ({totals.vat_rate.toLocaleString("de-DE")} %)
+            </span>
+            <span className="font-mono text-[var(--color-text-primary)]">{fmt(totals.tax)}</span>
+          </div>
         )}
-        <div className="flex justify-between pb-3 border-b border-[var(--color-border)]">
-          <span className="text-[var(--color-text-muted)]">Rabatt</span>
-          <span className="font-mono text-[var(--color-success)]">-{fmt(discount)}</span>
-        </div>
-        <div className="flex justify-between items-center pt-1">
+        <div className="flex justify-between items-center pt-3 border-t border-[var(--color-border)]">
           <span className="text-base font-bold text-[var(--color-text-primary)]">Gesamtbetrag</span>
-          <span className="font-mono text-xl font-bold text-[var(--color-text-primary)]">{fmt(total)}</span>
+          <span className="font-mono text-xl font-bold text-[var(--color-text-primary)]">{fmt(totals.gross)}</span>
         </div>
       </div>
     </div>
