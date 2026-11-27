@@ -240,8 +240,12 @@ function InvoiceDetailPage() {
 
   const validTransitions = getValidTransitions(invoice.status);
   const isDraft = invoice.status === "DRAFT";
+  const needsDeductionReview = !!invoice.is_final_invoice && !invoice.final_breakdown;
+  const canEditItems = isDraft && !needsDeductionReview;
   const items = invoice.items || [];
-  const banner = getStatusBanner(invoice.status);
+  const banner = needsDeductionReview
+    ? { title: "Prüfung erforderlich", message: "Die historischen Abzüge müssen geprüft werden. Bearbeitung, PDF-Neuerstellung und E-Mail-Versand sind bis dahin gesperrt. Das gespeicherte PDF bleibt verfügbar." }
+    : getStatusBanner(invoice.status);
 
   return (
     <div className="animate-fade-in">
@@ -308,7 +312,7 @@ actions={
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={sendEmail.isPending}
+                disabled={sendEmail.isPending || needsDeductionReview}
                 className={PRIMARY_BUTTON}
               >
                 {sendEmail.isPending ? (
@@ -322,7 +326,7 @@ actions={
             <ActionMenu
               items={[
                 { label: "Vorschau", icon: <ExternalLink size={15} />, onSelect: () => setPreviewOpen(true) },
-                { label: "Bearbeiten", icon: <Pencil size={15} />, onSelect: handleEditHeader, disabled: editingHeader },
+                { label: "Bearbeiten", icon: <Pencil size={15} />, onSelect: handleEditHeader, disabled: editingHeader || needsDeductionReview },
                 ...(!isDraft && invoice.status !== "PAID"
                   ? [{ label: "Zahlungslink", icon: <ExternalLink size={15} />, onSelect: () => paymentLink.mutate(), disabled: paymentLink.isPending }]
                   : []),
@@ -330,7 +334,7 @@ actions={
                   label: "PDF neu erzeugen",
                   icon: <RefreshCw size={15} />,
                   onSelect: () => confirm(`Gespeicherte PDF von Rechnung ${invoice.nr || invoice.id} mit aktuellen Firmendaten ersetzen? Rechnungsnummer und Rechnungsdaten bleiben gleich.`) && regeneratePdf.mutate(),
-                  disabled: regeneratePdf.isPending,
+                  disabled: regeneratePdf.isPending || needsDeductionReview,
                 },
                 { label: "Löschen", icon: <Trash2 size={15} />, onSelect: () => setDeleteConfirmOpen(true), danger: true },
               ]}
@@ -422,7 +426,7 @@ actions={
           <div className="bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] shadow-sm overflow-hidden">
             <div className="px-[var(--space-lg)] py-[var(--space-md)] border-b border-[var(--color-border)] flex justify-between items-center">
               <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Positionen</h2>
-              {isDraft && (
+              {canEditItems && (
                 <button
                   type="button"
                   onClick={handleAddItem}
@@ -440,12 +444,12 @@ actions={
                     <th className="py-[var(--space-sm)] px-[var(--space-md)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] text-right">Menge</th>
                     <th className="py-[var(--space-sm)] px-[var(--space-md)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] text-right">Preis</th>
                     <th className="py-[var(--space-sm)] px-[var(--space-lg)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] text-right">Betrag</th>
-                    {isDraft && <th className="w-16 py-[var(--space-sm)]" />}
+                    {canEditItems && <th className="w-16 py-[var(--space-sm)]" />}
                   </tr>
                 </thead>
                 <tbody>
                   {items.length === 0 && (
-                    <tr><td colSpan={isDraft ? 5 : 4} className="px-[var(--space-lg)] py-8 text-center text-[14px] text-[var(--color-text-secondary)]">Keine Positionen</td></tr>
+                    <tr><td colSpan={canEditItems ? 5 : 4} className="px-[var(--space-lg)] py-8 text-center text-[14px] text-[var(--color-text-secondary)]">Keine Positionen</td></tr>
                   )}
                   {items.map((it) => (
                     <tr key={it.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-surface-bright)] transition-colors group">
@@ -455,7 +459,7 @@ actions={
                       <td className="py-[var(--space-md)] px-[var(--space-md)] text-right font-mono text-[14px] text-[var(--color-text-primary)]">{it.quantity}</td>
                       <td className="py-[var(--space-md)] px-[var(--space-md)] text-right font-mono text-[14px] text-[var(--color-text-primary)]">{eur(it.unit_price)}</td>
                       <td className="py-[var(--space-md)] px-[var(--space-lg)] text-right font-mono text-[14px] font-bold text-[var(--color-text-primary)]">{eur(it.quantity * it.unit_price)}</td>
-                      {isDraft && (
+                      {canEditItems && (
                         <td className="py-[var(--space-md)] px-2 text-right">
                           <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                             <button type="button" onClick={() => handleEditItem(it)} className="rounded p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-brand-text)] transition-colors" title="Bearbeiten"><Pencil size={14} /></button>
@@ -473,7 +477,12 @@ actions={
 
         {/* Right 1/3 */}
         <div className="space-y-[var(--space-gutter)]">
-          {invoice.final_breakdown ? <FinalBreakdown breakdown={invoice.final_breakdown} /> : <SummaryCard subtotal={invoice.total_brutto} taxRate={19} ustEnabled={!company?.is_small_business} />}
+          {invoice.final_breakdown ? <FinalBreakdown breakdown={invoice.final_breakdown} /> : invoice.is_final_invoice ? (
+            <div role="alert" className="rounded-[var(--radius-xl)] border border-amber-300 bg-amber-50 p-[var(--space-md)] text-sm text-amber-900">
+              <strong>Abzüge prüfen</strong><p>Die historischen Abzüge sind nicht verlässlich gespeichert. Das gespeicherte PDF bleibt verfügbar; Bearbeitung, PDF-Neuerstellung und E-Mail-Versand sind bis zur Prüfung gesperrt.</p>
+              <p>Gespeicherter Restbetrag: {invoice.total_brutto.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}</p>
+            </div>
+          ) : <SummaryCard subtotal={invoice.total_brutto} taxRate={19} ustEnabled={!company?.is_small_business} />}
 
           {/* Status Actions */}
           {validTransitions.length > 0 && (

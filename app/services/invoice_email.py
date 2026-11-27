@@ -83,9 +83,11 @@ def build_invoice_email(*, company, customer, invoice, message: str = "",
     # in the same order and with the same words as the PDF.
     final_rows: list[tuple[str, float]] = []
     if is_final_invoice:
-        percent = 0.0 if small_business else safe_float(get_attr(invoice, "vat_rate", default=0))
-        if percent > 0 and percent <= 1:
-            percent *= 100
+        from logic.final_invoice import final_deductions
+        down_payments = [row.as_dict() for row in final_deductions(invoice)]
+        percent = safe_float(get_attr(invoice, "vat_rate", default=0))
+        if percent > 0:
+            small_business = False
         tax = round(net * percent / 100.0, 2) if percent > 0 else 0.0
         final_rows.append(("Gesamtleistung", round(net + tax, 2)))
         for row in down_payments or []:

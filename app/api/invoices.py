@@ -43,7 +43,7 @@ from logic.document_status import (
     is_rejected_quote,
     status_not_allowed_reason,
 )
-from logic.final_invoice import final_invoice_totals, issued_down_payments
+from logic.final_invoice import final_invoice_totals, final_deductions
 from logic.quote_billing import BillingConflict, lock_quote_for_billing, quote_billing, quote_settlement
 from logic.quote_conversion import (
     create_down_payment_invoice,
@@ -284,19 +284,14 @@ def _document_type_value(invoice: Invoice) -> str:
     return doc_type.value if hasattr(doc_type, "value") else str(doc_type)
 
 
-def _down_payment_rows(session: Session, quote_id: int) -> list[dict]:
-    """Billed down payments of a quote in the shape the PDF renderer expects."""
-    return [row.as_dict() for row in issued_down_payments(session, int(quote_id))]
-
-
 def _final_invoice_down_payments(session: Session | None, invoice) -> list[dict] | None:
     """Die Abschlagsrechnungen, die eine Schlussrechnung abzieht; None für andere Dokumente."""
-    if session is None or not getattr(invoice, "is_final_invoice", False):
+    if not getattr(invoice, "is_final_invoice", False):
         return None
-    quote_id = getattr(invoice, "quote_id", None)
-    if not quote_id:
-        return None
-    return _down_payment_rows(session, int(quote_id))
+    try:
+        return [row.as_dict() for row in final_deductions(invoice)]
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def _render_document_pdf(session: Session | None, invoice, company=None, customer=None) -> bytes:
@@ -397,7 +392,10 @@ def _final_breakdown(invoice: Invoice) -> FinalBreakdownRead | None:
     session = object_session(invoice)
     if session is None:
         return None
-    rows = issued_down_payments(session, quote_id)
+    try:
+        rows = final_deductions(invoice)
+    except ValueError:
+        return None
     totals = final_invoice_totals(invoice_net_total(invoice), document_vat_rate(invoice), rows)
     return FinalBreakdownRead(
         net=totals["net"], tax=totals["tax"], gross=totals["gross"],
@@ -615,9 +613,6 @@ def update_invoice_status(
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
-    # A down payment becoming billable (or cancelled) changes the rest of its final invoice.
-    if getattr(invoice, "down_payment_index", None) is not None and getattr(invoice, "quote_id", None):
-        _refresh_final_invoices_for_quote(session, int(invoice.quote_id))
     return _to_read_model(invoice)
 
 
@@ -637,6 +632,7 @@ def update_invoice(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_quote_editable(invoice)
+    _final_invoice_down_payments(session, invoice)
 
     if invoice.document_type == DocumentType.QUOTE:
         from datetime import date
@@ -736,6 +732,7 @@ def update_invoice(
             preview.__dict__["total_brutto"] = float(invoice.total_brutto or 0)
             is_final = bool(getattr(invoice, "is_final_invoice", False))
             preview.__dict__["is_final_invoice"] = is_final
+            preview.__dict__["final_deductions_json"] = invoice.final_deductions_json
             invoice.pdf_bytes = render_invoice_to_pdf_bytes(
                 preview, down_payments=_final_invoice_down_payments(session, invoice)
             )
@@ -804,8 +801,10 @@ def _resolve_invoice_pdf_bytes(invoice, session=None) -> bytes:
     Beim Live-Render müssen Company und Customer aus den Relationships geladen
     werden, damit die PDF Absender (Firmenname, IBAN, BIC) + Empfänger hat.
     """
-    if getattr(invoice, "pdf_bytes", None):
-        return bytes(invoice.pdf_bytes)
+    from services.invoice_pdf import stored_invoice_pdf
+    stored = stored_invoice_pdf(invoice)
+    if stored:
+        return stored
     return _render_document_pdf(session, invoice)
 
 
@@ -928,39 +927,6 @@ def _rerender_quote_pdf(session: Session, invoice: Invoice) -> None:
     session.refresh(invoice)
 
 
-def _refresh_final_invoices_for_quote(session: Session, quote_id: int) -> None:
-    """Recompute and re-render every open final invoice after its deductions changed."""
-    finals = session.exec(
-        select(Invoice).where(
-            Invoice.quote_id == int(quote_id),
-            Invoice.is_final_invoice == True,  # noqa: E712 — SQLModel column comparison
-            Invoice.status != InvoiceStatus.CANCELLED,
-        )
-    ).all()
-    if not finals:
-        return
-    for final in finals:
-        recompute_total_brutto(final, document_vat_rate(final), session)
-        final.pdf_bytes = _render_document_pdf(session, final)
-        final.revision_nr = int(final.revision_nr or 0) + 1
-        session.add(final)
-    session.commit()
-
-
-def _refresh_quote_after_down_payment_change(session: Session, invoice: Invoice) -> None:
-    """Nach einer Änderung an einer Abschlagsrechnung: die Schlussrechnungen nachziehen.
-
-    Der Betrag einer Abschlagsrechnung ist der Abzug der Schlussrechnung. Wird die
-    Abschlagsrechnung geändert oder gelöscht, verschiebt sich der Restbetrag.
-    """
-    if getattr(invoice, "down_payment_index", None) is None:
-        return
-    quote_id = getattr(invoice, "quote_id", None)
-    if not quote_id:
-        return
-    _refresh_final_invoices_for_quote(session, int(quote_id))
-
-
 @router.post("/{invoice_id}/items", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
 def add_invoice_item(
     invoice_id: int,
@@ -973,6 +939,7 @@ def add_invoice_item(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_quote_editable(invoice)
+    _final_invoice_down_payments(session, invoice)
     vat_rate = document_vat_rate(invoice)
     item = InvoiceItemModel(
         invoice_id=invoice_id,
@@ -989,7 +956,6 @@ def add_invoice_item(
     session.commit()
     session.refresh(invoice)
     _rerender_quote_pdf(session, invoice)
-    _refresh_quote_after_down_payment_change(session, invoice)
     return _to_read_model(invoice)
 
 
@@ -1006,6 +972,7 @@ def update_invoice_item(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_quote_editable(invoice)
+    _final_invoice_down_payments(session, invoice)
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -1021,7 +988,6 @@ def update_invoice_item(
     session.commit()
     session.refresh(invoice)
     _rerender_quote_pdf(session, invoice)
-    _refresh_quote_after_down_payment_change(session, invoice)
     return _to_read_model(invoice)
 
 
@@ -1037,6 +1003,7 @@ def delete_invoice_item(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_quote_editable(invoice)
+    _final_invoice_down_payments(session, invoice)
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -1050,7 +1017,6 @@ def delete_invoice_item(
     session.commit()
     session.refresh(invoice)
     _rerender_quote_pdf(session, invoice)
-    _refresh_quote_after_down_payment_change(session, invoice)
     return _to_read_model(invoice)
 
 
@@ -1261,17 +1227,7 @@ def delete_invoice_endpoint(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ein Angebot mit Rechnungen lässt sich nicht löschen",
         )
-    # Vor dem Löschen merken: eine gelöschte Abschlagsrechnung wird nicht mehr abgezogen.
-    down_payment_quote_id = (
-        int(document.quote_id)
-        if document is not None
-        and getattr(document, "down_payment_index", None) is not None
-        and getattr(document, "quote_id", None)
-        else None
-    )
     ok, msg = delete_invoice(invoice_id, session=session)
     if not ok:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
-    if down_payment_quote_id:
-        _refresh_final_invoices_for_quote(session, down_payment_quote_id)
     return {"status": "ok", "message": f"Rechnung #{invoice_id} gelöscht"}

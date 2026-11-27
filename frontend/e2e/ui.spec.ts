@@ -120,6 +120,31 @@ test("invoice detail page shows preview iframe and download link", async ({ page
   await expect(page.getByRole("heading", { name: /PDF-Vorschau · Rechnung RE-2026-0001/ })).toBeVisible();
 });
 
+for (const status of ["DRAFT", "OPEN"]) {
+test(`historische Schlussrechnung (${status}) zeigt Prüfhinweis und gesperrte Aktionen`, async ({ page }, testInfo) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/123", (route) => route.fulfill({ json: {
+    id: 123, customer_id: 1, nr: "10012", date: "2026-06-10", total_brutto: 2380,
+    status, delivery_date: "", is_final_invoice: true, final_breakdown: null,
+    items: [{ id: 1, description: "Website", quantity: 1, unit_price: 4000 }],
+  } }));
+  await page.goto("/invoices/123");
+  const review = page.getByRole("alert").filter({ hasText: "Abzüge prüfen" });
+  await expect(review).toBeVisible();
+  await expect(review).toContainText("2.380,00");
+  await expect(page.getByRole("link", { name: /PDF herunterladen/ })).toBeVisible();
+  if (status === "OPEN") await expect(page.getByRole("button", { name: "An Kunde senden" })).toBeDisabled();
+  await expect(page.getByText("Diese Rechnung ist gestellt und bereit, an den Kunden gesendet zu werden.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "+ Position", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Bearbeiten", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("historical-final.png"), fullPage: true });
+  await page.getByRole("button", { name: "Mehr" }).click();
+  await expect(page.getByRole("menuitem", { name: "Bearbeiten", exact: true })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "PDF neu erzeugen" })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "Vorschau" })).toBeEnabled();
+});
+}
+
 test("invoice detail page calls the issued state 'Gestellt' in the button and the timeline", async ({ page }) => {
   await page.route("**/api/invoices/123", (route) =>
     route.fulfill({
@@ -687,6 +712,11 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
     date: "", recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, status: "DRAFT",
     quote_id: 42, quote_nr: "A-10000", down_payment_index: null, is_down_payment: false, is_final_invoice: true,
     items: [{ id: 3, description: "Website", quantity: 1, unit_price: 4000 }],
+    final_breakdown: {
+      net: 4000, tax: 760, gross: 4760,
+      deductions: [{ id: 43, nr: "10000", date: "2026-10-23", net: 2000, tax: 380, total: 2380 }],
+      rest_net: 2000, rest_tax: 380, rest: 2380,
+    },
   };
   const quote = () => ({
     id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
@@ -730,6 +760,10 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
 
   await expect(page).toHaveURL(/\/invoices\/44$/);
   await expect(page.getByRole("heading", { name: "Schlussrechnung 10001" })).toBeVisible();
+  await expect(page.getByText("Gesamtleistung", { exact: true })).toBeVisible();
+  await expect(page.getByText("Abzüglich Abschlagsrechnung 10000 vom 2026-10-23")).toBeVisible();
+  await expect(page.getByText("Restbetrag", { exact: true })).toBeVisible();
+  await expect(page.getByText("Abzüge prüfen", { exact: true })).toHaveCount(0);
   await page.getByRole("main").getByRole("link", { name: "Aus Angebot A-10000" }).click();
 
   await expect(page).toHaveURL(/\/quotes\/42$/);
