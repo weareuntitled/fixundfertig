@@ -13,10 +13,8 @@ from typing import Any
 from sqlmodel import Session, select
 
 from data import Company, Customer, DocumentType, Invoice, InvoiceStatus
-from logic.final_invoice import (
-    final_invoice_totals,
-    issued_down_payments,
-)
+from logic.belegsummen_zugang import belegsummen_for_invoice
+from logic.final_invoice import issued_down_payments
 from logic.invoice import document_vat_rate, finalize_invoice_logic
 from invoice_numbering import build_invoice_filename
 from logic.quote_billing import BillingConflict, ensure_billable
@@ -225,8 +223,7 @@ def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
     invoice.final_deductions_json = json.dumps([row.as_dict() for row in rows], ensure_ascii=False)
     invoice.vat_rate = vat_percent
 
-    net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in invoice.items)
-    invoice.total_brutto = final_invoice_totals(net, vat_percent, rows)["rest"]
+    invoice.total_brutto = float(belegsummen_for_invoice(invoice, session).payable)
 
     customer = session.get(Customer, int(quote.customer_id))
     invoice.pdf_bytes = render_invoice_to_pdf_bytes(

@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 
 from data import Company, Customer, DocumentType, Invoice, InvoiceItem, InvoiceStatus
 from invoice_numbering import build_invoice_filename
+from logic.belegsummen import Position, belegsummen
 from renderer import render_invoice_to_pdf_bytes
 from services.payment_plan import dump_payment_plan
 
@@ -88,59 +89,29 @@ def _period_from_inputs(delivery_str: str | None, service_from: str | None, serv
     return t or ""
 
 
-def _calc_gross(items: List[Dict[str, Any]], *, ust_enabled: bool, is_small_business: bool) -> float:
-    net = 0.0
-    tax = 0.0
-    for it in items:
-        qty = float(it.get("quantity", 0) or 0)
-        unit = float(it.get("unit_price", 0) or 0)
-        rate = float(it.get("tax_rate", 0) or 0)
-        line = qty * unit
-        net += line
-        if (not is_small_business) and ust_enabled and rate > 0:
-            tax += line * (rate / 100.0)
-    return net + tax
-
-
 def invoice_net_total(invoice: Invoice) -> float:
-    """Nettobetrag eines Dokuments aus den Positionen, auf Cent gerundet."""
-    return round(
-        sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or [])),
-        2,
-    )
+    """Nettobetrag eines Dokuments aus den Positionen, nach den Belegsummen gerundet."""
+    from .belegsummen_zugang import invoice_positions
+
+    return float(belegsummen(invoice_positions(invoice), vat_rate=0).net)
 
 
 def document_vat_rate(invoice: Invoice) -> float:
-    """VAT rate in percent the document charges.
+    """VAT rate in percent the document charges (legacy rows: derived in Belegsummen)."""
+    from .belegsummen_zugang import invoice_vat_rate
 
-    Stored on new documents; legacy rows carry only their gross total, so the rate
-    is derived from gross vs. net of the current positions (rounded to 0.1 %).
-    """
-    stored = getattr(invoice, "vat_rate", None)
-    if stored is not None:
-        return float(stored)
-    net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or []))
-    gross = float(invoice.total_brutto or 0)
-    if net > 0 and gross > net + 0.005:
-        return round((gross - net) / net * 100, 1)
-    return 0.0
+    return float(invoice_vat_rate(invoice))
 
 
 def recompute_total_brutto(invoice: Invoice, vat_rate: float, session: Optional[Session] = None) -> None:
-    """Payable total from the current positions at the document's VAT rate.
+    """Store the document's VAT rate and its payable total from the Belegsummen.
 
     A final invoice uses its persisted deductions, even without a session.
     """
-    from .final_invoice import final_invoice_totals, final_deductions
+    from .belegsummen_zugang import belegsummen_for_invoice
 
-    net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or []))
-    if bool(getattr(invoice, "is_final_invoice", False)):
-        rows = final_deductions(invoice)
-        invoice.vat_rate = float(vat_rate)
-        invoice.total_brutto = final_invoice_totals(net, float(vat_rate), rows)["rest"]
-        return
     invoice.vat_rate = float(vat_rate)
-    invoice.total_brutto = round(net * (1 + float(vat_rate) / 100.0), 2)
+    invoice.total_brutto = float(belegsummen_for_invoice(invoice, session).payable)
 
 
 QUOTE_VALIDITY_DAYS = 30
@@ -223,9 +194,12 @@ def finalize_invoice_logic(
         rec_city = (getattr(cust, "recipient_city", "") or getattr(cust, "ort", "") or "").strip()
 
     is_small = bool(getattr(comp, "is_small_business", False))
-    gross = _calc_gross(clean_items, ust_enabled=bool(ust_enabled), is_small_business=is_small)
     charges_vat = (not is_small) and bool(ust_enabled)
     vat_rate = float(clean_items[0].get("tax_rate", 0) or 0) if charges_vat else 0.0
+    gross = float(belegsummen(
+        [Position(quantity=it["quantity"], unit_price=it["unit_price"]) for it in clean_items],
+        vat_rate=vat_rate, charges_vat=charges_vat,
+    ).gross)
 
     inv = Invoice(
         customer_id=int(cust.id),

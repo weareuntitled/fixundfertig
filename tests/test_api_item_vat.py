@@ -78,3 +78,19 @@ def test_small_business_documents_stay_without_vat_after_item_crud(artist_api):
                         json={"description": "Anfahrt", "quantity": 1, "unit_price": 100})
 
     assert added.json()["total_brutto"] == pytest.approx(400)
+
+
+def test_stored_gross_follows_belegsummen_rounding_on_create_and_on_item_change(artist_api):
+    """1,5 × 33,33 = 49,995 → Netto 50,00, USt 9,50, Brutto 59,50 (#506)."""
+    client, company, payload, _ = artist_api
+    company.is_small_business = False
+    item = {"description": "Stunden", "quantity": 1.5, "unit_price": 33.33}
+    created = client.post("/api/invoices", json=payload | {"vat_rate": 19, "items": [item]})
+    assert created.status_code == 201, created.text
+    doc = created.json()
+    assert doc["total_brutto"] == 59.5
+
+    item_url = f"/api/invoices/{doc['id']}/items/{doc['items'][0]['id']}"
+    client.put(item_url, json=item | {"unit_price": 100})
+    changed = client.put(item_url, json=item)
+    assert changed.json()["total_brutto"] == 59.5
