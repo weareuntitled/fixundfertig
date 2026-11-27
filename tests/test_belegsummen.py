@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "app"))
 
-from logic.belegsummen import Abschlag, Position, belegsummen  # noqa: E402
+from logic.belegsummen import Abschlag, Position, belegsummen, legacy_vat_rate  # noqa: E402
 
 
 def test_19_percent_net_tax_gross():
@@ -150,3 +150,23 @@ def test_final_invoice_for_small_business_has_no_tax_anywhere():
     assert (summen.sum_net, summen.sum_tax, summen.sum_gross) == (D("1000.00"), D("0.00"), D("1000.00"))
     assert (summen.rest_net, summen.rest_tax, summen.rest_gross) == (D("1000.00"), D("0.00"), D("1000.00"))
     assert summen.payable == D("1000.00")
+
+
+def test_legacy_document_rate_is_derived_from_stored_gross():
+    positions = [Position(quantity=1, unit_price=33.33)]
+    rate = legacy_vat_rate(positions, stored_gross=39.66)
+    # 6,33 / 33,33 = 18,99 % → auf 0,1 % gerundet 19,0 %
+    assert rate == D("19.0")
+    assert belegsummen(positions, vat_rate=rate).gross == D("39.66")
+
+
+def test_legacy_rate_keeps_reduced_and_odd_rates():
+    assert legacy_vat_rate([Position(quantity=2, unit_price=50)], stored_gross=107) == D("7.0")
+    assert legacy_vat_rate([Position(quantity=1, unit_price=100)], stored_gross=107.5) == D("7.5")
+
+
+def test_legacy_rate_is_zero_without_surplus_or_without_net():
+    assert legacy_vat_rate([Position(quantity=1, unit_price=100)], stored_gross=100) == D("0")
+    assert legacy_vat_rate([Position(quantity=1, unit_price=100)], stored_gross=100.004) == D("0")
+    assert legacy_vat_rate([], stored_gross=50) == D("0")
+    assert legacy_vat_rate([Position(quantity=1, unit_price=100)], stored_gross=None) == D("0")

@@ -111,3 +111,16 @@ def belegsummen(
         rest_net=net - sum_net, rest_tax=tax - sum_tax, rest_gross=gross - sum_gross,
         payable=gross - sum_gross,
     )
+
+
+def legacy_vat_rate(positions: Iterable[Position], *, stored_gross: Any) -> Decimal:
+    """Steuersatz eines Altbelegs ohne gespeicherten Satz, in Prozent.
+
+    Altbelege tragen nur ihren Bruttobetrag; der Satz ergibt sich aus Brutto
+    und dem Netto der Positionen, auf 0,1 % gerundet. Nur diese Stelle leitet ab.
+    """
+    net = sum((_dec(p.quantity) * _dec(p.unit_price) for p in positions), Decimal("0"))
+    gross = _dec(stored_gross)
+    if net <= 0 or gross <= net + Decimal("0.005"):
+        return Decimal("0")
+    return ((gross - net) / net * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
