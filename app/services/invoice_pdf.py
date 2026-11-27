@@ -16,6 +16,7 @@ from .invoice_pdf_draw import (
     draw_table, draw_totals, draw_final_totals, draw_payment_box, draw_payment_plan, draw_footer,
     company_legal_name, uses_artist_wordmark,
 )
+from .invoice_pdf_stamp import stamp
 from .payment_plan import format_percent, installments_with_amounts
 
 
@@ -42,7 +43,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
         raw_items = getattr(invoice, "__dict__", {}).get("line_items", None)
 
     items: list[InvItem] = []
-    item_iter = raw_items if isinstance(raw_items, list) else (getattr(invoice, "items", []) or [])
+    item_iter = list(raw_items if isinstance(raw_items, list) else (getattr(invoice, "items", []) or []))
     artist_name = safe_str(get_attr(comp, "name")) if comp is not None else ""
     legal_name = company_legal_name(comp)
     line_holds_artist_name_as_its_own_token = False
@@ -112,6 +113,8 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
     ] if quote else []
 
     nr = safe_str(get_attr(invoice, "nr", "invoice_number", default=""))
+    # The send path compares this with the stored invoice to catch an outdated PDF.
+    keywords = stamp(nr, item_iter, rest if is_final_invoice else gross)
 
     fonts = FONTS
     font_r = fonts["regular"]
@@ -126,6 +129,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
     def draw_document(total_pages: int) -> tuple[bytes, int]:
         buf = BytesIO()
         c = Canvas(buf, pagesize=A4)
+        c.setKeywords(keywords)
         c.setLineWidth(LAYOUT["line_width"])
 
         def set_font(bold=False, size=10, color=LAYOUT["col_primary"]):
