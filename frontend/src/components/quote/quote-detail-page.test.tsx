@@ -27,7 +27,7 @@ const baseQuote: Quote = {
   total_brutto: 357,
   total_net: 300,
   vat_rate: 19,
-  totals: { net: 300, vat_rate: 19, tax: 57, gross: 357, payable: 357 },
+  totals: { net: 300, vat_rate: 19, tax: 57, gross: 357, deductions: [], rest_net: 300, rest_tax: 57, payable: 357 },
   status: "SENT",
   items: [{ id: 1, description: "DJ-Set", quantity: 2, unit_price: 150 }],
   settlement: { billed_brutto: 0, total_brutto: 357, open_brutto: 357, billed_count: 0 },
@@ -393,7 +393,7 @@ describe("Angebot-Detailseite: Abrechnungsstand und Beträge", () => {
       total_brutto: 107.02,
       total_net: 100.005,
       vat_rate: 19,
-      totals: { net: 100.01, vat_rate: 7, tax: 7, gross: 107.01, payable: 107.01 },
+      totals: { net: 100.01, vat_rate: 7, tax: 7, gross: 107.01, deductions: [], rest_net: 100.01, rest_tax: 7, payable: 107.01 },
     });
 
     expect(await screen.findByText("USt 7 %")).toBeTruthy();
@@ -407,7 +407,7 @@ describe("Angebot-Detailseite: Abrechnungsstand und Beträge", () => {
       ...baseQuote,
       total_brutto: 300,
       vat_rate: 0,
-      totals: { net: 300, vat_rate: 0, tax: 0, gross: 300, payable: 300 },
+      totals: { net: 300, vat_rate: 0, tax: 0, gross: 300, deductions: [], rest_net: 300, rest_tax: 0, payable: 300 },
     });
 
     expect(await screen.findByText("Gesamt (brutto)")).toBeTruthy();

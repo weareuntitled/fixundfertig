@@ -335,23 +335,23 @@ def test_final_invoice_read_carries_total_deductions_and_rest(artist_api):
     client, company, payload, session = artist_api
     _quote, down_payment, final = _final_invoice_with_one_down_payment(client, company, payload, session)
 
-    breakdown = client.get(f"/api/invoices/{final['id']}").json()["final_breakdown"]
+    totals = client.get(f"/api/invoices/{final['id']}").json()["totals"]
 
-    assert breakdown == {
-        "net": 4000.0, "tax": 760.0, "gross": 4760.0,
+    assert totals == {
+        "net": 4000.0, "vat_rate": 19.0, "tax": 760.0, "gross": 4760.0,
         "deductions": [{
             "id": down_payment["id"], "nr": down_payment["nr"], "date": date.today().isoformat(),
-            "net": 2000.0, "tax": 380.0, "total": 2380.0,
+            "net": 2000.0, "tax": 380.0, "gross": 2380.0,
         }],
-        "rest_net": 2000.0, "rest_tax": 380.0, "rest": 2380.0,
+        "rest_net": 2000.0, "rest_tax": 380.0, "payable": 2380.0,
     }
 
 
-def test_other_documents_have_no_final_breakdown(artist_api):
+def test_other_documents_have_no_deductions(artist_api):
     client, _company, payload, _session = artist_api
     created = _post(client, "/api/invoices", payload)
 
-    assert client.get(f"/api/invoices/{created['id']}").json()["final_breakdown"] is None
+    assert client.get(f"/api/invoices/{created['id']}").json()["totals"]["deductions"] == []
 
 
 def test_final_invoice_keeps_original_deductions_after_cancellation(artist_api, monkeypatch):
@@ -363,7 +363,7 @@ def test_final_invoice_keeps_original_deductions_after_cancellation(artist_api, 
     session.expire_all()
     after = client.get(f"/api/invoices/{final['id']}").json()
     assert after["total_brutto"] == 2380.0
-    assert after["final_breakdown"] == before["final_breakdown"]
+    assert after["totals"] == before["totals"]
     assert client.post(f"/api/invoices/{final['id']}/regenerate-pdf").status_code == 200
     text = _flat(_pdf(client, final["id"]))
     assert f"abzüglich Abschlagsrechnung {down_payment['nr']}" in text
@@ -400,7 +400,7 @@ def test_final_header_edit_keeps_saved_tax_and_deductions_after_company_change(a
     assert client.put(f"/api/invoices/{down['id']}/status", json={"status": "CANCELLED"}).status_code == 200
     updated = client.put(f"/api/invoices/{final['id']}", json={"subject": "Relaunch"})
     assert updated.status_code == 200, updated.text
-    assert updated.json()["final_breakdown"]["rest"] == 2380
+    assert updated.json()["totals"]["payable"] == 2380
     text = _flat(_pdf(client, final["id"]))
     assert "4.760,00" in text
     assert "2.380,00" in text
@@ -525,7 +525,7 @@ def test_historical_final_invoice_preserves_pdf_and_blocks_changes(artist_api, m
     invoice.final_deductions_json = None
     session.add(invoice)
     session.commit()
-    assert client.get(f"/api/invoices/{final['id']}").json()["final_breakdown"] is None
+    assert client.get(f"/api/invoices/{final['id']}").json()["totals"] is None
     assert _pdf(client, final["id"]) == stored
     assert client.get(f"/api/invoices/{final['id']}/preview-pdf").content == stored
     for response in (
@@ -587,7 +587,7 @@ def test_linked_mutations_preserve_final_history_after_reload(artist_api, mutati
     session.expunge_all()
     after = client.get(f"/api/invoices/{final['id']}").json()
     assert after["total_brutto"] == 2380
-    assert after["final_breakdown"] == before["final_breakdown"]
+    assert after["totals"] == before["totals"]
     assert after["revision_nr"] == before["revision_nr"]
     assert _pdf(client, final["id"]) == stored
     invoice = session.get(invoices.Invoice, final["id"])
@@ -599,7 +599,7 @@ def test_linked_mutations_preserve_final_history_after_reload(artist_api, mutati
     else:
         invoices.recompute_total_brutto(invoice, 19)
         assert invoice.total_brutto == 2380
-        assert before["final_breakdown"]["deductions"][0]["nr"] == down["nr"]
+        assert before["totals"]["deductions"][0]["nr"] == down["nr"]
 
 
 @pytest.mark.parametrize("snapshot", [None, "broken", "{}", "null", '[{"id":1}]',
@@ -714,7 +714,7 @@ def test_final_snapshot_survives_database_reopen_and_startup(artist_api, tmp_pat
         # Startup must preserve the existing snapshot, rather than backfill from today's links.
         db.ensure_invoice_quote_fields(engine)
         after = client.get(f"/api/invoices/{final['id']}").json()
-        assert after["final_breakdown"] == final["final_breakdown"]
+        assert after["totals"] == final["totals"]
         assert after["total_brutto"] == 2380
         assert _pdf(client, final["id"]) == stored
         assert client.post(f"/api/invoices/{final['id']}/regenerate-pdf").status_code == 200

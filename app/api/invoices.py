@@ -47,7 +47,6 @@ from logic.document_status import (
 )
 from logic.belegsummen import Belegsummen
 from logic.belegsummen_zugang import belegsummen_for_invoice
-from logic.final_invoice import final_invoice_totals, final_deductions
 from logic.quote_billing import BillingConflict, lock_quote_for_billing, quote_billing, quote_settlement
 from logic.quote_conversion import (
     create_down_payment_invoice,
@@ -67,8 +66,7 @@ from schemas.invoice import (
     DownPaymentRequest,
     InvoiceAttachmentCreate,
     InvoiceAttachmentRead,
-    FinalBreakdownRead,
-    FinalDeductionRead,
+    DeductionRead,
     InvoiceDraft,
     InvoiceItem,
     InvoiceRead,
@@ -383,30 +381,6 @@ def _settlement_read(invoice: Invoice) -> QuoteSettlementRead | None:
     return QuoteSettlementRead(**quote_settlement(session, invoice).as_dict())
 
 
-def _final_breakdown(invoice: Invoice) -> FinalBreakdownRead | None:
-    """Gesamtleistung, Abzüge und Restbetrag einer Schlussrechnung; None für andere Dokumente."""
-    # Nur eine echte Schlussrechnung mit Angebot: eine entkoppelte Instanz (Mock,
-    # Testdouble) trägt keine Sitzung und keine Angebots-ID.
-    if getattr(invoice, "is_final_invoice", False) is not True:
-        return None
-    quote_id = getattr(invoice, "quote_id", None)
-    if not isinstance(quote_id, int):
-        return None
-    session = object_session(invoice)
-    if session is None:
-        return None
-    try:
-        rows = final_deductions(invoice)
-    except ValueError:
-        return None
-    totals = final_invoice_totals(invoice_net_total(invoice), document_vat_rate(invoice), rows)
-    return FinalBreakdownRead(
-        net=totals["net"], tax=totals["tax"], gross=totals["gross"],
-        deductions=[FinalDeductionRead(**row.as_dict()) for row in rows],
-        rest_net=totals["rest_net"], rest_tax=totals["rest_tax"], rest=totals["rest"],
-    )
-
-
 def _summen(invoice: Invoice) -> Belegsummen | None:
     """Belegsummen des Belegs; None bei beschädigten Schlussrechnungs-Abzügen."""
     try:
@@ -425,7 +399,12 @@ def _totals_read(summen: Belegsummen | None) -> TotalsRead | None:
         return None
     return TotalsRead(
         net=float(summen.net), vat_rate=float(summen.vat_rate), tax=float(summen.tax),
-        gross=float(summen.gross), payable=float(summen.payable),
+        gross=float(summen.gross),
+        deductions=[
+            DeductionRead(id=d.id, nr=d.nr, date=d.date, net=float(d.net), tax=float(d.tax), gross=float(d.gross))
+            for d in summen.deductions
+        ],
+        rest_net=float(summen.rest_net), rest_tax=float(summen.rest_tax), payable=float(summen.payable),
     )
 
 
@@ -476,7 +455,6 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
             else None
         ),
         is_final_invoice=bool(getattr(invoice, "is_final_invoice", False)),
-        final_breakdown=_final_breakdown(invoice),
         linked_invoices=[
             LinkedInvoiceRead(
                 id=int(linked.id),

@@ -86,7 +86,7 @@ test("invoice detail page shows preview iframe and download link", async ({ page
         recipient_postal_code: "",
         recipient_city: "",
         total_brutto: 107.0,
-        totals: { net: 100, vat_rate: 7, tax: 7, gross: 107, payable: 107 },
+        totals: { net: 100, vat_rate: 7, tax: 7, gross: 107, deductions: [], rest_net: 100, rest_tax: 7, payable: 107 },
         status: "OPEN",
         revision_nr: 0,
         updated_at: "",
@@ -132,7 +132,7 @@ test(`historische Schlussrechnung (${status}) zeigt Prüfhinweis und gesperrte A
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/invoices/123", (route) => route.fulfill({ json: {
     id: 123, customer_id: 1, nr: "10012", date: "2026-06-10", total_brutto: 2380,
-    status, delivery_date: "", is_final_invoice: true, final_breakdown: null,
+    status, delivery_date: "", is_final_invoice: true, totals: null,
     items: [{ id: 1, description: "Website", quantity: 1, unit_price: 4000 }],
   } }));
   await page.goto("/invoices/123");
@@ -164,7 +164,7 @@ test("invoice detail page calls the issued state 'Gestellt' in the button and th
         title: "Test-Rechnung",
         date: "2026-06-10",
         total_brutto: 119.0,
-        totals: { net: 100, vat_rate: 19, tax: 19, gross: 119, payable: 119 },
+        totals: { net: 100, vat_rate: 19, tax: 19, gross: 119, deductions: [], rest_net: 100, rest_tax: 19, payable: 119 },
         status: "DRAFT",
         items: [],
       }),
@@ -371,7 +371,7 @@ test("Angebot: die Seite zeigt Netto, USt, Gesamt und den Abrechnungsstand", asy
     id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
     date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
     total_brutto: 1785, total_net: 1500, vat_rate: 19, status: "ACCEPTED",
-    totals: { net: 1500, vat_rate: 19, tax: 285, gross: 1785, payable: 1785 },
+    totals: { net: 1500, vat_rate: 19, tax: 285, gross: 1785, deductions: [], rest_net: 1500, rest_tax: 285, payable: 1785 },
     items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 1500 }],
     settlement: { billed_brutto: 714, total_brutto: 1785, open_brutto: 1071, billed_count: 1 },
     billing: {
@@ -752,10 +752,10 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
     date: "", recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, status: "DRAFT",
     quote_id: 42, quote_nr: "A-10000", down_payment_index: null, is_down_payment: false, is_final_invoice: true,
     items: [{ id: 3, description: "Website", quantity: 1, unit_price: 4000 }],
-    final_breakdown: {
-      net: 4000, tax: 760, gross: 4760,
-      deductions: [{ id: 43, nr: "10000", date: "2026-10-23", net: 2000, tax: 380, total: 2380 }],
-      rest_net: 2000, rest_tax: 380, rest: 2380,
+    totals: {
+      net: 4000, vat_rate: 19, tax: 760, gross: 4760,
+      deductions: [{ id: 43, nr: "10000", date: "2026-10-23", net: 2000, tax: 380, gross: 2380 }],
+      rest_net: 2000, rest_tax: 380, payable: 2380,
     },
   };
   const quote = () => ({
@@ -801,8 +801,11 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
   await expect(page).toHaveURL(/\/invoices\/44$/);
   await expect(page.getByRole("heading", { name: "Schlussrechnung 10001" })).toBeVisible();
   await expect(page.getByText("Gesamtleistung", { exact: true })).toBeVisible();
-  await expect(page.getByText("Abzüglich Abschlagsrechnung 10000 vom 2026-10-23")).toBeVisible();
-  await expect(page.getByText("Restbetrag", { exact: true })).toBeVisible();
+  await expect(page.getByText("Abzüglich Abschlagsrechnung 10000 vom 23.10.2026")).toBeVisible();
+  const rest = page.getByRole("group", { name: "Restbetrag" });
+  await expect(rest.getByText("Restbetrag", { exact: true })).toBeVisible();
+  await expect(rest.getByText("2.380,00 €")).toBeVisible();
+  await expect(page.getByText("USt (19 %)").first()).toBeVisible();
   await expect(page.getByText("Abzüge prüfen", { exact: true })).toHaveCount(0);
   await page.getByRole("main").getByRole("link", { name: "Aus Angebot A-10000" }).click();
 

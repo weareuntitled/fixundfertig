@@ -62,7 +62,8 @@ def test_converted_invoice_has_the_same_totals_as_the_quote_at_7_percent(artist_
 
     invoice = client.post(f"/api/invoices/{quote['id']}/convert").json()
 
-    assert quote["totals"] == {"net": 100.01, "vat_rate": 7.0, "tax": 7.0, "gross": 107.01, "payable": 107.01}
+    assert quote["totals"] == {"net": 100.01, "vat_rate": 7.0, "tax": 7.0, "gross": 107.01, "payable": 107.01,
+                               "deductions": [], "rest_net": 100.01, "rest_tax": 7.0}
     assert invoice["totals"] == quote["totals"]
     assert invoice["total_brutto"] == quote["totals"]["gross"]
 
@@ -104,6 +105,7 @@ def test_down_payment_bills_its_share_of_the_quote_net_and_matches_the_plan(arti
     assert response.status_code == 201, response.text
     invoice = response.json()
     # 50 % von 100,01 € netto = 50,005 € -> 50,01 €; 7 % USt = 3,50 €.
-    assert invoice["totals"] == {"net": 50.01, "vat_rate": 7.0, "tax": 3.5, "gross": 53.51, "payable": 53.51}
+    assert invoice["totals"] == {"net": 50.01, "vat_rate": 7.0, "tax": 3.5, "gross": 53.51, "payable": 53.51,
+                                 "deductions": [], "rest_net": 50.01, "rest_tax": 3.5}
     assert invoice["total_brutto"] == 53.51
     assert quote["payment_plan"][0]["amount"] == invoice["totals"]["gross"]

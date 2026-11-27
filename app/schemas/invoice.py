@@ -145,40 +145,35 @@ class LinkedInvoiceRead(BaseModel):
     is_final_invoice: bool = False
 
 
-class FinalDeductionRead(BaseModel):
-    """Eine von der Schlussrechnung abgezogene Abschlagsrechnung (#496)."""
+class DeductionRead(BaseModel):
+    """Eine von der Schlussrechnung abgezogene Abschlagsrechnung (#510)."""
 
     id: int
-    nr: str = ""
-    date: str = ""
-    net: float = 0.0
-    tax: float = 0.0
-    total: float = 0.0
-
-
-class FinalBreakdownRead(BaseModel):
-    """Gesamtleistung, Abzüge und Restbetrag einer Schlussrechnung, wie im PDF (#496)."""
-
+    nr: str
+    date: str
     net: float
     tax: float
     gross: float
-    deductions: list[FinalDeductionRead] = Field(default_factory=list)
-    rest_net: float
-    rest_tax: float
-    rest: float
 
 
 class TotalsRead(BaseModel):
     """Belegsummen eines Belegs (#507), berechnet in `logic.belegsummen`.
 
-    `vat_rate` in Prozent (0 ohne USt, z. B. Kleinunternehmer). `payable` ist der
-    zahlbare Betrag und entspricht `total_brutto` des Belegs.
+    `vat_rate` in Prozent (0 ohne USt, z. B. Kleinunternehmer). Bei einer
+    Schlussrechnung sind `net`/`tax`/`gross` die Gesamtleistung, `deductions` die
+    abgezogenen Abschlagsrechnungen und `rest_net`/`rest_tax` der Restbetrag (#510);
+    bei anderen Belegen ist `deductions` leer und der Rest gleich Netto/Steuer.
+    `payable` ist der zahlbare Betrag (bei einer Schlussrechnung der Restbetrag)
+    und entspricht `total_brutto` des Belegs.
     """
 
     net: float
     vat_rate: float
     tax: float
     gross: float
+    deductions: list[DeductionRead] = Field(default_factory=list)
+    rest_net: float
+    rest_tax: float
     payable: float
 
 
@@ -255,8 +250,6 @@ class InvoiceRead(BaseModel):
     down_payment_index: int | None = None
     # Schlussrechnung (#491): eigener Marker.
     is_final_invoice: bool = False
-    # Schlussrechnung (#496): Aufschlüsselung für die Rechnungsseite, sonst None.
-    final_breakdown: FinalBreakdownRead | None = None
     linked_invoices: list[LinkedInvoiceRead] = Field(default_factory=list)
     payment_link_url: str = ""
     payment_provider: str = ""

@@ -26,7 +26,7 @@ const QUOTE = {
   subject: "DJ-Set Hammahalle, Sa auf So",
   date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
   total_brutto: 1785, total_net: 1500, vat_rate: 19, status: "SENT",
-  totals: { net: 1500, vat_rate: 19, tax: 285, gross: 1785, payable: 1785 },
+  totals: { net: 1500, vat_rate: 19, tax: 285, gross: 1785, deductions: [], rest_net: 1500, rest_tax: 285, payable: 1785 },
   items: [
     { id: 1, description: "SEO-Grundeinrichtung für die neue Seite", quantity: 1, unit_price: 380 },
     { id: 2, description: "DJ-Set", quantity: 1, unit_price: 1400 },
