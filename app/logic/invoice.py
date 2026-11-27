@@ -196,10 +196,11 @@ def finalize_invoice_logic(
     is_small = bool(getattr(comp, "is_small_business", False))
     charges_vat = (not is_small) and bool(ust_enabled)
     vat_rate = float(clean_items[0].get("tax_rate", 0) or 0) if charges_vat else 0.0
-    gross = float(belegsummen(
+    summen = belegsummen(
         [Position(quantity=it["quantity"], unit_price=it["unit_price"]) for it in clean_items],
         vat_rate=vat_rate, charges_vat=charges_vat,
-    ).gross)
+    )
+    gross = float(summen.gross)
 
     inv = Invoice(
         customer_id=int(cust.id),
@@ -239,7 +240,7 @@ def finalize_invoice_logic(
     preview.__dict__["totals"] = {"gross": gross}
     preview.__dict__["total_brutto"] = gross
 
-    inv.pdf_bytes = render_invoice_to_pdf_bytes(preview)
+    inv.pdf_bytes = render_invoice_to_pdf_bytes(preview, summen=summen)
     inv.pdf_filename = build_invoice_filename(comp, inv, cust)
 
     session.add(inv)

@@ -187,7 +187,9 @@ def create_down_payment_invoice(
     invoice.down_payment_index = int(installment_index)
     customer = session.get(Customer, int(quote.customer_id))
     invoice.pdf_filename = build_invoice_filename(company, invoice, customer)
-    invoice.pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer)
+    invoice.pdf_bytes = render_invoice_to_pdf_bytes(
+        invoice=invoice, company=company, customer=customer, summen=belegsummen_for_invoice(invoice, session),
+    )
     session.add(invoice)
     _accept_quote(session, quote)
     session.commit()
@@ -223,15 +225,11 @@ def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
     invoice.final_deductions_json = json.dumps([row.as_dict() for row in rows], ensure_ascii=False)
     invoice.vat_rate = vat_percent
 
-    invoice.total_brutto = float(belegsummen_for_invoice(invoice, session).payable)
+    summen = belegsummen_for_invoice(invoice, session)
+    invoice.total_brutto = float(summen.payable)
 
     customer = session.get(Customer, int(quote.customer_id))
-    invoice.pdf_bytes = render_invoice_to_pdf_bytes(
-        invoice=invoice,
-        company=company,
-        customer=customer,
-        down_payments=[row.as_dict() for row in rows],
-    )
+    invoice.pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer, summen=summen)
     session.add(invoice)
     _accept_quote(session, quote)
     session.commit()

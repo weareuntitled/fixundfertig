@@ -13,6 +13,7 @@ from sqlmodel import select
 
 from data import Company, Customer, Document, InvoiceItem
 from renderer import render_invoice_to_pdf_bytes
+from logic.belegsummen_zugang import belegsummen_for_invoice
 from services.blob_storage import blob_storage
 from services.documents import resolve_document_path
 
@@ -51,7 +52,7 @@ def export_invoices_pdf_zip(*args: Any, **kwargs: Any) -> bytes:
 
             if not pdf and inv.is_final_invoice:
                 pdf = render_invoice_to_pdf_bytes(
-                    inv, company=comp, customer=inv.customer,
+                    inv, company=comp, customer=inv.customer, summen=belegsummen_for_invoice(inv, session),
                 )
 
             if not pdf:

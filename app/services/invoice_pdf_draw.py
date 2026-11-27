@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import os
+from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from reportlab.lib.units import mm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import (
-    LAYOUT, InvItem, format_amount, format_money, get_attr, group_iban, prefixed_value, safe_str, wrap_text,
+    LAYOUT, InvItem, format_amount, format_date, format_money, format_vat_rate, get_attr, group_iban,
+    prefixed_value, safe_str, wrap_text,
 )
+
+if TYPE_CHECKING:
+    from logic.belegsummen import Belegsummen
 
 
 def company_legal_name(comp) -> str:
@@ -259,7 +265,7 @@ def draw_table(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bo
         c.drawRightString(qty_right, base, format_amount(it.quantity))
         c.drawRightString(price_right, base, format_money(it.unit_price))
         c.setFont(fonts["medium"], 9)
-        c.drawRightString(amount_right, base, format_money(it.quantity * it.unit_price))
+        c.drawRightString(amount_right, base, format_money(it.amount))
 
         c.setStrokeColorRGB(*hair)
         c.line(mx, y - row_h, right, y - row_h)
@@ -282,7 +288,7 @@ def draw_due_line(c: Canvas, mx: float, y: float, due_str: str, fonts: dict[str,
 
 
 def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
-                net: float, tax: float, gross: float, tax_rate: float, is_small_business: bool,
+                summen: Belegsummen, is_small_business: bool,
                 due_str: str, new_page, fonts: dict[str, str]) -> float:
     right = w - mx
     left = right - 218
@@ -298,10 +304,10 @@ def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_b
         c.setFillColorRGB(*ink)
         c.drawRightString(right, y - 10, value)
 
-    row("Zwischensumme", format_money(net))
+    row("Zwischensumme", format_money(summen.net))
     y -= 18
-    if tax_rate > 0:
-        row(f"Umsatzsteuer {tax_rate * 100:g} %".replace(".", ","), format_money(tax))
+    if summen.vat_rate > 0:
+        row(f"Umsatzsteuer {format_vat_rate(summen.vat_rate)} %", format_money(summen.tax))
     elif is_small_business:
         row("Umsatzsteuer", "nicht erhoben")
     else:
@@ -315,7 +321,7 @@ def draw_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_b
     c.setFillColorRGB(*ink)
     draw_tracked(c, left, y - 22, "GESAMTBETRAG", fonts["medium"], 8, 0.7)
     c.setFont(fonts["bold"], 18)
-    c.drawRightString(right, y - 22, format_money(gross))
+    c.drawRightString(right, y - 22, format_money(summen.gross))
     y -= 33
 
     y -= 12
@@ -332,8 +338,7 @@ def deduction_label(row: dict) -> str:
 
 
 def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float, my_bot: float,
-                      net: float, tax: float, tax_rate: float, is_small_business: bool,
-                      deductions: list[dict], sum_net: float, sum_tax: float, rest: float,
+                      summen: Belegsummen, is_small_business: bool,
                       due_str: str, new_page, fonts: dict[str, str]) -> float:
     """Schlussrechnung block in reading order: Gesamtleistung, one „abzüglich“ line per
     down payment, then the Restbetrag below an accent line that touches no text.
@@ -349,7 +354,7 @@ def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float
     label_w = net_right - 70 - mx
 
     y -= 16.5
-    block_estimate = 150 + 30 * len(deductions)
+    block_estimate = 150 + 30 * len(summen.deductions)
     if y - block_estimate < my_bot + 20 * mm:
         y = new_page()
 
@@ -364,7 +369,7 @@ def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float
         draw_tracked(c, total_right, y, "BETRAG", fonts["medium"], 7, 1.0, align="right")
     y -= 18
 
-    def amount_row(label: str, net_value: float, tax_value: float, total_value: float,
+    def amount_row(label: str, net_value: Decimal, tax_value: Decimal, total_value: Decimal,
                    rule: bool = True) -> None:
         nonlocal y
         c.setFont(fonts["regular"], 9)
@@ -384,8 +389,9 @@ def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float
             c.line(mx, bottom, right, bottom)
         y = bottom - 12
 
-    rows = [("Gesamtleistung", net, tax, round(net + tax, 2))] + [
-        (deduction_label(row), row["net"], row["tax"], row["total"]) for row in deductions
+    rows = [("Gesamtleistung", summen.net, summen.tax, summen.gross)] + [
+        (deduction_label({"nr": row.nr, "date": format_date(row.date)}), row.net, row.tax, row.gross)
+        for row in summen.deductions
     ]
     for index, (label, net_value, tax_value, total_value) in enumerate(rows):
         amount_row(label, net_value, tax_value, total_value, rule=index < len(rows) - 1)
@@ -403,11 +409,11 @@ def draw_final_totals(c: Canvas, w: float, mx: float, y: float, content_w: float
     c.setFont(fonts["bold"], 9)
     c.setFillColorRGB(*ink)
     c.drawString(mx, y, "Restbetrag")
-    c.drawRightString(net_right, y, format_money(round(net - sum_net, 2)))
+    c.drawRightString(net_right, y, format_money(summen.rest_net))
     if show_tax:
-        c.drawRightString(tax_right, y, format_money(round(tax - sum_tax, 2)))
+        c.drawRightString(tax_right, y, format_money(summen.rest_tax))
     c.setFont(fonts["bold"], 12)
-    c.drawRightString(total_right, y, format_money(rest))
+    c.drawRightString(total_right, y, format_money(summen.rest_gross))
     y -= 18
     # Die Schlussrechnung ist eine Forderung: sie nennt ihr Zahlungsziel.
     return draw_due_line(c, mx, y, due_str, fonts)
