@@ -44,6 +44,7 @@ from logic.document_status import (
     is_rejected_quote,
     status_not_allowed_reason,
 )
+from logic.belegsummen import Belegsummen
 from logic.belegsummen_zugang import belegsummen_for_invoice
 from logic.final_invoice import final_invoice_totals, final_deductions
 from logic.quote_billing import BillingConflict, lock_quote_for_billing, quote_billing, quote_settlement
@@ -407,15 +408,21 @@ def _final_breakdown(invoice: Invoice) -> FinalBreakdownRead | None:
     )
 
 
-def _totals_read(invoice: Invoice) -> TotalsRead | None:
-    """Belegsummen für die API-Antwort (#507); None bei beschädigten Schlussrechnungs-Abzügen."""
+def _summen(invoice: Invoice) -> Belegsummen | None:
+    """Belegsummen des Belegs; None bei beschädigten Schlussrechnungs-Abzügen."""
     try:
         session = object_session(invoice)
     except UnmappedInstanceError:  # entkoppelte Testdoubles tragen keine Sitzung
         session = None
     try:
-        summen = belegsummen_for_invoice(invoice, session)
+        return belegsummen_for_invoice(invoice, session)
     except ValueError:
+        return None
+
+
+def _totals_read(summen: Belegsummen | None) -> TotalsRead | None:
+    """Belegsummen für die API-Antwort (#507)."""
+    if summen is None:
         return None
     return TotalsRead(
         net=float(summen.net), vat_rate=float(summen.vat_rate), tax=float(summen.tax),
@@ -435,6 +442,9 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         ))
     attachments = [_attachment_to_read(attachment) for attachment in invoice.attachments]
     quote = getattr(invoice, "quote", None)
+    summen = _summen(invoice)
+    # Die Raten rechnen aus demselben Brutto, das der Beleg ausweist (#512).
+    plan_gross = float(summen.gross) if summen is not None else float(invoice.total_brutto or 0.0)
     return InvoiceRead(
         id=int(invoice.id),
         customer_id=int(invoice.customer_id),
@@ -454,7 +464,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         total_brutto=float(invoice.total_brutto or 0.0),
         total_net=invoice_net_total(invoice),
         vat_rate=document_vat_rate(invoice),
-        totals=_totals_read(invoice),
+        totals=_totals_read(summen),
         status=invoice.status.value if hasattr(invoice.status, "value") else str(invoice.status),
         revision_nr=int(invoice.revision_nr or 0),
         updated_at=invoice.updated_at or "",
@@ -491,7 +501,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         payment_plan=[
             PaymentInstallmentRead(**rate)
             for rate in installments_with_amounts(
-                getattr(invoice, "payment_plan", None), float(invoice.total_brutto or 0.0)
+                getattr(invoice, "payment_plan", None), plan_gross
             )
         ],
         billing=_billing_read(invoice),
