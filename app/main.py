@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request
-from starlette.responses import RedirectResponse
+from starlette.responses import PlainTextResponse, RedirectResponse
 from nicegui import ui, app, helpers
 from nicegui.storage import Storage, PseudoPersistentDict, request_contextvar
 from starlette.middleware.cors import CORSMiddleware
@@ -214,20 +214,28 @@ class _ReactSPA(_StaticFiles):
         return await super().get_response(path, scope)
 
 
+_FAVICON_PATH = Path(__file__).resolve().parent / "static" / "Logo-fixundfertig.svg"
+
+
+# Vor dem SPA-Mount auf "/" registrieren, sonst verdeckt der Mount diese Routen.
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon_ico():
+    if not _FAVICON_PATH.is_file():
+        raise HTTPException(status_code=404, detail="favicon not found")
+    return RedirectResponse(url="/static/Logo-fixundfertig.svg", status_code=307)
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt():
+    return PlainTextResponse("User-agent: *\nDisallow: /\n")
+
+
 if _REACT_DIST.is_dir():
     app.mount("/static/frontend", _StaticFiles(directory=str(_REACT_DIST), html=True), name="react-static")
     app.mount("/", _ReactSPA(), name="react-spa-root")
 
 
 app.add_static_files("/static", str(Path(__file__).resolve().parent / "static"))
-_FAVICON_PATH = Path(__file__).resolve().parent / "static" / "Logo-fixundfertig.svg"
-
-
-@app.get("/favicon.ico")
-def favicon_ico():
-    if not _FAVICON_PATH.is_file():
-        raise HTTPException(status_code=404, detail="favicon not found")
-    return RedirectResponse(url="/static/Logo-fixundfertig.svg", status_code=307)
 
 
 if not _IS_PYTEST:
