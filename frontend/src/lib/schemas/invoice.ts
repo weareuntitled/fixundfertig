@@ -197,12 +197,11 @@ export const quoteSettlementSchema = z.object({
 
 export type QuoteSettlement = z.infer<typeof quoteSettlementSchema>;
 
-export const finalBreakdownSchema = z.object({
-  net: z.number(), tax: z.number(), gross: z.number(),
-  deductions: z.array(z.object({ id: z.number(), nr: z.string(), date: z.string(), net: z.number(), tax: z.number(), total: z.number() })),
-  rest_net: z.number(), rest_tax: z.number(), rest: z.number(),
+/** Mirror of `app/schemas/invoice.py:DeductionRead` — ein Abzug der Schlussrechnung. */
+export const deductionSchema = z.object({
+  id: z.number(), nr: z.string(), date: z.string(), net: z.number(), tax: z.number(), gross: z.number(),
 });
-export type FinalBreakdownRead = z.infer<typeof finalBreakdownSchema>;
+export type DeductionRead = z.infer<typeof deductionSchema>;
 
 /** Mirror of `app/schemas/invoice.py:TotalsRead` — die Belegsummen aus dem Backend. */
 export const totalsSchema = z.object({
@@ -211,7 +210,12 @@ export const totalsSchema = z.object({
   vat_rate: z.number(),
   tax: z.number(),
   gross: z.number(),
-  /** Zahlbarer Betrag, entspricht `total_brutto`. */
+  /** Schlussrechnung: abgezogene Abschlagsrechnungen; sonst leer. */
+  deductions: z.array(deductionSchema).default([]),
+  /** Restbetrag netto/Steuer; ohne Abzüge gleich `net`/`tax`. */
+  rest_net: z.number(),
+  rest_tax: z.number(),
+  /** Zahlbarer Betrag (bei Schlussrechnung der Restbetrag), entspricht `total_brutto`. */
   payable: z.number(),
 });
 export type TotalsRead = z.infer<typeof totalsSchema>;
@@ -256,7 +260,6 @@ export const invoiceReadSchema = z.object({
   down_payment_index: z.number().int().nullable().default(null),
   /** Schlussrechnung: eigener Marker. */
   is_final_invoice: z.boolean().default(false),
-  final_breakdown: finalBreakdownSchema.nullable().default(null),
   /** Angebot: die daraus entstandenen Rechnungen. */
   linked_invoices: z.array(linkedInvoiceSchema).default([]),
   payment_link_url: z.string().default(""),

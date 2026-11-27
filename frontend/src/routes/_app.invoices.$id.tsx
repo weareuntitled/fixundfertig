@@ -35,7 +35,6 @@ import { StatusTimeline } from "@/components/ui/status-timeline";
 import { ClientInfoCard } from "@/components/invoice/client-info-card";
 import { InvoiceAttachmentsCard } from "@/components/invoice/invoice-attachments-card";
 import { SummaryCard } from "@/components/invoice/summary-card";
-import { FinalBreakdown } from "@/components/invoice/final-breakdown";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { PageHeader } from "@/components/ui/page-header";
@@ -238,7 +237,7 @@ function InvoiceDetailPage() {
 
   const validTransitions = getValidTransitions(invoice.status);
   const isDraft = invoice.status === "DRAFT";
-  const needsDeductionReview = !!invoice.is_final_invoice && !invoice.final_breakdown;
+  const needsDeductionReview = !!invoice.is_final_invoice && !invoice.totals;
   const canEditItems = isDraft && !needsDeductionReview;
   const items = invoice.items || [];
   const banner = needsDeductionReview
@@ -475,12 +474,12 @@ actions={
 
         {/* Right 1/3 */}
         <div className="space-y-[var(--space-gutter)]">
-          {invoice.final_breakdown ? <FinalBreakdown breakdown={invoice.final_breakdown} /> : invoice.is_final_invoice ? (
+          {invoice.totals ? <SummaryCard totals={invoice.totals} finalInvoice={invoice.is_final_invoice} /> : invoice.is_final_invoice ? (
             <div role="alert" className="rounded-[var(--radius-xl)] border border-amber-300 bg-amber-50 p-[var(--space-md)] text-sm text-amber-900">
               <strong>Abzüge prüfen</strong><p>Die historischen Abzüge sind nicht verlässlich gespeichert. Das gespeicherte PDF bleibt verfügbar; Bearbeitung, PDF-Neuerstellung und E-Mail-Versand sind bis zur Prüfung gesperrt.</p>
               <p>Gespeicherter Restbetrag: {invoice.total_brutto.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}</p>
             </div>
-          ) : invoice.totals ? <SummaryCard totals={invoice.totals} /> : null}
+          ) : null}
 
           {/* Status Actions */}
           {validTransitions.length > 0 && (
