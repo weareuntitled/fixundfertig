@@ -170,3 +170,10 @@ def test_legacy_rate_is_zero_without_surplus_or_without_net():
     assert legacy_vat_rate([Position(quantity=1, unit_price=100)], stored_gross=100.004) == D("0")
     assert legacy_vat_rate([], stored_gross=50) == D("0")
     assert legacy_vat_rate([Position(quantity=1, unit_price=100)], stored_gross=None) == D("0")
+
+
+def test_several_positions_sum_before_tax():
+    summen = belegsummen(
+        [Position(quantity=2, unit_price=10), Position(quantity=1, unit_price=5)], vat_rate=19
+    )
+    assert (summen.net, summen.tax, summen.gross) == (D("25.00"), D("4.75"), D("29.75"))
