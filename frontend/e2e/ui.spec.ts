@@ -304,6 +304,37 @@ test("new invoice: says what is missing, asks before creating and opens the new 
   expect(posted).toMatchObject({ customer_id: 7, ust_enabled: false, items: [{ description: "DJ Performance", unit_price: 400 }] });
 });
 
+test("new invoice: shows the rejection of mixed VAT rates and keeps the input", async ({ page }) => {
+  const message =
+    "Ein Beleg hat genau einen Steuersatz. Die Positionen haben unterschiedliche Sätze (7 %, 19 %). " +
+    "Bitte für jeden Steuersatz einen eigenen Beleg anlegen.";
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));
+  await page.route("**/api/customers", (route) =>
+    route.fulfill({ json: [{ id: 7, name: "Sisyphos Event GmbH", email: "buchhaltung@sisyphos.example" }] }),
+  );
+  await page.route("**/api/invoices", (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({ status: 422, json: { detail: message } })
+      : route.fulfill({ json: [] }),
+  );
+  await page.route("**/api/invoices/preview-pdf", (route) =>
+    route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%%EOF" }),
+  );
+
+  await page.goto("/invoices/new");
+  await page.getByRole("combobox", { name: /Kunde/ }).selectOption({ label: "Sisyphos Event GmbH" });
+  await page.getByRole("button", { name: "Neue Position" }).click();
+  await page.getByLabel("Beschreibung Position 1").fill("DJ Performance");
+  await page.getByLabel("Einzelpreis Position 1").fill("400");
+  await page.getByRole("button", { name: "Rechnung erstellen" }).click();
+  await page.getByRole("alertdialog", { name: "Rechnung erstellen?" }).getByRole("button", { name: "Erstellen" }).click();
+
+  await expect(page.getByRole("alert").filter({ hasText: "Das hat nicht geklappt." })).toContainText(message);
+  await expect(page).toHaveURL(/\/invoices\/new$/);
+  await expect(page.getByLabel("Beschreibung Position 1")).toHaveValue("DJ Performance");
+});
+
 test("Angebotsliste: zeigt den Abrechnungsstand je Angebot", async ({ page }) => {
   const quote = {
     id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
