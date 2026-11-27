@@ -94,3 +94,40 @@ def test_stored_gross_follows_belegsummen_rounding_on_create_and_on_item_change(
     client.put(item_url, json=item | {"unit_price": 100})
     changed = client.put(item_url, json=item)
     assert changed.json()["total_brutto"] == 59.5
+
+
+MIXED_RATES_MESSAGE = (
+    "Ein Beleg hat genau einen Steuersatz. Die Positionen haben unterschiedliche Sätze "
+    "(7 %, 19 %). Bitte für jeden Steuersatz einen eigenen Beleg anlegen."
+)
+
+
+def test_creating_a_document_with_mixed_position_rates_is_rejected(artist_api):
+    """Ein Beleg hat genau einen Steuersatz (#509): gemischte Sätze → 422 mit deutscher Meldung."""
+    client, company, payload, _ = artist_api
+    company.is_small_business = False
+    items = [
+        {"description": "Live-Set", "quantity": 1, "unit_price": 200, "tax_rate": 19},
+        {"description": "Buch", "quantity": 1, "unit_price": 20, "tax_rate": 7},
+    ]
+    response = client.post("/api/invoices", json=payload | {"vat_rate": 19, "items": items})
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == MIXED_RATES_MESSAGE
+    assert client.get("/api/invoices").json() == []
+
+
+def test_creating_a_document_with_one_rate_on_every_position_succeeds(artist_api):
+    client, company, payload, _ = artist_api
+    company.is_small_business = False
+    items = [
+        {"description": "Buch", "quantity": 2, "unit_price": 50, "tax_rate": 7},
+        {"description": "Heft", "quantity": 1, "unit_price": 100, "tax_rate": 7},
+    ]
+    body = {k: v for k, v in payload.items() if k != "vat_rate"} | {"items": items}
+    response = client.post("/api/invoices", json=body)
+
+    assert response.status_code == 201, response.text
+    doc = response.json()
+    assert doc["vat_rate"] == 7
+    assert doc["total_brutto"] == 214

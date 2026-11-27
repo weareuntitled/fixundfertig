@@ -27,6 +27,7 @@ from typing import Iterator
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import object_session, selectinload
+from sqlalchemy.orm.exc import UnmappedInstanceError
 from sqlmodel import Session, select
 
 from data import Company, Customer, Document, Invoice, InvoiceItem as InvoiceItemModel
@@ -35,9 +36,8 @@ from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
-from logic.invoice import invoice_net_total
+from logic.invoice import MixedVatRatesError, invoice_net_total
 from logic.belegsummen import Belegsummen
-from logic.belegsummen_zugang import belegsummen_for_invoice
 from logic.document_status import (
     accepted_quote_status_reason,
     creation_status_reason,
@@ -45,6 +45,7 @@ from logic.document_status import (
     is_rejected_quote,
     status_not_allowed_reason,
 )
+from logic.belegsummen_zugang import belegsummen_for_invoice
 from logic.final_invoice import final_invoice_totals, final_deductions
 from logic.quote_billing import BillingConflict, lock_quote_for_billing, quote_billing, quote_settlement
 from logic.quote_conversion import (
@@ -77,6 +78,7 @@ from schemas.invoice import (
     InvoiceStatusUpdate,
     InvoiceUpdate,
     PaymentInstallmentRead,
+    TotalsRead,
 )
 from services.documents import build_download_filename, read_document_bytes
 from services.email import send_email
@@ -404,6 +406,22 @@ def _final_breakdown(invoice: Invoice) -> FinalBreakdownRead | None:
     )
 
 
+def _totals_read(invoice: Invoice) -> TotalsRead | None:
+    """Belegsummen für die API-Antwort (#507); None bei beschädigten Schlussrechnungs-Abzügen."""
+    try:
+        session = object_session(invoice)
+    except UnmappedInstanceError:  # entkoppelte Testdoubles tragen keine Sitzung
+        session = None
+    try:
+        summen = belegsummen_for_invoice(invoice, session)
+    except ValueError:
+        return None
+    return TotalsRead(
+        net=float(summen.net), vat_rate=float(summen.vat_rate), tax=float(summen.tax),
+        gross=float(summen.gross), payable=float(summen.payable),
+    )
+
+
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
     """Convert SQLModel Invoice + Items to InvoiceRead (Pydantic)."""
     items: list[InvoiceItem] = []
@@ -435,6 +453,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         total_brutto=float(invoice.total_brutto or 0.0),
         total_net=invoice_net_total(invoice),
         vat_rate=document_vat_rate(invoice),
+        totals=_totals_read(invoice),
         status=invoice.status.value if hasattr(invoice.status, "value") else str(invoice.status),
         revision_nr=int(invoice.revision_nr or 0),
         updated_at=invoice.updated_at or "",
@@ -856,6 +875,22 @@ def download_invoice_pdf(
     )
 
 
+def _items_with_rates(payload: InvoiceDraft) -> list[dict]:
+    """Positionen mit Steuersatz: der eigene Satz einer Position, sonst der des Belegs.
+
+    Ohne ausdrücklichen Belegsatz gilt ein einheitlicher Positionssatz als Belegsatz.
+    """
+    own_rates = {it.tax_rate for it in payload.items if it.tax_rate is not None}
+    document_rate = payload.vat_rate
+    if "vat_rate" not in payload.model_fields_set and len(own_rates) == 1:
+        document_rate = own_rates.pop()
+    return [
+        it.model_dump(exclude={"tax_rate"})
+        | {"tax_rate": document_rate if it.tax_rate is None else it.tax_rate}
+        for it in payload.items
+    ]
+
+
 @router.post("", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
 def create_invoice(
     payload: InvoiceDraft,
@@ -892,7 +927,7 @@ def create_invoice(
                 "recipient_postal_code": payload.recipient_postal_code,
                 "recipient_city": payload.recipient_city,
             },
-            items=[it.model_dump() | {"tax_rate": payload.vat_rate} for it in payload.items],
+            items=_items_with_rates(payload),
             ust_enabled=payload.ust_enabled,
             status=doc_status,
             subject=payload.subject,
@@ -903,6 +938,9 @@ def create_invoice(
             valid_until=payload.valid_until,
             payment_plan=payload.payment_plan,
         )
+    except MixedVatRatesError as e:
+        session.rollback()
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     session.commit()

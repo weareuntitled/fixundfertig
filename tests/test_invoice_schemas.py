@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.schemas.invoice import (
     InvoiceDraft,
+    InvoiceDraftItem,
     InvoiceItem,
     InvoiceRead,
     InvoiceStatusUpdate,
@@ -46,8 +47,8 @@ def test_invoice_draft_with_items() -> None:
         date="2026-06-10",
         delivery_date="2026-06-10",
         items=[
-            InvoiceItem(description="Design", quantity=2, unit_price=500.0),
-            InvoiceItem(description="Druck", quantity=1, unit_price=50.0),
+            InvoiceDraftItem(description="Design", quantity=2, unit_price=500.0),
+            InvoiceDraftItem(description="Druck", quantity=1, unit_price=50.0),
         ],
         vat_rate=7.0,
     )
@@ -117,7 +118,7 @@ def test_invoice_read_to_draft_round_trip() -> None:
         exclude={"id", "nr", "status", "total_brutto", "total_net", "revision_nr", "updated_at",
                  "related_invoice_id", "quote_id", "quote_nr", "down_payment_index", "is_final_invoice",
                  "final_breakdown", "linked_invoices", "payment_link_url", "payment_provider", "items", "attachments",
-                 "legacy", "billing", "settlement"}
+                 "legacy", "billing", "settlement", "totals"}
     ))
     assert draft.customer_id == 1
     assert draft.date == "2026-06-10"

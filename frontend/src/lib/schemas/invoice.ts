@@ -204,6 +204,18 @@ export const finalBreakdownSchema = z.object({
 });
 export type FinalBreakdownRead = z.infer<typeof finalBreakdownSchema>;
 
+/** Mirror of `app/schemas/invoice.py:TotalsRead` — die Belegsummen aus dem Backend. */
+export const totalsSchema = z.object({
+  net: z.number(),
+  /** Steuersatz in Prozent; 0 ohne USt (Kleinunternehmer, 0 %). */
+  vat_rate: z.number(),
+  tax: z.number(),
+  gross: z.number(),
+  /** Zahlbarer Betrag, entspricht `total_brutto`. */
+  payable: z.number(),
+});
+export type TotalsRead = z.infer<typeof totalsSchema>;
+
 /**
  * Read-side mirror of `app/schemas/invoice.py:InvoiceRead`.
  * Backend liefert: id, customer_id, nr, title, date, delivery_date,
@@ -231,6 +243,8 @@ export const invoiceReadSchema = z.object({
   total_net: z.number().default(0),
   /** Steuersatz des Dokuments in Prozent. */
   vat_rate: z.number().default(0),
+  /** Belegsummen; null, wenn die Abzüge einer Schlussrechnung beschädigt sind. */
+  totals: totalsSchema.nullable().default(null),
   status: invoiceStatusSchema.default("OPEN"),
   revision_nr: z.number().int().default(0),
   updated_at: z.string().default(""),

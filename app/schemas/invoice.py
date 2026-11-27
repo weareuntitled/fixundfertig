@@ -32,6 +32,12 @@ class InvoiceItem(BaseModel):
     unit_price: float = Field(ge=0, le=1_000_000_000)
 
 
+class InvoiceDraftItem(InvoiceItem):
+    """Position beim Anlegen; ein eigener Steuersatz muss dem des Belegs entsprechen (#509)."""
+
+    tax_rate: float | None = Field(default=None, ge=0, le=100)
+
+
 class PaymentInstallment(BaseModel):
     """Eine Rate des Zahlungsplans eines Angebots (Prozent vom Bruttobetrag + Anlass)."""
 
@@ -85,7 +91,7 @@ class InvoiceDraft(BaseModel):
     vat_rate: float = Field(default=19.0, ge=0, le=100)
     ust_enabled: bool = Field(default=True)
     intro_text: str = Field(default="", max_length=2000)
-    items: list[InvoiceItem] = Field(default_factory=list)
+    items: list[InvoiceDraftItem] = Field(default_factory=list)
     notes: str = Field(default="", max_length=2000)
     status: InvoiceStatus = "OPEN"
     payment_plan: list[PaymentInstallment] = Field(default_factory=list)
@@ -162,6 +168,20 @@ class FinalBreakdownRead(BaseModel):
     rest: float
 
 
+class TotalsRead(BaseModel):
+    """Belegsummen eines Belegs (#507), berechnet in `logic.belegsummen`.
+
+    `vat_rate` in Prozent (0 ohne USt, z. B. Kleinunternehmer). `payable` ist der
+    zahlbare Betrag und entspricht `total_brutto` des Belegs.
+    """
+
+    net: float
+    vat_rate: float
+    tax: float
+    gross: float
+    payable: float
+
+
 class BillingActionRead(BaseModel):
     """Eine Abrechnungsaktion eines Angebots: erlaubt, oder gesperrt mit Grund (#495).
 
@@ -222,6 +242,9 @@ class InvoiceRead(BaseModel):
     # damit zeigt die Angebotsseite Netto, USt und Gesamt statt einer Summe.
     total_net: float = 0.0
     vat_rate: float = 0.0
+    # Belegsummen (#507): Netto, Satz, USt, Brutto, zahlbar. None, wenn die
+    # festgehaltenen Abzüge einer Schlussrechnung beschädigt sind.
+    totals: TotalsRead | None = None
     status: InvoiceStatus = "DRAFT"
     revision_nr: int = 0
     updated_at: str = ""

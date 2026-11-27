@@ -14,7 +14,6 @@ import {
 } from "@/lib/use-invoices";
 import { useInvoicePreviewPdf } from "@/lib/use-invoice-preview-pdf";
 import { useCustomer } from "@/lib/use-customers";
-import { useCompany } from "@/lib/use-company";
 import { useNotification } from "@/lib/use-notifications";
 import { useUploadDocument } from "@/lib/use-documents";
 import { useAddInvoiceAttachment } from "@/lib/use-invoices";
@@ -67,7 +66,6 @@ function InvoiceDetailPage() {
     [preview.data],
   );
   const { data: customer } = useCustomer(invoice?.customer_id ?? 0);
-  const { data: company } = useCompany();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InvoiceItem | null>(null);
@@ -482,7 +480,7 @@ actions={
               <strong>Abzüge prüfen</strong><p>Die historischen Abzüge sind nicht verlässlich gespeichert. Das gespeicherte PDF bleibt verfügbar; Bearbeitung, PDF-Neuerstellung und E-Mail-Versand sind bis zur Prüfung gesperrt.</p>
               <p>Gespeicherter Restbetrag: {invoice.total_brutto.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}</p>
             </div>
-          ) : <SummaryCard subtotal={invoice.total_brutto} taxRate={19} ustEnabled={!company?.is_small_business} />}
+          ) : invoice.totals ? <SummaryCard totals={invoice.totals} /> : null}
 
           {/* Status Actions */}
           {validTransitions.length > 0 && (

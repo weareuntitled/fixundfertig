@@ -85,7 +85,8 @@ test("invoice detail page shows preview iframe and download link", async ({ page
         recipient_street: "",
         recipient_postal_code: "",
         recipient_city: "",
-        total_brutto: 119.0,
+        total_brutto: 107.0,
+        totals: { net: 100, vat_rate: 7, tax: 7, gross: 107, payable: 107 },
         status: "OPEN",
         revision_nr: 0,
         updated_at: "",
@@ -107,6 +108,12 @@ test("invoice detail page shows preview iframe and download link", async ({ page
   );
   await page.goto("/invoices/123");
   await expect(page.getByText("Erstellt am 10.06.2026")).toBeVisible();
+  const summary = page.getByRole("heading", { name: "Zusammenfassung" }).locator("..");
+  await expect(summary).toContainText("USt (7 %)");
+  await expect(summary).toContainText("100,00 €");
+  await expect(summary).toContainText("7,00 €");
+  await expect(summary).toContainText("107,00 €");
+  await expect(summary).not.toContainText("19 %");
   const upload = page.locator("#anlagen").getByRole("button", { name: "Anlage hochladen" });
   await expect(upload).toHaveCSS("text-transform", "none");
   await expect(upload).toHaveCSS("min-height", "44px");
@@ -157,6 +164,7 @@ test("invoice detail page calls the issued state 'Gestellt' in the button and th
         title: "Test-Rechnung",
         date: "2026-06-10",
         total_brutto: 119.0,
+        totals: { net: 100, vat_rate: 19, tax: 19, gross: 119, payable: 119 },
         status: "DRAFT",
         items: [],
       }),
@@ -302,6 +310,37 @@ test("new invoice: says what is missing, asks before creating and opens the new 
 
   await expect(page).toHaveURL(/\/invoices\/42$/);
   expect(posted).toMatchObject({ customer_id: 7, ust_enabled: false, items: [{ description: "DJ Performance", unit_price: 400 }] });
+});
+
+test("new invoice: shows the rejection of mixed VAT rates and keeps the input", async ({ page }) => {
+  const message =
+    "Ein Beleg hat genau einen Steuersatz. Die Positionen haben unterschiedliche Sätze (7 %, 19 %). " +
+    "Bitte für jeden Steuersatz einen eigenen Beleg anlegen.";
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));
+  await page.route("**/api/customers", (route) =>
+    route.fulfill({ json: [{ id: 7, name: "Sisyphos Event GmbH", email: "buchhaltung@sisyphos.example" }] }),
+  );
+  await page.route("**/api/invoices", (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({ status: 422, json: { detail: message } })
+      : route.fulfill({ json: [] }),
+  );
+  await page.route("**/api/invoices/preview-pdf", (route) =>
+    route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%%EOF" }),
+  );
+
+  await page.goto("/invoices/new");
+  await page.getByRole("combobox", { name: /Kunde/ }).selectOption({ label: "Sisyphos Event GmbH" });
+  await page.getByRole("button", { name: "Neue Position" }).click();
+  await page.getByLabel("Beschreibung Position 1").fill("DJ Performance");
+  await page.getByLabel("Einzelpreis Position 1").fill("400");
+  await page.getByRole("button", { name: "Rechnung erstellen" }).click();
+  await page.getByRole("alertdialog", { name: "Rechnung erstellen?" }).getByRole("button", { name: "Erstellen" }).click();
+
+  await expect(page.getByRole("alert").filter({ hasText: "Das hat nicht geklappt." })).toContainText(message);
+  await expect(page).toHaveURL(/\/invoices\/new$/);
+  await expect(page.getByLabel("Beschreibung Position 1")).toHaveValue("DJ Performance");
 });
 
 test("Angebotsliste: zeigt den Abrechnungsstand je Angebot", async ({ page }) => {
