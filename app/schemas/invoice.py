@@ -32,6 +32,12 @@ class InvoiceItem(BaseModel):
     unit_price: float = Field(ge=0, le=1_000_000_000)
 
 
+class InvoiceDraftItem(InvoiceItem):
+    """Position beim Anlegen; ein eigener Steuersatz muss dem des Belegs entsprechen (#509)."""
+
+    tax_rate: float | None = Field(default=None, ge=0, le=100)
+
+
 class PaymentInstallment(BaseModel):
     """Eine Rate des Zahlungsplans eines Angebots (Prozent vom Bruttobetrag + Anlass)."""
 
@@ -85,7 +91,7 @@ class InvoiceDraft(BaseModel):
     vat_rate: float = Field(default=19.0, ge=0, le=100)
     ust_enabled: bool = Field(default=True)
     intro_text: str = Field(default="", max_length=2000)
-    items: list[InvoiceItem] = Field(default_factory=list)
+    items: list[InvoiceDraftItem] = Field(default_factory=list)
     notes: str = Field(default="", max_length=2000)
     status: InvoiceStatus = "OPEN"
     payment_plan: list[PaymentInstallment] = Field(default_factory=list)

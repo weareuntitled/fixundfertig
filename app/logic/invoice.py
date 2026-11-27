@@ -126,6 +126,26 @@ def default_quote_valid_until(date_str: str | None) -> str:
     return (base + timedelta(days=QUOTE_VALIDITY_DAYS)).isoformat()
 
 
+class MixedVatRatesError(ValueError):
+    """Positionen eines neuen Belegs tragen unterschiedliche Steuersätze (#509)."""
+
+
+def _format_rate(rate: float) -> str:
+    return f"{rate:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
+def single_vat_rate(rates: List[float]) -> float:
+    """Der eine Steuersatz eines Belegs; unterschiedliche Sätze werden abgelehnt."""
+    distinct = sorted({float(r or 0) for r in rates})
+    if len(distinct) > 1:
+        listed = ", ".join(f"{_format_rate(r)} %" for r in distinct)
+        raise MixedVatRatesError(
+            "Ein Beleg hat genau einen Steuersatz. Die Positionen haben unterschiedliche Sätze "
+            f"({listed}). Bitte für jeden Steuersatz einen eigenen Beleg anlegen."
+        )
+    return distinct[0] if distinct else 0.0
+
+
 def finalize_invoice_logic(
     session: Session,
     comp_id: int,
@@ -164,6 +184,7 @@ def finalize_invoice_logic(
         })
     if not clean_items:
         raise ValueError("Keine Positionen")
+    document_rate = single_vat_rate([it["tax_rate"] for it in clean_items])
 
     is_quote = document_type == DocumentType.QUOTE
     if is_quote:
@@ -195,7 +216,7 @@ def finalize_invoice_logic(
 
     is_small = bool(getattr(comp, "is_small_business", False))
     charges_vat = (not is_small) and bool(ust_enabled)
-    vat_rate = float(clean_items[0].get("tax_rate", 0) or 0) if charges_vat else 0.0
+    vat_rate = document_rate if charges_vat else 0.0
     gross = float(belegsummen(
         [Position(quantity=it["quantity"], unit_price=it["unit_price"]) for it in clean_items],
         vat_rate=vat_rate, charges_vat=charges_vat,

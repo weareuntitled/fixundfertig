@@ -35,7 +35,7 @@ from actions import delete_invoice
 from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
-from logic.invoice import invoice_net_total
+from logic.invoice import MixedVatRatesError, invoice_net_total
 from logic.document_status import (
     accepted_quote_status_reason,
     creation_status_reason,
@@ -856,6 +856,22 @@ def download_invoice_pdf(
     )
 
 
+def _items_with_rates(payload: InvoiceDraft) -> list[dict]:
+    """Positionen mit Steuersatz: der eigene Satz einer Position, sonst der des Belegs.
+
+    Ohne ausdrücklichen Belegsatz gilt ein einheitlicher Positionssatz als Belegsatz.
+    """
+    own_rates = {it.tax_rate for it in payload.items if it.tax_rate is not None}
+    document_rate = payload.vat_rate
+    if "vat_rate" not in payload.model_fields_set and len(own_rates) == 1:
+        document_rate = own_rates.pop()
+    return [
+        it.model_dump(exclude={"tax_rate"})
+        | {"tax_rate": document_rate if it.tax_rate is None else it.tax_rate}
+        for it in payload.items
+    ]
+
+
 @router.post("", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
 def create_invoice(
     payload: InvoiceDraft,
@@ -892,7 +908,7 @@ def create_invoice(
                 "recipient_postal_code": payload.recipient_postal_code,
                 "recipient_city": payload.recipient_city,
             },
-            items=[it.model_dump() | {"tax_rate": payload.vat_rate} for it in payload.items],
+            items=_items_with_rates(payload),
             ust_enabled=payload.ust_enabled,
             status=doc_status,
             subject=payload.subject,
@@ -903,6 +919,9 @@ def create_invoice(
             valid_until=payload.valid_until,
             payment_plan=payload.payment_plan,
         )
+    except MixedVatRatesError as e:
+        session.rollback()
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     session.commit()
