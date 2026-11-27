@@ -48,4 +48,25 @@ describe("QuoteList", () => {
     await renderInRouter(<QuoteList quotes={[]} />);
     expect(await screen.findByText("Noch keine Angebote")).toBeTruthy();
   });
+
+  it("shows the billing progress of a quote", async () => {
+    await renderInRouter(
+      <QuoteList
+        quotes={[
+          {
+            ...quote,
+            settlement: { billed_brutto: 143, total_brutto: 357, open_brutto: 214, billed_count: 1 },
+          },
+        ]}
+      />,
+    );
+    const row = await screen.findByRole("link", { name: /A-10000/ });
+    expect(within(row).getByText(/abgerechnet 143,00 € von 357,00 € · offen 214,00 €/)).toBeTruthy();
+  });
+
+  it("says that nothing is billed yet", async () => {
+    await renderInRouter(<QuoteList quotes={[{ ...quote, settlement: { billed_brutto: 0, total_brutto: 300, open_brutto: 300, billed_count: 0 } }]} />);
+    const row = await screen.findByRole("link", { name: /A-10000/ });
+    expect(within(row).getByText("noch nichts abgerechnet")).toBeTruthy();
+  });
 });

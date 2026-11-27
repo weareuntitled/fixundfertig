@@ -106,6 +106,10 @@ test("invoice detail page shows preview iframe and download link", async ({ page
     route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%%EOF" }),
   );
   await page.goto("/invoices/123");
+  await expect(page.getByText("Erstellt am 10.06.2026")).toBeVisible();
+  const upload = page.locator("#anlagen").getByRole("button", { name: "Anlage hochladen" });
+  await expect(upload).toHaveCSS("text-transform", "none");
+  await expect(upload).toHaveCSS("min-height", "44px");
   const downloadLink = page.getByRole("main").getByRole("link", { name: /PDF herunterladen/ });
   await expect(downloadLink).toBeVisible();
   await expect(page.getByRole("main").getByRole("button", { name: "Anlage hochladen" }).first()).toBeVisible();
@@ -114,6 +118,65 @@ test("invoice detail page shows preview iframe and download link", async ({ page
   await page.getByRole("menuitem", { name: "Vorschau" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("heading", { name: /PDF-Vorschau · Rechnung RE-2026-0001/ })).toBeVisible();
+});
+
+for (const status of ["DRAFT", "OPEN"]) {
+test(`historische Schlussrechnung (${status}) zeigt Prüfhinweis und gesperrte Aktionen`, async ({ page }, testInfo) => {
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/123", (route) => route.fulfill({ json: {
+    id: 123, customer_id: 1, nr: "10012", date: "2026-06-10", total_brutto: 2380,
+    status, delivery_date: "", is_final_invoice: true, final_breakdown: null,
+    items: [{ id: 1, description: "Website", quantity: 1, unit_price: 4000 }],
+  } }));
+  await page.goto("/invoices/123");
+  const review = page.getByRole("alert").filter({ hasText: "Abzüge prüfen" });
+  await expect(review).toBeVisible();
+  await expect(review).toContainText("2.380,00");
+  await expect(page.getByRole("link", { name: /PDF herunterladen/ })).toBeVisible();
+  if (status === "OPEN") await expect(page.getByRole("button", { name: "An Kunde senden" })).toBeDisabled();
+  await expect(page.getByText("Diese Rechnung ist gestellt und bereit, an den Kunden gesendet zu werden.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "+ Position", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Bearbeiten", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("historical-final.png"), fullPage: true });
+  await page.getByRole("button", { name: "Mehr" }).click();
+  await expect(page.getByRole("menuitem", { name: "Bearbeiten", exact: true })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "PDF neu erzeugen" })).toBeDisabled();
+  await expect(page.getByRole("menuitem", { name: "Vorschau" })).toBeEnabled();
+});
+}
+
+test("invoice detail page calls the issued state 'Gestellt' in the button and the timeline", async ({ page }) => {
+  await page.route("**/api/invoices/123", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 123,
+        customer_id: 1,
+        nr: "RE-2026-0001",
+        title: "Test-Rechnung",
+        date: "2026-06-10",
+        total_brutto: 119.0,
+        status: "DRAFT",
+        items: [],
+      }),
+    }),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ id: 1, email: "test@example.com", is_active: true }),
+    }),
+  );
+  await page.route("**/api/invoices/123/preview-pdf", (route) =>
+    route.fulfill({ status: 200, contentType: "application/pdf", body: "%PDF-1.4\n%%EOF" }),
+  );
+
+  await page.goto("/invoices/123");
+  await expect(page.getByRole("button", { name: "Als gestellt markieren" })).toBeVisible();
+  await expect(page.getByText("Gestellt").first()).toBeVisible();
+  await expect(page.getByText("Offen")).toHaveCount(0);
 });
 
 test("settings page configures and previews the artist invoice profile", async ({ page }) => {
@@ -223,7 +286,7 @@ test("new invoice: says what is missing, asks before creating and opens the new 
   await expect(page.getByText("Noch nötig: Kunde auswählen · mindestens eine Position anlegen")).toBeVisible();
   await expect(page.getByLabel("Umsatzsteuer ausweisen")).not.toBeChecked();
 
-  await page.getByLabel(/Kunde/).selectOption({ label: "Sisyphos Event GmbH" });
+  await page.getByRole("combobox", { name: /Kunde/ }).selectOption({ label: "Sisyphos Event GmbH" });
   await page.getByRole("button", { name: "Neue Position" }).click();
   await expect(page.getByText("Noch nötig: Position 1 beschreiben")).toBeVisible();
   await page.getByLabel("Beschreibung Position 1").fill("DJ Performance");
@@ -239,6 +302,88 @@ test("new invoice: says what is missing, asks before creating and opens the new 
 
   await expect(page).toHaveURL(/\/invoices\/42$/);
   expect(posted).toMatchObject({ customer_id: 7, ust_enabled: false, items: [{ description: "DJ Performance", unit_price: 400 }] });
+});
+
+test("Angebotsliste: zeigt den Abrechnungsstand je Angebot", async ({ page }) => {
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 1785, status: "ACCEPTED",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 1500 }],
+    settlement: { billed_brutto: 714, total_brutto: 1785, open_brutto: 1071, billed_count: 1 },
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/company", (route) => route.fulfill({ json: SETTINGS_COMPANY }));
+  await page.route("**/api/invoices**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/invoices" && url.searchParams.get("document_type") === "QUOTE") {
+      return route.fulfill({ json: [quote] });
+    }
+    return route.fulfill({ json: [] });
+  });
+
+  await page.goto("/quotes");
+  const row = page.getByRole("main").getByRole("link", { name: /A-10000/ });
+  await expect(row).toContainText("abgerechnet 714,00 € von 1.785,00 € · offen 1.071,00 €");
+});
+
+test("Angebot: die Seite zeigt Netto, USt, Gesamt und den Abrechnungsstand", async ({ page }) => {
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 1785, total_net: 1500, vat_rate: 19, status: "ACCEPTED",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 1500 }],
+    settlement: { billed_brutto: 714, total_brutto: 1785, open_brutto: 1071, billed_count: 1 },
+    billing: {
+      convert: { allowed: false, reason: "Es gibt bereits eine Abschlagsrechnung (10000). Rechnen Sie den Rest mit der Schlussrechnung ab.", invoice_id: 43, invoice_nr: "10000" },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: false,
+    },
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  await expect(main.getByText("abgerechnet 714,00 € von 1.785,00 € · offen 1.071,00 €")).toBeVisible();
+  await expect(main.getByText("Netto", { exact: true })).toBeVisible();
+  await expect(main.getByText("USt 19 %")).toBeVisible();
+  await expect(main.getByText("Gesamt (brutto)")).toBeVisible();
+  await expect(main.getByRole("definition").filter({ hasText: "1.500,00 €" })).toBeVisible();
+  await expect(main.getByRole("definition").filter({ hasText: "285,00 €" })).toBeVisible();
+  await expect(main.getByRole("definition").filter({ hasText: "1.785,00 €" })).toBeVisible();
+});
+
+test("Angebot: ungespeicherte Position und Zahlungsplan vor Navigation schützen", async ({ page }) => {
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Kunde",
+    total_brutto: 119, status: "DRAFT",
+    items: [{ id: 1, description: "Design", quantity: 1, unit_price: 100 }],
+    payment_plan: [{ percent: 50, label: "Anzahlung", amount: 59.5 }],
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices?**", (route) => route.fulfill({ json: [quote] }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+  await page.goto("/quotes");
+  await page.getByRole("main").getByRole("link", { name: /A-10000/ }).click();
+  await page.getByRole("button", { name: "Position 1 bearbeiten" }).click();
+  await page.getByLabel("Beschreibung", { exact: true }).fill("Geändert");
+  await page.goBack();
+  const warning = page.getByRole("alertdialog", { name: "Ungespeicherte Eingaben verwerfen?" });
+  await expect(warning).toBeVisible();
+  await warning.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByLabel("Beschreibung", { exact: true })).toHaveValue("Geändert");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("dialog", { name: "Position bearbeiten" }).getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByRole("button", { name: "Position 1 bearbeiten" })).toBeFocused();
+  await page.getByRole("button", { name: "Zahlungsplan bearbeiten" }).click();
+  await page.getByLabel("Prozent Rate 1").fill("40");
+  await page.getByRole("main").getByRole("link", { name: "Angebote", exact: true }).click();
+  await expect(warning).toBeVisible();
+  await warning.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByLabel("Prozent Rate 1")).toHaveValue("40");
 });
 
 test("Angebot anlegen: from the quotes list through the invoice form to the saved draft quote", async ({ page }) => {
@@ -274,15 +419,19 @@ test("Angebot anlegen: from the quotes list through the invoice form to the save
 
   await page.goto("/quotes");
   await expect(page.getByText("Noch keine Angebote")).toBeVisible();
-  await page.getByRole("link", { name: "Neues Angebot" }).click();
+  await page.getByRole("link", { name: "Neues Angebot" }).first().click();
   await expect(page).toHaveURL(/\/quotes\/new$/);
 
-  await page.getByLabel(/Kunde/).selectOption({ label: "Sisyphos Event GmbH" });
+  await page.getByRole("combobox", { name: /Kunde/ }).selectOption({ label: "Sisyphos Event GmbH" });
   await page.getByLabel("Angebotsdatum").fill("2026-10-23");
   await expect(page.getByLabel("Gültig bis")).toHaveValue("2026-11-22");
   await page.getByRole("button", { name: "Neue Position" }).click();
   await page.getByLabel("Beschreibung Position 1").fill("DJ Performance");
   await page.getByLabel("Einzelpreis Position 1").fill("400");
+  await page.getByRole("link", { name: "Angebote", exact: true }).first().click();
+  await expect(page.getByRole("alertdialog", { name: "Ungespeicherte Eingaben verwerfen?" })).toBeVisible();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Abbrechen" }).click();
+  await expect(page.getByLabel("Beschreibung Position 1")).toHaveValue("DJ Performance");
   await page.getByRole("button", { name: "PDF-Vorschau" }).click();
   await expect(page.getByRole("heading", { name: "PDF-Vorschau · Angebot Entwurf" })).toBeVisible();
   await expect.poll(() => previewed?.document_type).toBe("QUOTE");
@@ -318,15 +467,17 @@ test("quote detail page previews and downloads the Angebot PDF without invoice a
   const download = main.getByRole("link", { name: /PDF herunterladen/ });
   await expect(download).toBeVisible();
   expect(await download.getAttribute("href")).toBe("/api/invoices/42/download");
-  for (const invoiceAction of [/Zahlungslink/, /bezahlt/i, /Storn/, /An Kunde senden/, /Mehr/]) {
+  for (const invoiceAction of [/Zahlungslink/, /bezahlt/i, /Storn/, /An Kunde senden/]) {
     await expect(main.getByRole("button", { name: invoiceAction })).toHaveCount(0);
   }
+  // Die primäre Aktion des Entwurfs ist das Senden; der Rest liegt im Menü.
+  await expect(main.getByRole("button", { name: "Senden" })).toBeVisible();
 
-  await main.getByRole("button", { name: "Vorschau" }).click();
+  await main.getByRole("button", { name: "Mehr" }).click();
+  await main.getByRole("menuitem", { name: "Vorschau" }).click();
   await expect(page.getByRole("heading", { name: "PDF-Vorschau · Angebot A-10000" })).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("link", { name: /PDF herunterladen/ })).toHaveAttribute(
-    "download",
-    "angebot_A-10000.pdf",
+    "href", "/api/invoices/42/download",
   );
 });
 
@@ -354,7 +505,7 @@ test("quote detail page sends the Angebot by mail and then shows Gesendet", asyn
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
   await expect(main.getByText("Entwurf")).toBeVisible();
-  await main.getByRole("button", { name: "Angebot senden" }).click();
+  await main.getByRole("button", { name: "Senden" }).click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Angebot senden" })).toBeVisible();
@@ -367,6 +518,44 @@ test("quote detail page sends the Angebot by mail and then shows Gesendet", asyn
   await expect(page.getByText("Angebot an booking@sisyphos.example gesendet")).toBeVisible();
   await expect(dialog).toHaveCount(0);
   await expect(main.getByText("Gesendet")).toBeVisible();
+});
+
+test("Versand ohne Mailserver: the error stays in the dialog and offers a way out", async ({ page }) => {
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2099-01-31", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 400, status: "DRAFT",
+    items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 400 }],
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/customers/7", (route) =>
+    route.fulfill({ json: { id: 7, kdnr: 1, name: "Sisyphos Event GmbH", email: "booking@sisyphos.example" } }),
+  );
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+  await page.route("**/api/invoices/42/send", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Der E-Mail-Versand ist fehlgeschlagen." }),
+    }),
+  );
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  await main.getByRole("button", { name: "Senden" }).click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Angebot senden" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Senden" }).click();
+
+  // Der Fehler steht im Dialog, ohne Fachwort, mit Ausweg — und der Dialog bleibt offen.
+  await expect(dialog.getByRole("alert")).toContainText("Der E-Mail-Versand ist fehlgeschlagen.");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toContainText("SMTP");
+  await expect(page.getByText("Der E-Mail-Versand ist fehlgeschlagen.")).toHaveCount(1);
+  await expect(dialog.getByRole("link", { name: /Einstellungen/ })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: /PDF herunterladen/ })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Als gesendet markieren/ })).toBeVisible();
 });
 
 test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each other", async ({ page }) => {
@@ -383,6 +572,12 @@ test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each o
     total_brutto: 400, status: converted ? "ACCEPTED" : "SENT",
     items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 400 }],
     linked_invoices: converted ? [{ id: 43, nr: "10000", status: "DRAFT", total_brutto: 400 }] : [],
+    billing: {
+      convert: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: true,
+    },
   });
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote() }));
@@ -395,15 +590,22 @@ test("In Rechnung umwandeln: quote becomes an invoice draft, both link to each o
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
   await expect(main.getByText("Noch keine Rechnung zu diesem Angebot.")).toBeVisible();
-  await main.getByRole("button", { name: "In Rechnung umwandeln" }).click();
+  await main.getByRole("button", { name: "Mehr" }).click();
+  await main.getByRole("menuitem", { name: "In Rechnung umwandeln" }).click();
+
+  // Das Angebot gilt mit dem Abrechnen als angenommen; danach fragt die Seite.
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText("gilt das Angebot als angenommen");
+  await confirm.getByRole("button", { name: "Abrechnen" }).click();
 
   await expect(page).toHaveURL(/\/invoices\/43$/);
-  await expect(page.getByRole("heading", { name: /Rechnung #10000/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Rechnung 10000/ })).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Aus Angebot A-10000" }).click();
 
   await expect(page).toHaveURL(/\/quotes\/42$/);
   await expect(main.getByRole("link", { name: /Rechnung 10000/ })).toHaveAttribute("href", "/invoices/43");
-  await expect(main.getByRole("button", { name: "Löschen" })).toBeDisabled();
+  await main.getByRole("button", { name: "Mehr" }).click();
+  await expect(main.getByRole("menuitem", { name: "Löschen" })).toBeDisabled();
 });
 
 test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as Entwurf", async ({ page }) => {
@@ -426,6 +628,12 @@ test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as 
     linked_invoices: billed
       ? [{ id: 43, nr: "10000", status: "DRAFT", total_brutto: 2380, installment_index: 0, is_down_payment: true }]
       : [],
+    billing: {
+      convert: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: false,
+    },
   });
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote() }));
@@ -433,18 +641,61 @@ test("Abschlagsrechnung: one rate becomes a draft invoice and shows the rate as 
     billed = true;
     return route.fulfill({ status: 201, json: invoice });
   });
+  await page.route("**/api/invoices/43", (route) => route.fulfill({ json: invoice }));
 
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
-  await expect(main.getByRole("button", { name: "Abschlagsrechnung" })).toHaveCount(2);
+  // Der Knopf nennt den Betrag der Rate.
+  await expect(main.getByRole("button", { name: "Abschlag 2.380,00 € abrechnen" })).toHaveCount(2);
 
-  await main.getByRole("button", { name: "Abschlagsrechnung" }).first().click();
+  // Merkmal setzen: überlebt nur, wenn die Seite nicht neu geladen wird.
+  await page.evaluate(() => {
+    (window as unknown as { __spa?: boolean }).__spa = true;
+  });
+  await main.getByRole("button", { name: "Abschlag 2.380,00 € abrechnen" }).first().click();
 
-  const downPaymentLink = main.getByRole("link", { name: "Rechnung 10000", exact: true });
+  // Nach dem Anlegen geht es zur Abschlagsrechnung.
+  await expect(page).toHaveURL(/\/invoices\/43$/);
+  await expect(page.getByRole("heading", { name: /Abschlagsrechnung 10000/ })).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __spa?: boolean }).__spa)).toBe(true);
+});
+
+test("Abschlagsrechnung: the quote lists the down payment with a link to it", async ({ page }) => {
+  const invoice = {
+    id: 43, customer_id: 7, document_type: "INVOICE", nr: "10000", title: "Abschlagsrechnung",
+    date: "", recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, status: "DRAFT",
+    quote_id: 42, quote_nr: "A-10000", down_payment_index: 0,
+    items: [{ id: 2, description: "Abschlag 50 % gemäß Angebot A-10000 – bei Auftrag", quantity: 1, unit_price: 2000 }],
+  };
+  const quote = {
+    id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
+    date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
+    total_brutto: 4760, status: "ACCEPTED",
+    items: [{ id: 1, description: "Website", quantity: 1, unit_price: 4000 }],
+    payment_plan: [
+      { percent: 50, label: "bei Auftrag", amount: 2380 },
+      { percent: 50, label: "nach Livegang", amount: 2380 },
+    ],
+    linked_invoices: [
+      { id: 43, nr: "10000", status: "DRAFT", total_brutto: 2380, installment_index: 0, is_down_payment: true },
+    ],
+    billing: {
+      convert: { allowed: false, reason: "Es gibt bereits eine Abschlagsrechnung (10000). Rechnen Sie den Rest mit der Schlussrechnung ab.", invoice_id: 43, invoice_nr: "10000" },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: false,
+    },
+  };
+  await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
+  await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote }));
+
+  await page.goto("/quotes/42");
+  const main = page.getByRole("main");
+  const downPaymentLink = main.getByRole("link", { name: "Abschlagsrechnung 10000", exact: true }).first();
   await expect(downPaymentLink).toHaveAttribute("href", "/invoices/43");
   await expect(downPaymentLink.locator("..").getByText("Entwurf", { exact: true })).toBeVisible();
-  await expect(main.getByRole("button", { name: "Abschlagsrechnung" })).toHaveCount(1);
-  await expect(main.getByText("Angenommen", { exact: true })).toBeVisible();
+  // Der gesperrte Umwandeln-Knopf steht als Text mit Grund da.
+  await expect(main.getByText(/Rechnen Sie den Rest mit der Schlussrechnung ab/)).toBeVisible();
 });
 
 test("Schlussrechnung: a quote with a down payment becomes a final invoice that links back", async ({ page }) => {
@@ -461,6 +712,11 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
     date: "", recipient_name: "Sisyphos Event GmbH", total_brutto: 2380, status: "DRAFT",
     quote_id: 42, quote_nr: "A-10000", down_payment_index: null, is_down_payment: false, is_final_invoice: true,
     items: [{ id: 3, description: "Website", quantity: 1, unit_price: 4000 }],
+    final_breakdown: {
+      net: 4000, tax: 760, gross: 4760,
+      deductions: [{ id: 43, nr: "10000", date: "2026-10-23", net: 2000, tax: 380, total: 2380 }],
+      rest_net: 2000, rest_tax: 380, rest: 2380,
+    },
   };
   const quote = () => ({
     id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
@@ -478,6 +734,12 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
             is_down_payment: false, is_final_invoice: true },
         ]
       : [downPayment],
+    billing: {
+      convert: { allowed: false, reason: "Es gibt bereits eine Abschlagsrechnung (10000). Rechnen Sie den Rest mit der Schlussrechnung ab.", invoice_id: 43, invoice_nr: "10000" },
+      down_payment: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      final_invoice: { allowed: true, reason: "", invoice_id: null, invoice_nr: null },
+      requires_acceptance: false,
+    },
   });
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { id: 1, email: "test@example.com", is_active: true } }));
   await page.route("**/api/invoices/42", (route) => route.fulfill({ json: quote() }));
@@ -489,14 +751,19 @@ test("Schlussrechnung: a quote with a down payment becomes a final invoice that 
 
   await page.goto("/quotes/42");
   const main = page.getByRole("main");
-  const downPaymentLink = main.getByRole("link", { name: "Rechnung 10000", exact: true });
+  const downPaymentLink = main.getByRole("link", { name: "Abschlagsrechnung 10000", exact: true }).first();
   await expect(downPaymentLink).toBeVisible();
   await expect(downPaymentLink.locator("..").getByText("Gesendet", { exact: true })).toBeVisible();
 
+  // Die Schlussrechnung ist der nächste Schritt und damit der Primärknopf.
   await main.getByRole("button", { name: "Schlussrechnung" }).click();
 
   await expect(page).toHaveURL(/\/invoices\/44$/);
-  await expect(page.getByRole("heading", { name: "Rechnung #10001" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Schlussrechnung 10001" })).toBeVisible();
+  await expect(page.getByText("Gesamtleistung", { exact: true })).toBeVisible();
+  await expect(page.getByText("Abzüglich Abschlagsrechnung 10000 vom 2026-10-23")).toBeVisible();
+  await expect(page.getByText("Restbetrag", { exact: true })).toBeVisible();
+  await expect(page.getByText("Abzüge prüfen", { exact: true })).toHaveCount(0);
   await page.getByRole("main").getByRole("link", { name: "Aus Angebot A-10000" }).click();
 
   await expect(page).toHaveURL(/\/quotes\/42$/);

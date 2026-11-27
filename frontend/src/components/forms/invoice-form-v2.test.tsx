@@ -20,6 +20,14 @@ const base: InvoiceDraft = {
 };
 
 describe("InvoiceFormV2", () => {
+  it("names a wrong field's problem right at the field", () => {
+    render(<Harness initial={base} />);
+    const quantity = screen.getByLabelText("Menge Position 1");
+    fireEvent.change(quantity, { target: { value: "0" } });
+    expect(quantity).toHaveAttribute("aria-invalid", "true");
+    expect(quantity).toHaveAccessibleDescription("Menge größer 0 eintragen");
+  });
+
   it("says what an empty service date means and shows the payment deadline", () => {
     render(<Harness initial={base} />);
     expect(screen.getByLabelText("Leistungsdatum").getAttribute("aria-describedby")).toBeTruthy();
@@ -103,6 +111,12 @@ describe("InvoiceFormV2 for a quote", () => {
     fireEvent.change(screen.getByLabelText("Gültig bis"), { target: { value: "2027-01-15" } });
     fireEvent.change(screen.getByLabelText("Angebotsdatum"), { target: { value: "2026-12-01" } });
     expect((screen.getByLabelText("Gültig bis") as HTMLInputElement).value).toBe("2027-01-15");
+  });
+
+  it("names the default intro of the quote, not the one of the invoice", () => {
+    render(<Harness initial={quote} />);
+    expect(screen.getByText(/Hiermit biete ich folgende Leistungen an/)).toBeTruthy();
+    expect(screen.queryByText(/Hiermit stelle ich folgende Leistungen in Rechnung/)).toBeNull();
   });
 });
 

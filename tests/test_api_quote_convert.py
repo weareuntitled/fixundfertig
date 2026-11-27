@@ -29,7 +29,11 @@ def test_startup_adds_quote_link_columns_to_existing_databases(tmp_path):
 def _create_quote(client, payload: dict) -> dict:
     response = client.post("/api/invoices", json=payload | {"document_type": "QUOTE"})
     assert response.status_code == 201, response.text
-    return response.json()
+    quote = response.json()
+    # Abrechnen geht nur aus „Gesendet“ oder „Angenommen“ (#495).
+    sent = client.put(f"/api/invoices/{quote['id']}/status", json={"status": "SENT"})
+    assert sent.status_code == 200, sent.text
+    return quote
 
 
 def _convert(client, quote_id: int):
@@ -114,7 +118,7 @@ def test_quote_reference_survives_editing_the_invoice_draft(artist_api):
     assert "Gemäß Angebot A-10000 vom 23.10.2026." in _flat_pdf(client, invoice["id"])
 
 
-@pytest.mark.parametrize("start", ["DRAFT", "SENT", "ACCEPTED"])
+@pytest.mark.parametrize("start", ["SENT", "ACCEPTED"])
 def test_converting_marks_the_quote_accepted(artist_api, start):
     client, _company, payload, _session = artist_api
     quote = _create_quote(client, payload)
@@ -125,11 +129,14 @@ def test_converting_marks_the_quote_accepted(artist_api, start):
     assert client.get(f"/api/invoices/{quote['id']}").json()["status"] == "ACCEPTED"
 
 
-def test_an_accepted_quote_can_be_converted_several_times(artist_api):
+def test_a_quote_converts_again_only_after_its_invoice_is_cancelled(artist_api):
     client, _company, payload, _session = artist_api
     quote = _create_quote(client, payload)
-
     first = _convert(client, quote["id"]).json()
+    assert _convert(client, quote["id"]).status_code == 409
+    cancelled = client.put(f"/api/invoices/{first['id']}/status", json={"status": "CANCELLED"})
+    assert cancelled.status_code == 200, cancelled.text
+
     second = _convert(client, quote["id"]).json()
 
     assert (first["nr"], second["nr"]) == ("10000", "10001")
@@ -139,16 +146,12 @@ def test_quote_and_invoices_link_to_each_other(artist_api):
     client, _company, payload, _session = artist_api
     quote = _create_quote(client, payload)
     first = _convert(client, quote["id"]).json()
-    second = _convert(client, quote["id"]).json()
 
     assert (first["quote_id"], first["quote_nr"]) == (quote["id"], "A-10000")
-    fetched = client.get(f"/api/invoices/{second['id']}").json()
+    fetched = client.get(f"/api/invoices/{first['id']}").json()
     assert (fetched["quote_id"], fetched["quote_nr"]) == (quote["id"], "A-10000")
     linked = client.get(f"/api/invoices/{quote['id']}").json()["linked_invoices"]
-    assert [(i["id"], i["nr"], i["status"]) for i in linked] == [
-        (first["id"], "10000", "DRAFT"),
-        (second["id"], "10001", "DRAFT"),
-    ]
+    assert [(i["id"], i["nr"], i["status"]) for i in linked] == [(first["id"], "10000", "DRAFT")]
 
 
 def test_documents_without_a_link_show_none(artist_api):

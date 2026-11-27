@@ -241,6 +241,8 @@ def ensure_invoice_quote_fields(target_engine=None):
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN down_payment_index INTEGER")
         if "is_final_invoice" not in columns:
             conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN is_final_invoice INTEGER DEFAULT 0")
+        if "final_deductions_json" not in columns:
+            conn.exec_driver_sql("ALTER TABLE invoice ADD COLUMN final_deductions_json TEXT")
 
 ensure_invoice_quote_fields()
 

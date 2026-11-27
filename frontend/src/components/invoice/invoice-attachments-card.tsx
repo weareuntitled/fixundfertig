@@ -7,6 +7,7 @@ import {
 } from "@/lib/use-invoices";
 import { useNotification } from "@/lib/use-notifications";
 import type { InvoiceAttachment } from "@/lib/schemas/invoice";
+import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/quote/quote-ui";
 
 interface InvoiceAttachmentsCardProps {
   invoiceId: number;
@@ -82,6 +83,7 @@ function AttachmentPicker({
   return (
     <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-[var(--space-md)]">
       <select
+        aria-label="Vorhandenen Beleg auswählen"
         value={selectedId ?? ""}
         onChange={(event) => onSelect(event.target.value ? Number(event.target.value) : null)}
         className="min-h-[44px] flex-1 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[13px] text-[var(--color-text-primary)]"
@@ -99,7 +101,7 @@ function AttachmentPicker({
         type="button"
         onClick={onAdd}
         disabled={selectedId === null || adding}
-        className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:cursor-not-allowed disabled:opacity-50"
+        className={`${SECONDARY_BUTTON} justify-center`}
       >
         {adding ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
         Hinzufügen
@@ -204,7 +206,7 @@ export function InvoiceAttachmentsCard({ invoiceId, attachments }: InvoiceAttach
             type="button"
             onClick={() => fileInput.current?.click()}
             disabled={uploadDocument.isPending || addAttachment.isPending}
-            className="inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-[var(--radius-lg)] bg-[var(--color-brand-text)] px-4 text-[12px] font-semibold uppercase tracking-[0.05em] text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`${PRIMARY_BUTTON} w-full justify-center`}
           >
             {uploadDocument.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
             Anlage hochladen

@@ -7,6 +7,7 @@ trägt zusätzlich `down_payment_index` = Index der abgerechneten Rate im Zahlun
 from __future__ import annotations
 
 from datetime import date
+import json
 from typing import Any
 
 from sqlmodel import Session, select
@@ -17,18 +18,16 @@ from logic.final_invoice import (
     issued_down_payments,
 )
 from logic.invoice import document_vat_rate, finalize_invoice_logic
+from invoice_numbering import build_invoice_filename
+from logic.quote_billing import BillingConflict, ensure_billable
 from renderer import render_invoice_to_pdf_bytes
-from services.invoice_pdf_draw import INVOICE_INTRO
+from services.invoice_pdf_draw import DOWN_PAYMENT_INTRO, INVOICE_INTRO
 from services.invoice_pdf_layout import format_date
 from services.payment_plan import format_percent, parse_payment_plan, round_cents
 
 
-class DownPaymentConflict(Exception):
+class DownPaymentConflict(BillingConflict):
     """Die Rate wurde bereits abgerechnet und ihre Abschlagsrechnung ist nicht storniert."""
-
-
-class FinalInvoiceConflict(Exception):
-    """Zum Angebot gibt es bereits eine nicht stornierte Schlussrechnung."""
 
 
 def quote_reference_intro(quote: Invoice, company: Any = None) -> str:
@@ -87,10 +86,12 @@ def _invoice_draft_from_quote(
         ust_enabled=vat_percent > 0,
         status=InvoiceStatus.DRAFT,
         intro_text=intro_text,
+        commit=False,
     )
     invoice = session.get(Invoice, invoice_id)
     assert invoice is not None
     invoice.quote_id = int(quote.id)
+    invoice.quote = quote  # the PDF names the quote ("gemäß Angebot …") before the next flush
     session.add(invoice)
     return invoice
 
@@ -104,6 +105,7 @@ def create_invoice_from_quote(session: Session, quote: Invoice) -> Invoice:
     """
     if quote.document_type != DocumentType.QUOTE:
         raise ValueError("Nur Angebote lassen sich in Rechnungen umwandeln")
+    ensure_billable(session, quote, "convert")
     vat_percent = document_vat_rate(quote)
     company = session.get(Company, int(quote.company_id))
     invoice = _invoice_draft_from_quote(
@@ -134,12 +136,15 @@ def down_payment_description(quote: Invoice, percent: float, label: str) -> str:
 
 
 def down_payment_intro(quote: Invoice, company: Any, percent: float, label: str) -> str:
-    """Einleitung: „Abschlagsrechnung zu Angebot A-10000 über 50 % – bei Auftrag.“ + Standardtext."""
+    """Einleitung: „Abschlagsrechnung zu Angebot A-10000 über 50 % – bei Auftrag.“ + Abschlagstext.
+
+    Der eigene Rechnungs-Standardtext der Firma spricht von erbrachten Leistungen und
+    gilt deshalb nicht. Formulierung vom Steuerberater zu prüfen.
+    """
     text = f"Abschlagsrechnung zu Angebot {quote.nr} über {format_percent(percent)}"
     if label:
         text = f"{text} – {label}"
-    standard = (getattr(company, "invoice_intro", "") or "").strip() or INVOICE_INTRO
-    return f"{text}. {standard}"
+    return f"{text}. {DOWN_PAYMENT_INTRO}"
 
 
 def create_down_payment_invoice(
@@ -148,6 +153,7 @@ def create_down_payment_invoice(
     """Abschlagsrechnung (Rechnungsentwurf) für eine Rate des Zahlungsplans anlegen."""
     if quote.document_type != DocumentType.QUOTE:
         raise ValueError("Nur Angebote lassen sich als Abschlag abrechnen")
+    ensure_billable(session, quote, "down_payment")
     plan = parse_payment_plan(quote.payment_plan)
     if installment_index < 0 or installment_index >= len(plan):
         raise ValueError("Diese Rate gibt es im Zahlungsplan des Angebots nicht")
@@ -182,6 +188,7 @@ def create_down_payment_invoice(
     )
     invoice.down_payment_index = int(installment_index)
     customer = session.get(Customer, int(quote.customer_id))
+    invoice.pdf_filename = build_invoice_filename(company, invoice, customer)
     invoice.pdf_bytes = render_invoice_to_pdf_bytes(invoice=invoice, company=company, customer=customer)
     session.add(invoice)
     _accept_quote(session, quote)
@@ -199,26 +206,10 @@ def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
     """
     if quote.document_type != DocumentType.QUOTE:
         raise ValueError("Nur Angebote lassen sich als Schlussrechnung abrechnen")
-    existing = session.exec(
-        select(Invoice).where(
-            Invoice.quote_id == int(quote.id),
-            Invoice.is_final_invoice == True,  # noqa: E712 — SQLModel column comparison
-            Invoice.status != InvoiceStatus.CANCELLED,
-        )
-    ).first()
-    if existing is not None:
-        raise FinalInvoiceConflict(
-            f"Zu diesem Angebot gibt es bereits eine Schlussrechnung (Rechnung {existing.nr}). "
-            "Stornieren Sie sie, um eine neue zu erzeugen."
-        )
-    # „Gestellt" heißt: weder Entwurf noch storniert. Dieselbe Liste entscheidet,
-    # ob es die Schlussrechnung geben darf und was abgezogen wird.
+    ensure_billable(session, quote, "final_invoice")
+    # „Gestellt" heißt: weder Entwurf noch storniert. Dieselbe Liste entscheidet
+    # (in `quote_billing`), ob es die Schlussrechnung geben darf, und was abgezogen wird.
     rows = issued_down_payments(session, int(quote.id))
-    if not rows:
-        raise ValueError(
-            "Eine Schlussrechnung entsteht nur mit einer gestellten Abschlagsrechnung. "
-            "Senden Sie die Abschlagsrechnung zuerst; ein Entwurf zählt nicht."
-        )
 
     company = session.get(Company, int(quote.company_id))
     is_small = bool(getattr(company, "is_small_business", False))
@@ -231,6 +222,7 @@ def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
         intro_text=quote_reference_intro(quote, company),
     )
     invoice.is_final_invoice = True
+    invoice.final_deductions_json = json.dumps([row.as_dict() for row in rows], ensure_ascii=False)
     invoice.vat_rate = vat_percent
 
     net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in invoice.items)

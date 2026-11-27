@@ -4,9 +4,12 @@
  * @input {PaymentInstallment[]} value - Installments in order
  * @input {number} gross - Gross total the amounts are computed from (amounts are never stored)
  * @input {(next: PaymentInstallment[]) => void} onChange
- * @output A list with the amount per installment and a warning (not a block) when the sum is not 100 %
+ * @output A list with the amount per installment; a warning (not a block) when the sum is not 100 %,
+ *   a blocking hint when the sum is over 100 % (#495)
  */
+import { useId } from "react";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { FieldError } from "@/components/ui/field-error";
 import { installmentAmounts, planPercentTotal, percentLabel } from "@/lib/payment-plan";
 import { ICON_BUTTON, INPUT, eur } from "./quote-ui";
 import type { PaymentInstallment } from "@/lib/schemas/invoice";
@@ -19,6 +22,7 @@ interface PaymentPlanEditorProps {
 
 export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorProps) {
   const total = planPercentTotal(value);
+  const errorBase = useId();
   const amounts = installmentAmounts(gross, value.map((rate) => Number(rate.percent) || 0));
 
   const update = (index: number, patch: Partial<PaymentInstallment>) =>
@@ -33,10 +37,10 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
 
   return (
     <section aria-labelledby="payment-plan-heading">
-      <h3 id="payment-plan-heading" className="mb-1 text-[20px] font-semibold text-[var(--color-text-primary)]">
+      <h2 id="payment-plan-heading" className="mb-1 text-[20px] font-semibold text-[var(--color-text-primary)]">
         Zahlungsplan
-      </h3>
-      <p className="mb-[var(--space-md)] text-[12px] text-[var(--color-text-muted)]">
+      </h2>
+      <p className="mb-[var(--space-md)] text-[12px] text-[var(--color-text-secondary)]">
         Optional. Raten in Prozent vom Gesamtbetrag, z. B. „50 % bei Auftrag“. Steht im PDF mit Betrag je Rate.
       </p>
 
@@ -44,14 +48,17 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
         <ol className="space-y-[var(--space-xs)]">
           {value.map((rate, index) => {
             const number = index + 1;
+            const percentBad = !(rate.percent > 0);
+            const errorId = `${errorBase}-${index}`;
             return (
               <li key={index} className="flex flex-wrap items-center gap-[var(--space-xs)] border-b border-[var(--color-border)] pb-[var(--space-xs)]">
-                <div className="flex w-28 items-center gap-1">
+                <div className="flex w-24 shrink-0 items-center gap-1 sm:w-28">
                   <input
                     type="number"
                     inputMode="decimal"
                     aria-label={`Prozent Rate ${number}`}
-                    aria-invalid={!(rate.percent > 0)}
+                    aria-invalid={percentBad}
+                    aria-describedby={percentBad ? errorId : undefined}
                     min="0.01"
                     max="100"
                     step="any"
@@ -68,10 +75,12 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
                   maxLength={200}
                   placeholder="z. B. bei Auftrag"
                   onChange={(e) => update(index, { label: e.target.value })}
-                  className={`${INPUT} min-w-[10rem] flex-1`}
+                  className={`${INPUT} min-w-0 basis-0 grow sm:min-w-[10rem]`}
                 />
-                <span className="w-28 text-right font-mono text-sm text-[var(--color-text-primary)]">{eur(amounts[index] ?? 0)}</span>
-                <div className="flex">
+                <span className="whitespace-nowrap font-mono text-sm text-[var(--color-text-primary)] sm:w-28 sm:text-right">
+                  {eur(amounts[index] ?? 0)}
+                </span>
+                <div className="ml-auto flex sm:ml-0">
                   <button type="button" aria-label={`Rate ${number} nach oben`} disabled={index === 0} onClick={() => move(index, index - 1)} className={ICON_BUTTON}>
                     <ArrowUp size={16} />
                   </button>
@@ -93,13 +102,25 @@ export function PaymentPlanEditor({ value, gross, onChange }: PaymentPlanEditorP
                     <Trash2 size={16} />
                   </button>
                 </div>
+                {percentBad && (
+                  <div className="basis-full">
+                    <FieldError id={errorId}>Prozent größer 0 eintragen</FieldError>
+                  </div>
+                )}
               </li>
             );
           })}
         </ol>
       )}
 
-      {value.length > 0 && Math.abs(total - 100) > 0.001 && (
+      {value.length > 0 && total > 100 && (
+        <p role="alert" className="mt-[var(--space-xs)] rounded-[var(--radius)] bg-[var(--color-red-50)] px-3 py-2 text-[13px] text-[var(--color-red-600)]">
+          Die Raten ergeben zusammen {percentLabel(total)}, mehr als 100 %. Bitte kürzen — das lässt sich nicht
+          speichern.
+        </p>
+      )}
+
+      {value.length > 0 && total <= 100 && Math.abs(total - 100) > 0.001 && (
         <p role="status" className="mt-[var(--space-xs)] rounded-[var(--radius)] bg-[var(--color-amber-50)] px-3 py-2 text-[13px] text-[var(--color-amber-700)]">
           Die Raten ergeben zusammen {percentLabel(total)}, nicht 100 %. Speichern geht trotzdem.
         </p>

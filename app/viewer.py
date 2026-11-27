@@ -13,6 +13,7 @@ from auth_guard import is_authenticated, require_auth
 from data import Company, Customer, Invoice, User, get_session
 from pages._shared import get_current_user_id
 from renderer import render_invoice_to_pdf_bytes
+from services.invoice_pdf import stored_invoice_pdf
 from invoice_numbering import build_invoice_filename
 from services.auth import validate_readonly_share_token
 
@@ -262,6 +263,16 @@ def invoice_pdf(invoice_id: int, rev: str | None = None, share_token: str | None
         company = session.get(Company, int(customer.company_id)) if customer.company_id else None
         if not company or company.user_id != user_id:
             raise HTTPException(status_code=403, detail="Forbidden")
+
+        stored = stored_invoice_pdf(invoice)
+        if stored:
+            return Response(content=stored, media_type="application/pdf")
+        if invoice.is_final_invoice:
+            from logic.final_invoice import final_deductions
+            try:
+                final_deductions(invoice)
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
 
         revision = int(invoice.revision_nr or 0)
         cache_key: _CACHE_KEY_TYPE = (int(invoice.id), revision)

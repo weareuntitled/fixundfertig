@@ -3,19 +3,19 @@
  * @purpose Mobile bottom navigation
  */
 import { Link } from "@tanstack/react-router";
-import { Home, FileText, FileSignature, Users, BarChart3, Settings } from "lucide-react";
+import { Home, FileText, FileSignature, Users, Folder, Settings } from "lucide-react";
 
 interface BottomNavProps {
   className?: string;
 }
 
 const ITEMS = [
-  { to: "/", label: "Home", icon: Home },
+  { to: "/", label: "Start", icon: Home },
   { to: "/invoices", label: "Rechnungen", icon: FileText },
   { to: "/quotes", label: "Angebote", icon: FileSignature },
   { to: "/customers", label: "Kunden", icon: Users },
-  { to: "/documents", label: "Belege", icon: BarChart3 },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/documents", label: "Belege", icon: Folder },
+  { to: "/settings", label: "Einstellungen", icon: Settings },
 ] as const;
 
 export function BottomNav({ className = "" }: BottomNavProps) {

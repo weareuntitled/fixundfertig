@@ -1,3 +1,4 @@
+import { percentLabel, planPercentTotal } from "./payment-plan";
 import type { InvoiceDraft } from "./schemas/invoice";
 
 /** Payment term printed on every invoice and email. Keep in step with PAYMENT_TERM_DAYS in the backend. */
@@ -17,6 +18,10 @@ export function dueDateLabel(isoDate: string): string {
 export function invoiceDraftProblems(draft: InvoiceDraft): string[] {
   const problems: string[] = [];
   if (!(draft.customer_id > 0)) problems.push("Kunde auswählen");
+  if (draft.document_type === "QUOTE") {
+    if (!draft.date) problems.push("Angebotsdatum eintragen");
+    if (draft.date && draft.valid_until && draft.valid_until < draft.date) problems.push("Gültig bis darf nicht vor dem Angebotsdatum liegen");
+  }
   if (draft.items.length === 0) problems.push("mindestens eine Position anlegen");
   draft.items.forEach((item, index) => {
     const label = `Position ${index + 1}`;
@@ -28,5 +33,8 @@ export function invoiceDraftProblems(draft: InvoiceDraft): string[] {
   (draft.payment_plan ?? []).forEach((rate, index) => {
     if (!(rate.percent > 0)) problems.push(`Rate ${index + 1}: Prozent größer 0 eintragen`);
   });
+  // Über 100 % fordert mehr als das Angebot: das lässt sich nicht speichern (#495).
+  const planTotal = planPercentTotal(draft.payment_plan ?? []);
+  if (planTotal > 100) problems.push(`Zahlungsplan über 100 % (${percentLabel(planTotal)}) kürzen`);
   return problems;
 }

@@ -11,6 +11,9 @@ Bruttobetrag minus ihre Netto-Positionen (bei Kleinunternehmern damit 0).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+import json
+import math
 
 from sqlmodel import Session, select
 
@@ -26,17 +29,43 @@ class DownPaymentDeduction:
     net: float
     tax: float
     total: float
+    # Rechnungsdatum (ISO), damit PDF, Mail und App „vom [Datum]“ nennen können.
+    date: str = ""
 
     def as_dict(self) -> dict:
-        return {"id": self.id, "nr": self.nr, "net": self.net, "tax": self.tax, "total": self.total}
+        return {
+            "id": self.id, "nr": self.nr, "date": self.date,
+            "net": self.net, "tax": self.tax, "total": self.total,
+        }
+
+
+def final_deductions(invoice: Invoice | dict) -> list[DownPaymentDeduction]:
+    """Read the immutable snapshot; missing or damaged historical data is never guessed."""
+    try:
+        snapshot = (invoice.get("final_deductions_json") if isinstance(invoice, dict)
+                    else getattr(invoice, "final_deductions_json", None))
+        raw = json.loads(snapshot)
+        if not isinstance(raw, list):
+            raise ValueError("invalid snapshot")
+        rows = [DownPaymentDeduction(**row) for row in raw]
+        for row in rows:
+            if (type(row.id) is not int or row.id <= 0 or not isinstance(row.nr, str) or not row.nr.strip()
+                or not isinstance(row.date, str)
+                or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                       for value in (row.net, row.tax, row.total))
+                or round(row.net + row.tax, 2) != round(row.total, 2)):
+                raise ValueError("invalid deduction")
+            date.fromisoformat(row.date)
+        return rows
+    except (AttributeError, TypeError, ValueError, KeyError) as exc:
+        raise ValueError("Die Abzüge dieser Schlussrechnung sind nicht verlässlich gespeichert. Bitte prüfen; eine Neuberechnung, PDF-Neuerstellung oder E-Mail ist bis dahin gesperrt.") from exc
 
 
 def invoice_net(invoice: Invoice) -> float:
     """Netto aus den Positionen eines Dokuments, auf Cent gerundet."""
-    return round(
-        sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or [])),
-        2,
-    )
+    from logic.invoice import invoice_net_total
+
+    return invoice_net_total(invoice)
 
 
 def issued_down_payments(session: Session, quote_id: int) -> list[DownPaymentDeduction]:
@@ -66,6 +95,7 @@ def issued_down_payments(session: Session, quote_id: int) -> list[DownPaymentDed
                 net=net,
                 tax=round(max(total - net, 0.0), 2),
                 total=total,
+                date=str(invoice.date or ""),
             )
         )
     return rows

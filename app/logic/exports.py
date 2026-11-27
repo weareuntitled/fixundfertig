@@ -49,6 +49,11 @@ def export_invoices_pdf_zip(*args: Any, **kwargs: Any) -> bytes:
                         except Exception:
                             pdf = None
 
+            if not pdf and inv.is_final_invoice:
+                pdf = render_invoice_to_pdf_bytes(
+                    inv, company=comp, customer=inv.customer,
+                )
+
             if not pdf:
                 cust = session.get(Customer, int(inv.customer_id)) if inv.customer_id else None
                 if not cust:

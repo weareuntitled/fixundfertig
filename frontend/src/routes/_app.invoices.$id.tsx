@@ -36,11 +36,15 @@ import { StatusTimeline } from "@/components/ui/status-timeline";
 import { ClientInfoCard } from "@/components/invoice/client-info-card";
 import { InvoiceAttachmentsCard } from "@/components/invoice/invoice-attachments-card";
 import { SummaryCard } from "@/components/invoice/summary-card";
+import { FinalBreakdown } from "@/components/invoice/final-breakdown";
 import { SendInvoiceSheet } from "@/components/invoice/send-invoice-sheet";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { PageHeader } from "@/components/ui/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LineItemDialog } from "@/components/forms/line-item-dialog";
 import { PdfPreviewModal } from "@/components/ui/pdf-preview-modal";
+import { germanDate } from "@/components/quote/quote-list";
+import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "@/components/quote/quote-ui";
 
 export const Route = createFileRoute("/_app/invoices/$id")({
   component: InvoiceDetailPage,
@@ -229,15 +233,19 @@ function InvoiceDetailPage() {
 
   if (isError || !invoice) return (
     <div className="flex flex-col items-center justify-center py-16">
-      <p className="text-sm text-red-500">Rechnung nicht gefunden.</p>
+      <p className="text-sm text-red-600">Rechnung nicht gefunden.</p>
       <Link to="/invoices" className="mt-2 text-xs text-[var(--color-brand-text)] hover:underline">Zurück zur Liste</Link>
     </div>
   );
 
   const validTransitions = getValidTransitions(invoice.status);
   const isDraft = invoice.status === "DRAFT";
+  const needsDeductionReview = !!invoice.is_final_invoice && !invoice.final_breakdown;
+  const canEditItems = isDraft && !needsDeductionReview;
   const items = invoice.items || [];
-  const banner = getStatusBanner(invoice.status);
+  const banner = needsDeductionReview
+    ? { title: "Prüfung erforderlich", message: "Die historischen Abzüge müssen geprüft werden. Bearbeitung, PDF-Neuerstellung und E-Mail-Versand sind bis dahin gesperrt. Das gespeicherte PDF bleibt verfügbar." }
+    : getStatusBanner(invoice.status);
 
   return (
     <div className="animate-fade-in">
@@ -245,10 +253,11 @@ function InvoiceDetailPage() {
       <PageHeader
         backTo="/invoices"
         backLabel="Rechnungen"
-        title={<span>Rechnung #{invoice.nr || invoice.id}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
+        documentTitle={`${invoice.is_final_invoice ? "Schlussrechnung" : "Rechnung"} ${invoice.nr || invoice.id}`}
+        title={<span>{invoice.is_final_invoice ? "Schlussrechnung" : invoice.down_payment_index != null ? "Abschlagsrechnung" : "Rechnung"} {invoice.nr || invoice.id}{invoice.legacy && <span className="ml-2 inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-amber-700)]">Legacy</span>}</span>}
         subtitle={
           <>
-            Erstellt am {invoice.date || "Kein Datum"}
+            Erstellt am {germanDate(invoice.date) || "Kein Datum"}
             {invoice.quote_id != null && (
               <>
                 {" · "}
@@ -256,7 +265,7 @@ function InvoiceDetailPage() {
                 <Link
                   to="/quotes/$id"
                   params={{ id: String(invoice.quote_id) }}
-                  className="text-[var(--color-brand-text)] hover:underline"
+                  className="text-[var(--color-brand-text)] underline underline-offset-2"
                 >
                   Aus Angebot {invoice.quote_nr || `#${invoice.quote_id}`}
                 </Link>
@@ -268,7 +277,7 @@ actions={
           <>
             <a
               href={`/api/invoices/${invoice.id}/download`}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
+              className={SECONDARY_BUTTON}
             >
               <Download size={16} />
               PDF herunterladen
@@ -289,7 +298,7 @@ actions={
               type="button"
               onClick={() => headerFileInput.current?.click()}
               disabled={uploadDocument.isPending || addAttachment.isPending}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors disabled:opacity-50"
+              className={SECONDARY_BUTTON}
             >
               {uploadDocument.isPending || addAttachment.isPending ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
               Anlage hochladen
@@ -303,8 +312,8 @@ actions={
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={sendEmail.isPending}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-lg)] sm:min-h-0 bg-[#001a42] px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-white hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50"
+                disabled={sendEmail.isPending || needsDeductionReview}
+                className={PRIMARY_BUTTON}
               >
                 {sendEmail.isPending ? (
                   <Loader2 size={16} className="animate-spin" />
@@ -317,7 +326,7 @@ actions={
             <ActionMenu
               items={[
                 { label: "Vorschau", icon: <ExternalLink size={15} />, onSelect: () => setPreviewOpen(true) },
-                { label: "Bearbeiten", icon: <Pencil size={15} />, onSelect: handleEditHeader, disabled: editingHeader },
+                { label: "Bearbeiten", icon: <Pencil size={15} />, onSelect: handleEditHeader, disabled: editingHeader || needsDeductionReview },
                 ...(!isDraft && invoice.status !== "PAID"
                   ? [{ label: "Zahlungslink", icon: <ExternalLink size={15} />, onSelect: () => paymentLink.mutate(), disabled: paymentLink.isPending }]
                   : []),
@@ -325,7 +334,7 @@ actions={
                   label: "PDF neu erzeugen",
                   icon: <RefreshCw size={15} />,
                   onSelect: () => confirm(`Gespeicherte PDF von Rechnung ${invoice.nr || invoice.id} mit aktuellen Firmendaten ersetzen? Rechnungsnummer und Rechnungsdaten bleiben gleich.`) && regeneratePdf.mutate(),
-                  disabled: regeneratePdf.isPending,
+                  disabled: regeneratePdf.isPending || needsDeductionReview,
                 },
                 { label: "Löschen", icon: <Trash2 size={15} />, onSelect: () => setDeleteConfirmOpen(true), danger: true },
               ]}
@@ -337,7 +346,7 @@ actions={
       {/* ── Inline Edit Form ── */}
       {editingHeader && (
         <div className="bg-white border border-[var(--color-border)] rounded-[var(--radius-xl)] p-[var(--space-lg)] mb-[var(--space-xl)] shadow-sm animate-fade-in">
-          <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-[var(--space-md)]">Bearbeiten</h3>
+          <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-[var(--space-md)]">Bearbeiten</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-md)]">
             <label className="flex flex-col gap-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-muted)]">Titel</span>
@@ -372,10 +381,10 @@ actions={
             </label>
           </div>
           <div className="flex gap-[var(--space-sm)] mt-[var(--space-md)] pt-[var(--space-md)] border-t border-[var(--color-border)]">
-            <button type="button" onClick={handleSaveHeader} disabled={updateInvoice.isPending} className="px-[var(--space-md)] py-[var(--space-xs)] bg-black text-white rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-blue-990)] disabled:opacity-50">
+            <button type="button" onClick={handleSaveHeader} disabled={updateInvoice.isPending} className={PRIMARY_BUTTON}>
               {updateInvoice.isPending ? "Speichere…" : "Speichern"}
             </button>
-            <button type="button" onClick={() => setEditingHeader(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-high)]">
+            <button type="button" onClick={() => setEditingHeader(false)} className={SECONDARY_BUTTON}>
               Abbrechen
             </button>
           </div>
@@ -384,7 +393,7 @@ actions={
 
       {/* ── Status Timeline Card ── */}
       <div className="bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] p-[var(--space-lg)] mb-[var(--space-xl)] shadow-sm">
-        <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-[var(--space-md)]">Statusverfolgung</h3>
+        <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-[var(--space-md)]">Statusverfolgung</h2>
         <StatusTimeline currentStatus={invoice.status} />
 
         {banner && (
@@ -410,18 +419,18 @@ actions={
               plz: invoice.recipient_postal_code || customer?.recipient_postal_code || customer?.plz || "",
               ort: invoice.recipient_city || customer?.recipient_city || customer?.ort || "",
             }}
-            dueDate={invoice.delivery_date}
+            dueDate={invoice.delivery_date.replace(/\d{4}-\d{2}-\d{2}/g, germanDate)}
           />
 
           {/* Line Items */}
           <div className="bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] shadow-sm overflow-hidden">
             <div className="px-[var(--space-lg)] py-[var(--space-md)] border-b border-[var(--color-border)] flex justify-between items-center">
-              <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Positionen</h3>
-              {isDraft && (
+              <h2 className="text-[20px] font-semibold text-[var(--color-text-heading)]">Positionen</h2>
+              {canEditItems && (
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-heading)] hover:bg-[var(--color-surface-container-high)] transition-colors"
+                  className={SECONDARY_BUTTON}
                 >
                   + Position
                 </button>
@@ -435,12 +444,12 @@ actions={
                     <th className="py-[var(--space-sm)] px-[var(--space-md)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] text-right">Menge</th>
                     <th className="py-[var(--space-sm)] px-[var(--space-md)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] text-right">Preis</th>
                     <th className="py-[var(--space-sm)] px-[var(--space-lg)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] text-right">Betrag</th>
-                    {isDraft && <th className="w-16 py-[var(--space-sm)]" />}
+                    {canEditItems && <th className="w-16 py-[var(--space-sm)]" />}
                   </tr>
                 </thead>
                 <tbody>
                   {items.length === 0 && (
-                    <tr><td colSpan={isDraft ? 5 : 4} className="px-[var(--space-lg)] py-8 text-center text-[14px] text-[var(--color-text-secondary)]">Keine Positionen</td></tr>
+                    <tr><td colSpan={canEditItems ? 5 : 4} className="px-[var(--space-lg)] py-8 text-center text-[14px] text-[var(--color-text-secondary)]">Keine Positionen</td></tr>
                   )}
                   {items.map((it) => (
                     <tr key={it.id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-surface-bright)] transition-colors group">
@@ -450,7 +459,7 @@ actions={
                       <td className="py-[var(--space-md)] px-[var(--space-md)] text-right font-mono text-[14px] text-[var(--color-text-primary)]">{it.quantity}</td>
                       <td className="py-[var(--space-md)] px-[var(--space-md)] text-right font-mono text-[14px] text-[var(--color-text-primary)]">{eur(it.unit_price)}</td>
                       <td className="py-[var(--space-md)] px-[var(--space-lg)] text-right font-mono text-[14px] font-bold text-[var(--color-text-primary)]">{eur(it.quantity * it.unit_price)}</td>
-                      {isDraft && (
+                      {canEditItems && (
                         <td className="py-[var(--space-md)] px-2 text-right">
                           <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                             <button type="button" onClick={() => handleEditItem(it)} className="rounded p-1 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-overlay)] hover:text-[var(--color-brand-text)] transition-colors" title="Bearbeiten"><Pencil size={14} /></button>
@@ -468,7 +477,12 @@ actions={
 
         {/* Right 1/3 */}
         <div className="space-y-[var(--space-gutter)]">
-          <SummaryCard subtotal={invoice.total_brutto} taxRate={19} ustEnabled={!company?.is_small_business} />
+          {invoice.final_breakdown ? <FinalBreakdown breakdown={invoice.final_breakdown} /> : invoice.is_final_invoice ? (
+            <div role="alert" className="rounded-[var(--radius-xl)] border border-amber-300 bg-amber-50 p-[var(--space-md)] text-sm text-amber-900">
+              <strong>Abzüge prüfen</strong><p>Die historischen Abzüge sind nicht verlässlich gespeichert. Das gespeicherte PDF bleibt verfügbar; Bearbeitung, PDF-Neuerstellung und E-Mail-Versand sind bis zur Prüfung gesperrt.</p>
+              <p>Gespeicherter Restbetrag: {invoice.total_brutto.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}</p>
+            </div>
+          ) : <SummaryCard subtotal={invoice.total_brutto} taxRate={19} ustEnabled={!company?.is_small_business} />}
 
           {/* Status Actions */}
           {validTransitions.length > 0 && (
@@ -515,7 +529,11 @@ actions={
       <PdfPreviewModal
         open={previewOpen}
         pdfUrl={previewUrl}
+        error={preview.isError}
+        refreshing={preview.isFetching}
+        onRetry={() => void preview.refetch()}
         invoiceNr={invoice.nr || undefined}
+        downloadUrl={`/api/invoices/${invoiceId}/download`}
         onClose={() => setPreviewOpen(false)}
       />
 
@@ -531,32 +549,22 @@ actions={
         onCancel={() => setSendOpen(false)}
       />
 
-      {/* ── Delete Confirmation Modal ── */}
-      {deleteConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteConfirmOpen(false)} />
-          <div className="relative bg-white rounded-[var(--radius-xl)] border border-[var(--color-border)] shadow-xl p-[var(--space-xl)] max-w-sm w-full mx-4 animate-fade-in">
-            <h3 className="text-[20px] font-semibold text-[var(--color-text-heading)] mb-2">Rechnung löschen?</h3>
-            <p className="text-[14px] text-[var(--color-text-secondary)] mb-6">
-              Rechnung #{invoice.nr || invoice.id} wird endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
-            </p>
-            <div className="flex gap-[var(--space-sm)] justify-end">
-              <button type="button" onClick={() => setDeleteConfirmOpen(false)} className="px-[var(--space-md)] py-[var(--space-xs)] border border-[var(--color-border)] bg-white text-[var(--color-text-primary)] rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-[var(--color-surface-container-high)]">
-                Abbrechen
-              </button>
-              <button type="button" onClick={handleDeleteInvoice} disabled={deleteInvoice.isPending} className="px-[var(--space-md)] py-[var(--space-xs)] bg-red-600 text-white rounded-[var(--radius-lg)] text-[12px] font-semibold hover:bg-red-700 disabled:opacity-50">
-                {deleteInvoice.isPending ? "Lösche…" : "Endgültig löschen"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Rechnung löschen?"
+        message={`Rechnung #${invoice.nr || invoice.id} wird endgültig gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.`}
+        confirmLabel={deleteInvoice.isPending ? "Lösche…" : "Endgültig löschen"}
+        destructive
+        pending={deleteInvoice.isPending}
+        onConfirm={handleDeleteInvoice}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }
 
 const STATUS_LABELS_FULL: Record<string, string> = {
-  DRAFT: "Entwurf", OPEN: "Offen", SENT: "Gesendet", PAID: "Bezahlt", FINALIZED: "Finalisiert", CANCELLED: "Storniert",
+  DRAFT: "Entwurf", OPEN: "Als gestellt markieren", SENT: "Gesendet", PAID: "Bezahlt", FINALIZED: "Als gestellt markieren", CANCELLED: "Storniert",
 };
 
 function getValidTransitions(current: InvoiceStatus): InvoiceStatus[] {
@@ -566,9 +574,9 @@ function getValidTransitions(current: InvoiceStatus): InvoiceStatus[] {
 
 function getStatusBanner(status: string): { title: string; message: string } | null {
   const banners: Record<string, { title: string; message: string }> = {
-    DRAFT: { title: "Entwurf", message: "Diese Rechnung ist ein Entwurf. Bearbeiten und finalisieren, um sie an den Kunden zu senden." },
-    OPEN: { title: "Aktion erforderlich", message: "Diese Rechnung ist finalisiert und bereit, an den Kunden gesendet zu werden." },
-    FINALIZED: { title: "Aktion erforderlich", message: "Diese Rechnung ist finalisiert und bereit, an den Kunden gesendet zu werden." },
+    DRAFT: { title: "Entwurf", message: "Diese Rechnung ist ein Entwurf. Stellen Sie sie, um sie an den Kunden zu senden." },
+    OPEN: { title: "Aktion erforderlich", message: "Diese Rechnung ist gestellt und bereit, an den Kunden gesendet zu werden." },
+    FINALIZED: { title: "Aktion erforderlich", message: "Diese Rechnung ist gestellt und bereit, an den Kunden gesendet zu werden." },
     SENT: { title: "Warten auf Zahlung", message: "Die Rechnung wurde an den Kunden gesendet. Zahlung steht aus." },
     PAID: { title: "Bezahlt", message: "Diese Rechnung wurde vollständig beglichen." },
     CANCELLED: { title: "Storniert", message: "Diese Rechnung wurde storniert und ist nicht mehr aktiv." },

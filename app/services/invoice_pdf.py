@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas
-
-from models.schema import is_issued_status
 
 from .invoice_pdf_layout import (
     FONTS, LAYOUT, InvItem, format_date, format_money, format_service_period, get_attr, is_quote, payment_due_date, safe_float, safe_str,
@@ -18,6 +17,22 @@ from .invoice_pdf_draw import (
 )
 from .invoice_pdf_stamp import stamp
 from .payment_plan import format_percent, installments_with_amounts
+
+
+def stored_invoice_pdf(invoice) -> bytes | None:
+    """Read an existing PDF without regenerating or replacing historical output."""
+    if getattr(invoice, "pdf_bytes", None):
+        return bytes(invoice.pdf_bytes)
+    filename = getattr(invoice, "pdf_filename", None)
+    if isinstance(filename, str) and filename.strip():
+        path = Path(filename)
+        if not path.is_absolute() and not filename.startswith("storage/"):
+            path = Path("storage/invoices") / path
+        try:
+            return path.read_bytes() or None
+        except OSError:
+            pass
+    return None
 
 
 def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payments=None) -> bytes:
@@ -63,17 +78,21 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
     is_final_invoice = bool(get_attr(invoice, "is_final_invoice", default=False))
 
     net = round(sum(i.quantity * i.unit_price for i in items), 2)
-    tax_rate = 0.0 if is_small_business else _vat_rate(invoice, net)
+    tax_rate = (safe_float(get_attr(invoice, "vat_rate", default=0)) / 100.0
+                if is_final_invoice else (0.0 if is_small_business else _vat_rate(invoice, net)))
+    if is_final_invoice and tax_rate > 0:
+        is_small_business = False
     tax = round(net * tax_rate, 2)
 
     deductions: list[dict] = []
     if is_final_invoice:
-        if down_payments is None:
-            down_payments = _down_payments_from_quote(invoice)
+        from logic.final_invoice import final_deductions
+        down_payments = [row.as_dict() for row in final_deductions(invoice)]
         for row in (down_payments or []):
             if isinstance(row, dict):
                 deductions.append({
                     "nr": safe_str(row.get("nr")),
+                    "date": format_date(row.get("date") or ""),
                     "net": safe_float(row.get("net")),
                     "tax": safe_float(row.get("tax")),
                     "total": safe_float(row.get("total")),
@@ -81,6 +100,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
             else:
                 deductions.append({
                     "nr": safe_str(get_attr(row, "nr")),
+                    "date": format_date(get_attr(row, "date")),
                     "net": safe_float(get_attr(row, "net")),
                     "tax": safe_float(get_attr(row, "tax")),
                     "total": safe_float(get_attr(row, "total")),
@@ -126,9 +146,18 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
     company_tax_id = safe_str(get_attr(comp, "tax_id"))
     company_vat_id = safe_str(get_attr(comp, "vat_id"))
 
+    kind = _document_kind(invoice)
+    doc_label = f"{kind} {nr}".strip()
+    company_name = artist_name or legal_name
+
     def draw_document(total_pages: int) -> tuple[bytes, int]:
         buf = BytesIO()
-        c = Canvas(buf, pagesize=A4)
+        # Language and title make the PDF readable for screen readers and name the viewer window.
+        c = Canvas(buf, pagesize=A4, lang="de-DE")
+        c.setTitle(f"{doc_label} – {company_name}" if company_name else doc_label)
+        c.setAuthor(company_name)
+        c.setSubject(f"{doc_label} an {rec_name}" if rec_name else doc_label)
+        c.setCreator("FixundFertig")
         c.setKeywords(keywords)
         c.setLineWidth(LAYOUT["line_width"])
 
@@ -138,7 +167,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
 
         def page_footer() -> None:
             draw_footer(c, w, mx, content_w, my_bot, comp, company_tax_id, company_vat_id,
-                        fonts, c.getPageNumber(), total_pages or 1)
+                        fonts, c.getPageNumber(), total_pages or 1, quote)
 
         def new_page() -> float:
             page_footer()
@@ -151,7 +180,10 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
         y = draw_recipient(c, mx, rule_y, content_w, rec_name, rec_street, rec_zip, rec_city, rec_country, fonts, quote)
         y = draw_title_block(c, w, mx, y - 39, content_w, invoice, comp, nr, inv_date, service_date, fonts,
                              quote, valid_until)
-        if artist_name and legal_name and not uses_artist_wordmark(comp) and not line_holds_artist_name_as_its_own_token:
+        # An invoice names the legal person above the services; a quote needs no such
+        # line (#496): its footer already names the Anbieter with the legal name.
+        if (not quote and artist_name and legal_name and not uses_artist_wordmark(comp)
+                and not line_holds_artist_name_as_its_own_token):
             y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
         y -= 22
         y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, fonts)
@@ -176,6 +208,17 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
     return draw_document(page_count)[0]
 
 
+def _document_kind(invoice) -> str:
+    """The document's name as a reader would say it: Angebot, Schlussrechnung, Abschlagsrechnung or Rechnung."""
+    if is_quote(invoice):
+        return "Angebot"
+    if bool(get_attr(invoice, "is_final_invoice", default=False)):
+        return "Schlussrechnung"
+    if get_attr(invoice, "down_payment_index", default=None) is not None:
+        return "Abschlagsrechnung"
+    return "Rechnung"
+
+
 def _vat_rate(invoice, net: float) -> float:
     """The VAT rate as a fraction. Drafts carry it as vat_rate, stored invoices only their total."""
     if get_attr(invoice, "ust_enabled", default=True) is False:
@@ -189,41 +232,6 @@ def _vat_rate(invoice, net: float) -> float:
     if net > 0 and gross > net + 0.005:
         return round((gross - net) / net, 3)
     return 0.0
-
-
-def _down_payments_from_quote(invoice) -> list[dict]:
-    """Best effort for callers without a session: read the quote's issued down payments.
-
-    The API passes the rows explicitly; this only keeps a detached live render honest.
-    """
-    try:
-        quote = get_attr(invoice, "quote", default=None)
-        linked = getattr(quote, "quote_invoices", None) or []
-    except Exception:
-        return []
-    rows: list[dict] = []
-    for other in linked:
-        if get_attr(other, "down_payment_index", default=None) is None:
-            continue
-        status = get_attr(other, "status", default="")
-        status = str(getattr(status, "value", status)).upper()
-        if not status or not is_issued_status(status):
-            continue
-        net = round(
-            sum(
-                safe_float(get_attr(it, "quantity")) * safe_float(get_attr(it, "unit_price"))
-                for it in (get_attr(other, "items", default=None) or [])
-            ),
-            2,
-        )
-        total = round(safe_float(get_attr(other, "total_brutto", default=0)), 2)
-        rows.append({
-            "nr": safe_str(get_attr(other, "nr")),
-            "net": net,
-            "tax": round(max(total - net, 0.0), 2),
-            "total": total,
-        })
-    return rows
 
 
 def _is_name_token_char(char: str) -> bool:

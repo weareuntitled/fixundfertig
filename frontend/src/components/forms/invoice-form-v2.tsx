@@ -8,10 +8,12 @@
  * @output One white card; every field says what it does and what happens when it is left empty
  */
 import { useEffect, useId, useState, type ReactNode } from "react";
+import { FieldError } from "@/components/ui/field-error";
 import { Trash2 } from "lucide-react";
 import { CustomerSelector } from "./customer-selector";
 import { PaymentPlanEditor } from "@/components/quote/payment-plan-editor";
 import { dueDateLabel, PAYMENT_TERM_DAYS } from "@/lib/invoice-draft";
+import { defaultIntroText } from "@/lib/document-intro";
 import { addDaysIso, QUOTE_VALIDITY_DAYS, type InvoiceDraft, type InvoiceItem } from "@/lib/schemas/invoice";
 
 interface InvoiceFormV2Props {
@@ -24,6 +26,18 @@ const INPUT =
 const CELL_INPUT =
   "w-full bg-transparent border-0 border-b border-transparent focus:border-[#001a42] focus:ring-0 px-0 py-1 text-[14px] text-[var(--color-text-primary)] outline-none transition-colors placeholder:text-[var(--color-text-secondary)]";
 const money = (value: number) => value.toLocaleString("de-DE", { minimumFractionDigits: 2 });
+
+/**
+ * Spaltenüberschrift der Positionstabelle: am Desktop steht sie in der Kopfzeile,
+ * am Handy über dem Feld (die Kopfzeile ist dort ausgeblendet) (#498).
+ */
+function FieldLabel({ text }: { text: string }) {
+  return (
+    <span className="mb-1 block text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)] md:hidden">
+      {text}
+    </span>
+  );
+}
 
 function FormField({ label, hint, children }: { label: string; hint?: string; children: (ids: { id: string; hintId?: string }) => ReactNode }) {
   const id = useId();
@@ -47,6 +61,8 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
   const [removed, setRemoved] = useState<{ item: InvoiceItem; index: number } | null>(null);
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
   const [touched, setTouched] = useState<Set<number>>(new Set());
+  const [validityTouched, setValidityTouched] = useState(false);
+  const errorBase = useId();
 
   useEffect(() => {
     if (!removed) return;
@@ -88,7 +104,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
 
   /** For quotes an untouched "gültig bis" (date + 30 days) moves along with the quote date. */
   const setDate = (date: string) => {
-    if (isQuote && value.valid_until === addDaysIso(value.date, QUOTE_VALIDITY_DAYS)) {
+    if (isQuote && !validityTouched && value.valid_until === addDaysIso(value.date, QUOTE_VALIDITY_DAYS)) {
       onChange({ ...value, date, valid_until: addDaysIso(date, QUOTE_VALIDITY_DAYS) });
     } else {
       setField("date", date);
@@ -110,7 +126,7 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                 type="text"
                 value={value.subject}
                 onChange={(e) => setField("subject", e.target.value)}
-                placeholder="z. B. DJ-Set Hammahalle, Sa auf So"
+                placeholder="z. B. Website-Relaunch, Phase 1"
                 className={INPUT}
               />
             )}
@@ -131,14 +147,16 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
             )}
           </FormField>
           {isQuote ? (
-            <FormField label="Gültig bis" hint={`Vorgabe: ${QUOTE_VALIDITY_DAYS} Tage nach dem Angebotsdatum.`}>
+            <FormField label="Gültig bis" hint={value.date && value.valid_until && value.valid_until < value.date ? "Gültig bis darf nicht vor dem Angebotsdatum liegen." : `Vorgabe: ${QUOTE_VALIDITY_DAYS} Tage nach dem Angebotsdatum.`}>
               {({ id, hintId }) => (
                 <input
                   id={id}
                   aria-describedby={hintId}
                   type="date"
+                  min={value.date || undefined}
+                  aria-invalid={Boolean(value.date && value.valid_until && value.valid_until < value.date)}
                   value={value.valid_until}
-                  onChange={(e) => setField("valid_until", e.target.value)}
+                  onChange={(e) => { setValidityTouched(true); setField("valid_until", e.target.value); }}
                   className={INPUT}
                 />
               )}
@@ -173,7 +191,10 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
 
       {/* Intro text */}
       <div className="mb-[var(--space-xl)]">
-        <FormField label="Einleitung" hint="Optional. Ohne Text steht: „Vielen Dank für den Auftrag. Hiermit stelle ich folgende Leistungen in Rechnung.“">
+        <FormField
+          label="Einleitung"
+          hint={`Optional. Ohne Text steht: „${defaultIntroText(value.document_type)}“`}
+        >
           {({ id, hintId }) => (
             <textarea
               id={id}
@@ -188,13 +209,13 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
         </FormField>
       </div>
 
-      {/* Positions, edited in place */}
+      {/* Positions, edited in place. Am Handy gestapelt, damit nichts seitlich scrollt (#498). */}
       <div className="mb-[var(--space-xl)]">
-        <h3 className="mb-[var(--space-md)] text-[20px] font-semibold text-[var(--color-text-primary)]">Positionen</h3>
-        <div className="w-full overflow-x-auto">
-          <table className="w-full border-collapse text-left">
-            <thead>
-              <tr className="border-y border-[var(--color-border)] bg-[#F1F5F9]">
+        <h2 className="mb-[var(--space-md)] text-[20px] font-semibold text-[var(--color-text-primary)]">Positionen</h2>
+        <div className="w-full">
+          <table className="block w-full border-collapse text-left md:table">
+            <thead className="hidden md:table-header-group">
+              <tr className="border-y border-[var(--color-border)] bg-[#F1F5F9] md:table-row">
                 <th className="w-1/2 px-[var(--space-sm)] py-[var(--space-xs)] text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Beschreibung</th>
                 <th className="w-1/6 px-[var(--space-sm)] py-[var(--space-xs)] text-right text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Menge</th>
                 <th className="w-1/6 px-[var(--space-sm)] py-[var(--space-xs)] text-right text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-secondary)]">Einzelpreis</th>
@@ -204,19 +225,21 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="block md:table-row-group">
               {value.items.map((it, idx) => {
                 const number = idx + 1;
                 const quantityBad = !(it.quantity > 0);
                 const priceBad = it.unit_price < 0;
                 const descriptionBad = touched.has(idx) && !it.description.trim();
                 return (
-                  <tr key={idx} className="border-b border-[var(--color-border)] transition-colors hover:bg-[var(--color-surface-bright)]">
-                    <td className="px-[var(--space-sm)] py-[var(--space-sm)]">
+                  <tr key={idx} className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] transition-colors hover:bg-[var(--color-surface-bright)] md:table-row md:gap-0">
+                    <td className="w-full px-[var(--space-sm)] py-[var(--space-sm)] md:w-auto md:table-cell">
+                      <FieldLabel text="Beschreibung" />
                       <input
                         type="text"
                         aria-label={`Beschreibung Position ${number}`}
                         aria-invalid={descriptionBad}
+                        aria-describedby={descriptionBad ? `${errorBase}-d${idx}` : undefined}
                         value={it.description}
                         autoFocus={focusIndex === idx}
                         onChange={(e) => updateItemField(idx, "description", e.target.value)}
@@ -225,21 +248,26 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                         placeholder="z. B. DJ-Set, 4 bis 7 Uhr"
                         className={`${CELL_INPUT} ${descriptionBad ? "border-b-red-500" : ""}`}
                       />
+                      {descriptionBad && <FieldError id={`${errorBase}-d${idx}`}>Beschreibung eintragen</FieldError>}
                     </td>
-                    <td className="px-[var(--space-sm)] py-[var(--space-sm)]">
+                    <td className="w-[calc(50%_-_0.25rem)] px-[var(--space-sm)] py-[var(--space-sm)] md:w-auto md:table-cell">
+                      <FieldLabel text="Menge" />
                       <input
                         type="number"
                         inputMode="decimal"
                         aria-label={`Menge Position ${number}`}
                         aria-invalid={quantityBad}
+                        aria-describedby={quantityBad ? `${errorBase}-q${idx}` : undefined}
                         min="0.01"
                         step="any"
                         value={it.quantity}
                         onChange={(e) => updateItemField(idx, "quantity", Number(e.target.value))}
                         className={`${CELL_INPUT} text-right font-mono text-sm ${quantityBad ? "border-b-red-500" : ""}`}
                       />
+                      {quantityBad && <FieldError id={`${errorBase}-q${idx}`}>Menge größer 0 eintragen</FieldError>}
                     </td>
-                    <td className="px-[var(--space-sm)] py-[var(--space-sm)]">
+                    <td className="w-[calc(50%_-_0.25rem)] px-[var(--space-sm)] py-[var(--space-sm)] md:w-auto md:table-cell">
+                      <FieldLabel text="Einzelpreis" />
                       <div className="flex items-center justify-end">
                         <span className="mr-1 font-mono text-sm text-[var(--color-text-secondary)]">€</span>
                         <input
@@ -247,18 +275,23 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                           inputMode="decimal"
                           aria-label={`Einzelpreis Position ${number}`}
                           aria-invalid={priceBad}
+                          aria-describedby={priceBad ? `${errorBase}-p${idx}` : undefined}
                           min="0"
                           step="0.01"
                           value={it.unit_price}
                           onChange={(e) => updateItemField(idx, "unit_price", Number(e.target.value))}
-                          className={`${CELL_INPUT} w-24 text-right font-mono text-sm ${priceBad ? "border-b-red-500" : ""}`}
+                          className={`${CELL_INPUT} w-full text-right font-mono text-sm md:w-24 ${priceBad ? "border-b-red-500" : ""}`}
                         />
                       </div>
+                      {priceBad && <FieldError id={`${errorBase}-p${idx}`}>Preis nicht negativ</FieldError>}
                     </td>
-                    <td className="px-[var(--space-sm)] py-[var(--space-sm)] text-right font-mono text-sm text-[var(--color-text-primary)]">
-                      {money(it.quantity * it.unit_price)} €
+                    <td className="grow px-[var(--space-sm)] py-[var(--space-sm)] text-right font-mono text-sm text-[var(--color-text-primary)] md:table-cell">
+                      <FieldLabel text="Betrag" />
+                      <span data-testid="form-position-amount" className="whitespace-nowrap">
+                        {money(it.quantity * it.unit_price)} €
+                      </span>
                     </td>
-                    <td className="px-[var(--space-sm)] py-[var(--space-sm)] text-center">
+                    <td className="shrink-0 px-[var(--space-sm)] py-[var(--space-sm)] text-center md:table-cell">
                       <button
                         type="button"
                         onClick={() => removeItem(idx)}
@@ -272,12 +305,12 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                   </tr>
                 );
               })}
-              <tr>
-                <td colSpan={5} className="px-[var(--space-sm)] py-[var(--space-sm)]">
+              <tr className="flex flex-wrap md:table-row">
+                <td colSpan={5} className="w-full px-[var(--space-sm)] py-[var(--space-sm)] md:w-auto md:table-cell">
                   <button
                     type="button"
                     onClick={addItem}
-                    className="flex items-center gap-[var(--space-xs)] text-[14px] font-semibold text-[var(--color-brand-text)] transition-colors hover:text-[var(--color-brand-text-hover)]"
+                    className="flex min-h-[44px] items-center gap-[var(--space-xs)] text-[14px] font-semibold text-[var(--color-brand-text)] transition-colors hover:text-[var(--color-brand-text-hover)]"
                   >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-[18px] w-[18px]" aria-hidden="true">
                       <path d="M12 5v14M5 12h14" />
@@ -302,9 +335,9 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
       {/* Totals */}
       <div className="flex justify-end border-t border-[var(--color-border)] pt-[var(--space-md)]">
         <div className="w-full max-w-sm space-y-[var(--space-sm)]">
-          <div className="flex items-center justify-between px-[var(--space-sm)]">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 px-[var(--space-sm)]">
             <span className="text-[14px] text-[var(--color-text-secondary)]">Nettobetrag</span>
-            <span className="font-mono text-sm text-[var(--color-text-primary)]">{money(subtotalNet)} €</span>
+            <span className="whitespace-nowrap font-mono text-sm text-[var(--color-text-primary)]">{money(subtotalNet)} €</span>
           </div>
           <div className="flex items-center gap-2 px-[var(--space-sm)]">
             <input
@@ -320,12 +353,12 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
               }
               className="h-4 w-4 rounded border-[var(--color-border)] accent-[#001a42]"
             />
-            <label htmlFor="ust-ausweisen" className="cursor-pointer select-none text-[14px] text-[var(--color-text-primary)]">
+            <label htmlFor="ust-ausweisen" className="flex min-h-[44px] flex-1 cursor-pointer select-none items-center text-[14px] text-[var(--color-text-primary)]">
               Umsatzsteuer ausweisen
             </label>
           </div>
           {value.ust_enabled ? (
-            <div className="flex items-center justify-between px-[var(--space-sm)]">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 px-[var(--space-sm)]">
               <div className="flex items-center gap-2">
                 <label htmlFor="ust-satz" className="text-[14px] text-[var(--color-text-secondary)]">
                   USt-Satz
@@ -339,20 +372,20 @@ export function InvoiceFormV2({ value, onChange }: InvoiceFormV2Props) {
                   max="100"
                   value={value.vat_rate}
                   onChange={(e) => setField("vat_rate", Number(e.target.value))}
-                  className="w-16 rounded border border-[var(--color-border)] bg-[var(--color-surface-bright)] px-1 py-0.5 text-right font-mono text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42]"
+                  className="min-h-[44px] w-16 rounded border border-[var(--color-border)] bg-[var(--color-surface-bright)] px-1 py-0.5 text-right font-mono text-sm text-[var(--color-text-primary)] outline-none transition-all duration-150 focus:border-[#001a42] focus:ring-1 focus:ring-[#001a42]"
                 />
                 <span className="font-mono text-sm text-[var(--color-text-secondary)]">%</span>
               </div>
-              <span className="font-mono text-sm text-[var(--color-text-primary)]">{money(taxAmount)} €</span>
+              <span className="whitespace-nowrap font-mono text-sm text-[var(--color-text-primary)]">{money(taxAmount)} €</span>
             </div>
           ) : (
             <p className="px-[var(--space-sm)] text-[12px] text-[var(--color-text-muted)]">
               Auf dieser Rechnung wird keine Umsatzsteuer ausgewiesen.
             </p>
           )}
-          <div className="mt-[var(--space-sm)] flex items-center justify-between rounded-[var(--radius-lg)] bg-[var(--color-surface-container-low)] px-[var(--space-sm)] py-[var(--space-xs)]">
+          <div className="mt-[var(--space-sm)] flex flex-wrap items-center justify-between gap-x-2 rounded-[var(--radius-lg)] bg-[var(--color-surface-container-low)] px-[var(--space-sm)] py-[var(--space-xs)]">
             <span className="text-[20px] font-bold text-[var(--color-text-primary)]">Gesamtbetrag</span>
-            <span className="font-mono text-[20px] font-bold text-[var(--color-text-primary)]">{money(gross)} €</span>
+            <span className="whitespace-nowrap font-mono text-[20px] font-bold text-[var(--color-text-primary)]">{money(gross)} €</span>
           </div>
         </div>
       </div>

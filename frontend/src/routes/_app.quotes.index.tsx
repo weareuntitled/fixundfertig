@@ -3,6 +3,7 @@
  * @purpose All quotes of the current company, with the way to write a new one
  */
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { Plus } from "lucide-react";
 import { QuoteList } from "@/components/quote/quote-list";
 import { useQuotes } from "@/lib/use-invoices";
@@ -12,17 +13,18 @@ export const Route = createFileRoute("/_app/quotes/")({
 });
 
 function QuotesListPage() {
+  useDocumentTitle("Angebote");
   const { data: quotes, isLoading, isError } = useQuotes();
 
   return (
-    <div className="animate-fade-in space-y-6">
+    <div className="animate-fade-in space-y-6 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-[32px] font-semibold tracking-tight text-[var(--color-text-heading)] leading-[1.1]">
             Angebote
           </h1>
           <p className="mt-1.5 text-[15px] text-[var(--color-text-secondary)]">
-            {quotes ? `${quotes.length} Angebote insgesamt` : "Lädt…"}
+            {quotes ? `${quotes.length} ${quotes.length === 1 ? "Angebot" : "Angebote"} insgesamt` : "Lädt…"}
           </p>
         </div>
         <Link

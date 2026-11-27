@@ -162,6 +162,48 @@ export const linkedInvoiceSchema = z.object({
 
 export type LinkedInvoice = z.infer<typeof linkedInvoiceSchema>;
 
+/** Mirror of `app/schemas/invoice.py:BillingActionRead` — erlaubt oder gesperrt mit Grund. */
+export const billingActionSchema = z.object({
+  allowed: z.boolean().default(true),
+  reason: z.string().default(""),
+  invoice_id: z.number().int().nullable().default(null),
+  invoice_nr: z.string().nullable().default(null),
+});
+
+export type BillingAction = z.infer<typeof billingActionSchema>;
+
+/** Mirror of `app/schemas/invoice.py:QuoteBillingRead`. */
+export const quoteBillingSchema = z.object({
+  convert: billingActionSchema,
+  down_payment: billingActionSchema,
+  final_invoice: billingActionSchema,
+  /** Gesendet, aber nicht angenommen: Abrechnen nimmt das Angebot an. */
+  requires_acceptance: z.boolean().default(false),
+});
+
+export type QuoteBilling = z.infer<typeof quoteBillingSchema>;
+
+/** Mirror of `app/schemas/invoice.py:QuoteSettlementRead` — der Abrechnungsstand. */
+export const quoteSettlementSchema = z.object({
+  /** Bruttosumme der gestellten Rechnungen zum Angebot. */
+  billed_brutto: z.number().default(0),
+  /** Bruttobetrag des Angebots. */
+  total_brutto: z.number().default(0),
+  /** Was noch offen ist. */
+  open_brutto: z.number().default(0),
+  /** Zahl der gestellten Rechnungen zum Angebot. */
+  billed_count: z.number().int().default(0),
+});
+
+export type QuoteSettlement = z.infer<typeof quoteSettlementSchema>;
+
+export const finalBreakdownSchema = z.object({
+  net: z.number(), tax: z.number(), gross: z.number(),
+  deductions: z.array(z.object({ id: z.number(), nr: z.string(), date: z.string(), net: z.number(), tax: z.number(), total: z.number() })),
+  rest_net: z.number(), rest_tax: z.number(), rest: z.number(),
+});
+export type FinalBreakdownRead = z.infer<typeof finalBreakdownSchema>;
+
 /**
  * Read-side mirror of `app/schemas/invoice.py:InvoiceRead`.
  * Backend liefert: id, customer_id, nr, title, date, delivery_date,
@@ -175,6 +217,7 @@ export const invoiceReadSchema = z.object({
   nr: z.string().nullable().optional(),
   title: z.string().default("Rechnung"),
   subject: z.string().default(""),
+  intro_text: z.string().default(""),
   date: z.string().default(""),
   delivery_date: z.string().default(""),
   valid_until: z.string().default(""),
@@ -184,6 +227,10 @@ export const invoiceReadSchema = z.object({
   recipient_city: z.string().default(""),
   legacy: z.boolean().default(false),
   total_brutto: z.number().default(0),
+  /** Nettobetrag aus den Positionen. */
+  total_net: z.number().default(0),
+  /** Steuersatz des Dokuments in Prozent. */
+  vat_rate: z.number().default(0),
   status: invoiceStatusSchema.default("OPEN"),
   revision_nr: z.number().int().default(0),
   updated_at: z.string().default(""),
@@ -195,6 +242,7 @@ export const invoiceReadSchema = z.object({
   down_payment_index: z.number().int().nullable().default(null),
   /** Schlussrechnung: eigener Marker. */
   is_final_invoice: z.boolean().default(false),
+  final_breakdown: finalBreakdownSchema.nullable().default(null),
   /** Angebot: die daraus entstandenen Rechnungen. */
   linked_invoices: z.array(linkedInvoiceSchema).default([]),
   payment_link_url: z.string().default(""),
@@ -202,6 +250,10 @@ export const invoiceReadSchema = z.object({
   items: z.array(invoiceItemSchema).default([]),
   attachments: z.array(invoiceAttachmentSchema).default([]),
   payment_plan: z.array(paymentInstallmentReadSchema).default([]),
+  /** Angebot: die erlaubten Abrechnungsaktionen mit dem Grund für gesperrte. */
+  billing: quoteBillingSchema.nullable().default(null),
+  /** Angebot: der Abrechnungsstand (abgerechnet, gesamt, offen). */
+  settlement: quoteSettlementSchema.nullable().default(null),
 });
 
 export type InvoiceRead = z.infer<typeof invoiceReadSchema>;

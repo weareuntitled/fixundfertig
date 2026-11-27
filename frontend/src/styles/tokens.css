@@ -130,6 +130,10 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.04);
   --shadow-xl: 0 20px 50px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
   --shadow-focus: 0 0 0 4px rgba(0, 122, 255, 0.12);
+  /* Focus ring: blue-600 reaches 5.6:1 on white (WCAG 2.4.7, 1.4.11 ask for 3:1). */
+  --focus-ring-color: var(--color-blue-600);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
   --shadow-focus-dark: 0 0 0 4px rgba(0, 0, 0, 0.08);
 
   /* ── Motion ── */
@@ -167,14 +171,14 @@
   --color-text-heading: var(--color-gray-900);
   --color-text-primary: var(--color-gray-800);
   --color-text-secondary: var(--color-gray-600);
-  --color-text-tertiary: var(--color-gray-500);
-  --color-text-muted: var(--color-gray-500);
+  --color-text-tertiary: var(--color-gray-600);
+  --color-text-muted: var(--color-gray-600);
   --color-text-placeholder: var(--color-gray-400);
   --color-text-on-brand: var(--color-white);
-  --color-text-link: var(--color-blue-500);
-  --color-text-link-hover: var(--color-blue-600);
-  --color-text-danger: var(--color-red-500);
-  --color-text-success: var(--color-green-600);
+  --color-text-link: var(--color-blue-600);
+  --color-text-link-hover: var(--color-blue-700);
+  --color-text-danger: var(--color-red-600);
+  --color-text-success: var(--color-green-700);
   --color-text-warning: var(--color-amber-600);
 
   /* ── Borders (Apple 1px with hairline) ── */
@@ -188,24 +192,33 @@
   /* ── Brand / Primary ── */
   --color-brand: var(--color-gray-900);
   --color-brand-hover: var(--color-gray-800);
-  --color-brand-text: var(--color-blue-500);
-  --color-brand-text-hover: var(--color-blue-600);
+  --color-brand-text: var(--color-blue-600);
+  --color-brand-text-hover: var(--color-blue-700);
   --color-brand-surface: var(--color-blue-50);
   --color-brand-surface-subtle: var(--color-blue-50);
   --color-brand-deep: var(--color-navy-800);
 
   /* ── Status ── */
+  /* Dot colours (-dot is the plain token), text in the 700 step so every badge reaches 4.5:1. */
   --color-status-draft: var(--color-gray-600);
   --color-status-draft-bg: var(--color-gray-100);
   --color-status-draft-text: var(--color-gray-700);
   --color-status-open: var(--color-blue-500);
   --color-status-open-bg: var(--color-blue-50);
+  --color-status-open-text: var(--color-blue-700);
   --color-status-sent: var(--color-violet-500);
   --color-status-sent-bg: var(--color-violet-50);
+  --color-status-sent-text: var(--color-violet-700);
   --color-status-paid: var(--color-green-600);
   --color-status-paid-bg: var(--color-green-50);
+  --color-status-paid-text: var(--color-green-700);
   --color-status-cancelled: var(--color-red-500);
   --color-status-cancelled-bg: var(--color-red-50);
+  --color-status-cancelled-text: var(--color-red-700);
+  /* Expired asks for a decision: amber, never the blue of "Offen". */
+  --color-status-expired: var(--color-amber-600);
+  --color-status-expired-bg: var(--color-amber-50);
+  --color-status-expired-text: var(--color-amber-700);
 
   /* ── Semantic ── */
   --color-info: var(--color-blue-500);
@@ -294,12 +307,6 @@
     box-sizing: border-box;
   }
 
-  :focus-visible {
-    outline: none;
-    box-shadow: var(--shadow-focus);
-    border-radius: var(--radius-sm);
-  }
-
   /* Hairline border on retina screens */
   @media (-webkit-min-device-pixel-ratio: 2) {
     .border-hairline { border-width: 0.5px; }
@@ -314,6 +321,14 @@
   ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); border: 2px solid transparent; background-clip: padding-box; }
 
   ::selection { background: var(--color-blue-100); color: var(--color-blue-900); }
+}
+
+/* ── Focus ring ──
+ * Unlayered on purpose: it beats `outline-none` and `shadow-*` utilities, so every
+ * focusable element (sidebar links, inputs, buttons) shows the same visible ring. */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* ── Utility Animations ── */
@@ -337,7 +352,10 @@
   to { transform: rotate(360deg); }
 }
 
-.animate-fade-in { animation: fadeIn 0.25s var(--ease-out-expo) both; }
+/* fill-mode "backwards" statt "both": danach bleibt keine Transform-Matrix stehen,
+   sonst richten sich Dialoge (position: fixed) nach dem Container statt nach dem
+   Bildschirm (#498). */
+.animate-fade-in { animation: fadeIn 0.25s var(--ease-out-expo) backwards; }
 .animate-fade-in-scale { animation: fadeInScale 0.2s var(--ease-out-expo) both; }
 .animate-slide-in-right { animation: slideInRight 0.25s var(--ease-out-expo) both; }
 .animate-spin { animation: spin 0.8s linear infinite; }

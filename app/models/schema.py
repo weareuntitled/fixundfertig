@@ -188,6 +188,8 @@ class Invoice(SQLModel, table=True):
     # Schlussrechnung (#491): eigener Marker, damit sie sich von normaler Umwandlung
     # und von Abschlagsrechnungen unterscheidet. `down_payment_index` bleibt NULL.
     is_final_invoice: bool = False
+    # NULL: historical deductions are unknown; [] is a known empty snapshot.
+    final_deductions_json: Optional[str] = None
     intro_text: str = ""
     payment_link_url: str = ""
     payment_provider: str = ""  # "stripe" | "paypal" | ""

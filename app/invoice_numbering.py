@@ -57,6 +57,8 @@ def build_invoice_filename(company: Company, invoice: Invoice, customer: Custome
         template = QUOTE_FILENAME_TEMPLATE
     else:
         template = (company.invoice_filename_template or "rechnung_{nr}").strip() or "rechnung_{nr}"
+        if getattr(invoice, "down_payment_index", None) is not None and template == "rechnung_{nr}":
+            template = "abschlagsrechnung_{nr}"
     raw_nr = str(invoice.nr) if invoice.nr is not None else ""
     try:
         seq = int(raw_nr)

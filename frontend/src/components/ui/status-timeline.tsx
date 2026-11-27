@@ -2,7 +2,7 @@
  * @schema StatusTimeline
  * @purpose Horizontal stepper showing invoice status progression with visual indicators
  * @input {string} currentStatus - Current invoice status value
- * @output Renders 4-step timeline: Entwurf → Finalisiert → Gesendet → Bezahlt
+ * @output Renders 4-step timeline: Entwurf → Gestellt → Gesendet → Bezahlt
  * @tokens Uses: color-brand, color-brand-text, color-border, color-text-primary, color-text-muted
  */
 import { Check, Circle, Mail, CreditCard } from "lucide-react";
@@ -13,7 +13,7 @@ interface StatusTimelineProps {
 
 const STEPS = [
   { key: "DRAFT", label: "Entwurf", icon: Check },
-  { key: "OPEN", label: "Finalisiert", icon: Circle },
+  { key: "OPEN", label: "Gestellt", icon: Circle },
   { key: "SENT", label: "Gesendet", icon: Mail },
   { key: "PAID", label: "Bezahlt", icon: CreditCard },
 ] as const;
@@ -49,13 +49,13 @@ export function StatusTimeline({ currentStatus }: StatusTimelineProps) {
           return (
             <div
               key={step.key}
-              className={`flex flex-row md:flex-col items-center gap-4 md:gap-2 ${
-                isPending ? "opacity-50" : ""
-              }`}
+              aria-current={isCurrent ? "step" : undefined}
+              className="flex flex-row md:flex-col items-center gap-4 md:gap-2"
             >
               {/* Circle */}
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
+                aria-hidden="true"
+                className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${isPending ? "opacity-50 " : ""}${
                   isCompleted
                     ? "bg-[var(--color-brand)] text-[var(--color-text-on-brand)] border-2 border-white"
                     : isCurrent

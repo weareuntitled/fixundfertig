@@ -1,4 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { germanDate } from "@/components/quote/quote-list";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { Plus, Search, FileText, X } from "lucide-react";
 import { useInvoices } from "@/lib/use-invoices";
 import { useState, useMemo } from "react";
@@ -14,6 +16,7 @@ const eur = (n: number) =>
   n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 
 function InvoicesListPage() {
+  useDocumentTitle("Rechnungen");
   const { data: invoices, isLoading, isError } = useInvoices();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
@@ -179,14 +182,14 @@ function InvoicesListPage() {
                     {inv.legacy && <span className="inline-flex items-center rounded-full bg-[var(--color-amber-100)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] text-[var(--color-amber-700)]">Legacy</span>}
                   </div>
                 <div className="mt-0.5 text-[11.5px] text-[var(--color-text-tertiary)]">
-                  {inv.date || "—"}
+                  {germanDate(inv.date) || "—"}
                 </div>
               </div>
 
               {/* Title + Customer */}
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[14px] font-medium text-[var(--color-text-primary)]">
-                  {inv.title || "Rechnung"}
+                  {inv.subject || (inv.quote_nr ? `Angebot ${inv.quote_nr}` : inv.title || "Rechnung")}
                 </div>
                 <div className="mt-0.5 truncate text-[12.5px] text-[var(--color-text-tertiary)]">
                   {inv.recipient_name || `Kunde #${inv.customer_id}`}

@@ -1,11 +1,17 @@
-"""The email that carries an invoice: subject, plain text and HTML. Personal in tone, not corporate."""
+"""The email that carries an invoice: subject, plain text and HTML.
+
+Personal in tone, but the customer is addressed formally (Sie). The subject always
+names the kind of document and its number (#496).
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from html import escape
 
-from .invoice_pdf_draw import uses_artist_wordmark
-from .invoice_pdf_layout import LAYOUT, format_amount, format_date, get_attr, is_quote, payment_due_date, safe_str
+from .invoice_pdf_draw import deduction_label, uses_artist_wordmark
+from .invoice_pdf_layout import (
+    LAYOUT, format_amount, format_date, get_attr, is_quote, payment_due_date, safe_float, safe_str,
+)
 
 INK = "#14161a"
 MUTED = "#6b6f78"
@@ -25,7 +31,20 @@ def _money(value: float) -> str:
     return f"{format_amount(value)} €"
 
 
-def build_invoice_email(*, company, customer, invoice, message: str = "") -> InvoiceEmail:
+def document_label(invoice) -> str:
+    """Angebot, Schlussrechnung, Abschlagsrechnung or Rechnung."""
+    if is_quote(invoice):
+        return "Angebot"
+    if bool(get_attr(invoice, "is_final_invoice", default=False)):
+        return "Schlussrechnung"
+    if get_attr(invoice, "down_payment_index", default=None) is not None:
+        return "Abschlagsrechnung"
+    return "Rechnung"
+
+
+def build_invoice_email(*, company, customer, invoice, message: str = "",
+                        down_payments: list[dict] | None = None) -> InvoiceEmail:
+    """``down_payments`` are the deductions of a Schlussrechnung (rows with nr, date, net, tax, total)."""
     company_name = safe_str(get_attr(company, "name")) or "FixundFertig"
     wordmark = uses_artist_wordmark(company)
     profession = safe_str(get_attr(company, "business_type")) if wordmark else ""
@@ -35,7 +54,7 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
     # An Angebot names its validity instead of asking for payment.
     quote = is_quote(invoice)
     is_final_invoice = bool(get_attr(invoice, "is_final_invoice", default=False))
-    label = "Angebot" if quote else ("Schlussrechnung" if is_final_invoice else "Rechnung")
+    label = document_label(invoice)
     number = safe_str(get_attr(invoice, "nr"))
     inv_date_raw = safe_str(get_attr(invoice, "date"))
     inv_date = format_date(inv_date_raw)
@@ -60,23 +79,53 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
     vat_rate = f"{round(vat / net * 100, 1):g}".replace(".", ",") if show_vat else ""
     vat_label = f"MwSt. {vat_rate} %"
 
+    # Schlussrechnung: Gesamtleistung, one line per deducted down payment, Restbetrag —
+    # in the same order and with the same words as the PDF.
+    final_rows: list[tuple[str, float]] = []
+    if is_final_invoice:
+        from logic.final_invoice import final_deductions
+        down_payments = [row.as_dict() for row in final_deductions(invoice)]
+        percent = safe_float(get_attr(invoice, "vat_rate", default=0))
+        if percent > 0:
+            small_business = False
+        tax = round(net * percent / 100.0, 2) if percent > 0 else 0.0
+        final_rows.append(("Gesamtleistung", round(net + tax, 2)))
+        for row in down_payments or []:
+            final_rows.append((
+                deduction_label({"nr": safe_str(row.get("nr")), "date": format_date(row.get("date") or "")}),
+                safe_float(row.get("total")),
+            ))
+    total_label = "Restbetrag" if is_final_invoice else "Gesamtbetrag"
+
     recipient = safe_str(get_attr(customer, "display_name", "name"))
     greeting = f"Hallo {recipient}," if recipient else "Hallo,"
-    # An offer always speaks of the offer: a custom subject is added, not replacing it.
-    if quote and subject_line:
+    # Every subject names kind and number; a custom subject is added, not replacing them.
+    if subject_line:
         subject = f"{label} {number} — {subject_line}"
     else:
-        subject = subject_line or f"{label} {number} von {company_name} — {format_amount(gross)} €"
+        subject = f"{label} {number} von {company_name} — {format_amount(gross)} €"
     message = message.replace("\r\n", "\n").strip()
     # A personal message replaces the standard intro; the PDF hint stays.
-    standard_intro = (
-        "danke für die Anfrage! Das Angebot hängt als PDF an, hier das Wichtigste auf einen Blick."
-        if quote else
-        "danke für den Auftrag! Die Rechnung hängt als PDF an, hier das Wichtigste auf einen Blick."
-    )
+    document = f"{'Das' if quote else 'Die'} {label}"
+    if quote:
+        standard_intro = "vielen Dank für Ihre Anfrage. Das Angebot hängt als PDF an, hier das Wichtigste auf einen Blick."
+    elif label == "Abschlagsrechnung":
+        standard_intro = (
+            "wie vereinbart erhalten Sie die Abschlagsrechnung als PDF im Anhang, "
+            "hier das Wichtigste auf einen Blick."
+        )
+    elif is_final_invoice:
+        standard_intro = (
+            "vielen Dank für Ihren Auftrag. Die Schlussrechnung hängt als PDF an; "
+            "Ihre Abschlagszahlungen sind darin bereits abgezogen."
+        )
+    else:
+        standard_intro = (
+            "vielen Dank für Ihren Auftrag. Die Rechnung hängt als PDF an, hier das Wichtigste auf einen Blick."
+        )
     intro = message or standard_intro
-    attachment_hint = f"{'Das Angebot' if quote else 'Die Rechnung'} hängt als PDF an." if message else ""
-    pay_line = f"Bitte bis zum {due} überweisen." if due else ""
+    attachment_hint = f"{document} hängt als PDF an." if message else ""
+    pay_line = f"Bitte überweisen Sie den Betrag bis zum {due}." if due else ""
     valid_line = f"Das Angebot ist gültig bis {valid_until}." if valid_until else ""
 
     # ---- plain text
@@ -91,7 +140,8 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
     lines.append("")
     if show_vat:
         lines += [f"Zwischensumme: {_money(net)}", f"{vat_label}: {_money(vat)}"]
-    lines.append(f"Das macht: {_money(gross)}")
+    lines += [f"{row_label}: {_money(amount)}" for row_label, amount in final_rows]
+    lines.append(f"{total_label}: {_money(gross)}")
     if pay_line:
         lines.append(pay_line)
     if valid_line:
@@ -122,6 +172,7 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
         for description, quantity, price in items
     )
     extras = small_row("Zwischensumme", _money(net)) + small_row(vat_label, _money(vat)) if show_vat else ""
+    extras += "".join(small_row(row_label, _money(amount)) for row_label, amount in final_rows)
 
     subject_html = (
         f'<p style="margin:0 0 4px;font-size:15px;font-weight:700;color:{INK};">{escape(subject_line)}</p>'
@@ -131,8 +182,8 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
         f'<div style="padding-top:2px;font-size:13px;color:{MUTED};">{escape(profession)}</div>' if profession else ""
     )
     due_html = (
-        f'<div style="padding-top:6px;font-size:14px;color:{MUTED};">Bitte bis zum '
-        f'<strong style="color:{INK};">{escape(due)}</strong> überweisen.</div>' if due else ""
+        f'<div style="padding-top:6px;font-size:14px;color:{MUTED};">Bitte überweisen Sie den Betrag bis zum '
+        f'<strong style="color:{INK};">{escape(due)}</strong>.</div>' if due else ""
     )
     valid_html = (
         f'<div style="padding-top:6px;font-size:14px;color:{MUTED};">{escape(valid_line)}</div>' if valid_line else ""
@@ -167,7 +218,7 @@ def build_invoice_email(*, company, customer, invoice, message: str = "") -> Inv
 <div style="background:{PAPER};border-radius:14px;padding:22px 24px;">
 {subject_html}
 <div style="font-size:13px;color:{MUTED};">{label} {escape(number)}{escape(" vom " + inv_date) if inv_date else ""}</div>
-<div style="padding-top:16px;font-size:14px;color:{MUTED};">Das macht</div>
+<div style="padding-top:16px;font-size:14px;color:{MUTED};">{total_label}</div>
 <div style="font-size:40px;font-weight:300;letter-spacing:-0.03em;line-height:1.15;color:{INK};">{_money(gross)}</div>
 {due_html}{valid_html}
 </div>

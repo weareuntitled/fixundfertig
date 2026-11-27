@@ -102,6 +102,14 @@ def _calc_gross(items: List[Dict[str, Any]], *, ust_enabled: bool, is_small_busi
     return net + tax
 
 
+def invoice_net_total(invoice: Invoice) -> float:
+    """Nettobetrag eines Dokuments aus den Positionen, auf Cent gerundet."""
+    return round(
+        sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or [])),
+        2,
+    )
+
+
 def document_vat_rate(invoice: Invoice) -> float:
     """VAT rate in percent the document charges.
 
@@ -121,18 +129,17 @@ def document_vat_rate(invoice: Invoice) -> float:
 def recompute_total_brutto(invoice: Invoice, vat_rate: float, session: Optional[Session] = None) -> None:
     """Payable total from the current positions at the document's VAT rate.
 
-    A final invoice (#491) keeps the rate stored but its payable amount is the
-    rest after the quote's billed down payments. Without a session the deductions
-    cannot be read, so it falls back to the plain gross total.
+    A final invoice uses its persisted deductions, even without a session.
     """
-    from .final_invoice import final_invoice_totals, issued_down_payments
+    from .final_invoice import final_invoice_totals, final_deductions
 
     net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in (invoice.items or []))
-    invoice.vat_rate = float(vat_rate)
-    if bool(getattr(invoice, "is_final_invoice", False)) and getattr(invoice, "quote_id", None) and session is not None:
-        rows = issued_down_payments(session, int(invoice.quote_id))
+    if bool(getattr(invoice, "is_final_invoice", False)):
+        rows = final_deductions(invoice)
+        invoice.vat_rate = float(vat_rate)
         invoice.total_brutto = final_invoice_totals(net, float(vat_rate), rows)["rest"]
         return
+    invoice.vat_rate = float(vat_rate)
     invoice.total_brutto = round(net * (1 + float(vat_rate) / 100.0), 2)
 
 
@@ -166,6 +173,7 @@ def finalize_invoice_logic(
     document_type: DocumentType = DocumentType.INVOICE,
     valid_until: str = "",
     payment_plan: Optional[List[Any]] = None,
+    commit: bool = True,
 ) -> int:
     comp = session.get(Company, int(comp_id))
     cust = session.get(Customer, int(cust_id))
@@ -250,7 +258,7 @@ def finalize_invoice_logic(
         address_country=getattr(cust, "country", "") or "",
         ust_enabled=(not is_small) and bool(ust_enabled),
         document_type=inv.document_type, valid_until=inv.valid_until,
-        payment_plan=inv.payment_plan,
+        payment_plan=inv.payment_plan, subject=inv.subject,
     )
     preview.__dict__["intro_text"] = (intro_text or "").strip()
     preview.__dict__["line_items"] = clean_items
@@ -271,7 +279,10 @@ def finalize_invoice_logic(
             unit_price=float(it["unit_price"]),
         ))
 
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     return int(inv.id)
 
 

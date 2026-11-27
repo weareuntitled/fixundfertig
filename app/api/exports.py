@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from data import get_session
@@ -96,7 +96,10 @@ def invoices_pdf(
 ):
     """Download all invoice PDFs for the given year as a ZIP."""
     with get_session() as session:
-        zip_bytes = export_invoices_pdf_zip(session, int(company.id), year=year)
+        try:
+            zip_bytes = export_invoices_pdf_zip(session, int(company.id), year=year)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _zip_response(zip_bytes, f"invoices-{year}.zip")
 
 

@@ -3,7 +3,8 @@
  * @purpose Confirmation for steps that cannot be taken back. Same look as the delete confirmation:
  * plain dim backdrop, white card, outline cancel, filled confirm (red when destructive).
  */
-import { useEffect, useId, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
+import { useDialogFocus } from "./use-dialog-focus";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -31,14 +32,7 @@ export function ConfirmDialog({
   const titleId = useId();
   const messageId = useId();
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending) onCancel();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, pending, onCancel]);
+  const dialogRef = useDialogFocus<HTMLDivElement>(open, { onEscape: pending ? undefined : onCancel });
 
   if (!open) return null;
 
@@ -46,6 +40,7 @@ export function ConfirmDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={() => !pending && onCancel()} />
       <div
+        ref={dialogRef}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -64,7 +59,7 @@ export function ConfirmDialog({
             onClick={onCancel}
             disabled={pending}
             autoFocus={destructive}
-            className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50"
+            className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-white min-h-[44px] px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-container-high)] disabled:opacity-50"
           >
             {cancelLabel}
           </button>
@@ -73,7 +68,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={pending}
             autoFocus={!destructive}
-            className={`rounded-[var(--radius-lg)] px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 ${
+            className={`rounded-[var(--radius-lg)] min-h-[44px] px-[var(--space-md)] py-[var(--space-xs)] text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 ${
               destructive ? "bg-red-600" : "bg-[#001a42]"
             }`}
           >
