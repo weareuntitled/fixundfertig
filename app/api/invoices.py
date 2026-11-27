@@ -46,7 +46,6 @@ from logic.document_status import (
     status_not_allowed_reason,
 )
 from logic.belegsummen_zugang import belegsummen_for_invoice
-from logic.final_invoice import final_deductions
 from logic.quote_billing import BillingConflict, lock_quote_for_billing, quote_billing, quote_settlement
 from logic.quote_conversion import (
     create_down_payment_invoice,
