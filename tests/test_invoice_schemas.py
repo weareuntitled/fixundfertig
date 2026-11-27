@@ -117,7 +117,7 @@ def test_invoice_read_to_draft_round_trip() -> None:
         exclude={"id", "nr", "status", "total_brutto", "total_net", "revision_nr", "updated_at",
                  "related_invoice_id", "quote_id", "quote_nr", "down_payment_index", "is_final_invoice",
                  "final_breakdown", "linked_invoices", "payment_link_url", "payment_provider", "items", "attachments",
-                 "legacy", "billing", "settlement"}
+                 "legacy", "billing", "settlement", "totals"}
     ))
     assert draft.customer_id == 1
     assert draft.date == "2026-06-10"

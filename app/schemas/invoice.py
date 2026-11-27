@@ -162,6 +162,20 @@ class FinalBreakdownRead(BaseModel):
     rest: float
 
 
+class TotalsRead(BaseModel):
+    """Belegsummen eines Belegs (#507), berechnet in `logic.belegsummen`.
+
+    `vat_rate` in Prozent (0 ohne USt, z. B. Kleinunternehmer). `payable` ist der
+    zahlbare Betrag und entspricht `total_brutto` des Belegs.
+    """
+
+    net: float
+    vat_rate: float
+    tax: float
+    gross: float
+    payable: float
+
+
 class BillingActionRead(BaseModel):
     """Eine Abrechnungsaktion eines Angebots: erlaubt, oder gesperrt mit Grund (#495).
 
@@ -222,6 +236,9 @@ class InvoiceRead(BaseModel):
     # damit zeigt die Angebotsseite Netto, USt und Gesamt statt einer Summe.
     total_net: float = 0.0
     vat_rate: float = 0.0
+    # Belegsummen (#507): Netto, Satz, USt, Brutto, zahlbar. None, wenn die
+    # festgehaltenen Abzüge einer Schlussrechnung beschädigt sind.
+    totals: TotalsRead | None = None
     status: InvoiceStatus = "DRAFT"
     revision_nr: int = 0
     updated_at: str = ""

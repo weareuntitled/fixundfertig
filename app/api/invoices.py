@@ -27,6 +27,7 @@ from typing import Iterator
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import object_session, selectinload
+from sqlalchemy.orm.exc import UnmappedInstanceError
 from sqlmodel import Session, select
 
 from data import Company, Customer, Document, Invoice, InvoiceItem as InvoiceItemModel
@@ -43,6 +44,7 @@ from logic.document_status import (
     is_rejected_quote,
     status_not_allowed_reason,
 )
+from logic.belegsummen_zugang import belegsummen_for_invoice
 from logic.final_invoice import final_invoice_totals, final_deductions
 from logic.quote_billing import BillingConflict, lock_quote_for_billing, quote_billing, quote_settlement
 from logic.quote_conversion import (
@@ -75,6 +77,7 @@ from schemas.invoice import (
     InvoiceStatusUpdate,
     InvoiceUpdate,
     PaymentInstallmentRead,
+    TotalsRead,
 )
 from services.documents import build_download_filename, read_document_bytes
 from services.email import send_email
@@ -404,6 +407,22 @@ def _final_breakdown(invoice: Invoice) -> FinalBreakdownRead | None:
     )
 
 
+def _totals_read(invoice: Invoice) -> TotalsRead | None:
+    """Belegsummen für die API-Antwort (#507); None bei beschädigten Schlussrechnungs-Abzügen."""
+    try:
+        session = object_session(invoice)
+    except UnmappedInstanceError:  # entkoppelte Testdoubles tragen keine Sitzung
+        session = None
+    try:
+        summen = belegsummen_for_invoice(invoice, session)
+    except ValueError:
+        return None
+    return TotalsRead(
+        net=float(summen.net), vat_rate=float(summen.vat_rate), tax=float(summen.tax),
+        gross=float(summen.gross), payable=float(summen.payable),
+    )
+
+
 def _to_read_model(invoice: Invoice) -> InvoiceRead:
     """Convert SQLModel Invoice + Items to InvoiceRead (Pydantic)."""
     items: list[InvoiceItem] = []
@@ -435,6 +454,7 @@ def _to_read_model(invoice: Invoice) -> InvoiceRead:
         total_brutto=float(invoice.total_brutto or 0.0),
         total_net=invoice_net_total(invoice),
         vat_rate=document_vat_rate(invoice),
+        totals=_totals_read(invoice),
         status=invoice.status.value if hasattr(invoice.status, "value") else str(invoice.status),
         revision_nr=int(invoice.revision_nr or 0),
         updated_at=invoice.updated_at or "",
