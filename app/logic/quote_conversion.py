@@ -13,15 +13,16 @@ from typing import Any
 from sqlmodel import Session, select
 
 from data import Company, Customer, DocumentType, Invoice, InvoiceStatus
+from logic.belegsummen import abschlag_netto
 from logic.belegsummen_zugang import belegsummen_for_invoice
 from logic.final_invoice import issued_down_payments
-from logic.invoice import document_vat_rate, finalize_invoice_logic
+from logic.invoice import finalize_invoice_logic
 from invoice_numbering import build_invoice_filename
 from logic.quote_billing import BillingConflict, ensure_billable
 from renderer import render_invoice_to_pdf_bytes
 from services.invoice_pdf_draw import DOWN_PAYMENT_INTRO, INVOICE_INTRO
 from services.invoice_pdf_layout import format_date
-from services.payment_plan import format_percent, parse_payment_plan, round_cents
+from services.payment_plan import format_percent, parse_payment_plan
 
 
 class DownPaymentConflict(BillingConflict):
@@ -97,14 +98,14 @@ def _invoice_draft_from_quote(
 def create_invoice_from_quote(session: Session, quote: Invoice) -> Invoice:
     """Legt einen Rechnungsentwurf zum Angebot an und gibt ihn zurück.
 
-    Die Positionen des Angebots werden übernommen. Der Steuersatz des Angebots
-    (`document_vat_rate`) gilt auch für die Rechnung; Kleinunternehmer bekommen
-    0 % und damit keine Steuerzeilen.
+    Die Positionen des Angebots werden übernommen. Der Steuersatz aus den
+    Belegsummen des Angebots gilt auch für die Rechnung (Kleinunternehmer: 0 %,
+    keine Steuerzeilen); damit bleibt die Summe gleich.
     """
     if quote.document_type != DocumentType.QUOTE:
         raise ValueError("Nur Angebote lassen sich in Rechnungen umwandeln")
     ensure_billable(session, quote, "convert")
-    vat_percent = document_vat_rate(quote)
+    vat_percent = float(belegsummen_for_invoice(quote, session).vat_rate)
     company = session.get(Company, int(quote.company_id))
     invoice = _invoice_draft_from_quote(
         session,
@@ -171,10 +172,9 @@ def create_down_payment_invoice(
         )
 
     company = session.get(Company, int(quote.company_id))
-    net = sum(float(it.quantity or 0) * float(it.unit_price or 0) for it in quote.items)
-    amount = round_cents(net * float(rate["percent"]) / 100.0)
-    is_small = bool(getattr(company, "is_small_business", False))
-    vat_percent = 0.0 if is_small else document_vat_rate(quote)
+    summen = belegsummen_for_invoice(quote, session)
+    amount = float(abschlag_netto(summen.net, rate["percent"]))
+    vat_percent = float(summen.vat_rate)
     description = down_payment_description(quote, rate["percent"], rate["label"])
     invoice = _invoice_draft_from_quote(
         session,
@@ -210,8 +210,7 @@ def create_final_invoice(session: Session, quote: Invoice) -> Invoice:
     rows = issued_down_payments(session, int(quote.id))
 
     company = session.get(Company, int(quote.company_id))
-    is_small = bool(getattr(company, "is_small_business", False))
-    vat_percent = 0.0 if is_small else document_vat_rate(quote)
+    vat_percent = float(belegsummen_for_invoice(quote, session).vat_rate)
     invoice = _invoice_draft_from_quote(
         session,
         quote,

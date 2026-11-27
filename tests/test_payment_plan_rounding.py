@@ -49,11 +49,3 @@ def test_installment_amounts_give_the_rounding_rest_to_the_last_installment():
 
     assert amounts == [595, 396.63, 198.37]
     assert round(sum(amounts), 2) == 1190
-
-
-def test_the_down_payment_net_share_uses_the_same_rule():
-    """Der Nettoanteil der Abschlagsrechnung wird genauso gerundet."""
-    net = 100.01
-    percent = 50
-
-    assert round_cents(net * percent / 100.0) == 50.01

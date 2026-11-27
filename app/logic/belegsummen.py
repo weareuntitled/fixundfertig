@@ -113,6 +113,15 @@ def belegsummen(
     )
 
 
+def abschlag_netto(net: Any, percent: Any) -> Decimal:
+    """Netto einer Abschlagsrechnung: ``percent`` Prozent vom Netto des Angebots, auf Cent.
+
+    Steuer und Brutto der Abschlagsrechnung entstehen danach mit ``belegsummen``
+    aus genau diesem Netto, nach derselben Regel wie bei jedem Beleg.
+    """
+    return _cents(_dec(net) * _dec(percent) / 100)
+
+
 def legacy_vat_rate(positions: Iterable[Position], *, stored_gross: Any) -> Decimal:
     """Steuersatz eines Altbelegs ohne gespeicherten Satz, in Prozent.
 
