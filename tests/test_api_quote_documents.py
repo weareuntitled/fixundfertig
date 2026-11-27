@@ -409,7 +409,7 @@ def test_final_header_edit_keeps_saved_tax_and_deductions_after_company_change(a
     assert "Kleinunternehmer" not in mail["text"]
 
 
-def test_public_renderers_take_snapshot_even_when_caller_supplies_other_deductions(artist_api):
+def test_public_renderers_read_the_snapshot_without_caller_help(artist_api):
     from renderer import render_invoice_to_pdf_bytes
     from services.invoice_email import build_invoice_email
 
@@ -418,16 +418,16 @@ def test_public_renderers_take_snapshot_even_when_caller_supplies_other_deductio
     invoice = session.get(invoices.Invoice, final["id"])
     customer = session.get(invoices.Customer, payload["customer_id"])
     document = invoice.model_dump() | {"items": [item.model_dump() for item in invoice.items]}
-    text = _flat(render_invoice_to_pdf_bytes(document, company=company, customer=customer, down_payments=[]))
+    text = _flat(render_invoice_to_pdf_bytes(document, company=company, customer=customer))
     assert f"abzüglich Abschlagsrechnung {down['nr']}" in text
     assert "2.380,00" in text
-    mail = build_invoice_email(invoice=document, company=company, customer=customer, down_payments=[])
+    mail = build_invoice_email(invoice=document, company=company, customer=customer)
     assert f"abzüglich Abschlagsrechnung {down['nr']}" in mail.text
     document["final_deductions_json"] = None
     with pytest.raises(ValueError, match="prüfen"):
-        render_invoice_to_pdf_bytes(document, company=company, down_payments=[])
+        render_invoice_to_pdf_bytes(document, company=company)
     with pytest.raises(ValueError, match="prüfen"):
-        build_invoice_email(invoice=document, company=company, customer=customer, down_payments=[])
+        build_invoice_email(invoice=document, company=company, customer=customer)
 
 
 def test_historical_final_download_keeps_file_backed_pdf(artist_api, tmp_path):

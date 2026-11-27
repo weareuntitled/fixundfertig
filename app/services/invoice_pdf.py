@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections.abc import Iterator
 from io import BytesIO
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import (
-    FONTS, LAYOUT, InvItem, format_date, format_money, format_service_period, get_attr, is_quote, payment_due_date, safe_float, safe_str,
+    FONTS, LAYOUT, InvItem, document_items, format_date, format_money, format_service_period, get_attr, is_quote,
+    payment_due_date, safe_float, safe_str,
 )
 from .invoice_pdf_draw import (
     draw_header, draw_recipient, draw_title_block, draw_identity_line,
@@ -16,6 +18,9 @@ from .invoice_pdf_draw import (
     company_legal_name, uses_artist_wordmark,
 )
 from .payment_plan import format_percent, installments_with_amounts
+
+if TYPE_CHECKING:
+    from logic.belegsummen import Belegsummen
 
 
 def stored_invoice_pdf(invoice) -> bytes | None:
@@ -34,8 +39,13 @@ def stored_invoice_pdf(invoice) -> bytes | None:
     return None
 
 
-def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payments=None) -> bytes:
+def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, summen: Belegsummen | None = None) -> bytes:
+    """PDF eines Belegs. Beträge kommen aus den Belegsummen; ohne ``summen`` holt der
+    gemeinsame Zugang sie. Hier wird nichts gerechnet."""
     comp = company or get_attr(invoice, "company", default=None) or getattr(invoice, "__dict__", {}).get("company", None)
+    if summen is None:
+        from logic.belegsummen_zugang import belegsummen_for_document
+        summen = belegsummen_for_document(invoice, comp)
     if customer is None:
         customer = get_attr(invoice, "customer", default=None)
 
@@ -52,16 +62,12 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
         rec_city = safe_str(get_attr(customer, "recipient_city", "ort", default=""))
         rec_country = safe_str(get_attr(customer, "country", default=""))
 
-    raw_items = get_attr(invoice, "line_items", "items", "positions", default=None)
-    if raw_items is None:
-        raw_items = getattr(invoice, "__dict__", {}).get("line_items", None)
-
     items: list[InvItem] = []
-    item_iter = raw_items if isinstance(raw_items, list) else (getattr(invoice, "items", []) or [])
+    item_iter = document_items(invoice)
     artist_name = safe_str(get_attr(comp, "name")) if comp is not None else ""
     legal_name = company_legal_name(comp)
     line_holds_artist_name_as_its_own_token = False
-    for it in item_iter:
+    for it, amount in zip(item_iter, summen.positions_net):
         description = safe_str(get_attr(it, "description", "desc", default=""))
         if artist_name and _has_artist_name(description, artist_name):
             line_holds_artist_name_as_its_own_token = True
@@ -71,46 +77,12 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
             description=description,
             quantity=safe_float(get_attr(it, "quantity", "qty", default=0)),
             unit_price=safe_float(get_attr(it, "unit_price", "price", default=0)),
+            amount=amount,
         ))
 
-    is_small_business = bool(get_attr(comp, "is_small_business", default=False)) if comp is not None else False
-    is_final_invoice = bool(get_attr(invoice, "is_final_invoice", default=False))
-
-    net = round(sum(i.quantity * i.unit_price for i in items), 2)
-    tax_rate = (safe_float(get_attr(invoice, "vat_rate", default=0)) / 100.0
-                if is_final_invoice else (0.0 if is_small_business else _vat_rate(invoice, net)))
-    if is_final_invoice and tax_rate > 0:
-        is_small_business = False
-    tax = round(net * tax_rate, 2)
-
-    deductions: list[dict] = []
-    if is_final_invoice:
-        from logic.final_invoice import final_deductions
-        down_payments = [row.as_dict() for row in final_deductions(invoice)]
-        for row in (down_payments or []):
-            if isinstance(row, dict):
-                deductions.append({
-                    "nr": safe_str(row.get("nr")),
-                    "date": format_date(row.get("date") or ""),
-                    "net": safe_float(row.get("net")),
-                    "tax": safe_float(row.get("tax")),
-                    "total": safe_float(row.get("total")),
-                })
-            else:
-                deductions.append({
-                    "nr": safe_str(get_attr(row, "nr")),
-                    "date": format_date(get_attr(row, "date")),
-                    "net": safe_float(get_attr(row, "net")),
-                    "tax": safe_float(get_attr(row, "tax")),
-                    "total": safe_float(get_attr(row, "total")),
-                })
-        sum_net = round(sum(row["net"] for row in deductions), 2)
-        sum_tax = round(sum(row["tax"] for row in deductions), 2)
-        gross = round(net + tax, 2)
-        rest = round(gross - sum_net - sum_tax, 2)
-    else:
-        sum_net = sum_tax = rest = 0.0
-        gross = net + tax
+    # Kleinunternehmer-Hinweis nur, wo keine Steuer ausgewiesen wird (eine Schlussrechnung
+    # behält ihren festgehaltenen Satz, auch wenn die Firma später Kleinunternehmer wird).
+    is_small_business = bool(get_attr(comp, "is_small_business", default=False)) and summen.vat_rate == 0
 
     inv_date = safe_str(get_attr(invoice, "date", "invoice_date", default=""))
     service_date = format_date(get_attr(invoice, "delivery_date", default=""))
@@ -128,7 +100,7 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
     # Installment amounts come from the gross total shown above them; invoices have no plan.
     plan_rows = [
         (format_percent(rate["percent"]), rate["label"], format_money(rate["amount"]))
-        for rate in installments_with_amounts(get_attr(invoice, "payment_plan", default=None), round(gross, 2))
+        for rate in installments_with_amounts(get_attr(invoice, "payment_plan", default=None), float(summen.gross))
     ] if quote else []
 
     nr = safe_str(get_attr(invoice, "nr", "invoice_number", default=""))
@@ -183,13 +155,10 @@ def render_invoice_to_pdf_bytes(invoice, company=None, customer=None, down_payme
             y = draw_identity_line(c, mx, y, f"{artist_name} ({legal_name})", set_font)
         y -= 22
         y = draw_table(c, w, mx, y, content_w, my_bot, items, new_page, fonts)
-        if is_final_invoice:
-            y = draw_final_totals(
-                c, w, mx, y, content_w, my_bot, net, tax, tax_rate, is_small_business,
-                deductions, sum_net, sum_tax, rest, due_str, new_page, fonts,
-            )
+        if summen.is_final_invoice:
+            y = draw_final_totals(c, w, mx, y, content_w, my_bot, summen, is_small_business, due_str, new_page, fonts)
         else:
-            y = draw_totals(c, w, mx, y, content_w, my_bot, net, tax, gross, tax_rate, is_small_business, due_str, new_page, fonts)
+            y = draw_totals(c, w, mx, y, content_w, my_bot, summen, is_small_business, due_str, new_page, fonts)
         if not quote:
             draw_payment_box(c, w, mx, y, content_w, my_bot, comp, nr, new_page, fonts)
         else:
@@ -213,21 +182,6 @@ def _document_kind(invoice) -> str:
     if get_attr(invoice, "down_payment_index", default=None) is not None:
         return "Abschlagsrechnung"
     return "Rechnung"
-
-
-def _vat_rate(invoice, net: float) -> float:
-    """The VAT rate as a fraction. Drafts carry it as vat_rate, stored invoices only their total."""
-    if get_attr(invoice, "ust_enabled", default=True) is False:
-        return 0.0
-    percent = safe_float(get_attr(invoice, "tax_rate", "vat_rate", default=0.0))
-    if percent > 1.0:
-        percent /= 100.0
-    if percent > 0:
-        return percent
-    gross = safe_float(get_attr(invoice, "total_brutto", default=0.0))
-    if net > 0 and gross > net + 0.005:
-        return round((gross - net) / net, 3)
-    return 0.0
 
 
 def _is_name_token_char(char: str) -> bool:

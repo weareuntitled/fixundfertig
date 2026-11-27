@@ -37,6 +37,7 @@ from dependencies import db_session, get_current_company, require_session_auth
 from invoice_numbering import build_invoice_filename
 from logic import document_vat_rate, finalize_invoice_logic, recompute_total_brutto
 from logic.invoice import MixedVatRatesError, invoice_net_total
+from logic.belegsummen import Belegsummen
 from logic.document_status import (
     accepted_quote_status_reason,
     creation_status_reason,
@@ -288,18 +289,16 @@ def _document_type_value(invoice: Invoice) -> str:
     return doc_type.value if hasattr(doc_type, "value") else str(doc_type)
 
 
-def _final_invoice_down_payments(session: Session | None, invoice) -> list[dict] | None:
-    """Die Abschlagsrechnungen, die eine Schlussrechnung abzieht; None für andere Dokumente."""
-    if not getattr(invoice, "is_final_invoice", False):
-        return None
+def _document_summen(session: Session | None, invoice) -> Belegsummen:
+    """Belegsummen eines gespeicherten Belegs; beschädigte Abzüge einer Schlussrechnung → 409."""
     try:
-        return [row.as_dict() for row in final_deductions(invoice)]
+        return belegsummen_for_invoice(invoice, session)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def _render_document_pdf(session: Session | None, invoice, company=None, customer=None) -> bytes:
-    """PDF eines Dokuments; eine Schlussrechnung zieht ihre Abschlagsrechnungen ab."""
+    """PDF eines Dokuments mit seinen Belegsummen (Schlussrechnung: Abzüge und Rest)."""
     comp = company or getattr(invoice, "company", None)
     cust = customer or getattr(invoice, "customer", None)
     if session is not None:
@@ -311,7 +310,7 @@ def _render_document_pdf(session: Session | None, invoice, company=None, custome
         invoice=invoice,
         company=comp,
         customer=cust,
-        down_payments=_final_invoice_down_payments(session, invoice),
+        summen=_document_summen(session, invoice),
     )
 
 
@@ -662,7 +661,7 @@ def update_invoice(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_quote_editable(invoice)
-    _final_invoice_down_payments(session, invoice)
+    _document_summen(session, invoice)
 
     if invoice.document_type == DocumentType.QUOTE:
         from datetime import date
@@ -764,7 +763,7 @@ def update_invoice(
             preview.__dict__["is_final_invoice"] = is_final
             preview.__dict__["final_deductions_json"] = invoice.final_deductions_json
             invoice.pdf_bytes = render_invoice_to_pdf_bytes(
-                preview, down_payments=_final_invoice_down_payments(session, invoice)
+                preview, summen=_document_summen(session, invoice)
             )
         except Exception as e:
             logger.exception("PDF re-render failed on invoice update")
@@ -988,7 +987,7 @@ def add_invoice_item(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_quote_editable(invoice)
-    _final_invoice_down_payments(session, invoice)
+    _document_summen(session, invoice)
     vat_rate = document_vat_rate(invoice)
     item = InvoiceItemModel(
         invoice_id=invoice_id,
@@ -1021,7 +1020,7 @@ def update_invoice_item(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_quote_editable(invoice)
-    _final_invoice_down_payments(session, invoice)
+    _document_summen(session, invoice)
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -1052,7 +1051,7 @@ def delete_invoice_item(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
     _ensure_quote_editable(invoice)
-    _final_invoice_down_payments(session, invoice)
+    _document_summen(session, invoice)
     item = session.get(InvoiceItemModel, item_id)
     if not item or item.invoice_id != invoice_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -1213,7 +1212,7 @@ def send_invoice_email_endpoint(
         customer=customer,
         invoice=invoice,
         message=payload.message,
-        down_payments=_final_invoice_down_payments(session, invoice),
+        summen=_document_summen(session, invoice),
     )
 
     smtp_config = {

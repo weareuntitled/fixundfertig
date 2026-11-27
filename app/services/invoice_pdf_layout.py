@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 from datetime import date, timedelta
 
 from reportlab.lib.units import mm
@@ -47,6 +48,8 @@ class InvItem:
     description: str
     quantity: float
     unit_price: float
+    # Netto der Position aus den Belegsummen, auf Cent gerundet.
+    amount: Decimal
 
 
 def safe_str(x) -> str:
@@ -114,13 +117,31 @@ def format_service_period(service_from, service_to) -> str:
     return start or end
 
 
-def format_amount(value: float) -> str:
+def format_amount(value: float | Decimal) -> str:
     """1500 -> '1.500,00'"""
     return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def format_money(value: float) -> str:
+def format_money(value: float | Decimal) -> str:
     return f"{format_amount(value)} €"
+
+
+def format_vat_rate(percent: float | Decimal) -> str:
+    """19 -> '19', 10.5 -> '10,5' (ohne Prozentzeichen)."""
+    return f"{float(percent):g}".replace(".", ",")
+
+
+def format_quantity(value) -> str:
+    """2 -> '2', 1.5 -> '1.5'."""
+    return f"{safe_float(value):g}"
+
+
+def document_items(document) -> list:
+    """Die Positionen eines Belegs in Anzeigereihenfolge (Dict, ORM oder Vorschau mit ``line_items``)."""
+    items = get_attr(document, "line_items", "items", "positions", default=None)
+    if items is None and not isinstance(document, dict):
+        items = getattr(document, "__dict__", {}).get("line_items", None)
+    return list(items or [])
 
 
 def group_iban(value) -> str:
