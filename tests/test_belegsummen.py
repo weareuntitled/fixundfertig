@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "app"))
 
-from logic.belegsummen import Abschlag, Position, belegsummen, legacy_vat_rate  # noqa: E402
+from logic.belegsummen import Abschlag, Position, abschlag_netto, belegsummen, legacy_vat_rate  # noqa: E402
 
 
 def test_19_percent_net_tax_gross():
@@ -177,3 +177,11 @@ def test_several_positions_sum_before_tax():
         [Position(quantity=2, unit_price=10), Position(quantity=1, unit_price=5)], vat_rate=19
     )
     assert (summen.net, summen.tax, summen.gross) == (D("25.00"), D("4.75"), D("29.75"))
+
+
+def test_down_payment_net_is_the_rounded_share_of_the_document_net():
+    """#512: eine Abschlagsrechnung stellt ihren Anteil am Netto des Angebots, kaufmännisch gerundet."""
+    assert abschlag_netto(D("4000.00"), 50) == D("2000.00")
+    assert abschlag_netto(D("100.01"), 50) == D("50.01")
+    assert abschlag_netto(D("10.05"), 50) == D("5.03")
+    assert abschlag_netto(D("1000.00"), 33.33) == D("333.30")

@@ -27,6 +27,7 @@ const baseQuote: Quote = {
   total_brutto: 357,
   total_net: 300,
   vat_rate: 19,
+  totals: { net: 300, vat_rate: 19, tax: 57, gross: 357, payable: 357 },
   status: "SENT",
   items: [{ id: 1, description: "DJ-Set", quantity: 2, unit_price: 150 }],
   settlement: { billed_brutto: 0, total_brutto: 357, open_brutto: 357, billed_count: 0 },
@@ -383,6 +384,36 @@ describe("Angebot-Detailseite: Abrechnungsstand und Beträge", () => {
     expect(row("USt 19 %")).toContain("57,00 €");
     expect(row("Gesamt (brutto)")).toContain("357,00 €");
     expect(screen.queryByText("Summe")).toBeNull();
+  });
+
+  it("takes net, VAT and gross from the API totals instead of computing them (#512)", async () => {
+    renderQuote({
+      ...baseQuote,
+      // Gespeicherte Altwerte weichen ab; maßgeblich sind die Belegsummen.
+      total_brutto: 107.02,
+      total_net: 100.005,
+      vat_rate: 19,
+      totals: { net: 100.01, vat_rate: 7, tax: 7, gross: 107.01, payable: 107.01 },
+    });
+
+    expect(await screen.findByText("USt 7 %")).toBeTruthy();
+    expect(row("Netto")).toContain("100,01 €");
+    expect(row("USt 7 %")).toContain("7,00 €");
+    expect(row("Gesamt (brutto)")).toContain("107,01 €");
+  });
+
+  it("shows no VAT row for a quote without VAT", async () => {
+    renderQuote({
+      ...baseQuote,
+      total_brutto: 300,
+      vat_rate: 0,
+      totals: { net: 300, vat_rate: 0, tax: 0, gross: 300, payable: 300 },
+    });
+
+    expect(await screen.findByText("Gesamt (brutto)")).toBeTruthy();
+    expect(row("Netto")).toContain("300,00 €");
+    expect(screen.queryByText(/^USt/)).toBeNull();
+    expect(row("Gesamt (brutto)")).toContain("300,00 €");
   });
 });
 
