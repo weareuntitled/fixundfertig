@@ -6,12 +6,18 @@ names the kind of document and its number (#496).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from html import escape
+from typing import TYPE_CHECKING
 
 from .invoice_pdf_draw import deduction_label, uses_artist_wordmark
 from .invoice_pdf_layout import (
-    LAYOUT, format_amount, format_date, get_attr, is_quote, payment_due_date, safe_float, safe_str,
+    LAYOUT, document_items, format_amount, format_date, format_quantity, format_vat_rate, get_attr, is_quote,
+    payment_due_date, safe_str,
 )
+
+if TYPE_CHECKING:
+    from logic.belegsummen import Belegsummen
 
 INK = "#14161a"
 MUTED = "#6b6f78"
@@ -27,7 +33,7 @@ class InvoiceEmail:
     html: str
 
 
-def _money(value: float) -> str:
+def _money(value: float | Decimal) -> str:
     return f"{format_amount(value)} €"
 
 
@@ -43,8 +49,15 @@ def document_label(invoice) -> str:
 
 
 def build_invoice_email(*, company, customer, invoice, message: str = "",
-                        down_payments: list[dict] | None = None) -> InvoiceEmail:
-    """``down_payments`` are the deductions of a Schlussrechnung (rows with nr, date, net, tax, total)."""
+                        summen: Belegsummen | None = None) -> InvoiceEmail:
+    """Subject, text and HTML for a document.
+
+    Amounts and VAT rate are the Belegsummen, the same the PDF shows; without
+    ``summen`` the shared access reads them. Nothing is calculated here.
+    """
+    if summen is None:
+        from logic.belegsummen_zugang import belegsummen_for_document
+        summen = belegsummen_for_document(invoice, company)
     company_name = safe_str(get_attr(company, "name")) or "FixundFertig"
     wordmark = uses_artist_wordmark(company)
     profession = safe_str(get_attr(company, "business_type")) if wordmark else ""
@@ -53,7 +66,7 @@ def build_invoice_email(*, company, customer, invoice, message: str = "",
 
     # An Angebot names its validity instead of asking for payment.
     quote = is_quote(invoice)
-    is_final_invoice = bool(get_attr(invoice, "is_final_invoice", default=False))
+    is_final_invoice = summen.is_final_invoice
     label = document_label(invoice)
     number = safe_str(get_attr(invoice, "nr"))
     inv_date_raw = safe_str(get_attr(invoice, "date"))
@@ -61,40 +74,29 @@ def build_invoice_email(*, company, customer, invoice, message: str = "",
     due = "" if quote else payment_due_date(inv_date_raw)
     valid_until = format_date(safe_str(get_attr(invoice, "valid_until"))) if quote else ""
     subject_line = safe_str(get_attr(invoice, "subject"))
-    gross = float(get_attr(invoice, "total_brutto", default=0) or 0)
+    gross = summen.payable
 
-    small_business = bool(get_attr(company, "is_small_business", default=False))
-    items = []
-    for item in get_attr(invoice, "items", default=None) or []:
-        quantity = float(get_attr(item, "quantity", default=1) or 1)
-        price = float(get_attr(item, "unit_price", default=0) or 0)
-        items.append((safe_str(get_attr(item, "description")), quantity, price))
+    charges_vat = summen.vat_rate > 0
+    small_business = bool(get_attr(company, "is_small_business", default=False)) and not charges_vat
+    items = [
+        (safe_str(get_attr(item, "description")), get_attr(item, "quantity", default=0) or 0,
+         get_attr(item, "unit_price", default=0) or 0, amount)
+        for item, amount in zip(document_items(invoice), summen.positions_net)
+    ]
 
-    # VAT is whatever the total adds on top of the positions.
-    net = sum(quantity * price for _, quantity, price in items) if items else gross
-    vat = gross - net
-    # A final invoice's total is already the rest after the down payments, so its
-    # position total is not the tax base shown in this summary.
-    show_vat = vat > 0.005 and net > 0 and not is_final_invoice
-    vat_rate = f"{round(vat / net * 100, 1):g}".replace(".", ",") if show_vat else ""
-    vat_label = f"MwSt. {vat_rate} %"
+    vat_label = f"MwSt. {format_vat_rate(summen.vat_rate)} %"
+    # An ordinary document shows Zwischensumme and tax above its Gesamtbetrag.
+    show_vat = charges_vat and not is_final_invoice
 
-    # Schlussrechnung: Gesamtleistung, one line per deducted down payment, Restbetrag —
-    # in the same order and with the same words as the PDF.
-    final_rows: list[tuple[str, float]] = []
+    # Schlussrechnung: Gesamtleistung, one line per deducted down payment, the rest's
+    # net and tax, Restbetrag — in the same order and with the same words as the PDF.
+    final_rows: list[tuple[str, Decimal]] = []
     if is_final_invoice:
-        from logic.final_invoice import final_deductions
-        down_payments = [row.as_dict() for row in final_deductions(invoice)]
-        percent = safe_float(get_attr(invoice, "vat_rate", default=0))
-        if percent > 0:
-            small_business = False
-        tax = round(net * percent / 100.0, 2) if percent > 0 else 0.0
-        final_rows.append(("Gesamtleistung", round(net + tax, 2)))
-        for row in down_payments or []:
-            final_rows.append((
-                deduction_label({"nr": safe_str(row.get("nr")), "date": format_date(row.get("date") or "")}),
-                safe_float(row.get("total")),
-            ))
+        final_rows.append(("Gesamtleistung", summen.gross))
+        for row in summen.deductions:
+            final_rows.append((deduction_label({"nr": row.nr, "date": format_date(row.date)}), row.gross))
+        if charges_vat:
+            final_rows += [("Restbetrag netto", summen.rest_net), (vat_label, summen.rest_tax)]
     total_label = "Restbetrag" if is_final_invoice else "Gesamtbetrag"
 
     recipient = safe_str(get_attr(customer, "display_name", "name"))
@@ -134,12 +136,12 @@ def build_invoice_email(*, company, customer, invoice, message: str = "",
         lines.append(subject_line)
     lines.append(f"{label} {number}" + (f" vom {inv_date}" if inv_date else ""))
     lines.append("")
-    for description, quantity, price in items:
-        detail = f" ({quantity:g} x {_money(price)})" if quantity != 1 else ""
-        lines.append(f"  {description}{detail}: {_money(quantity * price)}")
+    for description, quantity, price, amount in items:
+        detail = f" ({format_quantity(quantity)} x {_money(price)})" if quantity != 1 else ""
+        lines.append(f"  {description}{detail}: {_money(amount)}")
     lines.append("")
     if show_vat:
-        lines += [f"Zwischensumme: {_money(net)}", f"{vat_label}: {_money(vat)}"]
+        lines += [f"Zwischensumme: {_money(summen.net)}", f"{vat_label}: {_money(summen.tax)}"]
     lines += [f"{row_label}: {_money(amount)}" for row_label, amount in final_rows]
     lines.append(f"{total_label}: {_money(gross)}")
     if pay_line:
@@ -168,10 +170,10 @@ def build_invoice_email(*, company, customer, invoice, message: str = "",
         )
 
     item_rows = "".join(
-        item_row(description, f"{quantity:g} × {_money(price)}" if quantity != 1 else "", _money(quantity * price))
-        for description, quantity, price in items
+        item_row(description, f"{format_quantity(quantity)} × {_money(price)}" if quantity != 1 else "", _money(amount))
+        for description, quantity, price, amount in items
     )
-    extras = small_row("Zwischensumme", _money(net)) + small_row(vat_label, _money(vat)) if show_vat else ""
+    extras = small_row("Zwischensumme", _money(summen.net)) + small_row(vat_label, _money(summen.tax)) if show_vat else ""
     extras += "".join(small_row(row_label, _money(amount)) for row_label, amount in final_rows)
 
     subject_html = (
