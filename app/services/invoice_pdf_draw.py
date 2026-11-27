@@ -7,7 +7,8 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
 from .invoice_pdf_layout import (
-    LAYOUT, InvItem, format_amount, format_money, get_attr, group_iban, prefixed_value, safe_str, wrap_text,
+    LAYOUT, InvItem, format_amount, format_money, get_attr, group_iban, prefixed_value, safe_str,
+    wrap_paragraphs, wrap_text,
 )
 
 
@@ -151,7 +152,7 @@ def draw_title_block(c: Canvas, w: float, mx: float, y: float, content_w: float,
         intro = QUOTE_INTRO if quote else INVOICE_INTRO
     c.setFillColorRGB(0.235, 0.251, 0.282)
     c.setFont(fonts["regular"], 9)
-    for line in wrap_text(intro, fonts["regular"], 9, left_w):
+    for line in wrap_paragraphs(intro, fonts["regular"], 9, left_w):
         c.drawString(mx, y, line)
         y -= 13.5
 

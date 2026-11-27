@@ -134,3 +134,16 @@ def test_invoice_pdf_keeps_its_invoice_wording(artist_api):
     assert "Zahlbar bis" in strings and "ZAHLUNGSINFORMATIONEN" in strings
     assert "Gültig bis:" not in strings
     assert f'filename="rechnung_{invoice["nr"]}.pdf"' in response.headers["content-disposition"]
+
+
+def test_intro_keeps_paragraphs(artist_api):
+    """Absätze der Einleitung bleiben im PDF als eigene Zeilen erhalten."""
+    client, _, payload, _ = artist_api
+    intro = "Hallo Herr Muster,\n\nerster Absatz.\n\nZahlungsbedingungen: 50 % bei Auftrag."
+    quote = _create(client, _quote(payload, intro_text=intro))
+
+    strings = pdf_strings(_download(client, quote["id"]).content)
+
+    assert "Hallo Herr Muster," in strings
+    assert "erster Absatz." in strings
+    assert "Zahlungsbedingungen: 50 % bei Auftrag." in strings

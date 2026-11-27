@@ -134,6 +134,14 @@ def prefixed_value(prefix: str, value) -> str:
     return f"{prefix}{text}" if text else ""
 
 
+def wrap_paragraphs(text: str, font: str, size: float, max_width: float) -> list[str]:
+    """Like wrap_text, but keeps line breaks; an empty line becomes a blank line."""
+    lines: list[str] = []
+    for paragraph in safe_str(text).split("\n"):
+        lines.extend(wrap_text(paragraph, font, size, max_width) if paragraph.strip() else [""])
+    return lines or [""]
+
+
 def wrap_text(text: str, font: str, size: float, max_width: float) -> list[str]:
     text = safe_str(text)
     if not text:

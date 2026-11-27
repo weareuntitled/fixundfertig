@@ -1,0 +1,25 @@
+{
+  "firma": "Untitled-UX",
+  "kunde": {
+    "name": "Akustik Licht und Spanndecken GmbH",
+    "vorname": "Oliver",
+    "nachname": "Lehmann",
+    "email": "Lehmann-spanndecken@web.de",
+    "strasse": "Blücherstraße 34",
+    "plz": "86165",
+    "ort": "Augsburg"
+  },
+  "betreff": "Variante A: Bestehende Website sicher weiter betreiben",
+  "einleitung": "Hallo Herr Lehmann,\n\nvielen Dank für Ihr Vertrauen. Damit Ihre Website zuverlässig und sicher läuft, biete ich Ihnen folgende Leistungen an.\n\nZahlungsbedingungen: 50 % des Gesamtbetrags werden bei Auftragserteilung fällig, die restlichen 50 % nach Fertigstellung. Rechnungen sind innerhalb von 14 Tagen ohne Abzug zahlbar.",
+  "gueltig_tage": 30,
+  "positionen": [
+    {"text": "E-Mail und Domain einrichten: Postfach, Einstellungen damit Mails zuverlässig ankommen und nicht im Spam landen, sichere Verbindung (Schloss im Browser), Anleitung für Handy und PC (Stunden)", "menge": 1.75, "preis": 70},
+    {"text": "Kontaktformular mit Spamschutz: Anfragen kommen direkt in Ihrem Postfach an, neuer Spamschutz, Testanfrage (Stunden)", "menge": 3, "preis": 70},
+    {"text": "Sicherheits-Update: veraltete Bausteine aktualisieren soweit die alte Technik es zulässt, Wartungsdateien sperren, Fehlermeldungen verbergen (Stunden)", "menge": 2, "preis": 70},
+    {"text": "Test aller Seiten und Puffer für die alte Technik (Stunden)", "menge": 1, "preis": 70}
+  ],
+  "raten": [
+    {"prozent": 50, "anlass": "bei Auftrag"},
+    {"prozent": 50, "anlass": "nach Fertigstellung"}
+  ]
+}
