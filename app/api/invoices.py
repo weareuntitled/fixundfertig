@@ -80,6 +80,8 @@ from services.documents import build_download_filename, read_document_bytes
 from services.email import send_email
 from services.payment_plan import dump_payment_plan, installments_with_amounts, parse_payment_plan
 from services.invoice_email import build_invoice_email
+from services.invoice_pdf_layout import format_amount
+from services.invoice_pdf_stamp import pdf_amount, pdf_matches_invoice
 from services.payment import check_payment, create_payment_link
 
 logger = logging.getLogger(__name__)
@@ -927,6 +929,46 @@ def _rerender_quote_pdf(session: Session, invoice: Invoice) -> None:
     session.refresh(invoice)
 
 
+def _pdf_showing_the_invoice(session: Session, invoice: Invoice, pdf_bytes: bytes) -> bytes:
+    """The PDF to mail: the stored one while it shows the invoice, else a renewed one.
+
+    The mail states the stored total live. A PDF stored before its positions
+    changed (or before PDFs carried a stamp) is drawn again and kept as a new
+    revision. If even the renewed PDF disagrees, the stored total does not fit
+    the positions, and the mail would contradict its attachment: refuse.
+    """
+    from datetime import datetime
+
+    if pdf_matches_invoice(pdf_bytes, invoice):
+        return pdf_bytes
+    renewed = _render_document_pdf(session, invoice)
+    if not pdf_matches_invoice(renewed, invoice):
+        shown = pdf_amount(renewed)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Der gespeicherte Rechnungsbetrag ({format_amount(float(invoice.total_brutto or 0))} €) "
+                f"passt nicht zu den Positionen"
+                + (f" ({format_amount(shown)} €)" if shown is not None else "")
+                + ". Bitte die Rechnung prüfen und speichern, bevor sie versendet wird."
+            ),
+        )
+    invoice.pdf_bytes = renewed
+    invoice.pdf_storage = "db"
+    invoice.revision_nr = int(invoice.revision_nr or 0) + 1
+    invoice.updated_at = datetime.now().isoformat()
+    session.add(InvoiceRevision(
+        invoice_id=invoice.id,
+        revision_nr=invoice.revision_nr,
+        reason="PDF vor dem Versand an die aktuellen Positionen angepasst",
+        pdf_filename_previous=invoice.pdf_filename or "",
+    ))
+    session.add(invoice)
+    session.commit()
+    session.refresh(invoice)
+    return renewed
+
+
 @router.post("/{invoice_id}/items", response_model=InvoiceRead, status_code=status.HTTP_201_CREATED)
 def add_invoice_item(
     invoice_id: int,
@@ -1150,6 +1192,8 @@ def send_invoice_email_endpoint(
         # A quote may have changed since its PDF was stored: always send the current one.
         _rerender_quote_pdf(session, invoice)
     pdf_bytes = _resolve_invoice_pdf_bytes(invoice, session)
+    if not quote:
+        pdf_bytes = _pdf_showing_the_invoice(session, invoice, pdf_bytes)
     filename = build_invoice_filename(company, invoice, customer)
     payload = payload or InvoiceSendRequest()
 
