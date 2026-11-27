@@ -30,6 +30,7 @@ class Position:
 
 @dataclass(frozen=True)
 class Belegsummen:
+    positions_net: tuple[Decimal, ...]
     net: Decimal
     vat_rate: Decimal
     tax: Decimal
@@ -39,7 +40,11 @@ class Belegsummen:
 
 def belegsummen(positions: Iterable[Position], *, vat_rate: Any, charges_vat: bool = True) -> Belegsummen:
     rate = _dec(vat_rate) if charges_vat else Decimal("0")
-    net = _cents(sum((_dec(p.quantity) * _dec(p.unit_price) for p in positions), Decimal("0")))
+    lines = [_dec(p.quantity) * _dec(p.unit_price) for p in positions]
+    net = _cents(sum(lines, Decimal("0")))
     tax = _cents(net * rate / 100)
     gross = net + tax
-    return Belegsummen(net=net, vat_rate=rate, tax=tax, gross=gross, payable=gross)
+    return Belegsummen(
+        positions_net=tuple(_cents(line) for line in lines),
+        net=net, vat_rate=rate, tax=tax, gross=gross, payable=gross,
+    )

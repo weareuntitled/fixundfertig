@@ -41,3 +41,54 @@ def test_small_business_charges_no_vat_whatever_the_rate():
 def test_vat_switched_off_on_the_document_equals_no_vat():
     summen = belegsummen([Position(quantity=2, unit_price=50)], vat_rate=19, charges_vat=False)
     assert summen.gross == summen.net == D("100.00")
+
+
+def test_quantity_zero_counts_zero():
+    summen = belegsummen(
+        [Position(quantity=0, unit_price=100), Position(quantity=1, unit_price=10)], vat_rate=19
+    )
+    assert summen.positions_net == (D("0.00"), D("10.00"))
+    assert summen.gross == D("11.90")
+
+
+def test_negative_positions_reduce_the_amounts():
+    summen = belegsummen(
+        [Position(quantity=1, unit_price=100), Position(quantity=-1, unit_price=10)], vat_rate=19
+    )
+    assert (summen.net, summen.tax, summen.gross) == (D("90.00"), D("17.10"), D("107.10"))
+
+
+def test_fully_negative_document():
+    summen = belegsummen([Position(quantity=-1, unit_price=10)], vat_rate=19)
+    assert (summen.net, summen.tax, summen.gross) == (D("-10.00"), D("-1.90"), D("-11.90"))
+
+
+def test_empty_positions_are_all_zero():
+    summen = belegsummen([], vat_rate=19)
+    assert (summen.net, summen.tax, summen.gross, summen.payable) == (D("0"), D("0"), D("0"), D("0"))
+    assert summen.positions_net == ()
+
+
+def test_net_rounds_half_up_to_cents():
+    # 1,5 × 33,33 = 49,995 → 50,00 (binäre Fließkommazahlen ergäben 49,99)
+    summen = belegsummen([Position(quantity=1.5, unit_price=33.33)], vat_rate=19)
+    assert (summen.net, summen.tax, summen.gross) == (D("50.00"), D("9.50"), D("59.50"))
+
+
+def test_tax_rounds_half_up_and_gross_is_net_plus_tax():
+    # 10,50 × 19 % = 1,995 → 2,00
+    summen = belegsummen([Position(quantity=1, unit_price=10.50)], vat_rate=19)
+    assert (summen.tax, summen.gross) == (D("2.00"), D("12.50"))
+    # 9,99 × 19 % = 1,8981 → 1,90
+    summen = belegsummen([Position(quantity=1, unit_price=9.99)], vat_rate=19)
+    assert (summen.tax, summen.gross) == (D("1.90"), D("11.89"))
+    # 0,50 × 7 % = 0,035 → 0,04
+    summen = belegsummen([Position(quantity=1, unit_price=0.50)], vat_rate=7)
+    assert (summen.tax, summen.gross) == (D("0.04"), D("0.54"))
+
+
+def test_net_per_position_is_rounded_to_cents():
+    summen = belegsummen(
+        [Position(quantity=1.5, unit_price=33.33), Position(quantity=2, unit_price=10)], vat_rate=19
+    )
+    assert summen.positions_net == (D("50.00"), D("20.00"))
