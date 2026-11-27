@@ -29,22 +29,85 @@ class Position:
 
 
 @dataclass(frozen=True)
+class Abschlag:
+    """Eingabe: eine gestellte Abschlagsrechnung, die eine Schlussrechnung abzieht.
+
+    Netto und Steuer kommen so, wie sie beim Anlegen der Schlussrechnung
+    festgehalten wurden; das Modul lädt nichts nach.
+    """
+
+    id: int
+    nr: str
+    net: Any
+    tax: Any
+    date: str = ""
+
+
+@dataclass(frozen=True)
+class Abzug:
+    """Ergebnis: ein Abzug der Schlussrechnung, auf Cent gerundet."""
+
+    id: int
+    nr: str
+    date: str
+    net: Decimal
+    tax: Decimal
+    gross: Decimal
+
+
+@dataclass(frozen=True)
 class Belegsummen:
+    """Alle Beträge eines Belegs. Ohne Abzüge ist der Rest gleich der Gesamtleistung."""
+
     positions_net: tuple[Decimal, ...]
     net: Decimal
     vat_rate: Decimal
     tax: Decimal
     gross: Decimal
+    is_final_invoice: bool
+    deductions: tuple[Abzug, ...]
+    sum_net: Decimal
+    sum_tax: Decimal
+    sum_gross: Decimal
+    rest_net: Decimal
+    rest_tax: Decimal
+    rest_gross: Decimal
     payable: Decimal
 
 
-def belegsummen(positions: Iterable[Position], *, vat_rate: Any, charges_vat: bool = True) -> Belegsummen:
+def _abzug(row: Abschlag) -> Abzug:
+    net, tax = _cents(_dec(row.net)), _cents(_dec(row.tax))
+    return Abzug(id=int(row.id), nr=str(row.nr), date=str(row.date or ""), net=net, tax=tax, gross=net + tax)
+
+
+def belegsummen(
+    positions: Iterable[Position],
+    *,
+    vat_rate: Any,
+    charges_vat: bool = True,
+    deductions: Iterable[Abschlag] | None = None,
+) -> Belegsummen:
+    """Beträge eines Belegs.
+
+    ``charges_vat`` ist falsch für Kleinunternehmer und Belege mit abgeschalteter
+    USt; dann gilt 0 %. ``deductions`` ist nur bei einer Schlussrechnung gesetzt
+    (auch leer); zahlbar ist dann der Restbetrag.
+    """
     rate = _dec(vat_rate) if charges_vat else Decimal("0")
     lines = [_dec(p.quantity) * _dec(p.unit_price) for p in positions]
     net = _cents(sum(lines, Decimal("0")))
     tax = _cents(net * rate / 100)
     gross = net + tax
+    abzuege = tuple(_abzug(row) for row in deductions or ())
+    sum_net = sum((a.net for a in abzuege), Decimal("0"))
+    sum_tax = sum((a.tax for a in abzuege), Decimal("0"))
+    sum_gross = sum_net + sum_tax
     return Belegsummen(
         positions_net=tuple(_cents(line) for line in lines),
-        net=net, vat_rate=rate, tax=tax, gross=gross, payable=gross,
+        net=net, vat_rate=rate, tax=tax, gross=gross,
+        is_final_invoice=deductions is not None,
+        deductions=abzuege,
+        sum_net=sum_net, sum_tax=sum_tax, sum_gross=sum_gross,
+        rest_net=net - sum_net, rest_tax=tax - sum_tax, rest_gross=gross - sum_gross,
+        payable=gross - sum_gross,
     )
