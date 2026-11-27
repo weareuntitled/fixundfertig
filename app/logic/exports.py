@@ -6,7 +6,6 @@ import mimetypes
 import os
 import zipfile
 from datetime import datetime
-from types import SimpleNamespace
 from typing import Any, List, Optional
 
 from sqlmodel import select
@@ -50,34 +49,12 @@ def export_invoices_pdf_zip(*args: Any, **kwargs: Any) -> bytes:
                         except Exception:
                             pdf = None
 
-            if not pdf and inv.is_final_invoice:
-                pdf = render_invoice_to_pdf_bytes(
-                    inv, company=comp, customer=inv.customer, summen=belegsummen_for_invoice(inv, session),
-                )
-
             if not pdf:
+                # Gleicher Weg wie jedes andere Beleg-PDF: Beträge aus den Belegsummen (#511).
                 cust = session.get(Customer, int(inv.customer_id)) if inv.customer_id else None
-                if not cust:
-                    continue
-                its = list(session.exec(select(InvoiceItem).where(InvoiceItem.invoice_id == inv.id)).all())
-                line_items = [
-                    {"description": it.description, "quantity": float(it.quantity or 0),
-                     "unit_price": float(it.unit_price or 0), "tax_rate": 0.0}
-                    for it in its
-                ]
-                preview = SimpleNamespace(
-                    company=comp, customer=cust, title=inv.title or "Rechnung",
-                    invoice_number=inv.nr or f"INV-{inv.id}", date=inv.date or "",
-                    delivery_date=inv.delivery_date or "", payment_terms="",
-                    address_name=inv.recipient_name or getattr(cust, "display_name", "") or "",
-                    address_street=inv.recipient_street or getattr(cust, "strasse", "") or "",
-                    address_zip=inv.recipient_postal_code or getattr(cust, "plz", "") or "",
-                    address_city=inv.recipient_city or getattr(cust, "ort", "") or "",
-                    address_country=getattr(cust, "country", "") or "", ust_enabled=False,
+                pdf = render_invoice_to_pdf_bytes(
+                    inv, company=comp, customer=cust, summen=belegsummen_for_invoice(inv, session),
                 )
-                preview.__dict__["intro_text"] = ""
-                preview.__dict__["line_items"] = line_items
-                pdf = render_invoice_to_pdf_bytes(preview)
 
             inv_no = str(getattr(inv, "nr", "") or f"INV-{getattr(inv, 'id', '')}")
             fname = safe_filename(f"{inv_no} {getattr(inv, 'title', 'Rechnung')}.pdf")
