@@ -36,6 +36,7 @@ const QUOTE = {
   ...QUOTES[0],
   total_net: 4000,
   vat_rate: 19,
+  totals: { net: 4000, vat_rate: 19, tax: 760, gross: 4760, payable: 4760 },
   items: [
     { id: 1, description: "SEO-Grundeinrichtung für die neue Seite", quantity: 1, unit_price: 4000 },
   ],

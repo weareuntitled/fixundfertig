@@ -252,11 +252,11 @@ function QuoteDetailPage() {
   const canConvert = isAllowed(billing?.convert);
   const canDownPayment = isAllowed(billing?.down_payment);
   const canFinalInvoice = isAllowed(billing?.final_invoice);
-  const vatAmount = Math.max(0, Math.round((quote.total_brutto - quote.total_net) * 100) / 100);
-  const vatRateLabel =
-    quote.vat_rate > 0
-      ? `${quote.vat_rate.toLocaleString("de-DE", { maximumFractionDigits: 2 })} %`
-      : "";
+  // Netto, USt und Brutto kommen fertig aus den Belegsummen der API (#512).
+  const totals = quote.totals;
+  const vatRateLabel = totals
+    ? `${totals.vat_rate.toLocaleString("de-DE", { maximumFractionDigits: 2 })} %`
+    : "";
 
   // Die Abschlagsrechnung im Entwurf: die Schlussrechnung zieht sie erst ab,
   // wenn sie gestellt ist (#497).
@@ -693,27 +693,31 @@ function QuoteDetailPage() {
             </li>
           ))}
         </ul>
-        <div className="border-t border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-md)]">
-          <dl className="ml-auto max-w-sm space-y-1 text-[14px]">
-            <div className="flex items-center justify-between gap-4">
-              <dt className="text-[var(--color-text-secondary)]">Netto</dt>
-              <dd className="whitespace-nowrap font-mono">{eur(quote.total_net)}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <dt className="text-[var(--color-text-secondary)]">USt {vatRateLabel}</dt>
-              <dd className="whitespace-nowrap font-mono">{eur(vatAmount)}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4 text-[16px] font-semibold">
-              <dt>Gesamt (brutto)</dt>
-              <dd className="whitespace-nowrap font-mono">{eur(quote.total_brutto)}</dd>
-            </div>
-          </dl>
-        </div>
+        {totals && (
+          <div className="border-t border-[var(--color-border)] px-[var(--space-lg)] py-[var(--space-md)]">
+            <dl className="ml-auto max-w-sm space-y-1 text-[14px]">
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-[var(--color-text-secondary)]">Netto</dt>
+                <dd className="whitespace-nowrap font-mono">{eur(totals.net)}</dd>
+              </div>
+              {totals.vat_rate > 0 && (
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-[var(--color-text-secondary)]">USt {vatRateLabel}</dt>
+                  <dd className="whitespace-nowrap font-mono">{eur(totals.tax)}</dd>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-4 text-[16px] font-semibold">
+                <dt>Gesamt (brutto)</dt>
+                <dd className="whitespace-nowrap font-mono">{eur(totals.gross)}</dd>
+              </div>
+            </dl>
+          </div>
+        )}
       </div>
 
       <QuotePaymentPlanCard
         quoteId={quoteId}
-        gross={quote.total_brutto}
+        gross={totals?.gross ?? quote.total_brutto}
         plan={quote.payment_plan ?? []}
         locked={locked}
         readOnly={rejected}

@@ -371,6 +371,7 @@ test("Angebot: die Seite zeigt Netto, USt, Gesamt und den Abrechnungsstand", asy
     id: 42, customer_id: 7, document_type: "QUOTE", nr: "A-10000", title: "Angebot",
     date: "2026-10-23", valid_until: "2026-11-22", recipient_name: "Sisyphos Event GmbH",
     total_brutto: 1785, total_net: 1500, vat_rate: 19, status: "ACCEPTED",
+    totals: { net: 1500, vat_rate: 19, tax: 285, gross: 1785, payable: 1785 },
     items: [{ id: 1, description: "DJ Performance", quantity: 1, unit_price: 1500 }],
     settlement: { billed_brutto: 714, total_brutto: 1785, open_brutto: 1071, billed_count: 1 },
     billing: {
