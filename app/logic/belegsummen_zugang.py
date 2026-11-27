@@ -42,16 +42,21 @@ def belegsummen_for_invoice(invoice: Invoice, session: Optional[Session] = None)
     Eine Schlussrechnung liest ihre festgehaltenen Abzüge; sind sie beschädigt,
     wirft ``final_deductions`` einen ``ValueError`` mit deutscher Meldung.
     """
-    company = _company(invoice, session)
     deductions = None
     if bool(getattr(invoice, "is_final_invoice", False)):
         deductions = [
             Abschlag(id=row.id, nr=row.nr, date=row.date, net=row.net, tax=row.tax)
             for row in final_deductions(invoice)
         ]
+        # Eine Schlussrechnung behält ihren beim Anlegen festgehaltenen Satz
+        # (Kleinunternehmer: 0), auch wenn sich der Status der Firma später ändert.
+        charges_vat = True
+    else:
+        company = _company(invoice, session)
+        charges_vat = not bool(getattr(company, "is_small_business", False))
     return belegsummen(
         invoice_positions(invoice),
         vat_rate=invoice_vat_rate(invoice),
-        charges_vat=not bool(getattr(company, "is_small_business", False)),
+        charges_vat=charges_vat,
         deductions=deductions,
     )
